@@ -3877,19 +3877,18 @@ function UsersManager({ users, setUsers, dossiers }) {
   ];
 
   // Récupère les variables d'environnement Supabase (présentes uniquement en prod via Vercel)
-  // Utilise try/catch pour éviter les erreurs dans l'aperçu Claude où import.meta n'existe pas
-  let SUPABASE_URL = null;
-  let SUPABASE_SERVICE_KEY = null;
-  try {
-    // eslint-disable-next-line
-    const env = (typeof globalThis !== 'undefined' && globalThis.__VITE_ENV__) || (new Function('try { return import.meta.env } catch(e) { return null }'))();
-    if (env) {
-      SUPABASE_URL = env.VITE_SUPABASE_URL || null;
-      SUPABASE_SERVICE_KEY = env.VITE_SUPABASE_SERVICE_KEY || null;
+  // On utilise un accès direct à import.meta.env mais protégé par try-catch
+  // pour éviter les erreurs dans l'aperçu Claude (où import.meta n'existe pas)
+  const env = (() => {
+    try {
+      // Vite remplace import.meta.env au build time, donc cette ligne doit être directe
+      return import.meta.env;
+    } catch (e) {
+      return {};
     }
-  } catch (e) {
-    // Pas en environnement Vite (probablement aperçu Claude)
-  }
+  })();
+  const SUPABASE_URL = env.VITE_SUPABASE_URL || null;
+  const SUPABASE_SERVICE_KEY = env.VITE_SUPABASE_SERVICE_KEY || null;
   const supabaseAdminEnabled = !!(SUPABASE_URL && SUPABASE_SERVICE_KEY);
 
   // Récupère la liste des utilisateurs Supabase via API admin
