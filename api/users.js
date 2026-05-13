@@ -52,12 +52,17 @@ export default async function handler(req, res) {
 
   const admin = makeAdmin();
 
-  // Détection du mode bootstrap : on regarde s'il existe au moins un user admin.
+  // Détection du mode bootstrap : on considère qu'il n'y a pas encore d'admin
+  // *effectif* tant qu'aucun user avec role=admin ne s'est connecté au moins
+  // une fois. Cela couvre le cas d'un admin créé par erreur dans Supabase
+  // (orphelin, jamais utilisé) qui empêcherait un user légitime de revendiquer
+  // le rôle. Dès qu'un admin s'est connecté ne serait-ce qu'une fois, le mode
+  // bootstrap se ferme et toutes les routes redeviennent protégées.
   const { data: listAll, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
   if (listErr) return json(res, 500, { error: listErr.message });
   const allUsers = listAll?.users || [];
-  const hasAdmin = allUsers.some(u => u.user_metadata?.role === 'admin');
-  const isBootstrap = !hasAdmin;
+  const activeAdmins = allUsers.filter(u => u.user_metadata?.role === 'admin' && u.last_sign_in_at);
+  const isBootstrap = activeAdmins.length === 0;
 
   // Caller (peut être null si pas connecté ou pas de JWT)
   const caller = await getCallerUser(req, admin);
