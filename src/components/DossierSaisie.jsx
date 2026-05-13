@@ -7481,6 +7481,7 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
   const today = new Date();
   const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [filterType, setFilterType] = useState('pose'); // 'pose' | 'accord' | 'consuel' | 'all'
+  const [viewMode, setViewMode] = useState('mois'); // 'mois' | 'carte'
 
   const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
   const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
@@ -7613,23 +7614,43 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
           )}
         </div>
 
-        {/* Filtres */}
-        <div className="flex gap-1.5 mt-3 flex-wrap">
-          {filterOptions.map(f => {
-            const sel = filterType === f.id;
-            return (
-              <button
-                key={f.id}
-                onClick={() => setFilterType(f.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${sel ? `bg-gradient-to-r ${f.color} text-white shadow-md` : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
-              >
-                <span>{f.emoji}</span><span>{f.label}</span>
-              </button>
-            );
-          })}
+        {/* Filtres + bascule vue */}
+        <div className="flex items-center justify-between mt-3 gap-2 flex-wrap">
+          <div className="flex gap-1.5 flex-wrap">
+            {filterOptions.map(f => {
+              const sel = filterType === f.id;
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => setFilterType(f.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${sel ? `bg-gradient-to-r ${f.color} text-white shadow-md` : 'bg-slate-50 text-slate-600 hover:bg-slate-100'}`}
+                >
+                  <span>{f.emoji}</span><span>{f.label}</span>
+                </button>
+              );
+            })}
+          </div>
+          <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
+            <button
+              onClick={() => setViewMode('mois')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${viewMode === 'mois' ? 'bg-white shadow text-violet-700' : 'text-slate-500'}`}
+            >
+              📅 Mois
+            </button>
+            <button
+              onClick={() => setViewMode('carte')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${viewMode === 'carte' ? 'bg-white shadow text-violet-700' : 'text-slate-500'}`}
+            >
+              🗺️ Carte
+            </button>
+          </div>
         </div>
       </div>
 
+      {viewMode === 'carte' ? (
+        <CarteView dossiers={dossiers} filterType={filterType} onShowQuick={onShowQuick} />
+      ) : (
+      <>
       {/* GRILLE CALENDRIER */}
       <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
         {/* Jours de la semaine */}
@@ -7697,6 +7718,176 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
         <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-emerald-100 text-emerald-700 border-emerald-300">✅ Accord</span>
         <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-cyan-100 text-cyan-700 border-cyan-300">⚡ Consuel</span>
         <span className="text-slate-400 ml-auto">💡 Clique sur un évènement pour ouvrir l'aperçu</span>
+      </div>
+      </>
+      )}
+    </div>
+  );
+}
+
+// ===================== CARTE INTERACTIVE (Leaflet) =====================
+
+// Cache localStorage des géocodages (clé = adresse complète, valeur = {lat, lng}).
+// Évite de re-géocoder à chaque visite (Nominatim limite à 1 req/sec).
+const loadGeocodeCache = async () => {
+  try {
+    const r = await window.storage.get('geocode-cache');
+    return r?.value ? JSON.parse(r.value) : {};
+  } catch (e) { return {}; }
+};
+const saveGeocodeCache = async (cache) => {
+  try { await window.storage.set('geocode-cache', JSON.stringify(cache)); } catch (e) {}
+};
+
+function CarteView({ dossiers, filterType, onShowQuick }) {
+  const mapDivRef = useRef(null);
+  const mapRef = useRef(null);
+  const markersRef = useRef([]);
+  const [progress, setProgress] = useState({ done: 0, total: 0 });
+  const [leafletReady, setLeafletReady] = useState(typeof window !== 'undefined' && !!window.L);
+
+  // Dossiers pertinents : ont une adresse + correspondent au filtre.
+  const dossiersToPlot = useMemo(() => {
+    return dossiers.filter(d => {
+      if (!(d.adresse || d.ville)) return false;
+      if (filterType === 'pose') return !!d.dateInsta;
+      if (filterType === 'accord') return !!d.dateAccord;
+      if (filterType === 'consuel') return !!d.dateConsuel;
+      return d.dateInsta || d.dateAccord || d.dateConsuel;
+    });
+  }, [dossiers, filterType]);
+
+  // Attend Leaflet (chargé en defer dans index.html)
+  useEffect(() => {
+    if (leafletReady) return;
+    const id = setInterval(() => {
+      if (window.L) { setLeafletReady(true); clearInterval(id); }
+    }, 200);
+    return () => clearInterval(id);
+  }, [leafletReady]);
+
+  // Init carte
+  useEffect(() => {
+    if (!leafletReady || mapRef.current || !mapDivRef.current) return;
+    const L = window.L;
+    mapRef.current = L.map(mapDivRef.current).setView([46.6, 2.5], 6); // France centrée
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap',
+      maxZoom: 19,
+    }).addTo(mapRef.current);
+  }, [leafletReady]);
+
+  // Ouvre le QuickView depuis un event custom dispatché par le popup
+  useEffect(() => {
+    const handler = (e) => onShowQuick && onShowQuick(e.detail);
+    window.addEventListener('crm:openQuick', handler);
+    return () => window.removeEventListener('crm:openQuick', handler);
+  }, [onShowQuick]);
+
+  // Plot markers (géocode si besoin)
+  useEffect(() => {
+    if (!leafletReady || !mapRef.current) return;
+    const L = window.L;
+    markersRef.current.forEach(m => m.remove());
+    markersRef.current = [];
+
+    let cancelled = false;
+    const bounds = L.latLngBounds([]);
+    setProgress({ done: 0, total: dossiersToPlot.length });
+
+    (async () => {
+      const cache = await loadGeocodeCache();
+      let cacheDirty = false;
+      for (let i = 0; i < dossiersToPlot.length; i++) {
+        if (cancelled) return;
+        const d = dossiersToPlot[i];
+        const fullAddress = [d.adresse, d.codePostal, d.ville].filter(Boolean).join(' ').trim();
+        const key = fullAddress.toLowerCase();
+        let coords = cache[key];
+        if (!coords) {
+          await new Promise(r => setTimeout(r, 1100)); // throttle Nominatim
+          if (cancelled) return;
+          try {
+            const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(fullAddress + ', France')}&limit=1`, {
+              headers: { 'Accept-Language': 'fr' },
+            });
+            const data = await res.json();
+            if (data && data[0]) {
+              coords = { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+              cache[key] = coords;
+              cacheDirty = true;
+            }
+          } catch (e) {}
+        }
+        if (coords && mapRef.current && !cancelled) {
+          // Couleur selon date : pose ambre, consuel vert, accord cyan, défaut violet
+          const color = d.dateConsuel && filterType !== 'pose' && filterType !== 'accord' ? '#10b981'
+                      : d.dateInsta ? '#f59e0b'
+                      : d.dateAccord ? '#06b6d4'
+                      : '#a855f7';
+          const icon = L.divIcon({
+            html: `<div style="background:${color};width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>`,
+            className: '',
+            iconSize: [22, 22],
+            iconAnchor: [11, 11],
+            popupAnchor: [0, -11],
+          });
+          const marker = L.marker([coords.lat, coords.lng], { icon }).addTo(mapRef.current);
+          const dateInsta = d.dateInsta ? new Date(d.dateInsta).toLocaleDateString('fr-FR') : null;
+          const dateAccord = d.dateAccord ? new Date(d.dateAccord).toLocaleDateString('fr-FR') : null;
+          const dateConsuel = d.dateConsuel ? new Date(d.dateConsuel).toLocaleDateString('fr-FR') : null;
+          marker.bindPopup(`
+            <div style="font-weight:bold;font-size:13px">${(d.nom || '').toUpperCase()} ${d.prenom || ''}</div>
+            <div style="font-size:11px;color:#666;margin-bottom:4px">📍 ${fullAddress}</div>
+            ${dateInsta ? `<div style="font-size:11px">🔧 Pose : ${dateInsta}</div>` : ''}
+            ${dateAccord ? `<div style="font-size:11px">✅ Accord : ${dateAccord}</div>` : ''}
+            ${dateConsuel ? `<div style="font-size:11px">⚡ Consuel : ${dateConsuel}</div>` : ''}
+            <button onclick="window.dispatchEvent(new CustomEvent('crm:openQuick', { detail: '${d.localId}' }))" style="margin-top:6px;padding:4px 10px;background:#8b5cf6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px">Ouvrir le dossier ›</button>
+          `);
+          markersRef.current.push(marker);
+          bounds.extend([coords.lat, coords.lng]);
+        }
+        if (!cancelled) setProgress({ done: i + 1, total: dossiersToPlot.length });
+      }
+      if (cacheDirty && !cancelled) await saveGeocodeCache(cache);
+      if (!cancelled && bounds.isValid() && markersRef.current.length > 0) {
+        mapRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 14 });
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [leafletReady, dossiersToPlot, filterType]);
+
+  if (!leafletReady) {
+    return (
+      <div className="bg-white rounded-3xl shadow-md border border-slate-200 p-12 text-center text-slate-500">
+        ⏳ Chargement de la carte…
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-white rounded-3xl shadow-md border border-violet-100 overflow-hidden">
+      {progress.total > 0 && progress.done < progress.total && (
+        <div className="px-4 py-2 bg-amber-50 text-amber-800 text-xs font-semibold border-b border-amber-200">
+          ⏳ Géocodage en cours : {progress.done} / {progress.total} adresses (limité par OpenStreetMap à 1/seconde, mis en cache)
+        </div>
+      )}
+      {dossiersToPlot.length === 0 ? (
+        <div className="p-12 text-center text-slate-500">
+          <div className="text-4xl mb-2">🗺️</div>
+          <p className="text-sm font-semibold">Aucun dossier à afficher</p>
+          <p className="text-xs mt-1">Les dossiers doivent avoir une adresse + une date selon le filtre actif.</p>
+        </div>
+      ) : (
+        <div ref={mapDivRef} style={{ height: 600, width: '100%' }} />
+      )}
+      <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 flex items-center gap-3 flex-wrap text-xs">
+        <span className="font-semibold text-slate-600">Légende :</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500 border-2 border-white shadow"></span>Pose</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-cyan-500 border-2 border-white shadow"></span>Accord</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-emerald-500 border-2 border-white shadow"></span>Consuel</span>
+        <span className="text-slate-400 ml-auto">💡 Clique un point pour voir le dossier</span>
       </div>
     </div>
   );
