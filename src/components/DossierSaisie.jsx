@@ -894,7 +894,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (isInterne || dossier.payeClient) map[key].totalAPayerMaintenant += ttc;
         else map[key].totalEnAttenteFinanceur += ttc;
       }
-      map[key].lignes.push({ dossierId: dossier.id || '—', client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne });
+      map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne, prestataireType: type });
     };
     dossiersEnriched.forEach(d => {
       (d.fournisseursDetail || []).forEach(f => addEntry(f.nom, 'Fournisseur', f.ttc, f.paye, f.datePaye, d));
@@ -928,7 +928,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       encaissMap[fin].totalAttendu += m;
       if (d.payeClient) encaissMap[fin].totalRecu += m;
       else encaissMap[fin].totalRestant += m;
-      encaissMap[fin].lignes.push({ dossierId: d.id || '—', client: `${d.nom} ${d.prenom || ''}`.trim(), date: d.dateInsta, ttc: m, paye: d.payeClient });
+      encaissMap[fin].lignes.push({ dossierId: d.id || '—', dossierLocalId: d.localId, client: `${d.nom} ${d.prenom || ''}`.trim(), date: d.dateInsta, ttc: m, paye: d.payeClient });
     });
     const encaissList = Object.values(encaissMap).sort((a, b) => b.totalRestant - a.totalRestant);
     const totalEncaisseClient = encaissList.reduce((s, e) => s + e.totalRecu, 0);
@@ -1619,7 +1619,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         )}
 
         {/* PAIEMENTS */}
-        {activeTab === 'paiements' && <PaiementsView rapportPaiements={rapportPaiements} />}
+        {activeTab === 'paiements' && <PaiementsView rapportPaiements={rapportPaiements} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
 
         {/* DASHBOARD */}
         {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
@@ -2705,7 +2705,14 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta }) {
 
 // ====================== AUTRES VUES (inchangées) ======================
 
-function PaiementsView({ rapportPaiements }) {
+function PaiementsView({ rapportPaiements, onShowQuick }) {
+  // Mappe le type de prestataire vers l'ancre de scroll dans le QuickViewPanel
+  const scrollTargetFor = (type) => {
+    if (type === 'Fournisseur') return 'fournisseurs';
+    if (type === 'Régie') return 'regie';
+    if (type === 'Poseur') return 'poseurs';
+    return 'equipeInterne'; // rôles internes (Téléprospecteur, Confirmateur, ...)
+  };
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
@@ -2787,15 +2794,28 @@ function PaiementsView({ rapportPaiements }) {
                           Voir les {dossiersAttente.length} en attente
                         </summary>
                         <div className="mt-2 space-y-1">
-                          {dossiersAttente.map((l, i) => (
-                            <div key={i} className="bg-white/80 rounded-lg px-2 py-1.5 flex items-center justify-between gap-2 border border-amber-200">
-                              <div className="flex items-center gap-2 min-w-0 flex-1">
-                                {l.dossierId !== '—' && <span className="text-xs font-mono bg-slate-100 text-slate-600 px-1 rounded">#{l.dossierId}</span>}
-                                <span className="font-semibold text-slate-700 truncate text-sm">{l.client}</span>
+                          {dossiersAttente.map((l, i) => {
+                            const canOpen = !!(l.dossierLocalId && onShowQuick);
+                            const handleOpen = (ev) => { ev.stopPropagation(); if (canOpen) onShowQuick(l.dossierLocalId, 'paiement'); };
+                            return (
+                              <div
+                                key={i}
+                                onClick={handleOpen}
+                                role={canOpen ? 'button' : undefined}
+                                tabIndex={canOpen ? 0 : undefined}
+                                onKeyDown={canOpen ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpen(e); } } : undefined}
+                                title={canOpen ? `Ouvrir ${l.client || 'le dossier'} — section paiement client` : undefined}
+                                className={`bg-white/80 rounded-lg px-2 py-1.5 flex items-center justify-between gap-2 border border-amber-200 ${canOpen ? 'cursor-pointer hover:ring-2 hover:ring-violet-300 transition' : ''}`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0 flex-1">
+                                  {l.dossierId !== '—' && <span className="text-xs font-mono bg-slate-100 text-slate-600 px-1 rounded">#{l.dossierId}</span>}
+                                  <span className="font-semibold text-slate-700 truncate text-sm">{l.client}</span>
+                                </div>
+                                <span className="font-bold text-amber-700 text-sm">{formatEuro(l.ttc)}</span>
+                                {canOpen && <span className="text-slate-400 text-xs">›</span>}
                               </div>
-                              <span className="font-bold text-amber-700 text-sm">{formatEuro(l.ttc)}</span>
-                            </div>
-                          ))}
+                            );
+                          })}
                         </div>
                       </details>
                     )}
@@ -2870,8 +2890,18 @@ function PaiementsView({ rapportPaiements }) {
                         a_payer: { bg: 'bg-orange-50 border-orange-300', icon: 'bg-orange-500', label: '🔥 À payer', labelBg: 'bg-orange-200 text-orange-800', amount: 'text-orange-700' },
                         bloque: { bg: 'bg-slate-100 border-slate-300', icon: 'bg-slate-400', label: '⏸️ Bloqué financeur', labelBg: 'bg-slate-200 text-slate-700', amount: 'text-slate-500' },
                       }[etat];
+                      const canOpen = !!(l.dossierLocalId && onShowQuick);
+                      const handleOpen = () => canOpen && onShowQuick(l.dossierLocalId, scrollTargetFor(l.prestataireType || p.type));
                       return (
-                        <div key={i} className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm border ${styles.bg}`}>
+                        <div
+                          key={i}
+                          onClick={handleOpen}
+                          role={canOpen ? 'button' : undefined}
+                          tabIndex={canOpen ? 0 : undefined}
+                          onKeyDown={canOpen ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpen(); } } : undefined}
+                          title={canOpen ? `Ouvrir ${l.client || 'le dossier'} — section ${p.type}` : undefined}
+                          className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm border ${styles.bg} ${canOpen ? 'cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-violet-300 transition' : ''}`}
+                        >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
                             <div className={`w-5 h-5 rounded flex items-center justify-center ${styles.icon}`}>
                               {l.paye && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
@@ -2884,6 +2914,7 @@ function PaiementsView({ rapportPaiements }) {
                           <div className="flex items-center gap-2">
                             <span className={`font-bold ${styles.amount}`}>{formatEuro(l.ttc)}</span>
                             <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${styles.labelBg}`}>{styles.label}</span>
+                            {canOpen && <span className="text-slate-400 text-xs">›</span>}
                           </div>
                         </div>
                       );
