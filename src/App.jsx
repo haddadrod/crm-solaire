@@ -55,17 +55,5 @@ export default function App() {
     return <Login onLogin={setUser} />;
   }
 
-  return (
-    <div>
-      {/* Bouton sortir — affiché pour tout le monde */}
-      <button
-        onClick={handleLogout}
-        className="fixed top-6 md:top-10 right-4 md:right-8 z-50 bg-white shadow-md rounded-full p-2 border border-violet-100 hover:bg-rose-50 hover:border-rose-200 transition-colors flex items-center justify-center"
-        title="Se déconnecter"
-      >
-        <span className="text-3xl leading-none">🚪</span>
-      </button>
-      <DossierSaisie authUser={user} />
-    </div>
-  );
+  return <DossierSaisie authUser={user} onLogout={handleLogout} />;
 }

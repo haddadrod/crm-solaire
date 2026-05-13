@@ -187,7 +187,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits) => {
   };
 };
 
-export default function DossierSaisie({ authUser }) {
+export default function DossierSaisie({ authUser, onLogout }) {
   const [dossiers, setDossiers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -1393,6 +1393,15 @@ export default function DossierSaisie({ authUser }) {
                   </div>
                 );
               })()}
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-700 px-3 py-2 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200"
+                  title="Se déconnecter"
+                >
+                  <span className="text-2xl leading-none">🚪</span>
+                </button>
+              )}
               {isAdmin && dossiers.length > 0 && (
                 <button onClick={exportCSV} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200">
                   <Download className="w-4 h-4" />Export CSV
