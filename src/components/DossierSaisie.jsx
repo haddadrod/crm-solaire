@@ -3860,8 +3860,14 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
 function UsersManager({ users, setUsers, dossiers }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
   const [newEmoji, setNewEmoji] = useState('👤');
   const [newRole, setNewRole] = useState('commercial');
+  const [supabaseUsers, setSupabaseUsers] = useState([]);
+  const [loadingSupabase, setLoadingSupabase] = useState(false);
+  const [supabaseError, setSupabaseError] = useState('');
+  const [supabaseSuccess, setSupabaseSuccess] = useState('');
 
   const ROLES = [
     { id: 'admin', label: '👑 Admin', desc: 'Accès complet, voit tout, fait tout', color: 'bg-violet-100 text-violet-700 border-violet-300' },
@@ -3869,6 +3875,171 @@ function UsersManager({ users, setUsers, dossiers }) {
     { id: 'poseur', label: '🔧 Poseur', desc: 'Voit ses chantiers à poser, sans prix', color: 'bg-amber-100 text-amber-700 border-amber-300' },
     { id: 'compta', label: '💰 Compta', desc: 'Gère les paiements et factures', color: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
   ];
+
+  // Récupère les variables d'environnement Supabase (présentes uniquement en prod via Vercel)
+  // Utilise try/catch pour éviter les erreurs dans l'aperçu Claude où import.meta n'existe pas
+  let SUPABASE_URL = null;
+  let SUPABASE_SERVICE_KEY = null;
+  try {
+    // eslint-disable-next-line
+    const env = (typeof globalThis !== 'undefined' && globalThis.__VITE_ENV__) || (new Function('try { return import.meta.env } catch(e) { return null }'))();
+    if (env) {
+      SUPABASE_URL = env.VITE_SUPABASE_URL || null;
+      SUPABASE_SERVICE_KEY = env.VITE_SUPABASE_SERVICE_KEY || null;
+    }
+  } catch (e) {
+    // Pas en environnement Vite (probablement aperçu Claude)
+  }
+  const supabaseAdminEnabled = !!(SUPABASE_URL && SUPABASE_SERVICE_KEY);
+
+  // Récupère la liste des utilisateurs Supabase via API admin
+  const fetchSupabaseUsers = async () => {
+    if (!supabaseAdminEnabled) return;
+    setLoadingSupabase(true);
+    setSupabaseError('');
+    try {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+        headers: {
+          'apikey': SUPABASE_SERVICE_KEY,
+          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+        },
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`Erreur ${res.status}: ${txt}`);
+      }
+      const data = await res.json();
+      setSupabaseUsers(data.users || []);
+    } catch (e) {
+      setSupabaseError(`Erreur lors du chargement : ${e.message}`);
+      console.error(e);
+    }
+    setLoadingSupabase(false);
+  };
+
+  useEffect(() => {
+    if (supabaseAdminEnabled) fetchSupabaseUsers();
+  }, [supabaseAdminEnabled]);
+
+  // Crée un nouveau compte Supabase
+  const createSupabaseUser = async () => {
+    if (!supabaseAdminEnabled) return;
+    if (!newEmail.trim() || !newPassword.trim()) {
+      setSupabaseError('Email et mot de passe sont obligatoires');
+      return;
+    }
+    if (newPassword.length < 6) {
+      setSupabaseError('Le mot de passe doit faire au moins 6 caractères');
+      return;
+    }
+    setLoadingSupabase(true);
+    setSupabaseError('');
+    setSupabaseSuccess('');
+    try {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
+        method: 'POST',
+        headers: {
+          'apikey': SUPABASE_SERVICE_KEY,
+          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: newEmail.trim(),
+          password: newPassword,
+          email_confirm: true, // Auto-confirme l'email
+          user_metadata: {
+            display_name: newName.trim() || newEmail.split('@')[0],
+            emoji: newEmoji.trim() || '👤',
+            role: newRole,
+          },
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.msg || data.message || data.error || `Erreur ${res.status}`);
+      }
+      const newUser = await res.json();
+      setSupabaseSuccess(`✅ Compte créé pour ${newEmail.trim()} ! Mot de passe : ${newPassword}`);
+      // Ajoute aussi dans la liste locale des users (pour les rôles dans le CRM)
+      const displayName = newName.trim() || newEmail.split('@')[0];
+      if (!users.find(u => u.name.toLowerCase() === displayName.toLowerCase())) {
+        setUsers([...users, { name: displayName, emoji: newEmoji.trim() || '👤', role: newRole, email: newEmail.trim() }]);
+      }
+      setNewName(''); setNewEmail(''); setNewPassword(''); setNewEmoji('👤'); setNewRole('commercial');
+      setShowAdd(false);
+      await fetchSupabaseUsers();
+    } catch (e) {
+      setSupabaseError(`Erreur : ${e.message}`);
+      console.error(e);
+    }
+    setLoadingSupabase(false);
+  };
+
+  // Supprime un compte Supabase
+  const deleteSupabaseUser = async (userId, email) => {
+    if (!supabaseAdminEnabled) return;
+    if (!window.confirm(`⚠️ Supprimer définitivement le compte ${email} ?\n\nCette action est irréversible. L'utilisateur ne pourra plus se connecter.`)) return;
+    setLoadingSupabase(true);
+    setSupabaseError('');
+    setSupabaseSuccess('');
+    try {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers: {
+          'apikey': SUPABASE_SERVICE_KEY,
+          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+        },
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`Erreur ${res.status}: ${txt}`);
+      }
+      setSupabaseSuccess(`✅ Compte ${email} supprimé`);
+      await fetchSupabaseUsers();
+    } catch (e) {
+      setSupabaseError(`Erreur : ${e.message}`);
+      console.error(e);
+    }
+    setLoadingSupabase(false);
+  };
+
+  // Réinitialise le mot de passe
+  const resetPasswordSupabaseUser = async (userId, email) => {
+    if (!supabaseAdminEnabled) return;
+    const newPwd = window.prompt(`Nouveau mot de passe pour ${email} ?\n(minimum 6 caractères)`);
+    if (!newPwd || newPwd.length < 6) return;
+    setLoadingSupabase(true);
+    setSupabaseError('');
+    setSupabaseSuccess('');
+    try {
+      const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'apikey': SUPABASE_SERVICE_KEY,
+          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password: newPwd }),
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        throw new Error(`Erreur ${res.status}: ${txt}`);
+      }
+      setSupabaseSuccess(`✅ Mot de passe de ${email} mis à jour : ${newPwd}`);
+    } catch (e) {
+      setSupabaseError(`Erreur : ${e.message}`);
+      console.error(e);
+    }
+    setLoadingSupabase(false);
+  };
+
+  // Génère un mot de passe simple aléatoire
+  const generatePassword = () => {
+    const adjectifs = ['Soleil', 'Vert', 'Solaire', 'Brillant', 'Energie'];
+    const num = Math.floor(Math.random() * 9000) + 1000;
+    const adj = adjectifs[Math.floor(Math.random() * adjectifs.length)];
+    setNewPassword(`${adj}${num}!`);
+  };
 
   const add = () => {
     const name = newName.trim();
@@ -3890,79 +4061,204 @@ function UsersManager({ users, setUsers, dossiers }) {
   const del = (u) => {
     const used = dossiers.filter(d => d.createdBy === u.name || d.modifiedBy === u.name).length;
     const msg = used > 0
-      ? `⚠️ "${u.name}" associé à ${used} action(s). Supprimer le compte ? (Les actions resteront tagguées avec ce nom dans l'historique.)`
-      : `Supprimer "${u.name}" ?`;
+      ? `⚠️ "${u.name}" associé à ${used} action(s). Supprimer le profil local ? (Le compte de connexion Supabase n'est pas supprimé, fais-le séparément si besoin.)`
+      : `Supprimer le profil local "${u.name}" ?\n\n(Le compte de connexion Supabase n'est pas affecté.)`;
     if (!window.confirm(msg)) return;
     setUsers(users.filter(usr => usr.name !== u.name));
   };
 
   return (
-    <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
-      <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-blue-50">
-        <h2 className="text-lg font-bold text-slate-800">👥 Utilisateurs du CRM</h2>
-        <p className="text-xs text-slate-500 mt-1">Liste des personnes qui utilisent le CRM. Chaque utilisateur a un <strong>rôle</strong> qui détermine ce qu'il peut voir et faire.</p>
-      </div>
-      <div className="p-4">
-        {/* Légende des rôles */}
-        <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-2">
-          {ROLES.map(r => (
-            <div key={r.id} className={`px-3 py-2 rounded-lg border ${r.color} text-[11px]`}>
-              <div className="font-bold">{r.label}</div>
-              <div className="opacity-80">{r.desc}</div>
-            </div>
-          ))}
+    <div className="space-y-4">
+      {/* Section principale : Comptes de connexion Supabase */}
+      <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-teal-50">
+          <h2 className="text-lg font-bold text-slate-800">🔐 Comptes de connexion au CRM</h2>
+          <p className="text-xs text-slate-500 mt-1">Crée ici les comptes pour ton équipe. Chaque personne se connectera au CRM avec son email et son mot de passe.</p>
         </div>
-
-        <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
-          <div className="text-sm font-semibold text-slate-600">📋 {users.length} utilisateur{users.length > 1 ? 's' : ''}</div>
-          {!showAdd ? (
-            <button onClick={() => setShowAdd(true)} className="text-xs font-semibold text-violet-600 bg-violet-50 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-              <Plus className="w-3 h-3" />Ajouter un utilisateur
-            </button>
+        <div className="p-4">
+          {!supabaseAdminEnabled ? (
+            <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl text-sm text-amber-800">
+              <div className="font-bold mb-1">⚠️ Configuration manquante</div>
+              <p>La gestion des comptes nécessite la variable <code className="bg-amber-100 px-1 rounded">VITE_SUPABASE_SERVICE_KEY</code> dans Vercel. Demande à ton administrateur d'ajouter cette clé secrète Supabase.</p>
+            </div>
           ) : (
+            <>
+              {supabaseError && (
+                <div className="mb-3 p-3 bg-rose-50 border border-rose-300 rounded-xl text-sm text-rose-700">
+                  {supabaseError}
+                </div>
+              )}
+              {supabaseSuccess && (
+                <div className="mb-3 p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-sm text-emerald-700">
+                  {supabaseSuccess}
+                  <button onClick={() => setSupabaseSuccess('')} className="ml-2 text-xs underline">Fermer</button>
+                </div>
+              )}
+
+              {/* Bouton Ajouter */}
+              <div className="mb-4 flex items-center justify-between flex-wrap gap-2">
+                <div className="text-sm font-semibold text-slate-600">
+                  📋 {supabaseUsers.length} compte{supabaseUsers.length > 1 ? 's' : ''} de connexion
+                </div>
+                {!showAdd && (
+                  <button onClick={() => setShowAdd(true)} className="text-xs font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 px-3 py-2 rounded-lg flex items-center gap-1.5 shadow-md">
+                    <Plus className="w-3 h-3" />Ajouter un membre
+                  </button>
+                )}
+              </div>
+
+              {/* Formulaire d'ajout */}
+              {showAdd && (
+                <div className="mb-4 p-4 bg-emerald-50 border-2 border-emerald-300 rounded-2xl">
+                  <h3 className="text-sm font-bold text-emerald-800 mb-3">➕ Nouveau membre</h3>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Nom affiché</label>
+                      <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Marie Dupont" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Emoji</label>
+                      <input type="text" value={newEmoji} onChange={(e) => setNewEmoji(e.target.value.slice(0, 4))} placeholder="👤" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-center" maxLength={4} />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Email *</label>
+                      <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="marie.dupont@email.com" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm" />
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Mot de passe * (min 6 caractères)</label>
+                      <div className="flex gap-2">
+                        <input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Solaire2026!" className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-mono" />
+                        <button onClick={generatePassword} className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap">🎲 Générer</button>
+                      </div>
+                    </div>
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Rôle</label>
+                      <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold">
+                        {ROLES.map(r => <option key={r.id} value={r.id}>{r.label} — {r.desc}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <div className="mt-3 flex gap-2 justify-end">
+                    <button onClick={() => { setShowAdd(false); setNewEmail(''); setNewPassword(''); setNewName(''); setSupabaseError(''); }} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-semibold">Annuler</button>
+                    <button onClick={createSupabaseUser} disabled={loadingSupabase} className="px-4 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 text-white rounded-lg text-sm font-bold disabled:opacity-50">
+                      {loadingSupabase ? '⏳ Création...' : '✅ Créer le compte'}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Liste des comptes Supabase */}
+              {loadingSupabase && !showAdd ? (
+                <div className="text-center py-6 text-slate-400 text-sm">⏳ Chargement...</div>
+              ) : supabaseUsers.length === 0 ? (
+                <div className="text-center py-10 text-slate-400">
+                  <div className="text-5xl mb-3">🔐</div>
+                  <p className="text-sm font-semibold">Aucun compte de connexion créé</p>
+                  <p className="text-xs mt-1">Clique sur <strong>"Ajouter un membre"</strong> pour créer le premier compte.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {supabaseUsers.map(u => {
+                    const meta = u.user_metadata || {};
+                    const displayName = meta.display_name || u.email?.split('@')[0] || 'Sans nom';
+                    const emoji = meta.emoji || '👤';
+                    const role = meta.role || 'commercial';
+                    const roleInfo = ROLES.find(r => r.id === role) || ROLES[1];
+                    return (
+                      <div key={u.id} className="rounded-xl border border-slate-200 bg-white p-3 flex items-center gap-3 flex-wrap">
+                        <div className="text-2xl">{emoji}</div>
+                        <div className="flex-1 min-w-[180px]">
+                          <div className="font-bold text-sm text-slate-800">{displayName}</div>
+                          <div className="text-[11px] text-slate-500">{u.email}</div>
+                        </div>
+                        <span className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${roleInfo.color}`}>
+                          {roleInfo.label}
+                        </span>
+                        {u.last_sign_in_at && (
+                          <span className="text-[10px] text-slate-400">
+                            Dernière connexion : {new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}
+                          </span>
+                        )}
+                        <button onClick={() => resetPasswordSupabaseUser(u.id, u.email)} className="px-2 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-[10px] font-semibold" title="Changer le mot de passe">
+                          🔑 Reset mdp
+                        </button>
+                        <button onClick={() => deleteSupabaseUser(u.id, u.email)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg" title="Supprimer le compte">
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700 leading-relaxed">
+                💡 Une fois un compte créé, envoie à ton équipier l'URL du CRM (<strong>{typeof window !== 'undefined' ? window.location.origin : 'crm-solaire.vercel.app'}</strong>), son <strong>email</strong> et son <strong>mot de passe</strong>. Il pourra se connecter depuis n'importe quel appareil.
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+
+      {/* Section secondaire : Profils locaux (pour les noms et rôles dans le CRM) */}
+      <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-blue-50">
+          <h2 className="text-lg font-bold text-slate-800">👥 Profils locaux (sélecteur du header)</h2>
+          <p className="text-xs text-slate-500 mt-1">Ces profils servent pour le sélecteur <strong>"👤"</strong> en haut du CRM. Ils sont indépendants des comptes de connexion ci-dessus.</p>
+        </div>
+        <div className="p-4">
+          {/* Légende des rôles */}
+          <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-2">
+            {ROLES.map(r => (
+              <div key={r.id} className={`px-3 py-2 rounded-lg border ${r.color} text-[11px]`}>
+                <div className="font-bold">{r.label}</div>
+                <div className="opacity-80">{r.desc}</div>
+              </div>
+            ))}
+          </div>
+
+          <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
+            <div className="text-sm font-semibold text-slate-600">📋 {users.length} profil{users.length > 1 ? 's' : ''} local{users.length > 1 ? 'aux' : ''}</div>
+            <button onClick={() => add()} className="text-xs font-semibold text-violet-600 bg-violet-50 px-3 py-1.5 rounded-lg flex items-center gap-1.5" style={{ display: 'none' }}>
+              <Plus className="w-3 h-3" />Ajouter
+            </button>
+            {/* Ajout simple */}
             <div className="flex items-center gap-2 flex-wrap">
               <input type="text" value={newEmoji} onChange={(e) => setNewEmoji(e.target.value.slice(0, 4))} placeholder="👤" className="w-14 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-center" maxLength={4} />
-              <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); if (e.key === 'Escape') { setShowAdd(false); setNewName(''); } }} placeholder="Nom (ex: Théo)" className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm" autoFocus />
+              <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} placeholder="Nom (ex: Théo)" className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
               <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold">
                 {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
               </select>
-              <button onClick={add} className="px-3 py-1.5 bg-violet-500 text-white rounded-lg text-xs font-semibold">OK</button>
-              <button onClick={() => { setShowAdd(false); setNewName(''); }} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold">Annuler</button>
+              <button onClick={add} className="px-3 py-1.5 bg-violet-500 text-white rounded-lg text-xs font-semibold">+ Ajouter profil</button>
+            </div>
+          </div>
+          {users.length === 0 ? (
+            <div className="text-center py-6 text-slate-400">
+              <p className="text-xs">Aucun profil local. Les profils sont surtout utiles pour distinguer les noms dans le sélecteur "👤".</p>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              {users.map(u => {
+                const created = dossiers.filter(d => d.createdBy === u.name).length;
+                const modified = dossiers.filter(d => d.modifiedBy === u.name).length;
+                const userRole = u.role || 'commercial';
+                const roleInfo = ROLES.find(r => r.id === userRole) || ROLES[1];
+                return (
+                  <div key={u.name} className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 flex items-center gap-2 flex-wrap">
+                    <input type="text" defaultValue={u.emoji} onBlur={(e) => updateUser(u.name, { emoji: e.target.value.slice(0, 4) || '👤' })} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="w-12 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-center text-base" maxLength={4} />
+                    <input type="text" defaultValue={u.name} onBlur={(e) => updateUser(u.name, { name: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="flex-1 min-w-[150px] px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold" />
+                    <select value={userRole} onChange={(e) => updateUser(u.name, { role: e.target.value })} className={`px-2 py-1.5 border rounded-lg text-xs font-bold ${roleInfo.color}`}>
+                      {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                    </select>
+                    {created > 0 && <span className="text-[10px] font-semibold px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">✨ {created} créé{created > 1 ? 's' : ''}</span>}
+                    {modified > 0 && <span className="text-[10px] font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded-full">✏️ {modified} modif</span>}
+                    <button onClick={() => del(u)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg" title="Supprimer">
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
-        </div>
-        {users.length === 0 ? (
-          <div className="text-center py-10 text-slate-400">
-            <div className="text-5xl mb-3">👥</div>
-            <p className="text-sm font-semibold">Aucun utilisateur configuré pour le moment</p>
-            <p className="text-xs mt-1">Clique sur <strong>"Ajouter un utilisateur"</strong> ci-dessus pour commencer.</p>
-          </div>
-        ) : (
-          <div className="space-y-1.5">
-            {users.map(u => {
-              const created = dossiers.filter(d => d.createdBy === u.name).length;
-              const modified = dossiers.filter(d => d.modifiedBy === u.name).length;
-              const userRole = u.role || 'commercial';
-              const roleInfo = ROLES.find(r => r.id === userRole) || ROLES[1];
-              return (
-                <div key={u.name} className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 flex items-center gap-2 flex-wrap">
-                  <input type="text" defaultValue={u.emoji} onBlur={(e) => updateUser(u.name, { emoji: e.target.value.slice(0, 4) || '👤' })} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="w-12 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-center text-base" maxLength={4} />
-                  <input type="text" defaultValue={u.name} onBlur={(e) => updateUser(u.name, { name: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="flex-1 min-w-[150px] px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold" />
-                  <select value={userRole} onChange={(e) => updateUser(u.name, { role: e.target.value })} className={`px-2 py-1.5 border rounded-lg text-xs font-bold ${roleInfo.color}`}>
-                    {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-                  </select>
-                  {created > 0 && <span className="text-[10px] font-semibold px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">✨ {created} créé{created > 1 ? 's' : ''}</span>}
-                  {modified > 0 && <span className="text-[10px] font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded-full">✏️ {modified} modif</span>}
-                  <button onClick={() => del(u)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg" title="Supprimer">
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )}
-        <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700 leading-relaxed">
-          💡 Une fois tes utilisateurs ajoutés, chacun va dans le header en haut et choisit son nom dans le menu déroulant <strong>"👤"</strong>. Le système adapte automatiquement ce qu'il peut voir et faire selon son rôle.
         </div>
       </div>
     </div>
