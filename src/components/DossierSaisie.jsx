@@ -2091,22 +2091,10 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
             {isAdmin && <button onClick={() => onDelete(d.localId)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>}
           </div>
         </div>
-        <div className="mt-2 grid grid-cols-2 md:grid-cols-5 gap-1.5 text-xs">
+        <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-1.5 text-xs">
           <Mini label="Vente TTC" value={formatEuro(d.montantTotal)} color="text-blue-600" />
           <Mini label="Vente HT" value={formatEuro(d.montantHt)} color="text-cyan-600" />
           {isAdmin && <Mini label="Marge TTC" value={formatEuro(d.margeTtc)} color={d.margeTtc >= 0 ? 'text-emerald-600' : 'text-rose-600'} />}
-          {isAdmin && (() => {
-            const ps = d.poseursDetail || [];
-            if (ps.length > 1) return <Mini label={`Poseurs (${ps.length})`} value={`${ps.length} poseurs`} sub={formatEuro(d.poseurTtc)} color="text-amber-600" />;
-            if (ps.length === 1) return <Mini label="Poseur" value={ps[0].nom} sub={formatEuro(d.poseurTtc)} color="text-amber-600" />;
-            return <Mini label="Poseur" value="—" color="text-amber-600" />;
-          })()}
-          {isAdmin && (() => {
-            const rs = d.regiesDetail || [];
-            if (rs.length > 1) return <Mini label={`Régies (${rs.length})`} value={`${rs.length} régies`} sub={formatEuro(d.regieTtc)} color="text-purple-600" />;
-            if (rs.length === 1) return <Mini label="Régie" value={rs[0].nom} sub={formatEuro(d.regieTtc)} color="text-purple-600" />;
-            return <Mini label="Régie" value="—" color="text-purple-600" />;
-          })()}
           {!isAdmin && <Mini label="Financement" value={d.financement} color="text-violet-600" />}
           {!isAdmin && (() => {
             if (dossierProduits.length > 1) {
@@ -2117,46 +2105,75 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
             return <Mini label="Produit" value={val} color="text-amber-600" />;
           })()}
         </div>
-        {isAdmin && d.poseursDetail?.length > 1 && (
-          <div className="mt-1.5 bg-amber-50 rounded-lg p-1.5 border border-amber-200">
-            <div className="text-[10px] font-bold text-amber-700 uppercase mb-1 flex items-center justify-between">
-              <span>🔧 Poseurs ({d.poseursDetail.length})</span>
-              <span className="font-bold text-amber-800">Total : {formatEuro(d.poseurTtc)}</span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {d.poseursDetail.map((p, i) => (
-                <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-white text-amber-700 border border-amber-200">
-                  <span className="font-bold">{p.nom}</span>
-                  <span className="text-amber-500">·</span>
-                  <span>{formatEuro(p.ttc)}</span>
-                  {isAdmin && p.factureNo && <><span className="text-amber-400">·</span><span className="text-amber-600">🧾 {p.factureNo}</span></>}
-                  {isAdmin && p.facturePdfUrl && (
-                    <a href={p.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
-                  )}
-                </span>
-              ))}
-            </div>
-          </div>
-        )}
-        {isAdmin && d.fournisseursDetail?.length > 0 && (
-          <div className="mt-1.5 bg-orange-50 rounded-lg p-1.5 border border-orange-200">
-            <div className="text-[10px] font-bold text-orange-700 uppercase mb-1 flex items-center justify-between">
-              <span>📦 Fournisseurs ({d.fournisseursDetail.length})</span>
-              <span className="font-bold text-orange-800">Total : {formatEuro(d.fournisseurTtc)}</span>
-            </div>
-            <div className="flex flex-wrap gap-1">
-              {d.fournisseursDetail.map((f, i) => (
-                <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-white text-orange-700 border border-orange-200">
-                  <span className="font-bold">{f.nom}</span>
-                  <span className="text-orange-500">·</span>
-                  <span>{formatEuro(f.ttc)}</span>
-                  {isAdmin && f.factureNo && <><span className="text-orange-400">·</span><span className="text-orange-600">🧾 {f.factureNo}</span></>}
-                  {isAdmin && f.facturePdfUrl && (
-                    <a href={f.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
-                  )}
-                </span>
-              ))}
-            </div>
+        {/* INTERVENANTS — bloc unifié : poseurs + régies + fournisseurs côte à côte */}
+        {isAdmin && ((d.poseursDetail?.length || 0) + (d.regiesDetail?.length || 0) + (d.fournisseursDetail?.length || 0) > 0) && (
+          <div className="mt-1.5 grid grid-cols-1 md:grid-cols-3 gap-1.5">
+            {/* Poseurs */}
+            {(d.poseursDetail?.length || 0) > 0 && (
+              <div className="bg-amber-50 rounded-lg p-1.5 border border-amber-200">
+                <div className="text-[10px] font-bold text-amber-700 uppercase mb-1 flex items-center justify-between gap-1">
+                  <span>🔧 Poseurs ({d.poseursDetail.length})</span>
+                  <span className="font-bold text-amber-800">{formatEuro(d.poseurTtc)}</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {d.poseursDetail.map((p, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-white text-amber-700 border border-amber-200">
+                      <span className="font-bold">{p.nom}</span>
+                      <span className="text-amber-500">·</span>
+                      <span>{formatEuro(p.ttc)}</span>
+                      {p.factureNo && <><span className="text-amber-400">·</span><span className="text-amber-600">🧾 {p.factureNo}</span></>}
+                      {p.facturePdfUrl && (
+                        <a href={p.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Régies */}
+            {(d.regiesDetail?.length || 0) > 0 && (
+              <div className="bg-purple-50 rounded-lg p-1.5 border border-purple-200">
+                <div className="text-[10px] font-bold text-purple-700 uppercase mb-1 flex items-center justify-between gap-1">
+                  <span>🤝 Régies ({d.regiesDetail.length})</span>
+                  <span className="font-bold text-purple-800">{formatEuro(d.regieTtc)}</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {d.regiesDetail.map((r, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-white text-purple-700 border border-purple-200">
+                      <span className="font-bold">{r.nom}</span>
+                      <span className="text-purple-500">·</span>
+                      <span>{formatEuro(r.ttc)}</span>
+                      {r.factureNo && <><span className="text-purple-400">·</span><span className="text-purple-600">🧾 {r.factureNo}</span></>}
+                      {r.facturePdfUrl && (
+                        <a href={r.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Fournisseurs */}
+            {(d.fournisseursDetail?.length || 0) > 0 && (
+              <div className="bg-orange-50 rounded-lg p-1.5 border border-orange-200">
+                <div className="text-[10px] font-bold text-orange-700 uppercase mb-1 flex items-center justify-between gap-1">
+                  <span>📦 Fournisseurs ({d.fournisseursDetail.length})</span>
+                  <span className="font-bold text-orange-800">{formatEuro(d.fournisseurTtc)}</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {d.fournisseursDetail.map((f, i) => (
+                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-white text-orange-700 border border-orange-200">
+                      <span className="font-bold">{f.nom}</span>
+                      <span className="text-orange-500">·</span>
+                      <span>{formatEuro(f.ttc)}</span>
+                      {f.factureNo && <><span className="text-orange-400">·</span><span className="text-orange-600">🧾 {f.factureNo}</span></>}
+                      {f.facturePdfUrl && (
+                        <a href={f.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
+                      )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>
