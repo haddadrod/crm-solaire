@@ -3997,31 +3997,6 @@ function UsersManager({ users, setUsers, dossiers }) {
     setNewPassword(`${adj}${num}!`);
   };
 
-  const add = () => {
-    const name = newName.trim();
-    if (!name) return;
-    if (users.find(u => u.name.toLowerCase() === name.toLowerCase())) { alert(`"${name}" existe déjà`); return; }
-    setUsers([...users, { name, emoji: newEmoji.trim() || '👤', role: newRole }]);
-    setNewName(''); setNewEmoji('👤'); setNewRole('commercial'); setShowAdd(false);
-  };
-
-  const updateUser = (oldName, updates) => {
-    if (updates.name !== undefined) {
-      const newName = updates.name.trim();
-      if (!newName) return;
-      if (newName !== oldName && users.find(u => u.name.toLowerCase() === newName.toLowerCase())) { alert(`"${newName}" existe déjà`); return; }
-    }
-    setUsers(users.map(u => u.name === oldName ? { ...u, ...updates } : u));
-  };
-
-  const del = (u) => {
-    const used = dossiers.filter(d => d.createdBy === u.name || d.modifiedBy === u.name).length;
-    const msg = used > 0
-      ? `⚠️ "${u.name}" associé à ${used} action(s). Supprimer le profil local ? (Le compte de connexion Supabase n'est pas supprimé, fais-le séparément si besoin.)`
-      : `Supprimer le profil local "${u.name}" ?\n\n(Le compte de connexion Supabase n'est pas affecté.)`;
-    if (!window.confirm(msg)) return;
-    setUsers(users.filter(usr => usr.name !== u.name));
-  };
 
   return (
     <div className="space-y-4">
@@ -4167,69 +4142,6 @@ function UsersManager({ users, setUsers, dossiers }) {
                 💡 Une fois un compte créé, envoie à ton équipier l'URL du CRM (<strong>{typeof window !== 'undefined' ? window.location.origin : 'crm-solaire.vercel.app'}</strong>), son <strong>email</strong> et son <strong>mot de passe</strong>. Il pourra se connecter depuis n'importe quel appareil.
               </div>
             </>
-        </div>
-      </div>
-
-      {/* Section secondaire : Profils locaux (pour les noms et rôles dans le CRM) */}
-      <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
-        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-blue-50">
-          <h2 className="text-lg font-bold text-slate-800">👥 Profils locaux (sélecteur du header)</h2>
-          <p className="text-xs text-slate-500 mt-1">Ces profils servent pour le sélecteur <strong>"👤"</strong> en haut du CRM. Ils sont indépendants des comptes de connexion ci-dessus.</p>
-        </div>
-        <div className="p-4">
-          {/* Légende des rôles */}
-          <div className="mb-4 grid grid-cols-1 md:grid-cols-2 gap-2">
-            {ROLES.map(r => (
-              <div key={r.id} className={`px-3 py-2 rounded-lg border ${r.color} text-[11px]`}>
-                <div className="font-bold">{r.label}</div>
-                <div className="opacity-80">{r.desc}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
-            <div className="text-sm font-semibold text-slate-600">📋 {users.length} profil{users.length > 1 ? 's' : ''} local{users.length > 1 ? 'aux' : ''}</div>
-            <button onClick={() => add()} className="text-xs font-semibold text-violet-600 bg-violet-50 px-3 py-1.5 rounded-lg flex items-center gap-1.5" style={{ display: 'none' }}>
-              <Plus className="w-3 h-3" />Ajouter
-            </button>
-            {/* Ajout simple */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <input type="text" value={newEmoji} onChange={(e) => setNewEmoji(e.target.value.slice(0, 4))} placeholder="👤" className="w-14 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-center" maxLength={4} />
-              <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} placeholder="Nom (ex: Théo)" className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm" />
-              <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm font-semibold">
-                {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-              </select>
-              <button onClick={add} className="px-3 py-1.5 bg-violet-500 text-white rounded-lg text-xs font-semibold">+ Ajouter profil</button>
-            </div>
-          </div>
-          {users.length === 0 ? (
-            <div className="text-center py-6 text-slate-400">
-              <p className="text-xs">Aucun profil local. Les profils sont surtout utiles pour distinguer les noms dans le sélecteur "👤".</p>
-            </div>
-          ) : (
-            <div className="space-y-1.5">
-              {users.map(u => {
-                const created = dossiers.filter(d => d.createdBy === u.name).length;
-                const modified = dossiers.filter(d => d.modifiedBy === u.name).length;
-                const userRole = u.role || 'commercial';
-                const roleInfo = ROLES.find(r => r.id === userRole) || ROLES[1];
-                return (
-                  <div key={u.name} className="rounded-xl border border-slate-200 bg-slate-50 p-2.5 flex items-center gap-2 flex-wrap">
-                    <input type="text" defaultValue={u.emoji} onBlur={(e) => updateUser(u.name, { emoji: e.target.value.slice(0, 4) || '👤' })} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="w-12 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-center text-base" maxLength={4} />
-                    <input type="text" defaultValue={u.name} onBlur={(e) => updateUser(u.name, { name: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="flex-1 min-w-[150px] px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold" />
-                    <select value={userRole} onChange={(e) => updateUser(u.name, { role: e.target.value })} className={`px-2 py-1.5 border rounded-lg text-xs font-bold ${roleInfo.color}`}>
-                      {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-                    </select>
-                    {created > 0 && <span className="text-[10px] font-semibold px-2 py-1 bg-emerald-100 text-emerald-700 rounded-full">✨ {created} créé{created > 1 ? 's' : ''}</span>}
-                    {modified > 0 && <span className="text-[10px] font-semibold px-2 py-1 bg-blue-100 text-blue-700 rounded-full">✏️ {modified} modif</span>}
-                    <button onClick={() => del(u)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg" title="Supprimer">
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
         </div>
       </div>
     </div>
