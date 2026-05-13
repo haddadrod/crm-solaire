@@ -187,7 +187,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits) => {
   };
 };
 
-export default function DossierSaisie({ authUser }) {
+export default function DossierSaisie({ authUser, onLogout }) {
   const [dossiers, setDossiers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -274,7 +274,7 @@ export default function DossierSaisie({ authUser }) {
     switch (role) {
       case 'commercial':
         return {
-          voirTousDossiers: false,
+          voirTousDossiers: true,
           voirMarges: false,
           voirBLFactures: false,
           creerDossier: true,
@@ -285,7 +285,7 @@ export default function DossierSaisie({ authUser }) {
           voirReglages: false,
           cocherPaiements: false,
           voirCA: true,
-          filtreDossiers: 'mes',
+          filtreDossiers: 'tous',
         };
       case 'poseur':
         return {
@@ -1393,6 +1393,15 @@ export default function DossierSaisie({ authUser }) {
                   </div>
                 );
               })()}
+              {onLogout && (
+                <button
+                  onClick={onLogout}
+                  className="bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-700 px-3 py-2 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200"
+                  title="Se déconnecter"
+                >
+                  <span className="text-2xl leading-none">🚪</span>
+                </button>
+              )}
               {isAdmin && dossiers.length > 0 && (
                 <button onClick={exportCSV} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200">
                   <Download className="w-4 h-4" />Export CSV
@@ -3814,7 +3823,7 @@ function UsersManager({ users, setUsers, dossiers }) {
 
   const ROLES = [
     { id: 'admin', label: '👑 Admin', desc: 'Accès complet, voit tout, fait tout', color: 'bg-violet-100 text-violet-700 border-violet-300' },
-    { id: 'commercial', label: '💼 Commercial', desc: 'Voit ses propres dossiers, sans marges', color: 'bg-blue-100 text-blue-700 border-blue-300' },
+    { id: 'commercial', label: '💼 Commercial', desc: 'Voit tous les dossiers, sans les marges ni les coûts', color: 'bg-blue-100 text-blue-700 border-blue-300' },
     { id: 'envoi_finance', label: '🏦 Envoi finance', desc: 'Gère l\'envoi des dossiers aux banques, sans compta ni tableau de bord', color: 'bg-rose-100 text-rose-700 border-rose-300' },
     { id: 'poseur', label: '🔧 Poseur', desc: 'Voit ses chantiers à poser, sans prix', color: 'bg-amber-100 text-amber-700 border-amber-300' },
     { id: 'compta', label: '💰 Compta', desc: 'Gère les paiements et factures', color: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
@@ -3949,6 +3958,30 @@ function UsersManager({ users, setUsers, dossiers }) {
     try {
       await callUsersApi('PATCH', { body: { user_id: userId, password: newPwd } });
       setSupabaseSuccess(`✅ Mot de passe de ${email} mis à jour : ${newPwd}`);
+    } catch (e) {
+      setSupabaseError(`Erreur : ${e.message}`);
+      console.error(e);
+    }
+    setLoadingSupabase(false);
+  };
+
+  // Change le rôle d'un compte Supabase (préserve display_name + emoji)
+  const updateSupabaseUserRole = async (user, newRole) => {
+    if (newRole === (user.user_metadata?.role || '')) return;
+    setLoadingSupabase(true);
+    setSupabaseError('');
+    setSupabaseSuccess('');
+    try {
+      const existingMeta = user.user_metadata || {};
+      await callUsersApi('PATCH', {
+        body: {
+          user_id: user.id,
+          user_metadata: { ...existingMeta, role: newRole },
+        },
+      });
+      const label = (ROLES.find(r => r.id === newRole) || {}).label || newRole;
+      setSupabaseSuccess(`✅ Rôle de ${user.email} → ${label}`);
+      await fetchSupabaseUsers();
     } catch (e) {
       setSupabaseError(`Erreur : ${e.message}`);
       console.error(e);
@@ -4104,9 +4137,15 @@ function UsersManager({ users, setUsers, dossiers }) {
                           <div className="font-bold text-sm text-slate-800">{displayName}</div>
                           <div className="text-[11px] text-slate-500">{u.email}</div>
                         </div>
-                        <span className={`px-2 py-1 rounded-lg text-[10px] font-bold border ${roleInfo.color}`}>
-                          {roleInfo.label}
-                        </span>
+                        <select
+                          value={role}
+                          onChange={(e) => updateSupabaseUserRole(u, e.target.value)}
+                          disabled={loadingSupabase}
+                          className={`px-2 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${roleInfo.color}`}
+                          title="Changer le rôle"
+                        >
+                          {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                        </select>
                         {u.last_sign_in_at && (
                           <span className="text-[10px] text-slate-400">
                             Dernière connexion : {new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}
