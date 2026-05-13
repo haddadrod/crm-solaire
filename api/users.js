@@ -8,6 +8,14 @@
 // Le front envoie son JWT utilisateur (header Authorization). On vérifie ici que
 // l'appelant est bien connecté ET qu'il a le rôle "admin" avant d'autoriser
 // la moindre opération admin.
+//
+// Mode "bootstrap" : tant qu'aucun user n'a `user_metadata.role === 'admin'`,
+// l'API accepte :
+//   - GET (lister les users) sans auth → permet à l'UI de montrer l'état
+//   - POST sans auth → création du 1er admin (rôle forcé à admin)
+//   - POST avec body.bootstrap_self=true et un JWT valide → promeut le caller
+//     existant en admin (cas d'un user déjà créé manuellement dans Supabase)
+// Dès qu'un admin existe, toutes les routes redeviennent protégées.
 
 import { createClient } from '@supabase/supabase-js';
 
@@ -19,26 +27,20 @@ function json(res, status, body) {
   res.send(JSON.stringify(body));
 }
 
-async function requireAdmin(req) {
-  const auth = req.headers['authorization'] || req.headers['Authorization'];
-  if (!auth || !auth.startsWith('Bearer ')) {
-    return { error: 'Missing Authorization header', status: 401 };
-  }
-  const token = auth.slice('Bearer '.length).trim();
-  if (!token) return { error: 'Empty token', status: 401 };
-
-  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+function makeAdmin() {
+  return createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
     auth: { autoRefreshToken: false, persistSession: false },
   });
+}
 
+async function getCallerUser(req, admin) {
+  const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  const token = authHeader.slice('Bearer '.length).trim();
+  if (!token) return null;
   const { data, error } = await admin.auth.getUser(token);
-  if (error || !data?.user) return { error: 'Invalid token', status: 401 };
-
-  const role = data.user.user_metadata?.role;
-  if (role !== 'admin') {
-    return { error: 'Forbidden: admin role required', status: 403 };
-  }
-  return { admin, callerId: data.user.id };
+  if (error || !data?.user) return null;
+  return data.user;
 }
 
 export default async function handler(req, res) {
@@ -48,39 +50,59 @@ export default async function handler(req, res) {
     });
   }
 
-  // Bootstrap : autorise la création du tout premier admin tant qu'aucun user
-  // n'existe encore dans Supabase. Sans ça, impossible de créer le 1er compte
-  // puisque la création exige un appelant déjà admin.
-  const bootstrapAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
-    auth: { autoRefreshToken: false, persistSession: false },
-  });
-  const { data: existing, error: listErr } = await bootstrapAdmin.auth.admin.listUsers({ page: 1, perPage: 1 });
-  if (listErr) return json(res, 500, { error: listErr.message });
-  const isBootstrap = (existing?.users?.length ?? 0) === 0;
+  const admin = makeAdmin();
 
-  let admin;
-  if (isBootstrap && req.method === 'POST') {
-    admin = bootstrapAdmin;
-  } else {
-    const auth = await requireAdmin(req);
-    if (auth.error) return json(res, auth.status, { error: auth.error });
-    admin = auth.admin;
+  // Détection du mode bootstrap : on regarde s'il existe au moins un user admin.
+  const { data: listAll, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
+  if (listErr) return json(res, 500, { error: listErr.message });
+  const allUsers = listAll?.users || [];
+  const hasAdmin = allUsers.some(u => u.user_metadata?.role === 'admin');
+  const isBootstrap = !hasAdmin;
+
+  // Caller (peut être null si pas connecté ou pas de JWT)
+  const caller = await getCallerUser(req, admin);
+  const isAdmin = !!(caller && caller.user_metadata?.role === 'admin');
+
+  // Garde-fou : hors bootstrap, toute opération exige un admin.
+  if (!isBootstrap && !isAdmin) {
+    if (!caller) return json(res, 401, { error: 'JWT requis' });
+    return json(res, 403, { error: 'Forbidden: admin role required' });
   }
 
   try {
     if (req.method === 'GET') {
-      const { data, error } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
-      if (error) throw error;
-      return json(res, 200, { users: data.users });
+      // En bootstrap, on renvoie aussi la liste (utile pour que l'UI affiche
+      // l'état "aucun admin yet" et propose le bouton de promotion).
+      return json(res, 200, { users: allUsers, bootstrap: isBootstrap });
     }
 
     if (req.method === 'POST') {
       const body = req.body || {};
+
+      // Action spéciale en bootstrap : promouvoir le caller en admin
+      // (s'il existe déjà comme user Supabase mais sans rôle).
+      if (isBootstrap && body.bootstrap_self === true) {
+        if (!caller) return json(res, 401, { error: 'JWT requis pour bootstrap_self' });
+        const newMeta = {
+          ...(caller.user_metadata || {}),
+          role: 'admin',
+          display_name:
+            caller.user_metadata?.display_name ||
+            (caller.email ? caller.email.split('@')[0] : 'Admin'),
+          emoji: caller.user_metadata?.emoji || '👑',
+        };
+        const { data: updated, error: upErr } = await admin.auth.admin.updateUserById(caller.id, {
+          user_metadata: newMeta,
+        });
+        if (upErr) throw upErr;
+        return json(res, 200, { user: updated.user, bootstrapped_self: true });
+      }
+
+      // Création normale (bootstrap → 1er admin, ou admin connecté → autre user)
       const { email, password, display_name, emoji, role } = body;
       if (!email || !password) return json(res, 400, { error: 'email et password requis' });
       if (String(password).length < 6) return json(res, 400, { error: 'mot de passe min 6 caractères' });
 
-      // En bootstrap, on force le rôle admin pour le 1er compte (sinon plus jamais d'accès).
       const finalRole = isBootstrap ? 'admin' : (role || 'commercial');
 
       const { data, error } = await admin.auth.admin.createUser({

@@ -3869,6 +3869,7 @@ function UsersManager({ users, setUsers, dossiers }) {
   const [loadingSupabase, setLoadingSupabase] = useState(false);
   const [supabaseError, setSupabaseError] = useState('');
   const [supabaseSuccess, setSupabaseSuccess] = useState('');
+  const [bootstrapMode, setBootstrapMode] = useState(false);
 
   const ROLES = [
     { id: 'admin', label: '👑 Admin', desc: 'Accès complet, voit tout, fait tout', color: 'bg-violet-100 text-violet-700 border-violet-300' },
@@ -3906,11 +3907,33 @@ function UsersManager({ users, setUsers, dossiers }) {
     try {
       const data = await callUsersApi('GET');
       setSupabaseUsers(data.users || []);
+      setBootstrapMode(!!data.bootstrap);
     } catch (e) {
       setSupabaseError(`Erreur lors du chargement : ${e.message}`);
       console.error(e);
     }
     setLoadingSupabase(false);
+  };
+
+  // Promeut l'utilisateur connecté en admin (utilisable uniquement tant qu'aucun
+  // admin n'existe — mode bootstrap côté serveur).
+  const bootstrapSelfAdmin = async () => {
+    if (!window.confirm("Te promouvoir admin du CRM ?\n\nÇa n'est possible que tant qu'aucun admin n'existe. Une fois fait, tu pourras créer les autres comptes.")) return;
+    setLoadingSupabase(true);
+    setSupabaseError('');
+    setSupabaseSuccess('');
+    try {
+      await callUsersApi('POST', { body: { bootstrap_self: true } });
+      setSupabaseSuccess('✅ Tu es maintenant admin. Reconnexion automatique…');
+      // Rafraîchit la session pour récupérer les nouvelles user_metadata,
+      // puis recharge la page pour que tout le CRM voie le bon rôle.
+      try { await supabase.auth.refreshSession(); } catch (_) {}
+      setTimeout(() => window.location.reload(), 800);
+    } catch (e) {
+      setSupabaseError(`Erreur : ${e.message}`);
+      console.error(e);
+      setLoadingSupabase(false);
+    }
   };
 
   useEffect(() => {
@@ -4035,6 +4058,22 @@ function UsersManager({ users, setUsers, dossiers }) {
         </div>
         <div className="p-4">
           <>
+              {bootstrapMode && (
+                <div className="mb-3 p-4 bg-amber-50 border-2 border-amber-300 rounded-2xl text-sm">
+                  <div className="font-bold text-amber-800 mb-1">⚠️ Aucun admin défini pour l'instant</div>
+                  <p className="text-amber-700 mb-3">
+                    Tant qu'aucun compte n'a le rôle admin, personne ne peut créer / supprimer / réinitialiser de comptes.
+                    Tu es actuellement connectée — clique ci-dessous pour te promouvoir admin.
+                  </p>
+                  <button
+                    onClick={bootstrapSelfAdmin}
+                    disabled={loadingSupabase}
+                    className="px-4 py-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 text-white rounded-lg text-sm font-bold disabled:opacity-50 shadow-md"
+                  >
+                    {loadingSupabase ? '⏳ Promotion…' : '👑 Je suis l\'admin'}
+                  </button>
+                </div>
+              )}
               {supabaseError && (
                 <div className="mb-3 p-3 bg-rose-50 border border-rose-300 rounded-xl text-sm text-rose-700">
                   {supabaseError}
