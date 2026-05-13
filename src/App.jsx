@@ -47,11 +47,11 @@ export default function App() {
   return (
     <div>
       {/* Mini-bandeau utilisateur connecté */}
-      <div className="fixed top-2 right-2 z-50 bg-white shadow-md rounded-full px-3 py-1 text-xs flex items-center gap-2 border border-violet-100">
+      <div className="fixed top-6 md:top-10 right-4 md:right-8 z-50 bg-white shadow-md rounded-full px-4 py-2 text-sm flex items-center gap-3 border border-violet-100">
         <span>👤 {user.email}</span>
         <button
           onClick={handleLogout}
-          className="text-rose-600 hover:text-rose-800 font-bold"
+          className="text-rose-600 hover:text-rose-800 font-bold text-3xl leading-none"
           title="Se déconnecter"
         >
           🚪
