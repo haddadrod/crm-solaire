@@ -239,7 +239,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
   // Rôle de l'utilisateur courant : lu directement dans le user_metadata Supabase.
   // Fallback : recherche dans les profils locaux (anciens dossiers).
-  const currentUserRole = useMemo(() => {
+  const authUserRole = useMemo(() => {
     const fromAuth = authUser?.user_metadata?.role;
     if (fromAuth) return fromAuth;
     if (!currentUser) return null;
@@ -247,7 +247,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
     return u?.role || null;
   }, [authUser, currentUser, users]);
 
-  // Admin = rôle Supabase. Plus de PIN local : l'authentification est suffisante.
+  // Mode "Voir comme..." : uniquement en localhost ET si le compte est admin.
+  // Permet de prévisualiser ce que voit un autre rôle sans se déconnecter.
+  // En prod, jamais activé.
+  const isLocalDev = typeof window !== 'undefined'
+    && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+  const isRealAdmin = authUserRole === 'admin';
+  const canPreviewRole = isLocalDev && isRealAdmin;
+  const [viewAsRole, setViewAsRole] = useState(null); // null = pas d'override
+
+  // Rôle effectif = override de preview si actif, sinon rôle réel Supabase.
+  const currentUserRole = (canPreviewRole && viewAsRole) ? viewAsRole : authUserRole;
+
+  // Admin = rôle effectif === 'admin'. En mode preview, basculer en non-admin
+  // débloque les autres rendus pour validation visuelle.
   const isAdmin = currentUserRole === 'admin';
 
   // Permissions calculées : si admin → tout débloqué ; sinon, dépend du rôle.
@@ -1393,6 +1406,25 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   </div>
                 );
               })()}
+              {canPreviewRole && (
+                <div className="relative">
+                  <select
+                    value={viewAsRole || ''}
+                    onChange={(e) => setViewAsRole(e.target.value || null)}
+                    className={`pl-8 pr-7 py-3 rounded-2xl font-semibold shadow-md border text-xs cursor-pointer appearance-none ${viewAsRole ? 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-300' : 'bg-white text-slate-600 border-slate-200'}`}
+                    title="DEV uniquement — prévisualiser un autre rôle"
+                  >
+                    <option value="">👁️ Voir comme…</option>
+                    <option value="admin">👑 Admin</option>
+                    <option value="commercial">💼 Commercial</option>
+                    <option value="envoi_finance">🏦 Envoi finance</option>
+                    <option value="poseur">🔧 Poseur</option>
+                    <option value="compta">💰 Compta</option>
+                  </select>
+                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-sm">👁️</span>
+                  <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] opacity-60">▼</span>
+                </div>
+              )}
               {onLogout && (
                 <button
                   onClick={onLogout}
