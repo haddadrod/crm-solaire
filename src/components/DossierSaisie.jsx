@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, Lock, Unlock, Shield, KeyRound } from 'lucide-react';
+import { supabase } from '../supabase.js';
 
 // Listes par défaut — modifiables dans Réglages
 const POSEURS_DEFAULT = ['IONERGIK 2', 'IONERGIK', 'TEK', 'RV SERVICE', 'ECO ENERGY', 'MAFATEC', 'RBM', 'RL CONSEILS', 'MASTEROVIT', 'SKY', 'INTERNE', 'LEH', 'CAP SOLEIL', 'INNOVA', 'DDI', 'ALLAN', 'AUTRE'];
@@ -3876,38 +3877,34 @@ function UsersManager({ users, setUsers, dossiers }) {
     { id: 'compta', label: '💰 Compta', desc: 'Gère les paiements et factures', color: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
   ];
 
-  // Récupère les variables d'environnement Supabase (présentes uniquement en prod via Vercel)
-  // On utilise un accès direct à import.meta.env mais protégé par try-catch
-  // pour éviter les erreurs dans l'aperçu Claude (où import.meta n'existe pas)
-  const env = (() => {
-    try {
-      // Vite remplace import.meta.env au build time, donc cette ligne doit être directe
-      return import.meta.env;
-    } catch (e) {
-      return {};
-    }
-  })();
-  const SUPABASE_URL = env.VITE_SUPABASE_URL || null;
-  const SUPABASE_SERVICE_KEY = env.VITE_SUPABASE_SERVICE_KEY || null;
-  const supabaseAdminEnabled = !!(SUPABASE_URL && SUPABASE_SERVICE_KEY);
+  // La gestion des comptes passe par /api/users (fonction serverless Vercel).
+  // La clé service_role reste côté serveur — jamais exposée au navigateur.
+  const supabaseAdminEnabled = true;
 
-  // Récupère la liste des utilisateurs Supabase via API admin
+  // Helper : appelle /api/users avec le JWT de la session courante.
+  const callUsersApi = async (method, { body, query } = {}) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = { 'Content-Type': 'application/json' };
+    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+    const qs = query ? `?${new URLSearchParams(query).toString()}` : '';
+    const res = await fetch(`/api/users${qs}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || `Erreur ${res.status}`);
+    }
+    return data;
+  };
+
+  // Récupère la liste des utilisateurs Supabase
   const fetchSupabaseUsers = async () => {
-    if (!supabaseAdminEnabled) return;
     setLoadingSupabase(true);
     setSupabaseError('');
     try {
-      const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-        headers: {
-          'apikey': SUPABASE_SERVICE_KEY,
-          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-        },
-      });
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`Erreur ${res.status}: ${txt}`);
-      }
-      const data = await res.json();
+      const data = await callUsersApi('GET');
       setSupabaseUsers(data.users || []);
     } catch (e) {
       setSupabaseError(`Erreur lors du chargement : ${e.message}`);
@@ -3917,12 +3914,11 @@ function UsersManager({ users, setUsers, dossiers }) {
   };
 
   useEffect(() => {
-    if (supabaseAdminEnabled) fetchSupabaseUsers();
-  }, [supabaseAdminEnabled]);
+    fetchSupabaseUsers();
+  }, []);
 
   // Crée un nouveau compte Supabase
   const createSupabaseUser = async () => {
-    if (!supabaseAdminEnabled) return;
     if (!newEmail.trim() || !newPassword.trim()) {
       setSupabaseError('Email et mot de passe sont obligatoires');
       return;
@@ -3935,34 +3931,21 @@ function UsersManager({ users, setUsers, dossiers }) {
     setSupabaseError('');
     setSupabaseSuccess('');
     try {
-      const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users`, {
-        method: 'POST',
-        headers: {
-          'apikey': SUPABASE_SERVICE_KEY,
-          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
+      const displayName = newName.trim() || newEmail.split('@')[0];
+      const data = await callUsersApi('POST', {
+        body: {
           email: newEmail.trim(),
           password: newPassword,
-          email_confirm: true, // Auto-confirme l'email
-          user_metadata: {
-            display_name: newName.trim() || newEmail.split('@')[0],
-            emoji: newEmoji.trim() || '👤',
-            role: newRole,
-          },
-        }),
+          display_name: displayName,
+          emoji: newEmoji.trim() || '👤',
+          role: newRole,
+        },
       });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.msg || data.message || data.error || `Erreur ${res.status}`);
-      }
-      const newUser = await res.json();
-      setSupabaseSuccess(`✅ Compte créé pour ${newEmail.trim()} ! Mot de passe : ${newPassword}`);
+      const bootstrapMsg = data.bootstrapped ? ' (1er compte → admin auto)' : '';
+      setSupabaseSuccess(`✅ Compte créé pour ${newEmail.trim()}${bootstrapMsg} ! Mot de passe : ${newPassword}`);
       // Ajoute aussi dans la liste locale des users (pour les rôles dans le CRM)
-      const displayName = newName.trim() || newEmail.split('@')[0];
       if (!users.find(u => u.name.toLowerCase() === displayName.toLowerCase())) {
-        setUsers([...users, { name: displayName, emoji: newEmoji.trim() || '👤', role: newRole, email: newEmail.trim() }]);
+        setUsers([...users, { name: displayName, emoji: newEmoji.trim() || '👤', role: data.bootstrapped ? 'admin' : newRole, email: newEmail.trim() }]);
       }
       setNewName(''); setNewEmail(''); setNewPassword(''); setNewEmoji('👤'); setNewRole('commercial');
       setShowAdd(false);
@@ -3976,23 +3959,12 @@ function UsersManager({ users, setUsers, dossiers }) {
 
   // Supprime un compte Supabase
   const deleteSupabaseUser = async (userId, email) => {
-    if (!supabaseAdminEnabled) return;
     if (!window.confirm(`⚠️ Supprimer définitivement le compte ${email} ?\n\nCette action est irréversible. L'utilisateur ne pourra plus se connecter.`)) return;
     setLoadingSupabase(true);
     setSupabaseError('');
     setSupabaseSuccess('');
     try {
-      const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
-        method: 'DELETE',
-        headers: {
-          'apikey': SUPABASE_SERVICE_KEY,
-          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-        },
-      });
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`Erreur ${res.status}: ${txt}`);
-      }
+      await callUsersApi('DELETE', { query: { user_id: userId } });
       setSupabaseSuccess(`✅ Compte ${email} supprimé`);
       await fetchSupabaseUsers();
     } catch (e) {
@@ -4004,26 +3976,13 @@ function UsersManager({ users, setUsers, dossiers }) {
 
   // Réinitialise le mot de passe
   const resetPasswordSupabaseUser = async (userId, email) => {
-    if (!supabaseAdminEnabled) return;
     const newPwd = window.prompt(`Nouveau mot de passe pour ${email} ?\n(minimum 6 caractères)`);
     if (!newPwd || newPwd.length < 6) return;
     setLoadingSupabase(true);
     setSupabaseError('');
     setSupabaseSuccess('');
     try {
-      const res = await fetch(`${SUPABASE_URL}/auth/v1/admin/users/${userId}`, {
-        method: 'PUT',
-        headers: {
-          'apikey': SUPABASE_SERVICE_KEY,
-          'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ password: newPwd }),
-      });
-      if (!res.ok) {
-        const txt = await res.text();
-        throw new Error(`Erreur ${res.status}: ${txt}`);
-      }
+      await callUsersApi('PATCH', { body: { user_id: userId, password: newPwd } });
       setSupabaseSuccess(`✅ Mot de passe de ${email} mis à jour : ${newPwd}`);
     } catch (e) {
       setSupabaseError(`Erreur : ${e.message}`);
@@ -4075,13 +4034,7 @@ function UsersManager({ users, setUsers, dossiers }) {
           <p className="text-xs text-slate-500 mt-1">Crée ici les comptes pour ton équipe. Chaque personne se connectera au CRM avec son email et son mot de passe.</p>
         </div>
         <div className="p-4">
-          {!supabaseAdminEnabled ? (
-            <div className="p-4 bg-amber-50 border border-amber-300 rounded-xl text-sm text-amber-800">
-              <div className="font-bold mb-1">⚠️ Configuration manquante</div>
-              <p>La gestion des comptes nécessite la variable <code className="bg-amber-100 px-1 rounded">VITE_SUPABASE_SERVICE_KEY</code> dans Vercel. Demande à ton administrateur d'ajouter cette clé secrète Supabase.</p>
-            </div>
-          ) : (
-            <>
+          <>
               {supabaseError && (
                 <div className="mb-3 p-3 bg-rose-50 border border-rose-300 rounded-xl text-sm text-rose-700">
                   {supabaseError}
@@ -4194,7 +4147,6 @@ function UsersManager({ users, setUsers, dossiers }) {
                 💡 Une fois un compte créé, envoie à ton équipier l'URL du CRM (<strong>{typeof window !== 'undefined' ? window.location.origin : 'crm-solaire.vercel.app'}</strong>), son <strong>email</strong> et son <strong>mot de passe</strong>. Il pourra se connecter depuis n'importe quel appareil.
               </div>
             </>
-          )}
         </div>
       </div>
 
