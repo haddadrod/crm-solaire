@@ -1460,27 +1460,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
             {permissions.voirReglages && <TabButton active={activeTab === 'reglages'} onClick={() => setActiveTab('reglages')} icon={Settings} label="Réglages" color="from-slate-600 to-slate-700" />}
           </div>
 
-          {/* Bandeau qui indique le rôle actif si on n'est pas en mode admin */}
-          {!isAdmin && currentUser && currentUserRole && currentUserRole !== 'admin' && (() => {
-            const roleConfig = {
-              commercial: { emoji: '💼', label: 'Commercial', desc: 'Tu vois tes propres dossiers, sans les marges', color: 'from-blue-500 to-cyan-500' },
-              envoi_finance: { emoji: '🏦', label: 'Envoi finance', desc: 'Tu gères l\'envoi des dossiers aux banques, sans compta', color: 'from-rose-500 to-pink-500' },
-              poseur: { emoji: '🔧', label: 'Poseur', desc: 'Tu vois les chantiers où tu es assigné', color: 'from-amber-500 to-orange-500' },
-              compta: { emoji: '💰', label: 'Compta', desc: 'Tu accèdes aux paiements et factures', color: 'from-emerald-500 to-teal-500' },
-            };
-            const r = roleConfig[currentUserRole];
-            if (!r) return null;
-            return (
-              <div className={`mb-3 p-3 bg-gradient-to-r ${r.color} text-white rounded-xl shadow-md flex items-center gap-3`}>
-                <span className="text-2xl">{r.emoji}</span>
-                <div className="flex-1">
-                  <div className="font-bold text-sm">Rôle actif : {r.label}</div>
-                  <div className="text-[11px] opacity-90">{r.desc}</div>
-                </div>
-              </div>
-            );
-          })()}
-
           {/* Barre d'alertes rapides */}
           <AlertesBar
             rappelsControleQualite={dashboard.rappelsControleQualite || []}
