@@ -93,6 +93,17 @@ const readFileAsDataURL = (file) => new Promise((resolve, reject) => {
   reader.readAsDataURL(file);
 });
 
+// Calcule le TTC d'un prestataire.
+// - Par défaut : TVA 20 % (TTC = HT × 1,2)
+// - Si `sansTva` est true (auto-entrepreneur, société étrangère, etc.) :
+//   pas de TVA, donc TTC = HT.
+// Compat : si l'ancien champ `tauxTva` vaut 0, on traite comme sansTva.
+const computeTtcPresta = (ht, sansTva, legacyTauxTva) => {
+  if (sansTva) return ht;
+  if (legacyTauxTva === 0 || legacyTauxTva === '0') return ht;
+  return ht * 1.2;
+};
+
 // Composant réutilisable : input pour attacher un PDF de facture en glisser/déposer
 // ou clic. Stocke le fichier inline (window.storage `file:<id>`) et garde
 // l'ID du fichier dans la prop `fileId`. Onglet 👁️ pour prévisualiser dans
@@ -231,7 +242,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits) => {
 
   const fournisseursDetail = (d.fournisseurs || []).map(f => {
     const ht = parseFloat(f.htCustom) || 0;
-    return { nom: f.nom, ht, ttc: ht * 1.2, paye: !!f.paye, datePaye: f.datePaye || '', bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
+    return { nom: f.nom, ht, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
   });
   const fournisseurHt = fournisseursDetail.reduce((s, f) => s + f.ht, 0);
   const fournisseurTtc = fournisseursDetail.reduce((s, f) => s + f.ttc, 0);
@@ -254,7 +265,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits) => {
   const regiesDetail = regiesList.map(r => {
     const autoHt = computeAutoTarif((tarifsRegies || {})[r.nom]);
     const ht = (r.htCustom !== '' && r.htCustom !== undefined && r.htCustom !== null) ? (parseFloat(r.htCustom) || 0) : autoHt;
-    return { nom: r.nom, ht, ttc: ht * 1.2, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '' };
+    return { nom: r.nom, ht, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '' };
   });
   const regieHt = regiesDetail.reduce((s, r) => s + r.ht, 0);
   const regieTtc = regiesDetail.reduce((s, r) => s + r.ttc, 0);
@@ -264,7 +275,8 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits) => {
   const poseursDetail = (d.poseurs || []).map(p => {
     const autoHt = computeAutoTarif((tarifsPoseurs || {})[p.nom]);
     const ht = (p.htCustom !== '' && p.htCustom !== undefined && p.htCustom !== null) ? (parseFloat(p.htCustom) || 0) : autoHt;
-    return { nom: p.nom, ht, ttc: ht * 1.2, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '' };
+    // Poseurs : jamais de TVA (toujours HT). TTC = HT.
+    return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '' };
   });
   const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
   const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
@@ -756,7 +768,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     const fournisseursDetail = (formData.fournisseurs || []).map(f => {
       const ht = parseFloat(f.htCustom) || 0;
-      return { nom: f.nom, ht, ttc: ht * 1.2, paye: !!f.paye, datePaye: f.datePaye || '', bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
+      return { nom: f.nom, ht, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
     });
     const fournisseurHt = fournisseursDetail.reduce((s, f) => s + f.ht, 0);
     const fournisseurTtc = fournisseursDetail.reduce((s, f) => s + f.ttc, 0);
@@ -764,7 +776,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const regiesDetail = (formData.regies || []).map(r => {
       const autoHt = computeAutoTarif(tarifsRegies[r.nom]);
       const ht = r.htCustom !== '' ? (parseFloat(r.htCustom) || 0) : autoHt;
-      return { nom: r.nom, ht, ttc: ht * 1.2, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '' };
+      return { nom: r.nom, ht, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '' };
     });
     const regieHt = regiesDetail.reduce((s, r) => s + r.ht, 0);
     const regieTtc = regiesDetail.reduce((s, r) => s + r.ttc, 0);
@@ -773,7 +785,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const poseursDetail = (formData.poseurs || []).map(p => {
       const autoHt = computeAutoTarif(tarifsPoseurs[p.nom]);
       const ht = p.htCustom !== '' ? (parseFloat(p.htCustom) || 0) : autoHt;
-      return { nom: p.nom, ht, ttc: ht * 1.2, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '' };
+      // Poseurs : jamais de TVA (toujours HT). TTC = HT.
+      return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '' };
     });
     const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
     const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
@@ -1436,8 +1449,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     [showHistForId, dossiers]
   );
   const currentQuickDossier = useMemo(() =>
-    showQuickViewId ? dossiers.find(d => d.localId === showQuickViewId) : null,
-    [showQuickViewId, dossiers]
+    showQuickViewId ? dossiersEnriched.find(d => d.localId === showQuickViewId) : null,
+    [showQuickViewId, dossiersEnriched]
   );
 
   if (loading) {
@@ -7001,10 +7014,22 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     {r.nom && (
                       <>
                         {canSeeMarges && (
-                          <div>
-                            <label className="block text-[9px] font-semibold text-purple-600 uppercase mb-0.5">💰 Prix HT (€)</label>
-                            <input type="number" step="0.01" value={r.htCustom || ''} onChange={(e) => updateRegie(i, { htCustom: e.target.value })} placeholder="Vide = tarif auto" className="w-full px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
-                          </div>
+                          <>
+                            <div className="grid grid-cols-[1fr_auto] gap-1 items-end">
+                              <div>
+                                <label className="block text-[9px] font-semibold text-purple-600 uppercase mb-0.5">💰 HT (€)</label>
+                                <input type="number" step="0.01" value={r.htCustom || ''} onChange={(e) => updateRegie(i, { htCustom: e.target.value })} placeholder="Auto" className="w-full px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
+                              </div>
+                              <div>
+                                <label className="block text-[9px] font-semibold text-purple-600 uppercase mb-0.5">TTC (TVA 20 %)</label>
+                                <div className="px-2 py-1 bg-purple-50 border border-purple-200 rounded text-[10px] font-bold text-purple-800 min-w-[80px] text-right">{formatEuro(ttcRegie)}</div>
+                              </div>
+                            </div>
+                            <label className="flex items-center gap-1.5 text-[10px] font-semibold text-purple-700 cursor-pointer">
+                              <input type="checkbox" checked={!!r.sansTva || r.tauxTva === 0 || r.tauxTva === '0'} onChange={(e) => updateRegie(i, { sansTva: e.target.checked, tauxTva: e.target.checked ? 0 : 20 })} className="w-3.5 h-3.5 accent-purple-600" />
+                              Sans TVA <span className="text-purple-500 font-normal">(auto-entrepreneur / société étrangère)</span>
+                            </label>
+                          </>
                         )}
                         {canSeeBLFactures && (
                           <>
@@ -7138,7 +7163,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   </div>
                   {canSeeMarges && (
                     <div>
-                      <label className="block text-[9px] font-semibold text-amber-600 uppercase mb-0.5">💰 Prix HT (€)</label>
+                      <label className="block text-[9px] font-semibold text-amber-600 uppercase mb-0.5">💰 HT (€) <span className="text-amber-500 font-normal">— pas de TVA sur les poseurs</span></label>
                       <input type="number" step="0.01" value={p.htCustom || ''} onChange={(e) => updatePoseur(i, { htCustom: e.target.value })} placeholder="Vide = tarif auto" className="w-full px-2 py-1 bg-white border border-amber-200 rounded text-[10px]" />
                     </div>
                   )}
@@ -7188,12 +7213,27 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
-                  {canSeeMarges && (
-                    <div>
-                      <label className="block text-[9px] font-semibold text-orange-600 uppercase mb-0.5">💰 Prix HT (€)</label>
-                      <input type="number" step="0.01" value={f.htCustom || ''} onChange={(e) => updateFournisseur(i, { htCustom: e.target.value })} placeholder="Saisir le coût" className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
-                    </div>
-                  )}
+                  {canSeeMarges && (() => {
+                    const ttcF = (d.fournisseursDetail && d.fournisseursDetail[i]?.ttc) || 0;
+                    return (
+                      <>
+                        <div className="grid grid-cols-[1fr_auto] gap-1 items-end">
+                          <div>
+                            <label className="block text-[9px] font-semibold text-orange-600 uppercase mb-0.5">💰 HT (€)</label>
+                            <input type="number" step="0.01" value={f.htCustom || ''} onChange={(e) => updateFournisseur(i, { htCustom: e.target.value })} placeholder="Coût" className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-semibold text-orange-600 uppercase mb-0.5">TTC (TVA 20 %)</label>
+                            <div className="px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] font-bold text-orange-800 min-w-[80px] text-right">{formatEuro(ttcF)}</div>
+                          </div>
+                        </div>
+                        <label className="flex items-center gap-1.5 text-[10px] font-semibold text-orange-700 cursor-pointer">
+                          <input type="checkbox" checked={!!f.sansTva || f.tauxTva === 0 || f.tauxTva === '0'} onChange={(e) => updateFournisseur(i, { sansTva: e.target.checked, tauxTva: e.target.checked ? 0 : 20 })} className="w-3.5 h-3.5 accent-orange-600" />
+                          Sans TVA <span className="text-orange-500 font-normal">(auto-entrepreneur / société étrangère)</span>
+                        </label>
+                      </>
+                    );
+                  })()}
                   {canSeeBLFactures && (
                     <>
                       <div className="grid grid-cols-2 gap-1">
