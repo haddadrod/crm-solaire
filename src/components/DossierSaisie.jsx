@@ -93,6 +93,103 @@ const readFileAsDataURL = (file) => new Promise((resolve, reject) => {
   reader.readAsDataURL(file);
 });
 
+// Composant réutilisable : input pour attacher un PDF de facture en glisser/déposer
+// ou clic. Stocke le fichier inline (window.storage `file:<id>`) et garde
+// l'ID du fichier dans la prop `fileId`. Onglet 👁️ pour prévisualiser dans
+// un nouvel onglet.
+function FactureFileInput({ fileId, onChange, color = 'orange' }) {
+  const [uploading, setUploading] = useState(false);
+  const [meta, setMeta] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!fileId) { setMeta(null); return; }
+    (async () => {
+      try {
+        const r = await window.storage.get(`file:${fileId}`);
+        if (cancelled || !r?.value) return;
+        const data = JSON.parse(r.value);
+        setMeta({ name: data.name || 'facture.pdf', type: data.type || 'application/pdf' });
+      } catch (e) {}
+    })();
+    return () => { cancelled = true; };
+  }, [fileId]);
+
+  const handleUpload = async (file) => {
+    if (!file) return;
+    if (file.size > MAX_FILE_SIZE) {
+      alert(`❌ Fichier trop gros (${formatFileSize(file.size)}). Max : ${formatFileSize(MAX_FILE_SIZE)}.`);
+      return;
+    }
+    setUploading(true);
+    try {
+      const dataUrl = await readFileAsDataURL(file);
+      const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const ok = await window.storage.set(`file:${id}`, JSON.stringify({ dataUrl, name: file.name, type: file.type }));
+      if (!ok) { alert('❌ Échec du stockage du fichier.'); return; }
+      if (fileId) { try { await window.storage.delete(`file:${fileId}`); } catch (e) {} }
+      onChange(id);
+      setMeta({ name: file.name, type: file.type });
+    } catch (e) {
+      alert('Erreur : ' + e.message);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleView = async () => {
+    if (!fileId) return;
+    try {
+      const r = await window.storage.get(`file:${fileId}`);
+      if (!r?.value) { alert('❌ Fichier introuvable.'); return; }
+      const data = JSON.parse(r.value);
+      const parts = (data.dataUrl || '').split(',');
+      const bytes = atob(parts[1] || '');
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const blob = new Blob([arr], { type: data.type || 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch (e) { alert('Erreur : ' + e.message); }
+  };
+
+  const handleRemove = async () => {
+    if (!fileId) return;
+    if (!window.confirm('Retirer la facture jointe ?')) return;
+    try { await window.storage.delete(`file:${fileId}`); } catch (e) {}
+    onChange('');
+    setMeta(null);
+  };
+
+  const palette = {
+    orange:  'border-orange-200 text-orange-700 hover:bg-orange-50',
+    amber:   'border-amber-200 text-amber-700 hover:bg-amber-50',
+    purple:  'border-purple-200 text-purple-700 hover:bg-purple-50',
+  }[color] || 'border-slate-200 text-slate-700 hover:bg-slate-50';
+
+  if (meta) {
+    return (
+      <div className={`flex items-center gap-1 px-2 py-1 rounded border bg-white text-[10px] ${palette}`}>
+        <span className="flex-1 truncate font-semibold">📄 {meta.name}</span>
+        <button onClick={handleView} className="px-1 py-0.5 hover:bg-white rounded" title="Voir la facture">👁️</button>
+        <button onClick={handleRemove} className="px-1 py-0.5 text-rose-500 hover:bg-rose-100 rounded" title="Retirer">🗑️</button>
+      </div>
+    );
+  }
+
+  return (
+    <label
+      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f) handleUpload(f); }}
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      className={`flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-dashed bg-white text-[10px] cursor-pointer ${palette} ${uploading ? 'opacity-60' : ''}`}
+    >
+      <span>{uploading ? '⏳ Upload…' : '📎 Glisser PDF facture ou cliquer'}</span>
+      <input type="file" accept="application/pdf,image/*" className="hidden" disabled={uploading} onChange={(e) => handleUpload(e.target.files?.[0])} />
+    </label>
+  );
+}
+
 const findClosestTarif = (tarifs, puissance) => {
   if (!tarifs || Object.keys(tarifs).length === 0) return 0;
   if (tarifs[puissance]) return tarifs[puissance];
@@ -6910,10 +7007,17 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           </div>
                         )}
                         {canSeeBLFactures && (
-                          <div className="grid grid-cols-2 gap-1">
-                            <input type="text" value={r.bl || ''} onChange={(e) => updateRegie(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
-                            <input type="text" value={r.factureNo || ''} onChange={(e) => updateRegie(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
-                          </div>
+                          <>
+                            <div className="grid grid-cols-2 gap-1">
+                              <input type="text" value={r.bl || ''} onChange={(e) => updateRegie(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
+                              <input type="text" value={r.factureNo || ''} onChange={(e) => updateRegie(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
+                            </div>
+                            <FactureFileInput
+                              fileId={r.factureFile || ''}
+                              onChange={(id) => updateRegie(i, { factureFile: id })}
+                              color="purple"
+                            />
+                          </>
                         )}
                         {canCheckPaiements && (
                           <button onClick={() => updateRegie(i, { paye: !r.paye, datePaye: !r.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[10px] font-bold ${r.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
@@ -7044,12 +7148,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         <input type="text" value={p.bl || ''} onChange={(e) => updatePoseur(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-amber-200 rounded text-[10px]" />
                         <input type="text" value={p.factureNo || ''} onChange={(e) => updatePoseur(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-amber-200 rounded text-[10px]" />
                       </div>
-                      <div className="flex gap-1">
-                        <input type="url" value={p.facturePdfUrl || ''} onChange={(e) => updatePoseur(i, { facturePdfUrl: e.target.value })} placeholder="🔗 Lien PDF facture" className="flex-1 px-2 py-1 bg-white border border-amber-200 rounded text-[10px]" />
-                        {p.facturePdfUrl && (
-                          <a href={p.facturePdfUrl} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded text-[10px] font-bold">📄</a>
-                        )}
-                      </div>
+                      <FactureFileInput
+                        fileId={p.factureFile || ''}
+                        onChange={(id) => updatePoseur(i, { factureFile: id })}
+                        color="amber"
+                      />
                     </>
                   )}
                   {canCheckPaiements && p.nom && (
@@ -7097,12 +7200,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         <input type="text" value={f.bl || ''} onChange={(e) => updateFournisseur(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
                         <input type="text" value={f.factureNo || ''} onChange={(e) => updateFournisseur(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
                       </div>
-                      <div className="flex gap-1">
-                        <input type="url" value={f.facturePdfUrl || ''} onChange={(e) => updateFournisseur(i, { facturePdfUrl: e.target.value })} placeholder="🔗 Lien PDF facture" className="flex-1 px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
-                        {f.facturePdfUrl && (
-                          <a href={f.facturePdfUrl} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded text-[10px] font-bold">📄</a>
-                        )}
-                      </div>
+                      <FactureFileInput
+                        fileId={f.factureFile || ''}
+                        onChange={(id) => updateFournisseur(i, { factureFile: id })}
+                        color="orange"
+                      />
                     </>
                   )}
                   {canCheckPaiements && f.nom && (
