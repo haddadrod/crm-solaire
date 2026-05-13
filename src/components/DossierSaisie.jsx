@@ -229,10 +229,6 @@ export default function DossierSaisie({ authUser }) {
   }, [currentUser]);
   const currentUserEmoji = useMemo(() => authUser?.user_metadata?.emoji || '👤', [authUser]);
   const [showEmptyStatuts, setShowEmptyStatuts] = useState(false); // afficher ou non les statuts à 0 dans le filtre
-  // Mode admin / équipe — protection par PIN
-  const [adminPin, setAdminPin] = useState(''); // PIN sauvegardé (vide = pas de protection)
-  const [isAdmin, setIsAdmin] = useState(true); // par défaut admin tant que pas de PIN configuré
-  const [pinDialog, setPinDialog] = useState(null); // null | 'setup' | 'unlock' | 'change' | 'remove'
   const isInitialMount = useRef(true);
   const isInitialOrder = useRef(true);
   const isInitialTarifs = useRef(true);
@@ -251,11 +247,11 @@ export default function DossierSaisie({ authUser }) {
     return u?.role || null;
   }, [authUser, currentUser, users]);
 
-  // Permissions calculées : combinaison du mode admin (PIN) + rôle utilisateur
-  // Si isAdmin (PIN admin) => tout débloqué
-  // Sinon, dépend du rôle de l'utilisateur courant
+  // Admin = rôle Supabase. Plus de PIN local : l'authentification est suffisante.
+  const isAdmin = currentUserRole === 'admin';
+
+  // Permissions calculées : si admin → tout débloqué ; sinon, dépend du rôle.
   const permissions = useMemo(() => {
-    // Mode admin (PIN) : accès total
     if (isAdmin) {
       return {
         voirTousDossiers: true,
@@ -556,16 +552,6 @@ export default function DossierSaisie({ authUser }) {
         if (r?.value) {
           const arr = JSON.parse(r.value);
           if (Array.isArray(arr) && arr.length > 0) setProduits(arr);
-        }
-      } catch (e) {}
-      try {
-        const r = await window.storage.get('admin-pin');
-        if (r?.value) {
-          const pin = JSON.parse(r.value);
-          if (pin) {
-            setAdminPin(pin);
-            setIsAdmin(false); // PIN défini → mode équipe par défaut
-          }
         }
       } catch (e) {}
       try {
@@ -1407,32 +1393,6 @@ export default function DossierSaisie({ authUser }) {
                   </div>
                 );
               })()}
-              {/* Bouton mode admin / équipe */}
-              {!adminPin ? (
-                <button
-                  onClick={() => setPinDialog('setup')}
-                  className="bg-amber-100 hover:bg-amber-200 text-amber-700 px-4 py-3 rounded-2xl font-semibold shadow-md transition-all flex items-center gap-2 border border-amber-300"
-                  title="Aucun code admin configuré — clique pour le mettre en place"
-                >
-                  <Shield className="w-4 h-4" />Configurer PIN
-                </button>
-              ) : isAdmin ? (
-                <button
-                  onClick={() => setIsAdmin(false)}
-                  className="bg-emerald-100 hover:bg-emerald-200 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md transition-all flex items-center gap-2 border border-emerald-300"
-                  title="Mode admin actif — clique pour repasser en mode équipe"
-                >
-                  <Unlock className="w-4 h-4" />Admin
-                </button>
-              ) : (
-                <button
-                  onClick={() => setPinDialog('unlock')}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md transition-all flex items-center gap-2 border border-slate-300"
-                  title="Mode équipe — clique pour passer en admin"
-                >
-                  <Lock className="w-4 h-4" />Équipe
-                </button>
-              )}
               {isAdmin && dossiers.length > 0 && (
                 <button onClick={exportCSV} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200">
                   <Download className="w-4 h-4" />Export CSV
@@ -1664,7 +1624,6 @@ export default function DossierSaisie({ authUser }) {
             listeFournisseurs={listeFournisseurs} setListeFournisseurs={setListeFournisseurs}
             produits={produits} setProduits={setProduits}
             users={users} setUsers={setUsers}
-            adminPin={adminPin} setPinDialog={setPinDialog}
           />
         )}
 
@@ -1758,33 +1717,6 @@ export default function DossierSaisie({ authUser }) {
             setNomsInternes={setNomsInternes}
             produits={produits}
             isAdmin={isAdmin}
-          />
-        )}
-
-        {/* DIALOGUE PIN ADMIN */}
-        {pinDialog && (
-          <PinDialog
-            mode={pinDialog}
-            adminPin={adminPin}
-            onClose={() => setPinDialog(null)}
-            onSetPin={(newPin) => {
-              setAdminPin(newPin);
-              window.storage.set('admin-pin', JSON.stringify(newPin)).catch(() => {});
-              if (pinDialog === 'setup') {
-                setIsAdmin(true); // admin reste en admin après setup initial
-              }
-              setPinDialog(null);
-            }}
-            onRemovePin={() => {
-              setAdminPin('');
-              window.storage.delete('admin-pin').catch(() => {});
-              setIsAdmin(true);
-              setPinDialog(null);
-            }}
-            onUnlock={() => {
-              setIsAdmin(true);
-              setPinDialog(null);
-            }}
           />
         )}
 
@@ -3470,7 +3402,7 @@ function PerfList({ titre, data, medal, border, header, iconColor }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, produits, setProduits, users, setUsers, adminPin, setPinDialog }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, produits, setProduits, users, setUsers }) {
   const [section, setSection] = useState('statuts');
 
   const sections = [
@@ -3485,29 +3417,6 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
 
   return (
     <div className="space-y-4">
-      {/* SÉCURITÉ : gestion du PIN admin */}
-      {adminPin && (
-        <div className="bg-white rounded-2xl shadow-md border border-amber-200 overflow-hidden">
-          <div className="p-4 bg-gradient-to-r from-amber-50 to-orange-50 border-b border-amber-100 flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <KeyRound className="w-5 h-5 text-amber-600" />
-              <div>
-                <h3 className="text-sm font-bold text-slate-800">Sécurité — Code PIN admin</h3>
-                <p className="text-xs text-slate-500">Code configuré · l'app démarre en mode équipe</p>
-              </div>
-            </div>
-            <div className="flex gap-2">
-              <button onClick={() => setPinDialog('change')} className="text-xs font-semibold text-amber-700 bg-amber-100 hover:bg-amber-200 px-3 py-2 rounded-lg flex items-center gap-1.5 border border-amber-200">
-                <KeyRound className="w-3.5 h-3.5" />Changer le code
-              </button>
-              <button onClick={() => setPinDialog('remove')} className="text-xs font-semibold text-rose-700 bg-rose-100 hover:bg-rose-200 px-3 py-2 rounded-lg flex items-center gap-1.5 border border-rose-200">
-                <Trash2 className="w-3.5 h-3.5" />Retirer la protection
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       <div className="bg-white rounded-2xl p-2 shadow-md border border-slate-200">
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
           {sections.map(s => {
@@ -5642,135 +5551,6 @@ function Toggle({ label, checked, onChange }) {
       </div>
       {label}
     </button>
-  );
-}
-
-// ====================== DIALOGUE PIN ADMIN ======================
-
-function PinDialog({ mode, adminPin, onClose, onSetPin, onRemovePin, onUnlock }) {
-  // mode: 'setup' | 'unlock' | 'change' | 'remove'
-  const [step, setStep] = useState(
-    mode === 'setup' ? 'new' :
-    mode === 'unlock' ? 'verify' :
-    mode === 'change' ? 'verify-old' :
-    mode === 'remove' ? 'verify-old' : 'verify'
-  );
-  const [pin, setPin] = useState('');
-  const [pin2, setPin2] = useState('');
-  const [error, setError] = useState('');
-
-  const handleSubmit = () => {
-    setError('');
-    if (step === 'new') {
-      if (pin.length < 4 || pin.length > 6) { setError('Le code doit faire 4 à 6 chiffres'); return; }
-      if (pin !== pin2) { setError('Les deux codes ne correspondent pas'); return; }
-      onSetPin(pin);
-    } else if (step === 'verify') {
-      if (pin === adminPin) {
-        if (mode === 'unlock') onUnlock();
-        else if (mode === 'remove') onRemovePin();
-      } else {
-        setError('Code incorrect');
-        setPin('');
-      }
-    } else if (step === 'verify-old') {
-      if (pin === adminPin) {
-        if (mode === 'change') { setPin(''); setStep('new'); }
-        else if (mode === 'remove') onRemovePin();
-      } else {
-        setError('Code incorrect');
-        setPin('');
-      }
-    }
-  };
-
-  let title, subtitle, ctaLabel;
-  if (mode === 'setup') {
-    title = 'Configurer le PIN admin';
-    subtitle = 'Choisis un code 4-6 chiffres pour protéger les données sensibles.';
-    ctaLabel = 'Créer le code';
-  } else if (mode === 'unlock') {
-    title = 'Mode admin';
-    subtitle = 'Entre ton code pour voir marges, coûts et options sensibles.';
-    ctaLabel = 'Déverrouiller';
-  } else if (mode === 'change') {
-    title = step === 'verify-old' ? 'Code actuel' : 'Nouveau code';
-    subtitle = step === 'verify-old' ? 'Entre ton code actuel pour le modifier.' : 'Choisis un nouveau code 4-6 chiffres.';
-    ctaLabel = step === 'verify-old' ? 'Continuer' : 'Modifier le code';
-  } else if (mode === 'remove') {
-    title = 'Supprimer la protection';
-    subtitle = 'Entre ton code pour retirer la protection. L\'app sera accessible sans code.';
-    ctaLabel = 'Supprimer la protection';
-  }
-
-  const isDanger = mode === 'remove';
-  const headerClass = isDanger ? 'bg-gradient-to-r from-rose-500 to-red-500' : 'bg-gradient-to-r from-amber-500 to-orange-500';
-  const ctaClass = isDanger ? 'bg-gradient-to-r from-rose-500 to-red-500' : 'bg-gradient-to-r from-amber-500 to-orange-500';
-
-  const canSubmit = pin.length >= 4 && (step !== 'new' || pin2.length >= 4);
-
-  return (
-    <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[60] flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl max-w-sm w-full overflow-hidden" onClick={(e) => e.stopPropagation()}>
-        <div className={`p-5 text-white ${headerClass}`}>
-          <div className="flex items-start justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <KeyRound className="w-5 h-5" />
-              <h2 className="text-lg font-bold">{title}</h2>
-            </div>
-            <button onClick={onClose} className="p-1 rounded-lg hover:bg-white/20"><X className="w-5 h-5" /></button>
-          </div>
-          <p className="text-xs mt-1.5 opacity-90">{subtitle}</p>
-        </div>
-        <div className="p-5 space-y-3">
-          <div>
-            <label className="block text-xs font-semibold text-slate-600 mb-1">
-              {step === 'new' ? 'Nouveau code (4-6 chiffres)' : 'Code PIN'}
-            </label>
-            <input
-              type="password"
-              inputMode="numeric"
-              value={pin}
-              onChange={(e) => { setPin(e.target.value.replace(/\D/g, '').slice(0, 6)); setError(''); }}
-              onKeyDown={(e) => { if (e.key === 'Enter' && canSubmit) handleSubmit(); }}
-              placeholder="••••"
-              className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-2xl tracking-[0.5em] font-bold focus:outline-none focus:ring-2 focus:ring-amber-400"
-              autoFocus
-            />
-          </div>
-          {step === 'new' && (
-            <div>
-              <label className="block text-xs font-semibold text-slate-600 mb-1">Confirmer</label>
-              <input
-                type="password"
-                inputMode="numeric"
-                value={pin2}
-                onChange={(e) => { setPin2(e.target.value.replace(/\D/g, '').slice(0, 6)); setError(''); }}
-                onKeyDown={(e) => { if (e.key === 'Enter' && canSubmit) handleSubmit(); }}
-                placeholder="••••"
-                className="w-full px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-center text-2xl tracking-[0.5em] font-bold focus:outline-none focus:ring-2 focus:ring-amber-400"
-              />
-            </div>
-          )}
-          {error && (
-            <div className="text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2 flex items-center gap-2">
-              <AlertTriangle className="w-3.5 h-3.5 flex-shrink-0" />{error}
-            </div>
-          )}
-          {mode === 'setup' && (
-            <div className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 leading-relaxed">
-              ⚠️ <strong>Note ce code quelque part</strong> — pas de récupération possible. Si tu l'oublies, il faudra effacer les données depuis le navigateur pour réinitialiser.
-            </div>
-          )}
-          <div className="flex gap-2 pt-2">
-            <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200">Annuler</button>
-            <button onClick={handleSubmit} disabled={!canSubmit} className={`flex-1 px-4 py-2.5 rounded-xl font-semibold text-white shadow-md disabled:opacity-50 ${ctaClass}`}>
-              {ctaLabel}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>
   );
 }
 
