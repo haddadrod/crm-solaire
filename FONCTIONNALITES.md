@@ -631,7 +631,11 @@ Permet de **créer des comptes Supabase Auth** depuis l'app :
 - **Supprimer un compte** : confirmation obligatoire, irréversible.
 - **Réinitialiser le mot de passe** : via `window.prompt` (min 6 caractères).
 
-> ⚠️ Cela suppose que la clé Supabase utilisée a les droits admin (`service_role` côté backend) — à vérifier dans la config.
+> Toutes ces opérations passent par la fonction serverless [api/users.js](api/users.js). Le front envoie le JWT de la session courante dans `Authorization: Bearer …` ; le serveur le valide via `supabase.auth.getUser()` puis vérifie `user_metadata.role === 'admin'` avant d'appeler l'API admin Supabase avec la `service_role`. La `service_role` n'est **jamais** envoyée au navigateur.
+>
+> **Bootstrap** : si la table `auth.users` est totalement vide (1ʳᵉ mise en route), la création POST est autorisée sans JWT et le rôle est forcé à `admin`. Sinon, plus aucun admin pourrait être créé.
+>
+> **Dev local** : `npm run dev` ne sert pas `/api/users` (Vite seul). Utiliser `vercel dev` pour tester la gestion des comptes en local.
 
 **Profils locaux** (différents des comptes Supabase) : utilisés pour le sélecteur « 👤 » en haut de l'app, qui détermine `currentUser` (le nom affiché dans l'historique et l'activité). Champs : emoji + nom + rôle.
 
