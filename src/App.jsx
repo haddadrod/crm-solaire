@@ -7,6 +7,17 @@ import DossierSaisie from './components/DossierSaisie.jsx';
 // Initialise window.storage avant le rendu
 setupStorage();
 
+// Extrait un prénom lisible depuis le user Supabase :
+// display_name s'il est propre (sans point/espace) sinon partie avant le 1er point/espace,
+// capitalisée. Fallback : partie avant @ de l'email, même règle.
+function firstNameOf(user) {
+  if (!user) return 'Utilisateur';
+  const raw = (user.user_metadata?.display_name || (user.email ? user.email.split('@')[0] : '') || '').trim();
+  if (!raw) return 'Utilisateur';
+  const first = raw.split(/[.\s_-]+/)[0] || raw;
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+}
+
 export default function App() {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -46,18 +57,15 @@ export default function App() {
 
   return (
     <div>
-      {/* Mini-bandeau utilisateur connecté */}
-      <div className="fixed top-6 md:top-10 right-4 md:right-8 z-50 bg-white shadow-md rounded-full px-4 py-2 text-sm flex items-center gap-3 border border-violet-100">
-        <span>👤 {user.email}</span>
-        <button
-          onClick={handleLogout}
-          className="text-rose-600 hover:text-rose-800 font-bold text-3xl leading-none"
-          title="Se déconnecter"
-        >
-          🚪
-        </button>
-      </div>
-      <DossierSaisie />
+      {/* Bouton sortir — affiché pour tout le monde */}
+      <button
+        onClick={handleLogout}
+        className="fixed top-6 md:top-10 right-4 md:right-8 z-50 bg-white shadow-md rounded-full p-2 border border-violet-100 hover:bg-rose-50 hover:border-rose-200 transition-colors flex items-center justify-center"
+        title="Se déconnecter"
+      >
+        <span className="text-3xl leading-none">🚪</span>
+      </button>
+      <DossierSaisie authUser={user} />
     </div>
   );
 }

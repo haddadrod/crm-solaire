@@ -187,7 +187,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits) => {
   };
 };
 
-export default function DossierSaisie() {
+export default function DossierSaisie({ authUser }) {
   const [dossiers, setDossiers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -213,7 +213,21 @@ export default function DossierSaisie() {
   const [showSearch, setShowSearch] = useState(false); // 🔍 recherche globale Ctrl+K
   const [showAlertesType, setShowAlertesType] = useState(null); // 🔔 type d'alerte ouvert : null | 'financement' | 'consuel' | 'paiement' | 'stagnation'
   const [showImport, setShowImport] = useState(false); // 📥 modal import dossiers
-  const [currentUser, setCurrentUser] = useState(''); // 👤 nom de l'utilisateur courant
+  // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
+  // Plus de dropdown local — qui est connecté = qui agit.
+  // currentUser = nom complet (utilisé pour tagger createdBy / modifiedBy) ;
+  // currentUserFirstName = prénom court affiché à l'écran.
+  const currentUser = useMemo(() => {
+    if (!authUser) return '';
+    const m = authUser.user_metadata || {};
+    return (m.display_name || (authUser.email ? authUser.email.split('@')[0] : '') || '').toString();
+  }, [authUser]);
+  const currentUserFirstName = useMemo(() => {
+    if (!currentUser) return '';
+    const first = currentUser.split(/[.\s_-]+/)[0] || currentUser;
+    return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
+  }, [currentUser]);
+  const currentUserEmoji = useMemo(() => authUser?.user_metadata?.emoji || '👤', [authUser]);
   const [showEmptyStatuts, setShowEmptyStatuts] = useState(false); // afficher ou non les statuts à 0 dans le filtre
   // Mode admin / équipe — protection par PIN
   const [adminPin, setAdminPin] = useState(''); // PIN sauvegardé (vide = pas de protection)
@@ -227,12 +241,15 @@ export default function DossierSaisie() {
   const REGIES = useMemo(() => Object.keys(tarifsRegies), [tarifsRegies]);
   const FOURNISSEURS = listeFournisseurs;
 
-  // Rôle de l'utilisateur courant + permissions calculées
+  // Rôle de l'utilisateur courant : lu directement dans le user_metadata Supabase.
+  // Fallback : recherche dans les profils locaux (anciens dossiers).
   const currentUserRole = useMemo(() => {
+    const fromAuth = authUser?.user_metadata?.role;
+    if (fromAuth) return fromAuth;
     if (!currentUser) return null;
     const u = users.find(usr => usr.name === currentUser);
     return u?.role || null;
-  }, [currentUser, users]);
+  }, [authUser, currentUser, users]);
 
   // Permissions calculées : combinaison du mode admin (PIN) + rôle utilisateur
   // Si isAdmin (PIN admin) => tout débloqué
@@ -552,10 +569,6 @@ export default function DossierSaisie() {
         }
       } catch (e) {}
       try {
-        const r = await window.storage.get('current-user');
-        if (r?.value) setCurrentUser(JSON.parse(r.value) || '');
-      } catch (e) {}
-      try {
         const r = await window.storage.get('users-list');
         if (r?.value) {
           const arr = JSON.parse(r.value);
@@ -571,11 +584,6 @@ export default function DossierSaisie() {
     if (isInitialMount.current) { if (!loading) isInitialMount.current = false; return; }
     window.storage.set('dossiers-data', JSON.stringify(dossiers)).catch(() => {});
   }, [dossiers, loading]);
-
-  useEffect(() => {
-    if (loading) return;
-    window.storage.set('current-user', JSON.stringify(currentUser)).catch(() => {});
-  }, [currentUser, loading]);
 
   useEffect(() => {
     if (loading) return;
@@ -1379,35 +1387,26 @@ export default function DossierSaisie() {
                 <span className="hidden sm:inline">Rechercher</span>
                 <kbd className="hidden sm:inline-block text-[10px] font-mono bg-slate-100 px-1.5 py-0.5 rounded ml-1">Ctrl+K</kbd>
               </button>
-              {/* Sélecteur utilisateur courant */}
-              {users.length > 0 ? (
-                <div className="relative">
-                  <select
-                    value={currentUser}
-                    onChange={(e) => setCurrentUser(e.target.value)}
-                    className={`pl-10 pr-8 py-3 rounded-2xl font-semibold shadow-md border appearance-none cursor-pointer ${currentUser ? 'bg-violet-100 hover:bg-violet-200 text-violet-700 border-violet-300' : 'bg-rose-100 hover:bg-rose-200 text-rose-700 border-rose-300'}`}
-                    title="Sélectionne ton nom — tes actions seront tracées"
+              {/* Badge utilisateur connecté (read-only — identité fournie par Supabase) */}
+              {currentUser && (() => {
+                const roleMeta = {
+                  admin: { emoji: '👑', label: 'Admin', bg: 'bg-violet-100', text: 'text-violet-700', border: 'border-violet-300' },
+                  commercial: { emoji: '💼', label: 'Commercial', bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
+                  envoi_finance: { emoji: '🏦', label: 'Envoi finance', bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-300' },
+                  poseur: { emoji: '🔧', label: 'Poseur', bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-300' },
+                  compta: { emoji: '💰', label: 'Compta', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
+                };
+                const r = currentUserRole && roleMeta[currentUserRole];
+                return (
+                  <div
+                    className={`px-4 py-3 rounded-2xl font-semibold shadow-md border flex items-center gap-2 ${r ? `${r.bg} ${r.text} ${r.border}` : 'bg-slate-100 text-slate-700 border-slate-300'}`}
+                    title={r ? `Connecté(e) en tant que ${currentUser} — rôle ${r.label}` : `Connecté(e) en tant que ${currentUser}`}
                   >
-                    <option value="">— Anonyme —</option>
-                    {users.map(u => <option key={u.name} value={u.name}>{u.emoji || '👤'} {u.name}</option>)}
-                    {currentUser && !users.find(u => u.name === currentUser) && (
-                      <option value={currentUser}>👤 {currentUser} (non listé)</option>
-                    )}
-                  </select>
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-base pointer-events-none">
-                    {currentUser ? (users.find(u => u.name === currentUser)?.emoji || '👤') : '⚠️'}
-                  </span>
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-xs opacity-60">▼</span>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setActiveTab('reglages')}
-                  className="px-4 py-3 rounded-2xl font-semibold shadow-md border bg-rose-100 hover:bg-rose-200 text-rose-700 border-rose-300 flex items-center gap-2"
-                  title="Aucun utilisateur — clique pour les configurer"
-                >
-                  👥 Configurer utilisateurs
-                </button>
-              )}
+                    <span className="text-base leading-none">{currentUserEmoji}</span>
+                    <span className="text-sm">{currentUserFirstName}</span>
+                  </div>
+                );
+              })()}
               {/* Bouton mode admin / équipe */}
               {!adminPin ? (
                 <button
@@ -1464,6 +1463,7 @@ export default function DossierSaisie() {
           {!isAdmin && currentUser && currentUserRole && currentUserRole !== 'admin' && (() => {
             const roleConfig = {
               commercial: { emoji: '💼', label: 'Commercial', desc: 'Tu vois tes propres dossiers, sans les marges', color: 'from-blue-500 to-cyan-500' },
+              envoi_finance: { emoji: '🏦', label: 'Envoi finance', desc: 'Tu gères l\'envoi des dossiers aux banques, sans compta', color: 'from-rose-500 to-pink-500' },
               poseur: { emoji: '🔧', label: 'Poseur', desc: 'Tu vois les chantiers où tu es assigné', color: 'from-amber-500 to-orange-500' },
               compta: { emoji: '💰', label: 'Compta', desc: 'Tu accèdes aux paiements et factures', color: 'from-emerald-500 to-teal-500' },
             };
@@ -5493,7 +5493,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   {/* Cas 1 : nouveau dossier (création) */}
                   {!editingId && (
                     <div className="text-xs text-slate-600 leading-relaxed">
-                      💡 À l'enregistrement, ce dossier sera tagué <strong className="text-violet-600">👤 créé par : {currentUser ? <span className="text-cyan-700">{currentUser}</span> : <span className="text-rose-600">⚠️ aucun utilisateur sélectionné — choisis ton nom dans le header</span>}</strong>.
+                      💡 À l'enregistrement, ce dossier sera tagué <strong className="text-violet-600">👤 créé par : <span className="text-cyan-700">{currentUser || '(anonyme)'}</span></strong>.
                       Les changements de statut seront ensuite tracés automatiquement.
                     </div>
                   )}
