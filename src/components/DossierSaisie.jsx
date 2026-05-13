@@ -1347,7 +1347,7 @@ export default function DossierSaisie() {
         <div className="mb-6">
           <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
             <div>
-              <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-violet-600 via-pink-500 to-orange-500 bg-clip-text text-transparent">
+              <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 bg-clip-text text-transparent">
                 Saisie de dossiers ⚡
               </h1>
               <p className="text-slate-500 mt-1">Créez vos dossiers d'installation en un clin d'œil</p>
