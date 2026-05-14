@@ -3611,6 +3611,8 @@ function PerfList({ titre, data, medal, border, header, iconColor }) {
 
 function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, produits, setProduits, users, setUsers }) {
   const [section, setSection] = useState('statuts');
+  // Nombre de comptes Supabase, remonté par UsersManager pour le badge de l'onglet.
+  const [usersCount, setUsersCount] = useState(null);
 
   const sections = [
     { id: 'statuts',      label: 'Statuts',      emoji: '📊', color: 'from-pink-500 to-rose-500' },
@@ -3631,7 +3633,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
             // Pas de compteur pour "utilisateurs" : les vrais comptes sont
             // chargés dans UsersManager (Supabase), ReglagesView ne les a pas.
             const count = s.id === 'statuts' ? STATUTS_ORDERED.length
-                        : s.id === 'utilisateurs' ? null
+                        : s.id === 'utilisateurs' ? usersCount
                         : s.id === 'produits' ? produits.length
                         : s.id === 'poseurs' ? Object.keys(tarifsPoseurs).length
                         : s.id === 'fournisseurs' ? listeFournisseurs.length
@@ -3710,7 +3712,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'utilisateurs' && (
-        <UsersManager users={users} setUsers={setUsers} dossiers={dossiers} poseursList={Object.keys(tarifsPoseurs)} regiesList={Object.keys(tarifsRegies)} />
+        <UsersManager users={users} setUsers={setUsers} dossiers={dossiers} poseursList={Object.keys(tarifsPoseurs)} regiesList={Object.keys(tarifsRegies)} onCountChange={setUsersCount} />
       )}
 
       {section === 'produits' && (
@@ -4011,7 +4013,7 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
   );
 }
 
-function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList = [] }) {
+function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList = [], onCountChange }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
@@ -4064,6 +4066,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
       const data = await callUsersApi('GET');
       setSupabaseUsers(data.users || []);
       setBootstrapMode(!!data.bootstrap);
+      if (onCountChange) onCountChange((data.users || []).length);
     } catch (e) {
       setSupabaseError(`Erreur lors du chargement : ${e.message}`);
       console.error(e);
