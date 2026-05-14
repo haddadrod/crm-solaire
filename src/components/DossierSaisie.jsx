@@ -1583,6 +1583,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsStagnation={dashboard.rappelsStagnation || []}
             rappelsRecupTva={dashboard.rappelsRecupTva || []}
             isAdmin={isAdmin}
+            currentUserRole={currentUserRole}
             onClick={(type) => setShowAlertesType(type)}
           />
 
@@ -3262,97 +3263,6 @@ function DashboardView({ dossiers, dashboard, STATUTS, onCreate, onShowQuick }) 
           </div>
         </div>
       )}
-
-      {/* RAPPELS — DOSSIERS QUI STAGNENT */}
-      {(() => {
-        const stagnation = dashboard.rappelsStagnation || [];
-        const critical = stagnation.filter(r => r.level === 'critical');
-        const high = stagnation.filter(r => r.level === 'high');
-        const warn = stagnation.filter(r => r.level === 'warn');
-        return (
-          <div className="bg-white rounded-3xl shadow-md border-2 border-rose-200 overflow-hidden">
-            <div className="p-5 border-b border-rose-100 bg-gradient-to-r from-rose-50 via-orange-50 to-amber-50">
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                <AlertTriangle className="w-5 h-5 text-rose-500" />Dossiers qui stagnent
-                <span className="ml-auto text-xs font-semibold bg-rose-100 text-rose-700 px-2 py-1 rounded-full">{stagnation.length} alerte{stagnation.length > 1 ? 's' : ''}</span>
-              </h2>
-              <p className="text-xs text-slate-600 mt-1">Dossiers bloqués trop longtemps dans le même statut.</p>
-            </div>
-
-            {stagnation.length === 0 ? (
-              <div className="p-8 text-center">
-                <div className="text-4xl mb-2">✨</div>
-                <p className="text-sm font-bold text-emerald-700 mb-1">Aucun dossier ne stagne — bravo !</p>
-                <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto">
-                  Tous tes dossiers actifs sont dans les seuils de temps acceptables, ou ils sont déjà finalisés (Accepté, Dossier payé, Annulé...).
-                </p>
-                <details className="mt-4 text-xs text-slate-500">
-                  <summary className="cursor-pointer hover:text-slate-700 font-semibold">Voir les seuils par statut</summary>
-                  <div className="mt-2 text-left max-w-md mx-auto bg-slate-50 rounded-xl p-3 space-y-0.5">
-                    <div className="flex justify-between"><span>🔄 En cours</span><strong>30j</strong></div>
-                    <div className="flex justify-between"><span>📁 Att dossier</span><strong>45j</strong></div>
-                    <div className="flex justify-between"><span>⏳ Attente Consuel</span><strong>45j</strong></div>
-                    <div className="flex justify-between"><span>⚠️ Problème Consuel</span><strong>14j</strong></div>
-                    <div className="flex justify-between"><span>🚛 NRP CQ Livraison</span><strong>7j</strong></div>
-                    <div className="flex justify-between"><span>⚠️ Litige</span><strong>7j</strong></div>
-                    <div className="flex justify-between text-slate-400 italic mt-2"><span>(et autres statuts non finalisés)</span></div>
-                  </div>
-                </details>
-              </div>
-            ) : (
-              <div className="divide-y divide-slate-100 max-h-[480px] overflow-y-auto">
-                {[
-                  { items: critical, label: '🔴 Critique', headerCls: 'bg-rose-50 text-rose-700', desc: 'depuis très longtemps (2× le seuil)' },
-                  { items: high, label: '🟠 Important', headerCls: 'bg-orange-50 text-orange-700', desc: 'à traiter rapidement' },
-                  { items: warn, label: '🟡 À surveiller', headerCls: 'bg-amber-50 text-amber-700', desc: 'dépasse le seuil' },
-                ].filter(g => g.items.length > 0).map((group, gIdx) => (
-                  <div key={gIdx}>
-                    <div className={`px-4 py-2 ${group.headerCls} text-[11px] font-bold uppercase flex items-center justify-between`}>
-                      <span>{group.label} ({group.items.length})</span>
-                      <span className="text-[10px] font-normal text-slate-500 normal-case">{group.desc}</span>
-                    </div>
-                    {group.items.slice(0, 10).map((r) => {
-                      const d = r.dossier;
-                      const statut = STATUTS.find(s => s.id === r.statutId);
-                      return (
-                        <button
-                          key={d.localId}
-                          onClick={() => onShowQuick && onShowQuick(d.localId)}
-                          className="w-full px-4 py-2.5 hover:bg-slate-50 flex items-center gap-3 text-left transition-colors border-l-4 border-transparent hover:border-violet-400"
-                        >
-                          <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm bg-gradient-to-br ${statut?.color || 'from-slate-400 to-slate-500'} text-white shadow-sm`}>
-                            {statut?.emoji || '📄'}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-bold text-slate-800 text-sm truncate">{d.nom} {d.prenom}</span>
-                              {d.id && <span className="text-[10px] font-mono text-slate-400">#{d.id}</span>}
-                            </div>
-                            <div className="text-[11px] text-slate-500">
-                              {statut?.label} · seuil {r.seuil}j
-                            </div>
-                          </div>
-                          <div className="flex-shrink-0 text-right">
-                            <div className={`text-base font-bold ${r.level === 'critical' ? 'text-rose-600' : r.level === 'high' ? 'text-orange-600' : 'text-amber-600'}`}>
-                              {r.jours}j
-                            </div>
-                            <div className="text-[9px] text-slate-400">+{r.depassement}j</div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                    {group.items.length > 10 && (
-                      <div className="px-4 py-2 text-[11px] text-slate-400 italic text-center bg-slate-50">
-                        ... et {group.items.length - 10} autre{group.items.length - 10 > 1 ? 's' : ''}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        );
-      })()}
 
       {(dashboard.rappelsClient.length > 0 || dashboard.rappelsPrestataires.length > 0) && (
         <div className="bg-white rounded-3xl shadow-md border border-amber-200 overflow-hidden">
@@ -7895,7 +7805,14 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
 
 // ===================== BARRE D'ALERTES RAPIDES =====================
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, isAdmin, onClick }) {
+// Alertes visibles par rôle non-admin. Une entrée = liste blanche des `type`
+// de badges affichés. Un rôle absent de cette map voit toutes les alertes
+// non adminOnly (comportement par défaut).
+const ALERTES_PAR_ROLE = {
+  envoi_finance: ['aEnvoyerBanque', 'financement', 'originaux'],
+};
+
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, isAdmin, currentUserRole, onClick }) {
   // Définition des badges
   const badges = [
     {
@@ -8020,7 +7937,14 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
     },
   ];
 
-  const visible = badges.filter(b => isAdmin || !b.adminOnly);
+  // Filtrage : admin voit tout ; sinon on retire les adminOnly, puis on
+  // applique la liste blanche du rôle si elle existe.
+  const whitelist = !isAdmin && currentUserRole ? ALERTES_PAR_ROLE[currentUserRole] : null;
+  const visible = badges.filter(b => {
+    if (!isAdmin && b.adminOnly) return false;
+    if (whitelist) return whitelist.includes(b.type);
+    return true;
+  });
 
   return (
     <div className="mb-5 flex items-center gap-2 flex-wrap">
