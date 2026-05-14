@@ -2146,9 +2146,9 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
             </span>
           );
         })()}
-        <span className="text-[11px] text-violet-700">💳 {d.financement}</span>
+        {!readOnly && <span className="text-[11px] text-violet-700">💳 {d.financement}</span>}
         <span className="ml-auto inline-flex items-center gap-2">
-          <span className="font-bold text-blue-600 text-sm">{formatEuro(d.montantTotal)}</span>
+          {!readOnly && <span className="font-bold text-blue-600 text-sm">{formatEuro(d.montantTotal)}</span>}
           {isAdmin && (
             <span className={`text-[11px] font-semibold ${d.margeTtc >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
               ({formatEuro(d.margeTtc)})
@@ -2182,9 +2182,11 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                   ? <span>{d.nom} {d.prenom && <span className="font-normal text-slate-600">{d.prenom}</span>}</span>
                   : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="hover:text-violet-600 hover:underline transition-colors text-left" title="Voir l'aperçu rapide">{d.nom} {d.prenom && <span className="font-normal text-slate-600">{d.prenom}</span>}</button>}
               </h3>
-              <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
-                💰 {formatEuro(d.montantTotal)}
-              </span>
+              {!readOnly && (
+                <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
+                  💰 {formatEuro(d.montantTotal)}
+                </span>
+              )}
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               {statut && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${statut.bg} ${statut.text}`}><span>{statut.emoji}</span>{statut.label}</span>}
@@ -2203,7 +2205,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                   </span>
                 );
               })}
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-violet-50 text-violet-700">💳 {d.financement}</span>
+              {!readOnly && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-violet-50 text-violet-700">💳 {d.financement}</span>}
               {docCount > 0 && (
                 <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-violet-100 text-violet-700">
                   <Paperclip className="w-3 h-3" />{docCount} doc{docCount > 1 ? 's' : ''}
@@ -2273,20 +2275,35 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
             {isAdmin && <button onClick={() => onDelete(d.localId)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>}
           </div>
         </div>
-        <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-1.5 text-xs">
-          <Mini label="Vente TTC" value={formatEuro(d.montantTotal)} color="text-blue-600" />
-          <Mini label="Vente HT" value={formatEuro(d.montantHt)} color="text-cyan-600" />
-          {isAdmin && <Mini label="Marge TTC" value={formatEuro(d.margeTtc)} color={d.margeTtc >= 0 ? 'text-emerald-600' : 'text-rose-600'} />}
-          {!isAdmin && <Mini label="Financement" value={d.financement} color="text-violet-600" />}
-          {!isAdmin && (() => {
-            if (dossierProduits.length > 1) {
-              return <Mini label="Produits" value={`${dossierProduits.length} installations`} color="text-amber-600" />;
-            }
-            const p = findProduit(produits, dossierProduits[0]?.type);
-            const val = p.autoTarif && dossierProduits[0]?.puissance ? `${p.emoji} ${dossierProduits[0].puissance} Wc` : `${p.emoji} ${p.label}`;
-            return <Mini label="Produit" value={val} color="text-amber-600" />;
-          })()}
-        </div>
+        {/* Grille chiffres — masquée en lecture seule (poseur / régie) */}
+        {readOnly ? (
+          <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs">
+            <Mini label="Date de pose" value={formatDateForSheet(d.dateInsta) || '—'} color="text-blue-600" />
+            {(() => {
+              if (dossierProduits.length > 1) {
+                return <Mini label="Matériel posé" value={`${dossierProduits.length} installations`} color="text-amber-600" />;
+              }
+              const p = findProduit(produits, dossierProduits[0]?.type);
+              const val = p.autoTarif && dossierProduits[0]?.puissance ? `${p.emoji} ${dossierProduits[0].puissance} Wc` : `${p.emoji} ${p.label}`;
+              return <Mini label="Matériel posé" value={val} color="text-amber-600" />;
+            })()}
+          </div>
+        ) : (
+          <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-1.5 text-xs">
+            <Mini label="Vente TTC" value={formatEuro(d.montantTotal)} color="text-blue-600" />
+            <Mini label="Vente HT" value={formatEuro(d.montantHt)} color="text-cyan-600" />
+            {isAdmin && <Mini label="Marge TTC" value={formatEuro(d.margeTtc)} color={d.margeTtc >= 0 ? 'text-emerald-600' : 'text-rose-600'} />}
+            {!isAdmin && <Mini label="Financement" value={d.financement} color="text-violet-600" />}
+            {!isAdmin && (() => {
+              if (dossierProduits.length > 1) {
+                return <Mini label="Produits" value={`${dossierProduits.length} installations`} color="text-amber-600" />;
+              }
+              const p = findProduit(produits, dossierProduits[0]?.type);
+              const val = p.autoTarif && dossierProduits[0]?.puissance ? `${p.emoji} ${dossierProduits[0].puissance} Wc` : `${p.emoji} ${p.label}`;
+              return <Mini label="Produit" value={val} color="text-amber-600" />;
+            })()}
+          </div>
+        )}
         {/* INTERVENANTS — bloc unifié : poseurs + régies + fournisseurs côte à côte */}
         {isAdmin && ((d.poseursDetail?.length || 0) + (d.regiesDetail?.length || 0) + (d.fournisseursDetail?.length || 0) > 0) && (
           <div className="mt-1.5 grid grid-cols-1 md:grid-cols-3 gap-1.5">
