@@ -104,21 +104,27 @@ export default async function handler(req, res) {
       }
 
       // Création normale (bootstrap → 1er admin, ou admin connecté → autre user)
-      const { email, password, display_name, emoji, role } = body;
+      const { email, password, display_name, emoji, role, linkedTo } = body;
       if (!email || !password) return json(res, 400, { error: 'email et password requis' });
       if (String(password).length < 6) return json(res, 400, { error: 'mot de passe min 6 caractères' });
 
       const finalRole = isBootstrap ? 'admin' : (role || 'commercial');
 
+      const userMeta = {
+        display_name: (display_name || String(email).split('@')[0]).trim(),
+        emoji: (emoji || '👤').trim(),
+        role: finalRole,
+      };
+      // Rattachement poseur/régie : nom de l'entité dont ce compte voit les dossiers.
+      if ((finalRole === 'poseur' || finalRole === 'regie') && linkedTo) {
+        userMeta.linkedTo = String(linkedTo).trim();
+      }
+
       const { data, error } = await admin.auth.admin.createUser({
         email: String(email).trim(),
         password: String(password),
         email_confirm: true,
-        user_metadata: {
-          display_name: (display_name || String(email).split('@')[0]).trim(),
-          emoji: (emoji || '👤').trim(),
-          role: finalRole,
-        },
+        user_metadata: userMeta,
       });
       if (error) throw error;
       return json(res, 200, { user: data.user, bootstrapped: isBootstrap });
