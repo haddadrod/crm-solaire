@@ -1439,6 +1439,34 @@ export default function DossierSaisie({ authUser, onLogout }) {
       return (b.dateInsta || '').localeCompare(a.dateInsta || '');
     });
 
+  const isPoseur = currentUserRole === 'poseur';
+
+  // Récap financier du poseur connecté : ce que l'entreprise lui doit / lui a payé.
+  // Chaque ligne = un chantier où il apparaît dans d.poseursDetail.
+  const poseurRecap = useMemo(() => {
+    if (!isPoseur || !currentUser) return null;
+    const lignes = [];
+    let totalDu = 0, totalPaye = 0;
+    dossiersEnriched.forEach(d => {
+      (d.poseursDetail || []).forEach(p => {
+        if (p.nom !== currentUser) return;
+        const ttc = p.ttc || 0;
+        if (p.paye) totalPaye += ttc; else totalDu += ttc;
+        lignes.push({
+          localId: d.localId,
+          client: `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)',
+          ville: d.ville || '',
+          dateInsta: d.dateInsta || '',
+          ttc,
+          paye: !!p.paye,
+          datePaye: p.datePaye || '',
+        });
+      });
+    });
+    lignes.sort((a, b) => Number(a.paye) - Number(b.paye) || (b.dateInsta || '').localeCompare(a.dateInsta || ''));
+    return { lignes, totalDu, totalPaye, total: totalDu + totalPaye };
+  }, [isPoseur, currentUser, dossiersEnriched]);
+
   // Dossier actuellement affiché dans le modal documents
   const currentDocsDossier = useMemo(() =>
     showDocsForId ? dossiers.find(d => d.localId === showDocsForId) : null,
@@ -1598,6 +1626,53 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {/* DOSSIERS / ARCHIVES — même vue, filtre auto */}
         {(activeTab === 'dossiers' || activeTab === 'archives') && (
           <>
+            {/* RÉCAP POSEUR — ce que l'entreprise lui doit / lui a payé */}
+            {isPoseur && poseurRecap && activeTab === 'dossiers' && (
+              <div className="bg-white rounded-3xl shadow-md border-2 border-amber-200 overflow-hidden mb-4">
+                <div className="p-4 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50">
+                  <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                    🔧 Mes chantiers — récap paiements
+                  </h2>
+                  <p className="text-xs text-slate-500 mt-0.5">Ce que l'entreprise vous doit et ce qui a déjà été réglé.</p>
+                </div>
+                <div className="p-4">
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-2xl p-4 text-white">
+                      <div className="text-xs font-semibold opacity-90 uppercase">⏳ Reste à vous payer</div>
+                      <div className="text-2xl font-bold mt-1">{formatEuro(poseurRecap.totalDu)}</div>
+                    </div>
+                    <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-4 text-white">
+                      <div className="text-xs font-semibold opacity-90 uppercase">✓ Déjà payé</div>
+                      <div className="text-2xl font-bold mt-1">{formatEuro(poseurRecap.totalPaye)}</div>
+                    </div>
+                  </div>
+                  {poseurRecap.lignes.length === 0 ? (
+                    <div className="text-center py-6 text-slate-400 text-sm">Aucun chantier pour le moment.</div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {poseurRecap.lignes.map((l, i) => (
+                        <div key={i} className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-sm ${l.paye ? 'bg-emerald-50 border-emerald-200' : 'bg-orange-50 border-orange-200'}`}>
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <span className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${l.paye ? 'bg-emerald-500' : 'bg-orange-500'}`}>
+                              {l.paye && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                            </span>
+                            <span className="font-semibold text-slate-700 truncate">{l.client}</span>
+                            {l.ville && <span className="text-[11px] text-slate-400 truncate">📍 {l.ville}</span>}
+                            {l.dateInsta && <span className="text-[10px] text-slate-400">📅 {formatDateForSheet(l.dateInsta)}</span>}
+                          </div>
+                          <div className="flex items-center gap-2 flex-shrink-0">
+                            <span className={`font-bold ${l.paye ? 'text-emerald-700' : 'text-orange-700'}`}>{formatEuro(l.ttc)}</span>
+                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${l.paye ? 'bg-emerald-200 text-emerald-800' : 'bg-orange-200 text-orange-800'}`}>
+                              {l.paye ? `✓ Payé${l.datePaye ? ' · ' + formatDateForSheet(l.datePaye) : ''}` : '⏳ En attente'}
+                            </span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
             {activeTab === 'archives' && (
               <div className="bg-gradient-to-r from-slate-100 to-gray-100 border border-slate-300 rounded-2xl p-3 mb-3 flex items-center gap-3">
                 <Check className="w-5 h-5 text-slate-600 flex-shrink-0" />
@@ -1719,7 +1794,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <p className="text-slate-500 text-sm">{dossiers.length === 0 ? 'Cliquez sur "Nouveau dossier" pour commencer' : 'Modifiez vos filtres'}</p>
                 </div>
               ) : (
-                filteredDossiers.map(d => <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} />)
+                filteredDossiers.map(d => <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur} />)
               )}
             </div>
 
@@ -1974,7 +2049,7 @@ function StatusBreakdown({ dossiers, STATUTS, onSelect, filterStatut }) {
   );
 }
 
-function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs, onShowHist, onShowQuick, viewMode, isAdmin, produits }) {
+function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs, onShowHist, onShowQuick, viewMode, isAdmin, produits, readOnly }) {
   const docCount = (d.documents || []).length;
   // Migration en lecture : si pas de produits[], reconstruit depuis l'ancien format
   const dossierProduits = (d.produits && d.produits.length > 0)
@@ -2027,7 +2102,9 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
     return (
       <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border-l-4 px-3 py-2 flex items-center gap-2 flex-wrap" style={{ borderLeftColor: '#a855f7' }}>
         {d.id && <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex-shrink-0">#{d.id}</span>}
-        <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 text-sm hover:text-violet-600 hover:underline transition-colors text-left" title="Voir l'aperçu rapide">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>
+        {readOnly
+          ? <span className="font-bold text-slate-800 text-sm">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</span>
+          : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 text-sm hover:text-violet-600 hover:underline transition-colors text-left" title="Voir l'aperçu rapide">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>}
         {statut && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${statut.bg} ${statut.text}`}><span>{statut.emoji}</span>{statut.label}</span>}
         <span className="text-[11px] text-slate-500">📅 {formatDateForSheet(d.dateInsta)}</span>
         {(() => {
@@ -2048,12 +2125,16 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
               ({formatEuro(d.margeTtc)})
             </span>
           )}
-          <button onClick={() => onCopy(d)} className={`p-1 rounded ${isCopied ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50'}`}>
-            {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-          </button>
-          <DocsBtn size="small" /><HistBtn size="small" />
-          <button onClick={() => onEdit(d)} className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded"><Edit3 className="w-3.5 h-3.5" /></button>
-          {isAdmin && <button onClick={() => onDelete(d.localId)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>}
+          {!readOnly && (
+            <>
+              <button onClick={() => onCopy(d)} className={`p-1 rounded ${isCopied ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50'}`}>
+                {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              </button>
+              <DocsBtn size="small" /><HistBtn size="small" />
+              <button onClick={() => onEdit(d)} className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded"><Edit3 className="w-3.5 h-3.5" /></button>
+              {isAdmin && <button onClick={() => onDelete(d.localId)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>}
+            </>
+          )}
         </span>
       </div>
     );
@@ -2067,7 +2148,11 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           <div className="flex-1 min-w-[200px]">
             <div className="flex items-center gap-2 flex-wrap mb-1">
               {d.id && <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">#{d.id}</span>}
-              <h3 className="font-bold text-slate-800 text-sm"><button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="hover:text-violet-600 hover:underline transition-colors text-left" title="Voir l'aperçu rapide">{d.nom} {d.prenom && <span className="font-normal text-slate-600">{d.prenom}</span>}</button></h3>
+              <h3 className="font-bold text-slate-800 text-sm">
+                {readOnly
+                  ? <span>{d.nom} {d.prenom && <span className="font-normal text-slate-600">{d.prenom}</span>}</span>
+                  : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="hover:text-violet-600 hover:underline transition-colors text-left" title="Voir l'aperçu rapide">{d.nom} {d.prenom && <span className="font-normal text-slate-600">{d.prenom}</span>}</button>}
+              </h3>
               <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
                 💰 {formatEuro(d.montantTotal)}
               </span>
@@ -2147,11 +2232,15 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
             )}
           </div>
           <div className="flex items-center gap-0.5">
-            <button onClick={() => onCopy(d)} className={`p-1.5 rounded-lg ${isCopied ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50'}`}>
-              {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-            </button>
-            <DocsBtn /><HistBtn />
-            <button onClick={() => onEdit(d)} className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
+            {!readOnly && (
+              <>
+                <button onClick={() => onCopy(d)} className={`p-1.5 rounded-lg ${isCopied ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50'}`}>
+                  {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                </button>
+                <DocsBtn /><HistBtn />
+                <button onClick={() => onEdit(d)} className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
+              </>
+            )}
             {isAdmin && <button onClick={() => onDelete(d.localId)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>}
           </div>
         </div>
@@ -7810,6 +7899,7 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
 // non adminOnly (comportement par défaut).
 const ALERTES_PAR_ROLE = {
   envoi_finance: ['aEnvoyerBanque', 'financement', 'originaux'],
+  poseur: [], // le poseur ne voit aucune alerte
 };
 
 function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, isAdmin, currentUserRole, onClick }) {
@@ -7945,6 +8035,9 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
     if (whitelist) return whitelist.includes(b.type);
     return true;
   });
+
+  // Si le rôle n'a aucune alerte à voir (ex : poseur), on masque toute la barre.
+  if (visible.length === 0) return null;
 
   return (
     <div className="mb-5 flex items-center gap-2 flex-wrap">
