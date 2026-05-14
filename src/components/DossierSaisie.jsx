@@ -93,6 +93,33 @@ const readFileAsDataURL = (file) => new Promise((resolve, reject) => {
   reader.readAsDataURL(file);
 });
 
+// Compresse une image (downscale + ré-encodage JPEG) avant envoi à la fonction
+// serverless de scan. Garde le poids sous la limite Vercel et accélère l'analyse.
+// Renvoie { base64, mediaType }.
+const compressImageForUpload = (file, maxEdge = 2200, quality = 0.82) => new Promise((resolve, reject) => {
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    URL.revokeObjectURL(url);
+    let width = img.naturalWidth || img.width;
+    let height = img.naturalHeight || img.height;
+    const scale = Math.min(1, maxEdge / Math.max(width, height));
+    width = Math.max(1, Math.round(width * scale));
+    height = Math.max(1, Math.round(height * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0, width, height);
+    const dataUrl = canvas.toDataURL('image/jpeg', quality);
+    const base64 = (dataUrl.split(',')[1]) || '';
+    if (!base64) { reject(new Error('Conversion image impossible')); return; }
+    resolve({ base64, mediaType: 'image/jpeg' });
+  };
+  img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Image illisible')); };
+  img.src = url;
+});
+
 // Calcule le TTC d'un prestataire.
 // - Par défaut : TVA 20 % (TTC = HT × 1,2)
 // - Si `sansTva` est true (auto-entrepreneur, société étrangère, etc.) :
@@ -4587,6 +4614,63 @@ function FournisseursManager({ data, setData, dossiers }) {
 function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, currentUser, onClose, onSubmit, isAdmin }) {
   const inputCls = "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400 text-sm";
 
+  // Scan IA d'un bon de commande manuscrit → pré-remplissage du formulaire.
+  const [scanState, setScanState] = useState({ status: 'idle', error: '', result: null });
+  const scanBusy = scanState.status === 'compressing' || scanState.status === 'analyzing';
+
+  const handleScanBon = async (file) => {
+    if (!file) return;
+    if (!file.type || !file.type.startsWith('image/')) {
+      setScanState({ status: 'error', error: 'Choisis une photo (JPEG, PNG).', result: null });
+      return;
+    }
+    setScanState({ status: 'compressing', error: '', result: null });
+    try {
+      const { base64, mediaType } = await compressImageForUpload(file);
+      setScanState({ status: 'analyzing', error: '', result: null });
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/extract-bon', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ imageBase64: base64, mediaType }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      const d = payload.data || {};
+      // Pré-remplit le formulaire — uniquement les champs reconnus, le reste est conservé.
+      setFormData(prev => {
+        const next = { ...prev };
+        if (d.nom) next.nom = String(d.nom).toUpperCase();
+        if (d.prenom) next.prenom = String(d.prenom);
+        if (d.adresse) next.adresse = String(d.adresse);
+        if (d.codePostal) next.codePostal = String(d.codePostal);
+        if (d.ville) next.ville = String(d.ville).toUpperCase();
+        if (d.telephone) next.telephone = String(d.telephone);
+        if (d.email) next.email = String(d.email);
+        if (d.financement) next.financement = String(d.financement).toUpperCase();
+        if (d.dateSignature) next.dateSignature = String(d.dateSignature);
+        const ttc = parseFloat(d.montantTTC);
+        if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
+        const ht = parseFloat(d.montantHT);
+        if (!isNaN(ht) && ht > 0) next.montantHtCustom = String(ht);
+        const p = parseInt(String(d.puissance || '').replace(/\D/g, ''), 10);
+        if (p > 0) {
+          const prods = (prev.produits && prev.produits.length > 0)
+            ? [...prev.produits]
+            : [{ type: 'PANNEAU_SOLAIRE', puissance: 0, description: '' }];
+          prods[0] = { ...prods[0], puissance: p };
+          next.produits = prods;
+        }
+        return next;
+      });
+      setScanState({ status: 'done', error: '', result: d });
+    } catch (e) {
+      setScanState({ status: 'error', error: e.message || 'Erreur inconnue', result: null });
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -4598,6 +4682,45 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         </div>
 
         <div className="p-6 space-y-5">
+          {/* SCAN IA — bon de commande manuscrit */}
+          {!editingId && (
+            <div
+              onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f && !scanBusy) handleScanBon(f); }}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              className="rounded-2xl border-2 border-dashed border-violet-300 bg-violet-50 p-4"
+            >
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className={`px-4 py-2.5 rounded-xl font-semibold text-white text-sm shadow-md flex items-center gap-2 ${scanBusy ? 'bg-slate-400 cursor-wait' : 'bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 cursor-pointer'}`}>
+                  <Sparkles className="w-4 h-4" />
+                  {scanState.status === 'compressing' ? '⏳ Préparation…'
+                    : scanState.status === 'analyzing' ? '🤖 Lecture en cours…'
+                    : '📷 Scanner un bon de commande'}
+                  <input type="file" accept="image/*" capture="environment" className="hidden" disabled={scanBusy} onChange={(e) => handleScanBon(e.target.files?.[0])} />
+                </label>
+                <span className="text-xs text-slate-500 flex-1 min-w-[200px]">
+                  Prends en photo le bon de commande rempli à la main — l'IA pré-remplit le formulaire. Tu pourras tout corriger ensuite.
+                </span>
+              </div>
+              {scanState.status === 'error' && (
+                <div className="mt-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                  ⚠️ {scanState.error}
+                </div>
+              )}
+              {scanState.status === 'done' && scanState.result && (
+                <div className="mt-2 text-xs bg-white border border-violet-200 rounded-lg px-3 py-2">
+                  <div className="font-semibold text-slate-700">
+                    {scanState.result.confiance === 'haute' ? '🟢 Lecture fiable'
+                      : scanState.result.confiance === 'moyenne' ? '🟡 À vérifier'
+                      : '🔴 Lecture difficile — vérifie bien tous les champs'}
+                    {' '}— formulaire pré-rempli ci-dessous.
+                  </div>
+                  {scanState.result.remarques && (
+                    <div className="text-slate-500 mt-0.5">📝 {scanState.result.remarques}</div>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
           <Section title="👤 Identité & Coordonnées" color="violet">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
               <Field label="ID dossier"><input type="text" value={formData.id} onChange={(e) => setFormData({ ...formData, id: e.target.value })} placeholder="62007" className={inputCls} /></Field>
