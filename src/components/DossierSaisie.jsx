@@ -336,6 +336,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [activeTab, setActiveTab] = useState('dossiers');
   const [statutsOrder, setStatutsOrder] = useState(STATUTS.map(s => s.id));
   const [tarifsPoseurs, setTarifsPoseurs] = useState(TARIFS_POSEURS_DEFAULT);
+  const [poseursContacts, setPoseursContacts] = useState({}); // { nomPoseur: 'téléphone' } — pour l'envoi WhatsApp
   const [tarifsRegies, setTarifsRegies] = useState(TARIFS_REGIES_DEFAULT);
   const [tarifsInternes, setTarifsInternes] = useState(TARIFS_INTERNES_DEFAULT);
   const [nomsInternes, setNomsInternes] = useState(NOMS_INTERNES_DEFAULT);
@@ -705,6 +706,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (r?.value) setTarifsRegies(JSON.parse(r.value));
       } catch (e) {}
       try {
+        const r = await window.storage.get('poseurs-contacts');
+        if (r?.value) {
+          const obj = JSON.parse(r.value);
+          if (obj && typeof obj === 'object') setPoseursContacts(obj);
+        }
+      } catch (e) {}
+      try {
         const r = await window.storage.get('tarifs-internes');
         if (r?.value) setTarifsInternes({ ...TARIFS_INTERNES_DEFAULT, ...JSON.parse(r.value) });
       } catch (e) {}
@@ -773,7 +781,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     window.storage.set('noms-internes', JSON.stringify(nomsInternes)).catch(() => {});
     window.storage.set('liste-fournisseurs', JSON.stringify(listeFournisseurs)).catch(() => {});
     window.storage.set('produits', JSON.stringify(produits)).catch(() => {});
-  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, produits, loading]);
+    window.storage.set('poseurs-contacts', JSON.stringify(poseursContacts)).catch(() => {});
+  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, produits, poseursContacts, loading]);
 
   // Si l'utilisateur n'a pas accès à l'onglet courant, retour aux dossiers
   useEffect(() => {
@@ -1886,6 +1895,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             listeFournisseurs={listeFournisseurs} setListeFournisseurs={setListeFournisseurs}
             produits={produits} setProduits={setProduits}
             users={users} setUsers={setUsers}
+            poseursContacts={poseursContacts} setPoseursContacts={setPoseursContacts}
           />
         )}
 
@@ -1980,6 +1990,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             produits={produits}
             isAdmin={isAdmin}
             permissions={permissions}
+            poseursContacts={poseursContacts}
           />
         )}
 
@@ -3636,7 +3647,7 @@ function PerfList({ titre, data, medal, border, header, iconColor }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, produits, setProduits, users, setUsers }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts }) {
   const [section, setSection] = useState('statuts');
   // Nombre de comptes Supabase, remonté par UsersManager pour le badge de l'onglet.
   const [usersCount, setUsersCount] = useState(null);
@@ -3747,7 +3758,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'poseurs' && (
-        <PrestataireManager titre="🔧 Poseurs" description="Tarifs HT — saisissez vos vrais tarifs" data={tarifsPoseurs} setData={setTarifsPoseurs} dossiers={dossiers} dossierField="poseur" type="poseur" produits={produits} />
+        <PrestataireManager titre="🔧 Poseurs" description="Tarifs HT — saisissez vos vrais tarifs" data={tarifsPoseurs} setData={setTarifsPoseurs} dossiers={dossiers} dossierField="poseur" type="poseur" produits={produits} contacts={poseursContacts} setContacts={setPoseursContacts} />
       )}
 
       {section === 'fournisseurs' && (
@@ -3877,7 +3888,7 @@ function CommissionsInternesManager({ tarifs, setTarifs, noms, setNoms, dossiers
   );
 }
 
-function PrestataireManager({ titre, description, data, setData, dossiers, dossierField, type, produits }) {
+function PrestataireManager({ titre, description, data, setData, dossiers, dossierField, type, produits, contacts, setContacts }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
   const noms = Object.keys(data);
@@ -3899,6 +3910,13 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     const nd = {};
     Object.keys(data).forEach(k => { nd[k === oldN ? c : k] = data[k]; });
     setData(nd);
+    // Migre aussi le contact (téléphone) si présent
+    if (setContacts && contacts && contacts[oldN] !== undefined) {
+      const nc = { ...contacts };
+      nc[c] = nc[oldN];
+      delete nc[oldN];
+      setContacts(nc);
+    }
   };
 
   const del = (nom) => {
@@ -3909,6 +3927,18 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     const msg = used > 0 ? `⚠️ "${nom}" utilisé dans ${used} dossier(s). Supprimer ?` : `Supprimer "${nom}" ?`;
     if (!window.confirm(msg)) return;
     const nd = { ...data }; delete nd[nom]; setData(nd);
+    if (setContacts && contacts && contacts[nom] !== undefined) {
+      const nc = { ...contacts }; delete nc[nom]; setContacts(nc);
+    }
+  };
+
+  // Met à jour le téléphone d'un prestataire (utilisé pour l'envoi WhatsApp).
+  const updateContact = (nom, tel) => {
+    if (!setContacts) return;
+    const nc = { ...(contacts || {}) };
+    const v = (tel || '').trim();
+    if (v) nc[nom] = v; else delete nc[nom];
+    setContacts(nc);
   };
 
   const updateTarif = (nom, key, v) => {
@@ -3963,6 +3993,16 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                       <tr key={nom} className="border-t border-slate-200 hover:bg-slate-50 group">
                         <td className="px-2 py-1.5 sticky left-0 bg-white group-hover:bg-slate-50 z-10 min-w-[140px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">
                           <input type="text" defaultValue={nom} onBlur={(e) => rename(nom, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="w-full px-2 py-1 bg-transparent border border-transparent hover:border-slate-300 focus:border-violet-400 focus:bg-white focus:outline-none rounded text-xs font-semibold" />
+                          {setContacts && (
+                            <input
+                              type="tel"
+                              defaultValue={(contacts || {})[nom] || ''}
+                              onBlur={(e) => updateContact(nom, e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              placeholder="📞 tél. (WhatsApp)"
+                              className="w-full mt-1 px-2 py-0.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                            />
+                          )}
                         </td>
                         {PUISSANCES_PRINCIPALES.map(p => {
                           const isExact = data[nom][p] !== undefined;
@@ -6447,7 +6487,18 @@ function HistoriqueModal({ dossier, onClose }) {
 
 // ===================== PANNEAU APERÇU RAPIDE (Slide-in droite) =====================
 
-function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions }) {
+// Construit un lien WhatsApp "click to chat" : ouvre WhatsApp avec le message
+// pré-rempli, adressé au numéro donné. Normalise le numéro au format
+// international (ex: "06 12 34 56 78" → "33612345678").
+const buildWhatsAppLink = (phone, message) => {
+  let n = String(phone || '').replace(/[^\d+]/g, '');
+  if (n.startsWith('+')) n = n.slice(1);
+  else if (n.startsWith('00')) n = n.slice(2);
+  else if (n.startsWith('0')) n = '33' + n.slice(1); // numéro français
+  return `https://wa.me/${n}?text=${encodeURIComponent(message)}`;
+};
+
+function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts }) {
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
   const canSeeMarges = isAdmin || permissions?.voirMarges === true;
@@ -7414,7 +7465,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               </button>
             </div>
             <div className="space-y-1.5">
-              {(d.poseurs || []).map((p, i) => (
+              {(d.poseurs || []).map((p, i) => {
+                const poseurTel = p.nom && poseursContacts ? poseursContacts[p.nom] : '';
+                return (
                 <div key={i} className={`rounded-xl p-2 space-y-1 border ${p.paye ? 'bg-emerald-50 border-emerald-300' : 'bg-amber-50 border-amber-200'}`}>
                   <div className="flex items-center gap-1.5">
                     <select value={p.nom || ''} onChange={(e) => updatePoseur(i, { nom: e.target.value })} className="flex-1 min-w-0 px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-bold text-amber-800">
@@ -7425,6 +7478,32 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
+                  {/* Bouton WhatsApp — envoie le chantier au poseur */}
+                  {p.nom && (
+                    poseurTel ? (
+                      <a
+                        href={buildWhatsAppLink(poseurTel, [
+                          `🔧 Nouveau chantier à poser`,
+                          ``,
+                          `Client : ${(d.nom || '').toUpperCase()} ${d.prenom || ''}`.trim(),
+                          (d.adresse || d.ville) ? `📍 ${[d.adresse, d.codePostal, d.ville].filter(Boolean).join(', ')}` : '',
+                          d.telephone ? `📞 Client : ${d.telephone}` : '',
+                          d.dateInsta ? `📅 Pose prévue : ${formatDateForSheet(d.dateInsta)}` : '',
+                          d.puissance ? `☀️ Matériel : ${d.puissance} Wc` : '',
+                        ].filter(Boolean).join('\n'))}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded-lg text-[10px] font-bold"
+                        title={`Envoyer le chantier à ${p.nom} sur WhatsApp`}
+                      >
+                        <span className="text-sm">📲</span> Envoyer sur WhatsApp
+                      </a>
+                    ) : (
+                      <div className="text-[9px] text-slate-400 italic px-1">
+                        💡 Ajoute le n° de {p.nom} dans Réglages → Poseurs pour l'envoi WhatsApp
+                      </div>
+                    )
+                  )}
                   {canSeeMarges && (
                     <div>
                       <label className="block text-[9px] font-semibold text-amber-600 uppercase mb-0.5">💰 HT (€) <span className="text-amber-500 font-normal">— pas de TVA sur les poseurs</span></label>
@@ -7450,7 +7529,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     </button>
                   )}
                 </div>
-              ))}
+                );
+              })}
               {(d.poseurs || []).length === 0 && (
                 <div className="text-center py-2 text-slate-400 italic text-[11px] bg-slate-50 rounded-xl">Aucun poseur</div>
               )}
