@@ -3611,12 +3611,15 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
         <div className="grid grid-cols-2 md:grid-cols-6 gap-2">
           {sections.map(s => {
             const sel = section === s.id;
+            // Pas de compteur pour "utilisateurs" : les vrais comptes sont
+            // chargés dans UsersManager (Supabase), ReglagesView ne les a pas.
             const count = s.id === 'statuts' ? STATUTS_ORDERED.length
-                        : s.id === 'utilisateurs' ? users.length
+                        : s.id === 'utilisateurs' ? null
                         : s.id === 'produits' ? produits.length
                         : s.id === 'poseurs' ? Object.keys(tarifsPoseurs).length
                         : s.id === 'fournisseurs' ? listeFournisseurs.length
-                        : Object.keys(tarifsRegies).length;
+                        : s.id === 'regies' ? Object.keys(tarifsRegies).length
+                        : null;
             return (
               <button
                 key={s.id}
@@ -3629,9 +3632,11 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
               >
                 <span className="text-lg">{s.emoji}</span>
                 <span>{s.label}</span>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${sel ? 'bg-white/30' : 'bg-white text-slate-700'}`}>
-                  {count}
-                </span>
+                {count !== null && (
+                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${sel ? 'bg-white/30' : 'bg-white text-slate-700'}`}>
+                    {count}
+                  </span>
+                )}
               </button>
             );
           })}
@@ -4196,6 +4201,28 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
     setLoadingSupabase(false);
   };
 
+  // Met à jour le nom affiché et/ou l'emoji d'un compte Supabase.
+  const updateSupabaseUserMeta = async (user, patch) => {
+    const existingMeta = user.user_metadata || {};
+    const next = { ...existingMeta, ...patch };
+    // Pas de changement réel → on ne fait rien
+    if (Object.keys(patch).every(k => (existingMeta[k] || '') === (patch[k] || ''))) return;
+    setLoadingSupabase(true);
+    setSupabaseError('');
+    setSupabaseSuccess('');
+    try {
+      await callUsersApi('PATCH', {
+        body: { user_id: user.id, user_metadata: next },
+      });
+      setSupabaseSuccess(`✅ Compte ${user.email} mis à jour`);
+      await fetchSupabaseUsers();
+    } catch (e) {
+      setSupabaseError(`Erreur : ${e.message}`);
+      console.error(e);
+    }
+    setLoadingSupabase(false);
+  };
+
   // Génère un mot de passe simple aléatoire
   const generatePassword = () => {
     const adjectifs = ['Soleil', 'Vert', 'Solaire', 'Brillant', 'Energie'];
@@ -4325,10 +4352,27 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                     const roleInfo = ROLES.find(r => r.id === role) || ROLES[1];
                     return (
                       <div key={u.id} className="rounded-xl border border-slate-200 bg-white p-3 flex items-center gap-3 flex-wrap">
-                        <div className="text-2xl">{emoji}</div>
+                        <input
+                          type="text"
+                          defaultValue={emoji}
+                          onBlur={(e) => updateSupabaseUserMeta(u, { emoji: e.target.value.slice(0, 4) || '👤' })}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                          maxLength={4}
+                          disabled={loadingSupabase}
+                          className="w-11 px-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-center text-lg"
+                          title="Emoji du compte"
+                        />
                         <div className="flex-1 min-w-[180px]">
-                          <div className="font-bold text-sm text-slate-800">{displayName}</div>
-                          <div className="text-[11px] text-slate-500">{u.email}</div>
+                          <input
+                            type="text"
+                            defaultValue={displayName}
+                            onBlur={(e) => { const v = e.target.value.trim(); if (v) updateSupabaseUserMeta(u, { display_name: v }); }}
+                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                            disabled={loadingSupabase}
+                            className="w-full font-bold text-sm text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-slate-300 focus:bg-slate-50 rounded px-1 py-0.5"
+                            title="Nom affiché — clique pour modifier"
+                          />
+                          <div className="text-[11px] text-slate-500 px-1">{u.email}</div>
                         </div>
                         <select
                           value={role}
