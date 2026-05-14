@@ -368,6 +368,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Rôle effectif = override de preview si actif, sinon rôle réel Supabase.
   const currentUserRole = (canPreviewRole && viewAsRole) ? viewAsRole : authUserRole;
 
+  // Entité rattachée (pour les rôles poseur / régie) : nom du poseur ou de la
+  // régie auquel le compte est lié. Stocké dans user_metadata.linkedTo.
+  // Fallback : le display_name (rétrocompat avec les comptes créés avant).
+  const currentUserLinkedTo = authUser?.user_metadata?.linkedTo || currentUser;
+
   // Admin = rôle effectif === 'admin'. En mode preview, basculer en non-admin
   // débloque les autres rendus pour validation visuelle.
   const isAdmin = currentUserRole === 'admin';
@@ -423,6 +428,21 @@ export default function DossierSaisie({ authUser, onLogout }) {
           cocherPaiements: false,
           voirCA: false,
           filtreDossiers: 'chantiers',
+        };
+      case 'regie':
+        return {
+          voirTousDossiers: false,
+          voirMarges: false,
+          voirBLFactures: false,
+          creerDossier: false,
+          supprimerDossier: false,
+          modifierTous: false,
+          voirRapportPaiements: false,
+          voirDashboard: false,
+          voirReglages: false,
+          cocherPaiements: false,
+          voirCA: false,
+          filtreDossiers: 'regies',
         };
       case 'compta':
         return {
@@ -1414,8 +1434,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
         return d.createdBy === currentUser;
       }
       if (permissions.filtreDossiers === 'chantiers') {
-        // Poseur : voit les dossiers où il est dans la liste des poseurs
-        return (d.poseurs || []).some(p => p.nom === currentUser);
+        // Poseur : voit les dossiers où son entité rattachée est poseur
+        return (d.poseurs || []).some(p => p.nom === currentUserLinkedTo);
+      }
+      if (permissions.filtreDossiers === 'regies') {
+        // Régie : voit les dossiers où son entité rattachée est régie
+        return (d.regies || []).some(r => r.nom === currentUserLinkedTo);
       }
       return true;
     })
@@ -1440,16 +1464,19 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
 
   const isPoseur = currentUserRole === 'poseur';
+  const isRegie = currentUserRole === 'regie';
 
-  // Récap financier du poseur connecté : ce que l'entreprise lui doit / lui a payé.
-  // Chaque ligne = un chantier où il apparaît dans d.poseursDetail.
-  const poseurRecap = useMemo(() => {
-    if (!isPoseur || !currentUser) return null;
+  // Récap financier du poseur OU de la régie connecté(e) : ce que l'entreprise
+  // lui doit / lui a payé. Chaque ligne = un dossier où son entité rattachée
+  // apparaît (dans poseursDetail ou regiesDetail selon le rôle).
+  const prestaRecap = useMemo(() => {
+    if (!(isPoseur || isRegie) || !currentUserLinkedTo) return null;
+    const detailKey = isPoseur ? 'poseursDetail' : 'regiesDetail';
     const lignes = [];
     let totalDu = 0, totalPaye = 0;
     dossiersEnriched.forEach(d => {
-      (d.poseursDetail || []).forEach(p => {
-        if (p.nom !== currentUser) return;
+      (d[detailKey] || []).forEach(p => {
+        if (p.nom !== currentUserLinkedTo) return;
         const ttc = p.ttc || 0;
         if (p.paye) totalPaye += ttc; else totalDu += ttc;
         lignes.push({
@@ -1464,8 +1491,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       });
     });
     lignes.sort((a, b) => Number(a.paye) - Number(b.paye) || (b.dateInsta || '').localeCompare(a.dateInsta || ''));
-    return { lignes, totalDu, totalPaye, total: totalDu + totalPaye };
-  }, [isPoseur, currentUser, dossiersEnriched]);
+    return { lignes, totalDu, totalPaye, total: totalDu + totalPaye, label: isPoseur ? 'Mes chantiers' : 'Mes dossiers' };
+  }, [isPoseur, isRegie, currentUserLinkedTo, dossiersEnriched]);
 
   // Dossier actuellement affiché dans le modal documents
   const currentDocsDossier = useMemo(() =>
@@ -1531,6 +1558,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   commercial: { emoji: '💼', label: 'Commercial', bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
                   envoi_finance: { emoji: '🏦', label: 'Envoi finance', bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-300' },
                   poseur: { emoji: '🔧', label: 'Poseur', bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-300' },
+                  regie: { emoji: '🤝', label: 'Régie', bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
                   compta: { emoji: '💰', label: 'Compta', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
                 };
                 const r = currentUserRole && roleMeta[currentUserRole];
@@ -1557,6 +1585,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     <option value="commercial">💼 Commercial</option>
                     <option value="envoi_finance">🏦 Envoi finance</option>
                     <option value="poseur">🔧 Poseur</option>
+                    <option value="regie">🤝 Régie</option>
                     <option value="compta">💰 Compta</option>
                   </select>
                   <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-sm">👁️</span>
@@ -1626,12 +1655,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {/* DOSSIERS / ARCHIVES — même vue, filtre auto */}
         {(activeTab === 'dossiers' || activeTab === 'archives') && (
           <>
-            {/* RÉCAP POSEUR — ce que l'entreprise lui doit / lui a payé */}
-            {isPoseur && poseurRecap && activeTab === 'dossiers' && (
+            {/* RÉCAP POSEUR / RÉGIE — ce que l'entreprise lui doit / lui a payé */}
+            {(isPoseur || isRegie) && prestaRecap && activeTab === 'dossiers' && (
               <div className="bg-white rounded-3xl shadow-md border-2 border-amber-200 overflow-hidden mb-4">
                 <div className="p-4 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50">
                   <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                    🔧 Mes chantiers — récap paiements
+                    {isPoseur ? '🔧' : '🤝'} {prestaRecap.label} — récap paiements
                   </h2>
                   <p className="text-xs text-slate-500 mt-0.5">Ce que l'entreprise vous doit et ce qui a déjà été réglé.</p>
                 </div>
@@ -1639,18 +1668,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <div className="grid grid-cols-2 gap-3 mb-4">
                     <div className="bg-gradient-to-br from-orange-500 to-red-500 rounded-2xl p-4 text-white">
                       <div className="text-xs font-semibold opacity-90 uppercase">⏳ Reste à vous payer</div>
-                      <div className="text-2xl font-bold mt-1">{formatEuro(poseurRecap.totalDu)}</div>
+                      <div className="text-2xl font-bold mt-1">{formatEuro(prestaRecap.totalDu)}</div>
                     </div>
                     <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-4 text-white">
                       <div className="text-xs font-semibold opacity-90 uppercase">✓ Déjà payé</div>
-                      <div className="text-2xl font-bold mt-1">{formatEuro(poseurRecap.totalPaye)}</div>
+                      <div className="text-2xl font-bold mt-1">{formatEuro(prestaRecap.totalPaye)}</div>
                     </div>
                   </div>
-                  {poseurRecap.lignes.length === 0 ? (
-                    <div className="text-center py-6 text-slate-400 text-sm">Aucun chantier pour le moment.</div>
+                  {prestaRecap.lignes.length === 0 ? (
+                    <div className="text-center py-6 text-slate-400 text-sm">Aucun dossier pour le moment.</div>
                   ) : (
                     <div className="space-y-1.5">
-                      {poseurRecap.lignes.map((l, i) => (
+                      {prestaRecap.lignes.map((l, i) => (
                         <div key={i} className={`flex items-center justify-between gap-2 px-3 py-2 rounded-xl border text-sm ${l.paye ? 'bg-emerald-50 border-emerald-200' : 'bg-orange-50 border-orange-200'}`}>
                           <div className="flex items-center gap-2 min-w-0 flex-1">
                             <span className={`w-5 h-5 rounded flex items-center justify-center flex-shrink-0 ${l.paye ? 'bg-emerald-500' : 'bg-orange-500'}`}>
@@ -1794,7 +1823,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <p className="text-slate-500 text-sm">{dossiers.length === 0 ? 'Cliquez sur "Nouveau dossier" pour commencer' : 'Modifiez vos filtres'}</p>
                 </div>
               ) : (
-                filteredDossiers.map(d => <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur} />)
+                filteredDossiers.map(d => <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} />)
               )}
             </div>
 
@@ -3659,7 +3688,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'utilisateurs' && (
-        <UsersManager users={users} setUsers={setUsers} dossiers={dossiers} />
+        <UsersManager users={users} setUsers={setUsers} dossiers={dossiers} poseursList={Object.keys(tarifsPoseurs)} regiesList={Object.keys(tarifsRegies)} />
       )}
 
       {section === 'produits' && (
@@ -3960,13 +3989,14 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
   );
 }
 
-function UsersManager({ users, setUsers, dossiers }) {
+function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList = [] }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newEmoji, setNewEmoji] = useState('👤');
   const [newRole, setNewRole] = useState('commercial');
+  const [newLinkedTo, setNewLinkedTo] = useState(''); // poseur/régie rattaché
   const [supabaseUsers, setSupabaseUsers] = useState([]);
   const [loadingSupabase, setLoadingSupabase] = useState(false);
   const [supabaseError, setSupabaseError] = useState('');
@@ -3977,7 +4007,8 @@ function UsersManager({ users, setUsers, dossiers }) {
     { id: 'admin', label: '👑 Admin', desc: 'Accès complet, voit tout, fait tout', color: 'bg-violet-100 text-violet-700 border-violet-300' },
     { id: 'commercial', label: '💼 Commercial', desc: 'Voit tous les dossiers, sans les marges ni les coûts', color: 'bg-blue-100 text-blue-700 border-blue-300' },
     { id: 'envoi_finance', label: '🏦 Envoi finance', desc: 'Gère l\'envoi des dossiers aux banques, sans compta ni tableau de bord', color: 'bg-rose-100 text-rose-700 border-rose-300' },
-    { id: 'poseur', label: '🔧 Poseur', desc: 'Voit ses chantiers à poser, sans prix', color: 'bg-amber-100 text-amber-700 border-amber-300' },
+    { id: 'poseur', label: '🔧 Poseur', desc: 'Voit uniquement ses chantiers + récap paiements, lecture seule', color: 'bg-amber-100 text-amber-700 border-amber-300' },
+    { id: 'regie', label: '🤝 Régie', desc: 'Voit uniquement ses dossiers + récap paiements, lecture seule', color: 'bg-purple-100 text-purple-700 border-purple-300' },
     { id: 'compta', label: '💰 Compta', desc: 'Gère les paiements et factures', color: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
   ];
 
@@ -4053,27 +4084,31 @@ function UsersManager({ users, setUsers, dossiers }) {
       setSupabaseError('Le mot de passe doit faire au moins 6 caractères');
       return;
     }
+    if ((newRole === 'poseur' || newRole === 'regie') && !newLinkedTo) {
+      setSupabaseError(`Sélectionne le ${newRole === 'poseur' ? 'poseur' : 'la régie'} auquel ce compte est rattaché.`);
+      return;
+    }
     setLoadingSupabase(true);
     setSupabaseError('');
     setSupabaseSuccess('');
     try {
       const displayName = newName.trim() || newEmail.split('@')[0];
-      const data = await callUsersApi('POST', {
-        body: {
-          email: newEmail.trim(),
-          password: newPassword,
-          display_name: displayName,
-          emoji: newEmoji.trim() || '👤',
-          role: newRole,
-        },
-      });
+      const meta = {
+        email: newEmail.trim(),
+        password: newPassword,
+        display_name: displayName,
+        emoji: newEmoji.trim() || '👤',
+        role: newRole,
+      };
+      if (newRole === 'poseur' || newRole === 'regie') meta.linkedTo = newLinkedTo;
+      const data = await callUsersApi('POST', { body: meta });
       const bootstrapMsg = data.bootstrapped ? ' (1er compte → admin auto)' : '';
       setSupabaseSuccess(`✅ Compte créé pour ${newEmail.trim()}${bootstrapMsg} ! Mot de passe : ${newPassword}`);
       // Ajoute aussi dans la liste locale des users (pour les rôles dans le CRM)
       if (!users.find(u => u.name.toLowerCase() === displayName.toLowerCase())) {
         setUsers([...users, { name: displayName, emoji: newEmoji.trim() || '👤', role: data.bootstrapped ? 'admin' : newRole, email: newEmail.trim() }]);
       }
-      setNewName(''); setNewEmail(''); setNewPassword(''); setNewEmoji('👤'); setNewRole('commercial');
+      setNewName(''); setNewEmail(''); setNewPassword(''); setNewEmoji('👤'); setNewRole('commercial'); setNewLinkedTo('');
       setShowAdd(false);
       await fetchSupabaseUsers();
     } catch (e) {
@@ -4117,7 +4152,8 @@ function UsersManager({ users, setUsers, dossiers }) {
     setLoadingSupabase(false);
   };
 
-  // Change le rôle d'un compte Supabase (préserve display_name + emoji)
+  // Change le rôle d'un compte Supabase (préserve display_name + emoji).
+  // Si on quitte poseur/regie, on retire le rattachement devenu inutile.
   const updateSupabaseUserRole = async (user, newRole) => {
     if (newRole === (user.user_metadata?.role || '')) return;
     setLoadingSupabase(true);
@@ -4125,14 +4161,33 @@ function UsersManager({ users, setUsers, dossiers }) {
     setSupabaseSuccess('');
     try {
       const existingMeta = user.user_metadata || {};
+      const nextMeta = { ...existingMeta, role: newRole };
+      if (newRole !== 'poseur' && newRole !== 'regie') delete nextMeta.linkedTo;
       await callUsersApi('PATCH', {
-        body: {
-          user_id: user.id,
-          user_metadata: { ...existingMeta, role: newRole },
-        },
+        body: { user_id: user.id, user_metadata: nextMeta },
       });
       const label = (ROLES.find(r => r.id === newRole) || {}).label || newRole;
       setSupabaseSuccess(`✅ Rôle de ${user.email} → ${label}`);
+      await fetchSupabaseUsers();
+    } catch (e) {
+      setSupabaseError(`Erreur : ${e.message}`);
+      console.error(e);
+    }
+    setLoadingSupabase(false);
+  };
+
+  // Change l'entité rattachée (poseur/régie) d'un compte Supabase.
+  const updateSupabaseUserLinkedTo = async (user, linkedTo) => {
+    if (linkedTo === (user.user_metadata?.linkedTo || '')) return;
+    setLoadingSupabase(true);
+    setSupabaseError('');
+    setSupabaseSuccess('');
+    try {
+      const existingMeta = user.user_metadata || {};
+      await callUsersApi('PATCH', {
+        body: { user_id: user.id, user_metadata: { ...existingMeta, linkedTo } },
+      });
+      setSupabaseSuccess(`✅ ${user.email} rattaché à ${linkedTo || '(aucun)'}`);
       await fetchSupabaseUsers();
     } catch (e) {
       setSupabaseError(`Erreur : ${e.message}`);
@@ -4226,10 +4281,21 @@ function UsersManager({ users, setUsers, dossiers }) {
                     </div>
                     <div className="md:col-span-2">
                       <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Rôle</label>
-                      <select value={newRole} onChange={(e) => setNewRole(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold">
+                      <select value={newRole} onChange={(e) => { setNewRole(e.target.value); setNewLinkedTo(''); }} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold">
                         {ROLES.map(r => <option key={r.id} value={r.id}>{r.label} — {r.desc}</option>)}
                       </select>
                     </div>
+                    {(newRole === 'poseur' || newRole === 'regie') && (
+                      <div className="md:col-span-2">
+                        <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">
+                          Rattaché à {newRole === 'poseur' ? 'quel poseur' : 'quelle régie'} * <span className="text-slate-400 normal-case font-normal">— ce compte ne verra que ces dossiers</span>
+                        </label>
+                        <select value={newLinkedTo} onChange={(e) => setNewLinkedTo(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold">
+                          <option value="">— Choisir {newRole === 'poseur' ? 'le poseur' : 'la régie'} —</option>
+                          {(newRole === 'poseur' ? poseursList : regiesList).map(n => <option key={n} value={n}>{n}</option>)}
+                        </select>
+                      </div>
+                    )}
                   </div>
                   <div className="mt-3 flex gap-2 justify-end">
                     <button onClick={() => { setShowAdd(false); setNewEmail(''); setNewPassword(''); setNewName(''); setSupabaseError(''); }} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-semibold">Annuler</button>
@@ -4273,6 +4339,18 @@ function UsersManager({ users, setUsers, dossiers }) {
                         >
                           {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
                         </select>
+                        {(role === 'poseur' || role === 'regie') && (
+                          <select
+                            value={meta.linkedTo || ''}
+                            onChange={(e) => updateSupabaseUserLinkedTo(u, e.target.value)}
+                            disabled={loadingSupabase}
+                            className={`px-2 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${meta.linkedTo ? 'bg-slate-50 border-slate-300 text-slate-700' : 'bg-rose-50 border-rose-300 text-rose-600'}`}
+                            title={`Rattaché à ${role === 'poseur' ? 'ce poseur' : 'cette régie'}`}
+                          >
+                            <option value="">⚠️ {role === 'poseur' ? 'Poseur' : 'Régie'} ?</option>
+                            {(role === 'poseur' ? poseursList : regiesList).map(n => <option key={n} value={n}>{n}</option>)}
+                          </select>
+                        )}
                         {u.last_sign_in_at && (
                           <span className="text-[10px] text-slate-400">
                             Dernière connexion : {new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}
@@ -7900,6 +7978,7 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
 const ALERTES_PAR_ROLE = {
   envoi_finance: ['aEnvoyerBanque', 'financement', 'originaux'],
   poseur: [], // le poseur ne voit aucune alerte
+  regie: [],  // la régie ne voit aucune alerte
 };
 
 function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, isAdmin, currentUserRole, onClick }) {
