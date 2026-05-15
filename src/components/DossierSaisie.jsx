@@ -5315,24 +5315,38 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       const PDFDocument = window.PDFLib && window.PDFLib.PDFDocument;
       if (!PDFDocument) throw new Error('pdf-lib non chargé (CDN bloqué ?). Recharge la page.');
       const arrayBuffer = await file.arrayBuffer();
-      const srcPdf = await PDFDocument.load(arrayBuffer);
+      let srcPdf;
+      try {
+        // ignoreEncryption: certains scanners (CamScanner, Adobe…) ajoutent une
+        // protection même sans mot de passe ; on l'ignore pour pouvoir copier
+        // les pages malgré tout.
+        srcPdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
+      } catch (loadErr) {
+        throw new Error(`Lecture du PDF impossible : ${loadErr?.message || loadErr}`);
+      }
       const splitFiles = [];
       for (const section of sections) {
-        // pages 1-indexées dans l'API → 0-indexées dans pdf-lib
-        const indices = [];
-        for (let p = section.pageStart - 1; p <= section.pageEnd - 1; p++) {
-          if (p >= 0 && p < srcPdf.getPageCount()) indices.push(p);
+        try {
+          // pages 1-indexées dans l'API → 0-indexées dans pdf-lib
+          const indices = [];
+          for (let p = section.pageStart - 1; p <= section.pageEnd - 1; p++) {
+            if (p >= 0 && p < srcPdf.getPageCount()) indices.push(p);
+          }
+          if (indices.length === 0) continue;
+          const newPdf = await PDFDocument.create();
+          const copiedPages = await newPdf.copyPages(srcPdf, indices);
+          copiedPages.forEach(p => newPdf.addPage(p));
+          const bytes = await newPdf.save();
+          const safeLabel = (section.label || section.category).replace(/[^a-zA-Z0-9-_]+/g, '-').slice(0, 50);
+          const sectionName = `${safeLabel}.pdf`;
+          const sectionFile = new File([bytes], sectionName, { type: 'application/pdf' });
+          splitFiles.push({ section, sectionFile, sectionName });
+        } catch (splitErr) {
+          console.error(`Erreur sur section ${section.label}:`, splitErr);
+          // On continue avec les autres sections
         }
-        if (indices.length === 0) continue;
-        const newPdf = await PDFDocument.create();
-        const copiedPages = await newPdf.copyPages(srcPdf, indices);
-        copiedPages.forEach(p => newPdf.addPage(p));
-        const bytes = await newPdf.save();
-        const safeLabel = (section.label || section.category).replace(/[^a-zA-Z0-9-_]+/g, '-').slice(0, 50);
-        const sectionName = `${safeLabel}.pdf`;
-        const sectionFile = new File([bytes], sectionName, { type: 'application/pdf' });
-        splitFiles.push({ section, sectionFile, sectionName });
       }
+      if (splitFiles.length === 0) throw new Error('Aucune section n\'a pu être découpée du PDF.');
 
       // 4) Upload chaque section dans le bucket
       const scannedSections = [];
