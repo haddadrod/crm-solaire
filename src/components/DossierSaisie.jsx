@@ -145,8 +145,30 @@ const formatEuro = (n) => {
 
 const formatDateForSheet = (iso) => {
   if (!iso) return '';
-  const [y, m, d] = iso.split('-');
-  return `${d}/${m}/${y}`;
+  // Format ISO standard "AAAA-MM-JJ" → "JJ/MM/AAAA"
+  if (/^\d{4}-\d{2}-\d{2}/.test(iso)) {
+    const [y, m, d] = iso.split('-');
+    return `${d}/${m}/${y.slice(0, 4)}`;
+  }
+  // Si déjà au format JJ/MM/AAAA (renvoyé par l'IA parfois), on garde tel quel
+  if (/^\d{2}\/\d{2}\/\d{4}/.test(iso)) return iso;
+  // Sinon, on essaie de parser comme Date
+  const d = new Date(iso);
+  if (!isNaN(d.getTime())) {
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()}`;
+  }
+  return iso || '';
+};
+
+// Normalise une date entrée par l'IA (peut être AAAA-MM-JJ ou JJ/MM/AAAA)
+// en ISO standard AAAA-MM-JJ pour le stockage.
+const normalizeDateToIso = (raw) => {
+  if (!raw) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(raw)) return raw.slice(0, 10);
+  const m = /^(\d{2})\/(\d{2})\/(\d{4})/.exec(raw);
+  if (m) return `${m[3]}-${m[2]}-${m[1]}`;
+  return raw;
 };
 
 const formatFileSize = (bytes) => {
@@ -5348,7 +5370,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (d.telephone) next.telephone = String(d.telephone);
         if (d.email) next.email = String(d.email);
         if (d.financement) next.financement = String(d.financement).toUpperCase();
-        if (d.dateSignature) next.dateSignature = String(d.dateSignature);
+        if (d.dateSignature) next.dateSignature = normalizeDateToIso(String(d.dateSignature));
         const ttc = parseFloat(d.montantTTC);
         if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
         const ht = parseFloat(d.montantHT);
@@ -5445,7 +5467,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (d.telephone) next.telephone = String(d.telephone);
         if (d.email) next.email = String(d.email);
         if (d.financement) next.financement = String(d.financement).toUpperCase();
-        if (d.dateSignature) next.dateSignature = String(d.dateSignature);
+        if (d.dateSignature) next.dateSignature = normalizeDateToIso(String(d.dateSignature));
         const ttc = parseFloat(d.montantTTC);
         if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
         const ht = parseFloat(d.montantHT);
