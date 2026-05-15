@@ -616,6 +616,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     accordDef: false, consuel: false, observations: '',
     historique: [],
     createdBy: '', createdAt: '', modifiedBy: '', modifiedAt: '',
+    scannedBon: null, // {dataUrl, name, type, size} si scan IA réussi, sinon null
   };
   const [formData, setFormData] = useState(emptyForm);
   const [sortBy, setSortBy] = useState('statut');
@@ -925,6 +926,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Auto-statut : si le statut courant est dans le cycle workflow, on le
     // recalcule depuis l'état du dossier (CQ, envoi banque, retour, etc.).
     dossier = applyAutoStatut(dossier);
+    // Auto-archivage / désarchivage selon ANNULER (cohérent avec QuickView)
+    if (dossier.statut === 'W2_ANNULER' && !dossier.archived) {
+      dossier.archived = true;
+      dossier.archivedAt = new Date().toISOString();
+      dossier.autoArchived = true;
+      dossier.autoArchivedReason = 'annule';
+    } else if (dossier.statut !== 'W2_ANNULER' && dossier.archived && dossier.autoArchivedReason === 'annule') {
+      dossier.archived = false;
+      dossier.archivedAt = null;
+      dossier.autoArchived = false;
+      dossier.autoArchivedReason = null;
+    }
     const userTag = currentUser || '(anonyme)';
 
     // Construit l'historique des changements de statut
@@ -950,7 +963,31 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dossier.createdAt = now;
       dossier.modifiedBy = userTag;
       dossier.modifiedAt = now;
-      setDossiers([{ ...dossier, localId: Date.now().toString(), documents: [] }, ...dossiers]);
+      const newLocalId = Date.now().toString();
+      // Si l'utilisateur a scanné un bon de commande, on l'attache comme
+      // document client au nouveau dossier.
+      let initialDocs = [];
+      const bon = dossier.scannedBon;
+      if (bon && bon.dataUrl) {
+        const fileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        // Fire-and-forget : on persiste le binaire en background (l'UI n'attend pas)
+        window.storage.set(`file:${fileId}`, JSON.stringify({ dataUrl: bon.dataUrl, name: bon.name, type: bon.type })).catch(() => {});
+        initialDocs.push({
+          id: fileId,
+          name: bon.name,
+          size: bon.size,
+          type: bon.type,
+          category: 'client',
+          subCategory: null,
+          uploadedAt: now,
+          montant: null,
+          datePiece: null,
+          note: '📸 Importé par scan IA du bon de commande',
+        });
+      }
+      // On retire scannedBon du dossier persisté (juste un transport entre scan et submit)
+      delete dossier.scannedBon;
+      setDossiers([{ ...dossier, localId: newLocalId, documents: initialDocs }, ...dossiers]);
       setCelebrating(true);
       setTimeout(() => setCelebrating(false), 1500);
     }
@@ -2113,6 +2150,27 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 merged = applyAutoStatut(merged);
                 if (merged.statut !== beforeAuto) {
                   merged.historique = [...(merged.historique || []), { date: now, from: beforeAuto, to: merged.statut, action: 'auto_statut', user: userTag }];
+                }
+
+                // Auto-archivage sur ANNULER : on n'a plus besoin du dossier
+                // dans la liste principale. Les pénalités et chiffres restent
+                // visibles dans le Rapport paiements et le Dashboard (qui
+                // utilisent tous les dossiers, archivés inclus).
+                if (merged.statut === 'W2_ANNULER' && !merged.archived && updates.archived === undefined) {
+                  merged.archived = true;
+                  merged.archivedAt = now;
+                  merged.autoArchived = true;
+                  merged.autoArchivedReason = 'annule';
+                }
+                // Auto-désarchivage si le dossier sort d'ANNULER alors qu'il
+                // avait été archivé pour ça (ex : suppression de la tentative
+                // définitive qui le bloquait en annulation).
+                if (merged.statut !== 'W2_ANNULER' && merged.archived && merged.autoArchivedReason === 'annule') {
+                  merged.archived = false;
+                  merged.archivedAt = null;
+                  merged.autoArchived = false;
+                  merged.autoArchivedReason = null;
+                  merged.reprisDuArchive = now;
                 }
 
                 // Auto-archivage : si tout est payé (client + poseurs + fournisseurs + régie + équipe interne) → archiver auto
@@ -4905,6 +4963,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
     setScanState({ status: 'compressing', error: '', result: null });
     try {
       const { base64, mediaType } = await compressImageForUpload(file);
+      // On garde l'image compressée pour l'enregistrer comme document
+      // "Bon de commande client" au moment de la sauvegarde du dossier.
+      const scannedBonDataUrl = `data:${mediaType};base64,${base64}`;
+      const scannedBonName = (file.name || 'bon-commande.jpg').replace(/\.[^.]+$/, '') + '.jpg';
+      const scannedBonSize = Math.round(base64.length * 0.75); // taille approx du binaire
       setScanState({ status: 'analyzing', error: '', result: null });
       const { data: { session } } = await supabase.auth.getSession();
       const headers = { 'Content-Type': 'application/json' };
@@ -4920,6 +4983,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       // Pré-remplit le formulaire — uniquement les champs reconnus, le reste est conservé.
       setFormData(prev => {
         const next = { ...prev };
+        // On stocke l'image scannée pour l'enregistrer comme document à la sauvegarde
+        next.scannedBon = { dataUrl: scannedBonDataUrl, name: scannedBonName, type: mediaType, size: scannedBonSize };
         if (d.nom) next.nom = String(d.nom).toUpperCase();
         if (d.prenom) next.prenom = String(d.prenom);
         if (d.adresse) next.adresse = String(d.adresse);
