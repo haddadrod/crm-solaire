@@ -8,6 +8,9 @@
     <!-- Leaflet (cartes interactives, vue Carte du Calendrier) -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin="" defer></script>
+    <!-- pdf-lib : découpage de PDF côté navigateur (scan dossier complet) -->
+    <!-- Chargé via CDN pour éviter les soucis de bundling Vite (cf. PR #41 qui a échoué avec import dynamique) -->
+    <script src="https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
   </head>
   <body>
     <div id="root"></div>
