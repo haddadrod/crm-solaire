@@ -4699,8 +4699,14 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (p > 0) {
           const prods = (prev.produits && prev.produits.length > 0)
             ? [...prev.produits]
-            : [{ type: 'PANNEAU_SOLAIRE', puissance: 0, description: '' }];
-          prods[0] = { ...prods[0], puissance: p };
+            : [{ type: 'PANNEAU_SOLAIRE', puissance: 0, description: '', quantite: 1 }];
+          // Si une puissance en Wc est détectée et qu'aucun type de produit
+          // n'a été choisi manuellement, on bascule sur PANNEAU_SOLAIRE.
+          prods[0] = {
+            ...prods[0],
+            type: prods[0].type || 'PANNEAU_SOLAIRE',
+            puissance: p,
+          };
           next.produits = prods;
         }
         return next;
