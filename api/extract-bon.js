@@ -95,14 +95,21 @@ export default async function handler(req, res) {
   const body = req.body || {};
   const { imageBase64, mediaType } = body;
   if (!imageBase64 || !mediaType) {
-    return json(res, 400, { error: 'Image manquante.' });
+    return json(res, 400, { error: 'Fichier manquant.' });
   }
-  if (!/^image\/(jpeg|png|webp|gif)$/.test(mediaType)) {
-    return json(res, 400, { error: 'Format non supporté (JPEG, PNG, WebP).' });
+  const isImage = /^image\/(jpeg|png|webp|gif)$/.test(mediaType);
+  const isPdf = mediaType === 'application/pdf';
+  if (!isImage && !isPdf) {
+    return json(res, 400, { error: 'Format non supporté (JPEG, PNG, WebP, GIF ou PDF).' });
   }
 
   try {
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+    // Pour un PDF on utilise le bloc "document" (Claude lit chaque page nativement) ;
+    // pour une image, on utilise le bloc "image".
+    const fileBlock = isPdf
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: imageBase64 } }
+      : { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } };
     const message = await client.messages.create({
       model: 'claude-opus-4-7',
       max_tokens: 4000,
@@ -115,10 +122,7 @@ export default async function handler(req, res) {
         {
           role: 'user',
           content: [
-            {
-              type: 'image',
-              source: { type: 'base64', media_type: mediaType, data: imageBase64 },
-            },
+            fileBlock,
             { type: 'text', text: INSTRUCTIONS },
           ],
         },
