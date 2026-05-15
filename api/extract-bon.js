@@ -93,9 +93,9 @@ export default async function handler(req, res) {
   if (!caller) return json(res, 401, { error: 'Connexion requise.' });
 
   const body = req.body || {};
-  const { imageBase64, mediaType } = body;
-  if (!imageBase64 || !mediaType) {
-    return json(res, 400, { error: 'Fichier manquant.' });
+  const { imageBase64, mediaType, storagePath } = body;
+  if ((!imageBase64 && !storagePath) || !mediaType) {
+    return json(res, 400, { error: 'Fichier manquant (imageBase64 ou storagePath requis).' });
   }
   const isImage = /^image\/(jpeg|png|webp|gif)$/.test(mediaType);
   const isPdf = mediaType === 'application/pdf';
@@ -103,13 +103,34 @@ export default async function handler(req, res) {
     return json(res, 400, { error: 'Format non supporté (JPEG, PNG, WebP, GIF ou PDF).' });
   }
 
+  // Si le client a uploadé d'abord dans le bucket et nous envoie juste le path,
+  // on télécharge le fichier ici (bypass la limite 4 Mo du body Vercel).
+  let fileBase64 = imageBase64;
+  if (!fileBase64 && storagePath) {
+    try {
+      const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const { data: blob, error: dlErr } = await admin.storage
+        .from('dossier-documents')
+        .download(storagePath);
+      if (dlErr || !blob) {
+        return json(res, 502, { error: `Lecture du fichier impossible : ${dlErr?.message || 'inconnu'}` });
+      }
+      const arrayBuffer = await blob.arrayBuffer();
+      fileBase64 = Buffer.from(arrayBuffer).toString('base64');
+    } catch (e) {
+      return json(res, 502, { error: `Téléchargement bucket échoué : ${e.message}` });
+    }
+  }
+
   try {
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
     // Pour un PDF on utilise le bloc "document" (Claude lit chaque page nativement) ;
     // pour une image, on utilise le bloc "image".
     const fileBlock = isPdf
-      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: imageBase64 } }
-      : { type: 'image', source: { type: 'base64', media_type: mediaType, data: imageBase64 } };
+      ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: fileBase64 } }
+      : { type: 'image', source: { type: 'base64', media_type: mediaType, data: fileBase64 } };
     const message = await client.messages.create({
       model: 'claude-opus-4-7',
       max_tokens: 4000,

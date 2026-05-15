@@ -983,18 +983,35 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dossier.modifiedAt = now;
       const newLocalId = Date.now().toString();
       // Si l'utilisateur a scanné un bon de commande, on l'attache comme
-      // document client au nouveau dossier.
+      // document client. Le fichier est déjà dans le bucket Supabase Storage
+      // (uploadé pendant le scan), on reprend juste son ID et son path.
       let initialDocs = [];
       const bon = dossier.scannedBon;
-      if (bon && bon.dataUrl) {
+      if (bon && bon.fileId && bon.bucketPath) {
+        initialDocs.push({
+          id: bon.fileId,
+          name: bon.name,
+          size: bon.size,
+          type: bon.type,
+          storage: 'bucket',
+          storagePath: bon.bucketPath,
+          category: 'client',
+          subCategory: null,
+          uploadedAt: now,
+          montant: null,
+          datePiece: null,
+          note: '📸 Importé par scan IA du bon de commande',
+        });
+      } else if (bon && bon.dataUrl) {
+        // Compat ascendante : ancien format (dataUrl inline) — fallback KV
         const fileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        // Fire-and-forget : on persiste le binaire en background (l'UI n'attend pas)
         window.storage.set(`file:${fileId}`, JSON.stringify({ dataUrl: bon.dataUrl, name: bon.name, type: bon.type })).catch(() => {});
         initialDocs.push({
           id: fileId,
           name: bon.name,
           size: bon.size,
           type: bon.type,
+          storage: 'kv',
           category: 'client',
           subCategory: null,
           uploadedAt: now,
@@ -5039,36 +5056,42 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
     }
     setScanState({ status: 'compressing', error: '', result: null });
     try {
-      let base64, mediaType, scannedBonDataUrl, scannedBonName, scannedBonSize;
+      let mediaType, scannedBonName, scannedBonSize, fileToUpload;
       if (isPdf) {
-        // PDF : pas de compression, on envoie tel quel à l'API (Claude supporte les PDF nativement)
-        const reader = new FileReader();
-        const dataUrl = await new Promise((resolve, reject) => {
-          reader.onload = () => resolve(reader.result);
-          reader.onerror = () => reject(new Error('Lecture du PDF impossible'));
-          reader.readAsDataURL(file);
-        });
-        base64 = (dataUrl.split(',')[1]) || '';
+        // PDF : pas de compression, on uploade tel quel (Claude lit les PDF nativement)
         mediaType = 'application/pdf';
-        scannedBonDataUrl = dataUrl;
         scannedBonName = file.name || 'bon-commande.pdf';
         scannedBonSize = file.size;
+        fileToUpload = file;
       } else {
+        // Image : on compresse en JPEG 2200px pour réduire la taille
         const compressed = await compressImageForUpload(file);
-        base64 = compressed.base64;
         mediaType = compressed.mediaType;
-        scannedBonDataUrl = `data:${mediaType};base64,${base64}`;
         scannedBonName = (file.name || 'bon-commande.jpg').replace(/\.[^.]+$/, '') + '.jpg';
-        scannedBonSize = Math.round(base64.length * 0.75);
+        scannedBonSize = Math.round(compressed.base64.length * 0.75);
+        // Reconvertit le base64 compressé en Blob pour l'upload bucket
+        const bytes = atob(compressed.base64);
+        const arr = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+        fileToUpload = new File([arr], scannedBonName, { type: mediaType });
+      }
+      // 1) Upload du fichier dans le bucket Supabase Storage (bypass la limite 4 Mo
+      //    de body Vercel pour les Functions). On utilise un fileId qui servira
+      //    aussi de document ID au moment du Submit (pas de double upload).
+      const scanFileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const { path: bucketPath, error: upErr } = await uploadFileToBucket(fileToUpload, scanFileId);
+      if (upErr || !bucketPath) {
+        throw new Error(`Upload bucket impossible : ${upErr?.message || 'inconnu'}`);
       }
       setScanState({ status: 'analyzing', error: '', result: null });
+      // 2) Appel à l'API d'extraction avec le path du bucket (au lieu du body inline)
       const { data: { session } } = await supabase.auth.getSession();
       const headers = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
       const res = await fetch('/api/extract-bon', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ imageBase64: base64, mediaType }),
+        body: JSON.stringify({ storagePath: bucketPath, mediaType }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
@@ -5076,8 +5099,15 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       // Pré-remplit le formulaire — uniquement les champs reconnus, le reste est conservé.
       setFormData(prev => {
         const next = { ...prev };
-        // On stocke l'image scannée pour l'enregistrer comme document à la sauvegarde
-        next.scannedBon = { dataUrl: scannedBonDataUrl, name: scannedBonName, type: mediaType, size: scannedBonSize };
+        // On stocke le fichier scanné (déjà dans le bucket) pour l'enregistrer
+        // comme document à la sauvegarde, sans re-uploader.
+        next.scannedBon = {
+          fileId: scanFileId,
+          bucketPath,
+          name: scannedBonName,
+          type: mediaType,
+          size: scannedBonSize,
+        };
         if (d.nom) next.nom = String(d.nom).toUpperCase();
         if (d.prenom) next.prenom = String(d.prenom);
         if (d.adresse) next.adresse = String(d.adresse);
