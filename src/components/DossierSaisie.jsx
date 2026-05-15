@@ -3164,9 +3164,17 @@ function FilePreviewOverlay({ preview, onClose, onDownload }) {
   const isPdf = (type || '') === 'application/pdf' || /\.pdf$/i.test(doc.name);
   const [blobUrl, setBlobUrl] = useState(null);
 
-  // Convertit le data URL en blob URL pour un meilleur rendu (surtout sur mobile + iframe sandboxé)
+  // Si le dataUrl est déjà une URL HTTPS (signed URL Supabase) ou blob, on
+  // l'utilise tel quel. Sinon (data: URL base64 venant du stockage KV), on
+  // convertit en blob URL pour un meilleur rendu mobile + iframe sandboxé.
   useEffect(() => {
     if (!dataUrl) return;
+    // Cas URL HTTPS ou blob URL : utilisation directe
+    if (dataUrl.startsWith('http') || dataUrl.startsWith('blob:')) {
+      setBlobUrl(dataUrl);
+      return;
+    }
+    // Cas data URL base64 : conversion en blob URL
     try {
       const parts = dataUrl.split(',');
       const byteString = atob(parts[1]);
@@ -3176,7 +3184,10 @@ function FilePreviewOverlay({ preview, onClose, onDownload }) {
       const url = URL.createObjectURL(blob);
       setBlobUrl(url);
       return () => URL.revokeObjectURL(url);
-    } catch (e) {}
+    } catch (e) {
+      // Dernier recours : on essaie d'afficher tel quel
+      setBlobUrl(dataUrl);
+    }
   }, [dataUrl, type]);
 
   return (
