@@ -743,6 +743,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
             // statut est hors cycle (SAV, LITIGE, W2_ANNULER, etc.) ou déjà
             // correct, applyAutoStatut renvoie le dossier inchangé.
             dossier = applyAutoStatut(dossier);
+            // Auto-archive de rattrapage : un dossier annulé devrait être archivé.
+            // Si on tombe sur un dossier W2_ANNULER non archivé (annulation faite
+            // avant la mise en place de l'auto-archive), on l'archive maintenant.
+            if (dossier.statut === 'W2_ANNULER' && !dossier.archived) {
+              dossier = {
+                ...dossier,
+                archived: true,
+                archivedAt: dossier.archivedAt || new Date().toISOString(),
+                autoArchived: true,
+                autoArchivedReason: 'annule',
+              };
+            }
             return dossier;
           });
           setDossiers(migrated);
