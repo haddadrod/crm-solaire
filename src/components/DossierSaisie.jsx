@@ -1132,7 +1132,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       puissance: d.puissance || 6000,
       fournisseurs: d.fournisseurs?.length > 0
         ? d.fournisseurs.map(f => ({ nom: f.nom, htCustom: f.htCustom || '', paye: f.paye || false, datePaye: f.datePaye || '', bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' }))
-        : [{ nom: 'IONERGIK', htCustom: '', paye: false, datePaye: '' }],
+        : [],
       regie: d.regie || '', regieHtCustom: d.regieHtCustom || '',
       regies: (d.regies && d.regies.length > 0)
         ? d.regies.map(r => ({ nom: r.nom || '', htCustom: r.htCustom || '', paye: r.paye || false, datePaye: r.datePaye || '', bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '' }))
