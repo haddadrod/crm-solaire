@@ -15,6 +15,7 @@ const STATUTS = [
   { id: 'B_A_ENVOYER_BANQUE',   label: 'À ENVOYER EN BANQUE',  color: 'from-violet-400 to-purple-500', bg: 'bg-violet-100',  text: 'text-violet-700',  emoji: '🏦' },
   { id: 'B1_EN_COURS_FINANCEMENT', label: 'EN COURS DE FINANCEMENT', color: 'from-blue-400 to-indigo-500', bg: 'bg-blue-100',   text: 'text-blue-700',    emoji: '⏳' },
   { id: 'B2_A_ENVOYER_POSE',    label: 'À ENVOYER EN POSE',    color: 'from-amber-400 to-orange-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '📤' },
+  { id: 'B4_EN_COURS_POSE',     label: 'EN COURS DE POSE',     color: 'from-orange-500 to-red-500',    bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🔧' },
   { id: 'B3_REFUS_FINANCEMENT', label: 'REFUS DE FINANCEMENT', color: 'from-red-500 to-rose-600',      bg: 'bg-red-100',     text: 'text-red-700',     emoji: '🚫' },
   { id: 'H_NRP_CQ_LIVRAISON',   label: 'NRP CQ LIVRAISON',     color: 'from-amber-400 to-yellow-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '🚚' },
   { id: 'G_ATTENTE_ACCORD_DEF', label: 'ATTENTE ACCORD DEF',   color: 'from-teal-400 to-emerald-500',  bg: 'bg-teal-100',    text: 'text-teal-700',    emoji: '📋' },
@@ -36,17 +37,25 @@ const STATUTS = [
 // Statuts gérés par l'auto-statut (cycle workflow CQ → banque → pose).
 // Si le statut courant est dans cette liste, il sera mis à jour automatiquement
 // selon l'état du dossier. Sinon (SAV, LITIGE, ANNULER, etc.), on ne touche pas.
-const AUTO_STATUTS = ['A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B2_A_ENVOYER_POSE', 'B3_REFUS_FINANCEMENT'];
+const AUTO_STATUTS = ['A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT'];
 
 // Calcule le statut workflow à partir de l'état du dossier (CQ, envoi banque,
-// retour banque, envoi pose). Retourne null si on est sorti du cycle (envoi
-// pose effectué → l'utilisateur gère le reste manuellement).
+// retour banque, date pose, poseur assigné). Retourne null si on est sorti
+// du cycle (pose effectivement réalisée → l'utilisateur gère le reste).
 function computeWorkflowStatut(d) {
   // Refusé par la banque (sans rebascule) → REFUS DE FINANCEMENT
   if (d.statutFin === 'refusé') return 'B3_REFUS_FINANCEMENT';
-  // Envoi en pose déjà fait → on sort du cycle auto
-  if (d.dateEnvoiPose) return null;
-  // Accord financement reçu, pas encore envoyé pose → À ENVOYER EN POSE
+  // Pose réalisée (dateInsta remplie ou statutPose='visite_ok') → sortie du cycle
+  if (d.dateInsta || d.statutPose === 'visite_ok') return null;
+  // Date de pose remplie : selon qu'on a un poseur ou pas
+  if (d.dateEnvoiPose) {
+    const poseurAssigne = (d.poseurs || []).some(p => p && p.nom && p.nom.trim());
+    // Date + poseur → EN COURS DE POSE
+    if (poseurAssigne) return 'B4_EN_COURS_POSE';
+    // Date sans poseur → reste À ENVOYER EN POSE (l'alerte "Poseur à assigner" fera son boulot)
+    return 'B2_A_ENVOYER_POSE';
+  }
+  // Accord financement reçu, pas encore date de pose → À ENVOYER EN POSE
   if (d.statutFin === 'accepté') return 'B2_A_ENVOYER_POSE';
   // Envoyé banque, en attente de retour → EN COURS DE FINANCEMENT
   if (d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
@@ -1408,6 +1417,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Rappels Poseur à assigner — date de pose remplie mais aucun poseur dans
     // l'équipe. Cas typique : la banque a accordé, on a calé une date avec le
     // client, mais on a oublié de désigner qui pose.
+    // ⚠️ On ne filtre PAS par finalStatuses ici : si un dossier est annulé ou
+    // payé mais a quand même une date de pose, c'est une incohérence à
+    // signaler (probablement une saisie qui traîne).
     const rappelsPoseurNonAssigne = [];
     dossiersEnriched.forEach(d => {
       // Une date de pose est-elle posée ? (envoi en pose, visite, ou pose)
@@ -1417,7 +1429,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const poseurs = d.poseurs || [];
       const poseurAssigne = poseurs.some(p => p && p.nom && p.nom.trim());
       if (poseurAssigne) return;
-      if (finalStatuses.includes(d.statut)) return;
       // Référence pour les jours : la date la plus proche (dateInsta > dateVisitePose > dateEnvoiPose)
       const refDate = d.dateInsta || d.dateVisitePose || d.dateEnvoiPose;
       const jours = refDate ? Math.floor((today - new Date(refDate)) / 86400000) : 0;
@@ -1433,6 +1444,27 @@ export default function DossierSaisie({ authUser, onLogout }) {
       rappelsPoseurNonAssigne.push({ dossier: d, jours, level });
     });
     rappelsPoseurNonAssigne.sort((a, b) => b.jours - a.jours);
+
+    // Rappels Pose non finie — date de pose passée depuis +3 jours mais pas
+    // encore marquée "posée" (dateInsta vide, statutPose != 'visite_ok').
+    // Cas typique : on a planifié, le poseur y est allé, mais on a oublié
+    // de cocher "posé". Ou la pose a été décalée sans mise à jour.
+    const rappelsPoseNonFinie = [];
+    dossiersEnriched.forEach(d => {
+      if (!d.dateEnvoiPose) return; // pas de date de pose planifiée
+      if (d.dateInsta) return; // déjà marquée posée
+      if (d.statutPose === 'visite_ok') return; // déjà OK
+      if (d.statutPose === 'client_refuse') return; // client a refusé
+      if (finalStatuses.includes(d.statut)) return;
+      // Jours depuis la date prévue (peut être négatif si la date est future)
+      const jours = Math.floor((today - new Date(d.dateEnvoiPose)) / 86400000);
+      if (jours < 3) return; // moins de 3 jours après la date prévue → pas encore d'alerte
+      let level = 'warn';
+      if (jours >= 7) level = 'critical';
+      else if (jours >= 5) level = 'high';
+      rappelsPoseNonFinie.push({ dossier: d, jours, level });
+    });
+    rappelsPoseNonFinie.sort((a, b) => b.jours - a.jours);
 
     // Rappels À envoyer Consuel — pose terminée mais Consuel pas encore envoyé
     const rappelsAEnvoyerConsuel = [];
@@ -1508,7 +1540,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsRecupTva.sort((a, b) => a.joursRestants - b.joursRestants); // les plus urgents en premier
 
-    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva };
+    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva };
   }, [dossiersEnriched, tarifsInternes]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -1738,6 +1770,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsFinancement={dashboard.rappelsFinancement || []}
             rappelsAEnvoyerPose={dashboard.rappelsAEnvoyerPose || []}
             rappelsPoseurNonAssigne={dashboard.rappelsPoseurNonAssigne || []}
+            rappelsPoseNonFinie={dashboard.rappelsPoseNonFinie || []}
             rappelsAEnvoyerConsuel={dashboard.rappelsAEnvoyerConsuel || []}
             rappelsOriginaux={dashboard.rappelsOriginaux || []}
             rappelsControleLivraison={dashboard.rappelsControleLivraison || []}
@@ -1749,12 +1782,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
             onClick={(type) => setShowAlertesType(type)}
           />
 
-          {activeTab === 'dossiers' && isAdmin && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-              <StatCard label="Marge TTC" value={formatEuro(stats.totalMargeTtc)} icon={TrendingUp} color="from-emerald-400 to-teal-500" small />
-              <StatCard label="Marge HT" value={formatEuro(stats.totalMargeHt)} icon={Zap} color="from-amber-400 to-orange-500" small />
-            </div>
-          )}
         </div>
 
         {/* DOSSIERS / ARCHIVES — même vue, filtre auto */}
@@ -8310,7 +8337,7 @@ const ALERTES_PAR_ROLE = {
   regie: [],  // la régie ne voit aucune alerte
 };
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, isAdmin, currentUserRole, onClick }) {
   // Définition des badges
   const badges = [
     {
@@ -8372,6 +8399,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-amber-200',
       colorText: 'text-amber-700',
       tooltip: 'Date de pose remplie mais aucun poseur dans l\'équipe',
+    },
+    {
+      type: 'poseNonFinie',
+      label: 'Pose non finie',
+      emoji: '⏱️',
+      count: rappelsPoseNonFinie.length,
+      adminOnly: false,
+      color: 'from-orange-500 to-red-500',
+      colorBg: 'bg-orange-50',
+      colorBorder: 'border-orange-200',
+      colorText: 'text-orange-700',
+      tooltip: 'Date de pose passée depuis +3j mais pas encore marquée posée',
     },
     {
       type: 'aEnvoyerConsuel',
@@ -8549,10 +8588,20 @@ function AlertesModal({ type, dashboard, STATUTS, onClose, onSelect }) {
       lineLabel: (d) => {
         if (d.dateInsta) return `🔧 Pose prévue le ${new Date(d.dateInsta).toLocaleDateString('fr-FR')}`;
         if (d.dateVisitePose) return `📞 Visite le ${new Date(d.dateVisitePose).toLocaleDateString('fr-FR')}`;
-        if (d.dateEnvoiPose) return `📤 Envoyé en pose le ${new Date(d.dateEnvoiPose).toLocaleDateString('fr-FR')}`;
+        if (d.dateEnvoiPose) return `📅 Date pose ${new Date(d.dateEnvoiPose).toLocaleDateString('fr-FR')}`;
         return 'Date de pose remplie';
       },
       suffixLabel: 'depuis date pose',
+    },
+    poseNonFinie: {
+      title: '⏱️ Pose non finie',
+      subtitle: 'Date de pose passée depuis +3 jours mais pas encore cochée "posée"',
+      items: dashboard.rappelsPoseNonFinie || [],
+      gradient: 'from-orange-500 to-red-500',
+      bgHeader: 'from-orange-50 to-red-50',
+      borderColor: 'border-orange-200',
+      lineLabel: (d) => `📅 Date prévue ${d.dateEnvoiPose && new Date(d.dateEnvoiPose).toLocaleDateString('fr-FR')} — pas encore posé`,
+      suffixLabel: 'jours de retard',
     },
     aEnvoyerConsuel: {
       title: '📨 Dossiers à envoyer en Consuel',
