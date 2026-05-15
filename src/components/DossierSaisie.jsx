@@ -5310,10 +5310,10 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       const sections = Array.isArray(result.sections) ? result.sections : [];
       if (sections.length === 0) throw new Error("Aucune section identifiée dans le PDF.");
 
-      // 3) Découpage du PDF côté navigateur avec pdf-lib (import dynamique)
+      // 3) Découpage du PDF côté navigateur avec pdf-lib (chargé via CDN dans index.html)
       setDossierScanState({ status: 'splitting', error: '', sections });
-      const pdfLib = await import('pdf-lib');
-      const PDFDocument = pdfLib.PDFDocument;
+      const PDFDocument = window.PDFLib && window.PDFLib.PDFDocument;
+      if (!PDFDocument) throw new Error('pdf-lib non chargé (CDN bloqué ?). Recharge la page.');
       const arrayBuffer = await file.arrayBuffer();
       const srcPdf = await PDFDocument.load(arrayBuffer);
       const splitFiles = [];
