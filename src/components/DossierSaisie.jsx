@@ -1164,7 +1164,34 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const totalEncaisseClient = encaissList.reduce((s, e) => s + e.totalRecu, 0);
     const totalAEncaisserClient = encaissList.reduce((s, e) => s + e.totalRestant, 0);
 
-    return { list, totalGeneralPaye, totalGeneralRestant, totalAPayerMaintenant, totalEnAttenteFinanceur, totalPayeAvance, totalEncaisseClient, totalAEncaisserClient, encaissList };
+    // Pénalités régies (poses ratées) — agrégées par régie
+    const penaliteMap = {};
+    dossiersEnriched.forEach(d => {
+      (d.tentativesPose || []).forEach((t, idx) => {
+        const regie = t.regie || '(régie non spécifiée)';
+        if (!penaliteMap[regie]) penaliteMap[regie] = { nom: regie, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
+        penaliteMap[regie].totalDu += t.penalite || 0;
+        if (t.regleAt) penaliteMap[regie].totalPaye += t.penalite || 0;
+        else penaliteMap[regie].totalRestant += t.penalite || 0;
+        penaliteMap[regie].lignes.push({
+          dossierLocalId: d.localId,
+          dossierId: d.id || '—',
+          client: `${d.nom} ${d.prenom || ''}`.trim(),
+          date: t.date,
+          motif: t.motif,
+          penalite: t.penalite || 0,
+          regleAt: t.regleAt || null,
+          definitif: !!t.definitif,
+          tentativeIdx: idx,
+        });
+      });
+    });
+    const penalitesList = Object.values(penaliteMap).sort((a, b) => b.totalRestant - a.totalRestant);
+    const totalPenalitesDu = penalitesList.reduce((s, p) => s + p.totalDu, 0);
+    const totalPenalitesPaye = penalitesList.reduce((s, p) => s + p.totalPaye, 0);
+    const totalPenalitesRestant = penalitesList.reduce((s, p) => s + p.totalRestant, 0);
+
+    return { list, totalGeneralPaye, totalGeneralRestant, totalAPayerMaintenant, totalEnAttenteFinanceur, totalPayeAvance, totalEncaisseClient, totalAEncaisserClient, encaissList, penalitesList, totalPenalitesDu, totalPenalitesPaye, totalPenalitesRestant };
   }, [dossiersEnriched, tarifsInternes]);
 
   // Dashboard
@@ -1981,7 +2008,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
         )}
 
         {/* PAIEMENTS */}
-        {activeTab === 'paiements' && <PaiementsView rapportPaiements={rapportPaiements} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
+        {activeTab === 'paiements' && <PaiementsView
+          rapportPaiements={rapportPaiements}
+          onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }}
+          onTogglePenalite={(dossierLocalId, tentativeIdx) => {
+            const now = new Date().toISOString();
+            setDossiers(dossiers.map(d => {
+              if (d.localId !== dossierLocalId) return d;
+              const tent = [...(d.tentativesPose || [])];
+              if (!tent[tentativeIdx]) return d;
+              tent[tentativeIdx] = { ...tent[tentativeIdx], regleAt: tent[tentativeIdx].regleAt ? null : now };
+              return { ...d, tentativesPose: tent, savedAt: now, modifiedAt: now };
+            }));
+          }}
+        />}
 
         {/* DASHBOARD */}
         {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
@@ -3110,7 +3150,7 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta }) {
 
 // ====================== AUTRES VUES (inchangées) ======================
 
-function PaiementsView({ rapportPaiements, onShowQuick }) {
+function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite }) {
   // Mappe le type de prestataire vers l'ancre de scroll dans le QuickViewPanel
   const scrollTargetFor = (type) => {
     if (type === 'Fournisseur') return 'fournisseurs';
@@ -3328,6 +3368,84 @@ function PaiementsView({ rapportPaiements, onShowQuick }) {
                 </details>
               );
             })}
+          </div>
+        )}
+      </div>
+
+      {/* PÉNALITÉS RÉGIES (poses ratées) */}
+      <div className="bg-white rounded-3xl shadow-md border border-rose-200 overflow-hidden">
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-rose-50 to-orange-50">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            <AlertTriangle className="w-5 h-5 text-rose-500" />Pénalités régies (poses ratées)
+          </h2>
+          <p className="text-xs text-slate-500 mt-1">💡 Coche dès qu'une régie t'a remboursé sa pénalité</p>
+        </div>
+
+        {rapportPaiements.totalPenalitesDu > 0 && (
+          <div className="p-4 bg-slate-50 border-b border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-gradient-to-br from-rose-500 to-red-500 rounded-2xl p-4 text-white">
+              <div className="text-xs font-semibold opacity-90 uppercase">⚠️ Total dû par les régies</div>
+              <div className="text-2xl font-bold">{formatEuro(rapportPaiements.totalPenalitesDu)}</div>
+            </div>
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-4 text-white">
+              <div className="text-xs font-semibold opacity-90 uppercase">✅ Déjà remboursé</div>
+              <div className="text-2xl font-bold">{formatEuro(rapportPaiements.totalPenalitesPaye)}</div>
+            </div>
+            <div className="bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl p-4 text-white">
+              <div className="text-xs font-semibold opacity-90 uppercase">⏳ Reste à recevoir</div>
+              <div className="text-2xl font-bold">{formatEuro(rapportPaiements.totalPenalitesRestant)}</div>
+            </div>
+          </div>
+        )}
+
+        {rapportPaiements.penalitesList.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 text-sm">Aucune pénalité enregistrée.</div>
+        ) : (
+          <div className="p-4 space-y-3">
+            {rapportPaiements.penalitesList.map((p) => (
+              <details key={p.nom} className="border border-rose-200 rounded-xl overflow-hidden">
+                <summary className="cursor-pointer px-4 py-3 bg-rose-50 hover:bg-rose-100 flex items-center gap-3 flex-wrap">
+                  <span className="font-bold text-slate-800">🤝 {p.nom}</span>
+                  <span className="text-xs text-slate-500">{p.lignes.length} pose{p.lignes.length > 1 ? 's' : ''} ratée{p.lignes.length > 1 ? 's' : ''}</span>
+                  <span className="ml-auto flex items-center gap-2">
+                    {p.totalRestant > 0 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-orange-100 text-orange-700">{formatEuro(p.totalRestant)} dû</span>
+                    )}
+                    {p.totalPaye > 0 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700">{formatEuro(p.totalPaye)} reçu</span>
+                    )}
+                  </span>
+                </summary>
+                <div className="px-4 py-3 space-y-1.5 bg-white">
+                  {p.lignes.map((l, idx) => {
+                    const fmtD = (iso) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '?';
+                    const motifLabel = l.motif === 'client_absent' ? 'Client absent' : l.motif === 'client_refuse' ? 'Client refuse' : 'Autre';
+                    const paye = !!l.regleAt;
+                    return (
+                      <div key={idx} className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-colors ${paye ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200 hover:border-rose-200'}`}>
+                        <button
+                          onClick={() => onTogglePenalite(l.dossierLocalId, l.tentativeIdx)}
+                          title={paye ? 'Marquer non payée' : 'Marquer comme payée'}
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${paye ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-white border-slate-300 hover:border-emerald-400'}`}
+                        >
+                          {paye && <Check className="w-3 h-3" />}
+                        </button>
+                        <button
+                          onClick={() => onShowQuick && onShowQuick(l.dossierLocalId, null)}
+                          className="font-semibold text-slate-700 hover:text-violet-600 hover:underline text-sm text-left flex-1 min-w-0 truncate"
+                        >
+                          {l.client}
+                        </button>
+                        <span className="text-xs text-slate-500">{fmtD(l.date)}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold">{motifLabel}</span>
+                        {l.definitif && <span className="text-[9px] px-1 py-0.5 rounded bg-red-700 text-white font-bold">DÉF.</span>}
+                        <span className={`font-bold ${paye ? 'text-emerald-700 line-through' : 'text-rose-700'}`}>{formatEuro(l.penalite)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
+            ))}
           </div>
         )}
       </div>
@@ -7123,7 +7241,17 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             onClick={() => {
                               if (!window.confirm(`Supprimer la pénalité du ${fmtD(t.date)} (${t.penalite} €) ?`)) return;
                               const next = (d.tentativesPose || []).filter((_, idx) => idx !== i);
-                              onUpdate({ tentativesPose: next });
+                              // Si le dossier était annulé à cause d'une tentative DÉFINITIVE
+                              // et qu'il ne reste plus de tentative définitive après suppression,
+                              // on sort de l'annulation et l'auto-statut reprend la main.
+                              const wasAnnule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
+                              const hasDefinitifLeft = next.some(tt => tt.definitif);
+                              const updates = { tentativesPose: next };
+                              if (wasAnnule && !hasDefinitifLeft) {
+                                updates.statut = 'A_EN_COURS';
+                                updates.statutPose = '';
+                              }
+                              onUpdate(updates);
                             }}
                             title="Supprimer cette pénalité (erreur ou cadeau à la régie)"
                             className="p-0.5 text-rose-400 hover:text-rose-700 hover:bg-rose-100 rounded transition-colors flex-shrink-0"
