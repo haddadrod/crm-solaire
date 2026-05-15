@@ -2755,6 +2755,9 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
   const [activeCatId, setActiveCatId] = useState(categories[0].id);
   const activeCat = categories.find(c => c.id === activeCatId) || categories[0];
   const [uploading, setUploading] = useState(false);
+  // Sous-catégorie choisie pour le prochain upload manuel dans l'onglet Client.
+  // Si l'utilisateur veut classer son PDF directement dans la bonne section.
+  const [nextSubCat, setNextSubCat] = useState('bon_commande');
   // Aperçu inline (overlay plein écran) — pas de window.open car bloqué par le sandbox
   const [preview, setPreview] = useState(null); // { doc, dataUrl } | null
 
@@ -2830,7 +2833,8 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
           type: file.type,
           storage: 'kv',
           category: activeCat.key,
-          subCategory: activeCat.subCategory || null,
+          // Onglet Client : utilise la sous-catégorie choisie (sinon "autre")
+          subCategory: activeCat.key === 'client' ? (nextSubCat || 'autre') : (activeCat.subCategory || null),
           uploadedAt: new Date().toISOString(),
           montant: null,
           datePiece: null,
@@ -2847,7 +2851,8 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
         storage: 'bucket',
         storagePath: path,
         category: activeCat.key,
-        subCategory: activeCat.subCategory || null,
+        // Onglet Client : utilise la sous-catégorie choisie (sinon "autre")
+        subCategory: activeCat.key === 'client' ? (nextSubCat || 'autre') : (activeCat.subCategory || null),
         uploadedAt: new Date().toISOString(),
         montant: null,
         datePiece: null,
@@ -3000,7 +3005,7 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
               })}
             </div>
             <div className="p-3 mx-3 mb-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-700 leading-relaxed">
-              💡 Max <strong>~3,7 Mo / fichier</strong>. Pour des PDF lourds, compresse-les d'abord (smallpdf, ilovepdf).
+              💡 Max <strong>50 Mo / fichier</strong> grâce au stockage Supabase. Les PDF lourds passent sans problème.
             </div>
           </div>
 
@@ -3019,6 +3024,20 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
               </div>
               <div className="text-xs text-slate-600">{activeCat.desc}</div>
             </div>
+
+            {/* Sélecteur de sous-catégorie avant l'upload (onglet Client uniquement) */}
+            {activeCat.key === 'client' && (
+              <div className="mb-3 bg-white border border-blue-200 rounded-xl p-3 flex items-center gap-2 flex-wrap">
+                <label className="text-xs font-bold text-slate-600 uppercase">📂 Type de document à uploader :</label>
+                <select
+                  value={nextSubCat}
+                  onChange={(e) => setNextSubCat(e.target.value)}
+                  className="flex-1 min-w-[180px] px-3 py-1.5 bg-blue-50 border border-blue-300 rounded-lg text-sm font-bold text-blue-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
+                >
+                  {CLIENT_DOC_SUBCATS.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
+                </select>
+              </div>
+            )}
 
             {/* Drop zone */}
             <DropZone onFile={handleUpload} uploading={uploading} accent={activeCat.accent} />
@@ -3322,7 +3341,7 @@ function DropZone({ onFile, uploading, accent }) {
         <>
           <Upload className={`w-8 h-8 mx-auto mb-2 ${dragging ? 'text-violet-500' : 'text-slate-400'}`} />
           <div className="text-sm font-semibold text-slate-700">Glisse un fichier ici ou clique pour choisir</div>
-          <div className="text-xs text-slate-500 mt-1">PDF, image (max ~3,7 Mo)</div>
+          <div className="text-xs text-slate-500 mt-1">PDF, image (max 50 Mo)</div>
         </>
       )}
     </div>
