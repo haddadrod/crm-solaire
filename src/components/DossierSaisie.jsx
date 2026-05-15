@@ -6329,7 +6329,16 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     const newFin = e.target.value;
                     if (!newFin) return;
                     const archive = { financeur: formData.financement, dateEnvoi: formData.dateEnvoiFin, dateRetour: formData.dateRetourFin, statut: 'refusé', note: '' };
-                    setFormData({ ...formData, envoisHistorique: [...(formData.envoisHistorique || []), archive], financement: newFin, dateEnvoiFin: new Date().toISOString().split('T')[0], dateRetourFin: '', statutFin: 'envoyé' });
+                    setFormData({
+                      ...formData,
+                      envoisHistorique: [...(formData.envoisHistorique || []), archive],
+                      financement: newFin,
+                      dateEnvoiFin: new Date().toISOString().split('T')[0],
+                      dateRetourFin: '',
+                      dateAccord: '',
+                      statutFin: 'envoyé',
+                      statut: 'B1_EN_COURS_FINANCEMENT',
+                    });
                   }} defaultValue="" className="w-full px-3 py-2 bg-white border-2 border-rose-300 rounded-xl text-sm font-bold text-rose-700">
                     <option value="">— Choisir une autre banque —</option>
                     {FINANCEMENTS.filter(f => f !== formData.financement).map(f => <option key={f} value={f}>📤 Renvoyer à {f}</option>)}
@@ -7687,7 +7696,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     const newFin = e.target.value;
                     if (!newFin) return;
                     const archive = { financeur: d.financement, dateEnvoi: d.dateEnvoiFin, dateRetour: d.dateRetourFin, statut: 'refusé', note: '' };
-                    onUpdate({ envoisHistorique: [...(d.envoisHistorique || []), archive], financement: newFin, dateEnvoiFin: new Date().toISOString().split('T')[0], dateRetourFin: '', statutFin: 'envoyé' });
+                    // On envoie explicitement statut: EN_COURS_FINANCEMENT pour
+                    // que le dossier sorte de "REFUS DE FINANCEMENT" même si
+                    // l'auto-statut a un souci. dateRetourFin/dateAccord reset
+                    // (nouvelle banque, nouveau cycle).
+                    onUpdate({
+                      envoisHistorique: [...(d.envoisHistorique || []), archive],
+                      financement: newFin,
+                      dateEnvoiFin: new Date().toISOString().split('T')[0],
+                      dateRetourFin: '',
+                      dateAccord: '',
+                      statutFin: 'envoyé',
+                      statut: 'B1_EN_COURS_FINANCEMENT',
+                    });
                   }} defaultValue="" className="w-full px-2 py-1.5 bg-white border border-rose-300 rounded text-[11px] font-bold text-rose-700">
                     <option value="">— Choisir une autre banque —</option>
                     {FINANCEMENTS.filter(f => f !== d.financement).map(f => <option key={f} value={f}>📤 Renvoyer à {f}</option>)}
