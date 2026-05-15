@@ -629,6 +629,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
           const arr = JSON.parse(r.value);
           // Migration : ancien format poseur unique → tableau poseurs + poseursDetail
           const REMOVED_STATUSES = ['I_CONSUEL_OK', 'CONSUEL_OK', 'J_VISITE_CONSUEL', 'M_VISITE_CONSUEL', 'K_ATTENTE_CONSUEL', 'ATTENTE_CONSUEL', 'K2_PROBLEME_CONSUEL', 'M_PROBLEME_CONSUEL', 'M_ATT_DOSSIER', 'ATT_DOSSIER', 'E_PASSE_COMPTANT', 'PASSE_COMPTANT'];
+          // Statuts legacy (sans préfixe) → renommés vers leur vrai ID actuel.
+          // Avant, le bouton "✗ Refuse" stockait 'ANNULER' sans préfixe ; idem
+          // pour des migrations partielles précédentes. On les recolle ici.
+          const RENAMED_STATUSES = { 'ANNULER': 'W2_ANNULER', 'DOSSIER_PAYER': 'W_DOSSIER_PAYER', 'DEPOSER': 'W1_DEPOSER', 'ACCEPTE': 'F1_ACCEPTE' };
           const ROLES_KEYS = ['teleprospecteur', 'confirmateur', 'commercial', 'coordinateurProjet', 'responsableEnvoiPose'];
           // Vérifie si tous les paiements d'un dossier sont OK
           const isFullyPaid = (d) => {
@@ -645,6 +649,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
           };
           const migrated = arr.map(d => {
             let dossier = d;
+            // Migration : statuts legacy (sans préfixe) → ID actuel
+            if (dossier.statut && RENAMED_STATUSES[dossier.statut]) {
+              dossier = { ...dossier, statut: RENAMED_STATUSES[dossier.statut] };
+            }
             // Migration : statuts supprimés → repasser en EN COURS
             if (REMOVED_STATUSES.includes(dossier.statut)) {
               dossier = { ...dossier, statut: 'A_EN_COURS' };
@@ -728,6 +736,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 };
               }
             }
+            // Auto-statut : recalcule le statut workflow depuis l'état du dossier
+            // (CQ, envoi banque, accord, date pose, poseur). Idempotent : si le
+            // statut est hors cycle (SAV, LITIGE, W2_ANNULER, etc.) ou déjà
+            // correct, applyAutoStatut renvoie le dossier inchangé.
+            dossier = applyAutoStatut(dossier);
             return dossier;
           });
           setDossiers(migrated);
@@ -2041,18 +2054,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
               setDossiers(dossiers.map(d => {
                 if (d.localId !== currentQuickDossier.localId) return d;
                 let merged = { ...d, ...updates, savedAt: now, modifiedBy: userTag, modifiedAt: now };
-                // Auto-statut : si l'update modifie un champ du cycle workflow
-                // (CQ, envoi banque, retour banque, envoi pose), recalcule le
-                // statut depuis l'état du dossier. Sauf si l'utilisateur a
-                // explicitement choisi un statut dans cet update.
-                if (!updates.statut) {
-                  const before = merged.statut;
-                  merged = applyAutoStatut(merged);
-                  if (merged.statut !== before) {
-                    merged.historique = [...(d.historique || []), { date: now, from: before, to: merged.statut, action: 'auto_statut', user: userTag }];
-                  }
-                }
-                // Si le statut change, ajouter une entrée d'historique
+                // Trace le changement de statut manuel s'il y en a un
                 if (updates.statut && updates.statut !== d.statut) {
                   merged.historique = [...(d.historique || []), { date: now, from: d.statut, to: updates.statut, action: 'changement_statut', user: userTag }];
                   // Désarchivage automatique si statut → SAV (ou Litige/Problème)
@@ -2060,6 +2062,15 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     merged.archived = false;
                     merged.reprisDuArchive = now;
                   }
+                }
+                // Auto-statut : recalcule le statut depuis l'état du dossier
+                // (CQ, envoi banque, accord, date pose, poseur, etc.).
+                // applyAutoStatut respecte les statuts hors cycle (SAV, LITIGE,
+                // ANNULER, etc.) — il ne touche qu'aux statuts d'AUTO_STATUTS.
+                const beforeAuto = merged.statut;
+                merged = applyAutoStatut(merged);
+                if (merged.statut !== beforeAuto) {
+                  merged.historique = [...(merged.historique || []), { date: now, from: beforeAuto, to: merged.statut, action: 'auto_statut', user: userTag }];
                 }
 
                 // Auto-archivage : si tout est payé (client + poseurs + fournisseurs + régie + équipe interne) → archiver auto
@@ -5674,7 +5685,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     const today = new Date().toISOString().split('T')[0];
                     setFormData({ ...formData, statutPose: 'visite_ok', dateEnvoiPose: formData.dateEnvoiPose || today, dateInsta: formData.dateInsta || today });
                   }} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutPose === 'visite_ok' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Posé</button>
-                  <button type="button" onClick={() => setFormData({ ...formData, statutPose: 'client_refuse', statut: 'ANNULER' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutPose === 'client_refuse' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Client refuse</button>
+                  <button type="button" onClick={() => setFormData({ ...formData, statutPose: 'client_refuse', statut: 'W2_ANNULER' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutPose === 'client_refuse' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Client refuse</button>
                 </div>
               </div>
 
@@ -7012,14 +7023,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
               </div>
 
-              {/* 3 boutons toggleables — toujours visibles */}
+              {/* 3 boutons toggleables — toujours visibles.
+                  Si le dossier était passé en ANNULER via un clic ✗ Refuse,
+                  on remet statut=A_EN_COURS quand on clique Attente ou Posé
+                  pour que l'auto-statut puisse recalculer correctement. */}
               <div className="mt-1.5 grid grid-cols-3 gap-1">
-                <button onClick={() => onUpdate({ statutPose: 'envoyé' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${!d.statutPose || d.statutPose === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
+                <button onClick={() => {
+                  const reset = (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') ? { statut: 'A_EN_COURS' } : {};
+                  onUpdate({ statutPose: 'envoyé', ...reset });
+                }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${!d.statutPose || d.statutPose === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
                 <button onClick={() => {
                   const today = new Date().toISOString().split('T')[0];
-                  onUpdate({ statutPose: 'visite_ok', dateEnvoiPose: d.dateEnvoiPose || today, dateInsta: d.dateInsta || today });
+                  const reset = (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') ? { statut: 'A_EN_COURS' } : {};
+                  onUpdate({ statutPose: 'visite_ok', dateEnvoiPose: d.dateEnvoiPose || today, dateInsta: d.dateInsta || today, ...reset });
                 }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutPose === 'visite_ok' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Posé</button>
-                <button onClick={() => onUpdate({ statutPose: 'client_refuse', statut: 'ANNULER' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutPose === 'client_refuse' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refuse</button>
+                <button onClick={() => onUpdate({ statutPose: 'client_refuse', statut: 'W2_ANNULER' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutPose === 'client_refuse' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refuse</button>
               </div>
 
               {d.statutPose === 'visite_ok' && d.dateInsta && (
