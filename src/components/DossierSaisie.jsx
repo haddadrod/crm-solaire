@@ -5031,18 +5031,36 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
   const handleScanBon = async (file) => {
     if (!file) return;
-    if (!file.type || !file.type.startsWith('image/')) {
-      setScanState({ status: 'error', error: 'Choisis une photo (JPEG, PNG).', result: null });
+    const isImage = file.type && file.type.startsWith('image/');
+    const isPdf = file.type === 'application/pdf' || /\.pdf$/i.test(file.name || '');
+    if (!isImage && !isPdf) {
+      setScanState({ status: 'error', error: 'Choisis une photo (JPEG, PNG) ou un PDF.', result: null });
       return;
     }
     setScanState({ status: 'compressing', error: '', result: null });
     try {
-      const { base64, mediaType } = await compressImageForUpload(file);
-      // On garde l'image compressée pour l'enregistrer comme document
-      // "Bon de commande client" au moment de la sauvegarde du dossier.
-      const scannedBonDataUrl = `data:${mediaType};base64,${base64}`;
-      const scannedBonName = (file.name || 'bon-commande.jpg').replace(/\.[^.]+$/, '') + '.jpg';
-      const scannedBonSize = Math.round(base64.length * 0.75); // taille approx du binaire
+      let base64, mediaType, scannedBonDataUrl, scannedBonName, scannedBonSize;
+      if (isPdf) {
+        // PDF : pas de compression, on envoie tel quel à l'API (Claude supporte les PDF nativement)
+        const reader = new FileReader();
+        const dataUrl = await new Promise((resolve, reject) => {
+          reader.onload = () => resolve(reader.result);
+          reader.onerror = () => reject(new Error('Lecture du PDF impossible'));
+          reader.readAsDataURL(file);
+        });
+        base64 = (dataUrl.split(',')[1]) || '';
+        mediaType = 'application/pdf';
+        scannedBonDataUrl = dataUrl;
+        scannedBonName = file.name || 'bon-commande.pdf';
+        scannedBonSize = file.size;
+      } else {
+        const compressed = await compressImageForUpload(file);
+        base64 = compressed.base64;
+        mediaType = compressed.mediaType;
+        scannedBonDataUrl = `data:${mediaType};base64,${base64}`;
+        scannedBonName = (file.name || 'bon-commande.jpg').replace(/\.[^.]+$/, '') + '.jpg';
+        scannedBonSize = Math.round(base64.length * 0.75);
+      }
       setScanState({ status: 'analyzing', error: '', result: null });
       const { data: { session } } = await supabase.auth.getSession();
       const headers = { 'Content-Type': 'application/json' };
@@ -5119,7 +5137,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   {scanState.status === 'compressing' ? '⏳ Préparation…'
                     : scanState.status === 'analyzing' ? '🤖 Lecture en cours…'
                     : '📷 Scanner un bon de commande'}
-                  <input type="file" accept="image/*" capture="environment" className="hidden" disabled={scanBusy} onChange={(e) => handleScanBon(e.target.files?.[0])} />
+                  <input type="file" accept="image/*,application/pdf" className="hidden" disabled={scanBusy} onChange={(e) => handleScanBon(e.target.files?.[0])} />
                 </label>
                 <span className="text-xs text-slate-500 flex-1 min-w-[200px]">
                   Prends en photo le bon de commande rempli à la main — l'IA pré-remplit le formulaire. Tu pourras tout corriger ensuite.
