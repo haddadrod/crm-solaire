@@ -14,6 +14,7 @@
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
+import { PDFDocument } from 'pdf-lib';
 
 const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
@@ -202,6 +203,69 @@ export default async function handler(req, res) {
     } catch (e) {
       return json(res, 502, { error: 'Réponse IA non exploitable.' });
     }
+
+    // 3) Découpage server-side : pour chaque section, on extrait les pages avec
+    //    pdf-lib et on uploade le sous-PDF dans le bucket. Chaque section a son
+    //    propre storagePath → ouverture standalone côté front.
+    //    Si le découpage échoue pour une section, on continue sans storagePath
+    //    (le front retombera sur le PDF complet avec bookmark de page).
+    const sections = Array.isArray(parsed.sections) ? parsed.sections : [];
+    if (sections.length > 0) {
+      try {
+        const sourceBytes = Buffer.from(pdfBase64, 'base64');
+        const sourceDoc = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
+        const totalPages = sourceDoc.getPageCount();
+        const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        });
+        // Nom de base pour les chemins des sous-PDF : on retire l'extension du
+        // storagePath original et on suffixe _s<i>.pdf.
+        const basePath = storagePath.replace(/\.[a-z0-9]+$/i, '');
+        for (let i = 0; i < sections.length; i++) {
+          const sec = sections[i];
+          try {
+            const pStart = Math.max(1, Math.min(totalPages, parseInt(sec.pageStart, 10) || 1));
+            const pEnd = Math.max(pStart, Math.min(totalPages, parseInt(sec.pageEnd, 10) || pStart));
+            const indices = [];
+            for (let p = pStart - 1; p <= pEnd - 1; p++) indices.push(p);
+            const subDoc = await PDFDocument.create();
+            const copied = await subDoc.copyPages(sourceDoc, indices);
+            copied.forEach((page) => subDoc.addPage(page));
+            const subBytes = await subDoc.save();
+            const subPath = `${basePath}_s${i}.pdf`;
+            const { error: upErr } = await admin.storage
+              .from('dossier-documents')
+              .upload(subPath, Buffer.from(subBytes), {
+                contentType: 'application/pdf',
+                upsert: true,
+              });
+            if (!upErr) {
+              sec.storagePath = subPath;
+            } else {
+              console.warn(`split section ${i} upload failed:`, upErr.message);
+            }
+          } catch (secErr) {
+            console.warn(`split section ${i} failed:`, secErr.message);
+          }
+        }
+        // Si toutes les sections ont été découpées, on supprime le PDF original
+        // (sinon il reste orphelin dans le bucket — le front n'a plus de
+        // référence vers lui).
+        const allSplit = sections.every((s) => !!s.storagePath);
+        if (allSplit) {
+          try {
+            await admin.storage.from('dossier-documents').remove([storagePath]);
+          } catch (rmErr) {
+            console.warn('cleanup original PDF failed:', rmErr.message);
+          }
+        }
+      } catch (splitErr) {
+        // Échec global du chargement pdf-lib : on renvoie sans storagePath par
+        // section, le front utilisera les bookmarks sur le PDF complet.
+        console.warn('PDF split skipped:', splitErr.message);
+      }
+    }
+
     return json(res, 200, { data: parsed });
   } catch (e) {
     const msg = e?.message || 'Erreur IA';
