@@ -2903,23 +2903,20 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
     onUpdate({ ...dossier, documents: documents.filter(d => d.id !== doc.id) });
   };
 
-  // Charge un fichier en mémoire (dataUrl + métadonnées). Compat ascendante :
-  // les anciens docs stockés en KV gardent leur dataUrl base64 ; les nouveaux
-  // docs dans le bucket sont téléchargés et convertis en blob URL.
+  // Charge un fichier pour aperçu / téléchargement.
+  // Bucket : on utilise une URL SIGNÉE (instantané, pas de download du blob).
+  // KV : on récupère le dataUrl base64 comme avant.
   // Pour les sections virtuelles (doc.pageStart), on ajoute le fragment
   // #page=X à l'URL pour ouvrir directement à la bonne page.
   const loadFileData = async (doc) => {
     try {
       if (doc.storage === 'bucket' && doc.storagePath) {
-        const { blob, error } = await downloadFileFromBucket(doc.storagePath);
-        if (error || !blob) return null;
-        const blobUrl = URL.createObjectURL(blob);
-        // Pour un PDF avec un bookmark de page, on ajoute #page=X — le viewer
-        // PDF natif du navigateur (Chrome/Safari/Firefox) saute à cette page.
+        const { url, error } = await getSignedUrl(doc.storagePath, 3600);
+        if (error || !url) return null;
         const urlWithPage = (doc.pageStart && doc.type === 'application/pdf')
-          ? `${blobUrl}#page=${doc.pageStart}`
-          : blobUrl;
-        return { dataUrl: urlWithPage, name: doc.name, type: doc.type, isBlobUrl: true };
+          ? `${url}#page=${doc.pageStart}`
+          : url;
+        return { dataUrl: urlWithPage, name: doc.name, type: doc.type, isBlobUrl: false, isSignedUrl: true };
       }
       const r = await window.storage.get(`file:${doc.id}`);
       if (!r?.value) return null;
@@ -2937,16 +2934,19 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
   const handleDownload = async (doc) => {
     const data = await loadFileData(doc);
     if (!data) { alert('❌ Fichier introuvable dans le stockage.'); return; }
-    // Si on a déjà un blob URL (cas bucket), on l'utilise directement
-    if (data.isBlobUrl) {
+    // URL signée (bucket) ou blob URL : on l'utilise directement
+    if (data.isSignedUrl || data.isBlobUrl) {
+      // Pour les signed URL on enlève le fragment #page pour le téléchargement
+      const downloadUrl = data.dataUrl.split('#')[0];
       const a = document.createElement('a');
-      a.href = data.dataUrl;
+      a.href = downloadUrl;
       a.download = doc.name;
+      a.target = '_blank'; // évite que ça remplace la page si le navigateur ouvre au lieu de télécharger
       document.body.appendChild(a);
       a.click();
       setTimeout(() => {
         document.body.removeChild(a);
-        URL.revokeObjectURL(data.dataUrl);
+        if (data.isBlobUrl) URL.revokeObjectURL(data.dataUrl);
       }, 200);
       return;
     }

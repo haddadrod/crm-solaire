@@ -83,12 +83,19 @@ const CLASSIFY_SCHEMA = {
     bonCommande: {
       type: 'object',
       properties: {
-        nom: { type: 'string' }, prenom: { type: 'string' },
-        adresse: { type: 'string' }, codePostal: { type: 'string' }, ville: { type: 'string' },
-        telephone: { type: 'string' }, email: { type: 'string' },
-        produit: { type: 'string' }, puissance: { type: 'string' },
-        montantTTC: { type: 'number' }, montantHT: { type: 'number' },
-        financement: { type: 'string' }, dateSignature: { type: 'string' },
+        nom: { type: 'string', description: 'Nom de famille du client' },
+        prenom: { type: 'string', description: 'Prénom du client' },
+        adresse: { type: 'string', description: 'Adresse (numéro et rue, sans code postal ni ville)' },
+        codePostal: { type: 'string', description: 'Code postal' },
+        ville: { type: 'string', description: 'Ville' },
+        telephone: { type: 'string', description: 'Téléphone' },
+        email: { type: 'string', description: 'Email si présent, sinon vide' },
+        produit: { type: 'string', description: 'Ce qui a été vendu (ex: panneaux solaires)' },
+        puissance: { type: 'string', description: 'Puissance en Wc si panneaux solaires, juste le nombre' },
+        montantTTC: { type: 'number', description: 'Montant total TTC en euros' },
+        montantHT: { type: 'number', description: 'Montant HT en euros' },
+        financement: { type: 'string', description: 'Organisme bancaire/financier (PROJEXIO, SOFINCO, DOMOFINANCE, COMPTANT, CETELEM, FINANCO, FRANFINANCE...). REGARDE le bloc "PAIEMENT AVEC FINANCEMENT" ou "ORGANISME BANCAIRE" sur le bon de commande. Si comptant, mets "COMPTANT".' },
+        dateSignature: { type: 'string', description: 'Date de signature AAAA-MM-JJ' },
       },
       required: ['nom', 'prenom', 'adresse', 'codePostal', 'ville', 'telephone', 'email', 'produit', 'puissance', 'montantTTC', 'montantHT', 'financement', 'dateSignature'],
       additionalProperties: false,
@@ -118,7 +125,11 @@ Ta mission :
    - autre           : tout autre document
 
 3. Donne un "label" court et humain pour chaque section (ex: "Taxe foncière 2025", "Titre de séjour Yabie Alexandre").
-4. Si tu trouves un bon de commande, extrais aussi ses champs principaux (nom client, prénom, adresse, montants, etc.) pour pré-remplir le formulaire — comme tu le faisais avant.
+4. Si tu trouves un bon de commande, extrais aussi ses champs principaux pour pré-remplir le formulaire :
+   - Identité client : nom, prénom, adresse, code postal, ville, téléphone, email
+   - Vente : produit, puissance (Wc), montantTTC, montantHT
+   - **Financement : nom de l'organisme bancaire — IMPORTANT. Regarde le bloc "PAIEMENT AVEC FINANCEMENT" / "ORGANISME BANCAIRE" / "Établissement financier". Valeurs typiques : PROJEXIO, SOFINCO, DOMOFINANCE, COMPTANT, CETELEM, FINANCO, FRANFINANCE. Si le client paie comptant (case "PAIEMENT COMPTANT" cochée), mets "COMPTANT".**
+   - Date de signature (AAAA-MM-JJ)
 5. confiance="haute" si le document est clairement identifiable, "moyenne" si tu hésites, "faible" si très incertain.
 
 Règles :
