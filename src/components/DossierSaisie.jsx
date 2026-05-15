@@ -3127,7 +3127,7 @@ function DropZone({ onFile, uploading, accent }) {
         ref={inputRef}
         type="file"
         className="hidden"
-        accept=".pdf,.png,.jpg,.jpeg,.webp,.heic,.gif"
+        accept="application/pdf,image/*"
         onChange={(e) => {
           const file = e.target.files?.[0];
           if (file) onFile(file);
