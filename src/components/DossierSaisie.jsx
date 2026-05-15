@@ -2758,10 +2758,41 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
   // Aperçu inline (overlay plein écran) — pas de window.open car bloqué par le sandbox
   const [preview, setPreview] = useState(null); // { doc, dataUrl } | null
 
-  // Documents pour la catégorie active
-  const docsActive = documents.filter(d =>
-    d.category === activeCat.key && (d.subCategory || null) === (activeCat.subCategory || null)
-  );
+  // Documents pour la catégorie active.
+  // Cas spécial Client : on prend TOUS les docs client (toutes sous-catégories),
+  // ils seront groupés à l'affichage par sous-catégorie (Bon de commande,
+  // Mandat, Pièce d'identité, etc.). Les autres catégories (poseur, régie,
+  // fournisseur) gardent leur filtre strict par subCategory.
+  const docsActive = activeCat.key === 'client'
+    ? documents.filter(d => d.category === 'client')
+    : documents.filter(d =>
+        d.category === activeCat.key && (d.subCategory || null) === (activeCat.subCategory || null)
+      );
+
+  // Groupement par sous-catégorie pour l'affichage de l'onglet Client
+  const docsActiveGrouped = useMemo(() => {
+    if (activeCat.key !== 'client') return null;
+    const groups = new Map();
+    docsActive.forEach(d => {
+      const key = d.subCategory || 'autre';
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(d);
+    });
+    // Ordre des sous-catégories selon CLIENT_DOC_SUBCATS, puis le reste
+    const ordered = [];
+    CLIENT_DOC_SUBCATS.forEach(sub => {
+      if (groups.has(sub.id)) {
+        ordered.push({ subcat: sub, docs: groups.get(sub.id) });
+        groups.delete(sub.id);
+      }
+    });
+    // Restant (sous-catégories inconnues ou null)
+    groups.forEach((docs, key) => {
+      const subcat = { id: key, label: key === 'autre' ? 'Autre' : key, emoji: '📑' };
+      ordered.push({ subcat, docs });
+    });
+    return ordered;
+  }, [activeCat.key, docsActive]);
 
   // En mode équipe : ne compter QUE les documents visibles (client uniquement)
   const visibleDocs = isAdmin ? documents : documents.filter(d => d.category === 'client');
@@ -2946,7 +2977,10 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
             <div className="p-3 space-y-1.5">
               {categories.map(cat => {
                 const sel = cat.id === activeCatId;
-                const count = documents.filter(d => d.category === cat.key && (d.subCategory || null) === (cat.subCategory || null)).length;
+                // Client : on compte tous les docs client (toutes sous-catégories confondues)
+                const count = cat.key === 'client'
+                  ? documents.filter(d => d.category === 'client').length
+                  : documents.filter(d => d.category === cat.key && (d.subCategory || null) === (cat.subCategory || null)).length;
                 return (
                   <button
                     key={cat.id}
@@ -2990,14 +3024,39 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
             <DropZone onFile={handleUpload} uploading={uploading} accent={activeCat.accent} />
 
             {/* Liste des fichiers */}
-            <div className="mt-4 space-y-2">
+            <div className="mt-4 space-y-4">
               {docsActive.length === 0 ? (
                 <div className="text-center py-8 text-slate-400">
                   <FileText className="w-10 h-10 mx-auto mb-2 opacity-40" />
                   <p className="text-sm">Aucun document pour le moment</p>
                   <p className="text-xs">Ajoute-en avec la zone ci-dessus</p>
                 </div>
+              ) : docsActiveGrouped ? (
+                // Onglet Client : groupement par sous-catégorie
+                docsActiveGrouped.map(({ subcat, docs }) => (
+                  <div key={subcat.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
+                    <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+                      <span className="text-base">{subcat.emoji}</span>
+                      <span className="text-sm font-bold text-slate-700 uppercase tracking-wide">{subcat.label}</span>
+                      <span className="ml-auto text-xs font-semibold text-slate-500 bg-white border border-slate-200 rounded-full px-2 py-0.5">{docs.length}</span>
+                    </div>
+                    <div className="p-2 space-y-2">
+                      {docs.map(doc => (
+                        <DocumentItem
+                          key={doc.id}
+                          doc={doc}
+                          onOpen={() => handleOpen(doc)}
+                          onDownload={() => handleDownload(doc)}
+                          onDelete={() => handleDelete(doc)}
+                          onUpdateMeta={(u) => updateDocMeta(doc.id, u)}
+                          subCats={CLIENT_DOC_SUBCATS}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))
               ) : (
+                // Autres catégories (poseur, régie, fournisseur) : liste simple
                 docsActive.map(doc => (
                   <DocumentItem
                     key={doc.id}
@@ -3270,7 +3329,7 @@ function DropZone({ onFile, uploading, accent }) {
   );
 }
 
-function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta }) {
+function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats }) {
   const [expanded, setExpanded] = useState(false);
   const isImage = (doc.type || '').startsWith('image/');
   const isPdf = (doc.type || '') === 'application/pdf';
@@ -3301,36 +3360,51 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta }) {
         </div>
       </div>
       {expanded && (
-        <div className="bg-slate-50 px-3 py-3 border-t border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-2">
-          <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">💰 Montant TTC (€)</label>
-            <input
-              type="number"
-              step="0.01"
-              defaultValue={doc.montant ?? ''}
-              onBlur={(e) => onUpdateMeta({ montant: e.target.value === '' ? null : parseFloat(e.target.value) })}
-              placeholder="—"
-              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">📅 Date pièce</label>
-            <input
-              type="date"
-              defaultValue={doc.datePiece || ''}
-              onBlur={(e) => onUpdateMeta({ datePiece: e.target.value || null })}
-              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
-            />
-          </div>
-          <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">📝 Note</label>
-            <input
-              type="text"
-              defaultValue={doc.note || ''}
-              onBlur={(e) => onUpdateMeta({ note: e.target.value })}
-              placeholder="N° facture, BC..."
-              className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
-            />
+        <div className="bg-slate-50 px-3 py-3 border-t border-slate-200 space-y-2">
+          {/* Sélecteur de sous-catégorie (uniquement pour les docs Client) */}
+          {subCats && (
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">📂 Catégorie</label>
+              <select
+                value={doc.subCategory || 'autre'}
+                onChange={(e) => onUpdateMeta({ subCategory: e.target.value })}
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+              >
+                {subCats.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
+              </select>
+            </div>
+          )}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">💰 Montant TTC (€)</label>
+              <input
+                type="number"
+                step="0.01"
+                defaultValue={doc.montant ?? ''}
+                onBlur={(e) => onUpdateMeta({ montant: e.target.value === '' ? null : parseFloat(e.target.value) })}
+                placeholder="—"
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">📅 Date pièce</label>
+              <input
+                type="date"
+                defaultValue={doc.datePiece || ''}
+                onBlur={(e) => onUpdateMeta({ datePiece: e.target.value || null })}
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">📝 Note</label>
+              <input
+                type="text"
+                defaultValue={doc.note || ''}
+                onBlur={(e) => onUpdateMeta({ note: e.target.value })}
+                placeholder="N° facture, BC..."
+                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+              />
+            </div>
           </div>
         </div>
       )}
