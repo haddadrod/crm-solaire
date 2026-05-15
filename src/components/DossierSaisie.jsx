@@ -1050,6 +1050,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
           type: s.type,
           storage: 'bucket',
           storagePath: s.bucketPath,
+          // Plusieurs docs peuvent partager le même bucketPath (scan dossier
+          // complet : 1 PDF + N sections virtuelles avec bookmarks de pages)
+          sharedFile: true,
+          pageStart: s.pageStart || null,
+          pageEnd: s.pageEnd || null,
           category: 'client',
           subCategory: s.subCategory || null,
           uploadedAt: now,
@@ -1157,12 +1162,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const d = dossiers.find(x => x.localId === id);
     if (!window.confirm(`Supprimer le dossier ${d?.nom || ''} ?${d?.documents?.length ? ` (${d.documents.length} document(s) seront aussi supprimés)` : ''}`)) return;
     if (d?.documents?.length) {
+      // Plusieurs documents peuvent partager le même bucketPath (scan dossier
+      // complet) — on dédoublonne pour ne supprimer chaque fichier physique
+      // qu'une seule fois.
+      const bucketPathsToDelete = new Set();
+      const kvIdsToDelete = new Set();
       for (const doc of d.documents) {
         if (doc.storage === 'bucket' && doc.storagePath) {
-          try { await deleteFileFromBucket(doc.storagePath); } catch (e) {}
+          bucketPathsToDelete.add(doc.storagePath);
         } else {
-          try { await window.storage.delete(`file:${doc.id}`); } catch (e) {}
+          kvIdsToDelete.add(doc.id);
         }
+      }
+      for (const path of bucketPathsToDelete) {
+        try { await deleteFileFromBucket(path); } catch (e) {}
+      }
+      for (const id of kvIdsToDelete) {
+        try { await window.storage.delete(`file:${id}`); } catch (e) {}
       }
     }
     setDossiers(dossiers.filter(x => x.localId !== id));
@@ -2868,7 +2884,15 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
   const handleDelete = async (doc) => {
     if (!window.confirm(`Supprimer "${doc.name}" ?`)) return;
     if (doc.storage === 'bucket' && doc.storagePath) {
-      try { await deleteFileFromBucket(doc.storagePath); } catch (e) {}
+      // Si plusieurs documents partagent le même bucketPath (scan dossier
+      // complet : 1 PDF + N sections virtuelles), on ne supprime le fichier
+      // physique du bucket QUE si c'est le dernier doc qui pointe dessus.
+      const otherDocsUsingSameFile = documents.filter(d =>
+        d.id !== doc.id && d.storage === 'bucket' && d.storagePath === doc.storagePath
+      );
+      if (otherDocsUsingSameFile.length === 0) {
+        try { await deleteFileFromBucket(doc.storagePath); } catch (e) {}
+      }
     } else {
       try { await window.storage.delete(`file:${doc.id}`); } catch (e) {}
     }
@@ -2878,13 +2902,20 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
   // Charge un fichier en mémoire (dataUrl + métadonnées). Compat ascendante :
   // les anciens docs stockés en KV gardent leur dataUrl base64 ; les nouveaux
   // docs dans le bucket sont téléchargés et convertis en blob URL.
+  // Pour les sections virtuelles (doc.pageStart), on ajoute le fragment
+  // #page=X à l'URL pour ouvrir directement à la bonne page.
   const loadFileData = async (doc) => {
     try {
       if (doc.storage === 'bucket' && doc.storagePath) {
         const { blob, error } = await downloadFileFromBucket(doc.storagePath);
         if (error || !blob) return null;
         const blobUrl = URL.createObjectURL(blob);
-        return { dataUrl: blobUrl, name: doc.name, type: doc.type, isBlobUrl: true };
+        // Pour un PDF avec un bookmark de page, on ajoute #page=X — le viewer
+        // PDF natif du navigateur (Chrome/Safari/Firefox) saute à cette page.
+        const urlWithPage = (doc.pageStart && doc.type === 'application/pdf')
+          ? `${blobUrl}#page=${doc.pageStart}`
+          : blobUrl;
+        return { dataUrl: urlWithPage, name: doc.name, type: doc.type, isBlobUrl: true };
       }
       const r = await window.storage.get(`file:${doc.id}`);
       if (!r?.value) return null;
@@ -5310,90 +5341,30 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       const sections = Array.isArray(result.sections) ? result.sections : [];
       if (sections.length === 0) throw new Error("Aucune section identifiée dans le PDF.");
 
-      // 3) Découpage du PDF côté navigateur avec pdf-lib (chargé via CDN dans index.html)
+      // 3) Pas de découpage — on garde le PDF complet dans le bucket et chaque
+      //    "section" devient une entrée Documents qui pointe vers le même PDF
+      //    mais avec un fragment #page=X pour ouvrir à la bonne page.
+      //    Avantage : ça marche avec n'importe quel PDF (même CamScanner) car
+      //    on ne touche pas au contenu du PDF — on l'utilise comme un seul
+      //    fichier avec des "bookmarks" virtuels par section.
       setDossierScanState({ status: 'splitting', error: '', sections });
-      const PDFDocument = window.PDFLib && window.PDFLib.PDFDocument;
-      if (!PDFDocument) throw new Error('pdf-lib non chargé (CDN bloqué ?). Recharge la page.');
-      const arrayBuffer = await file.arrayBuffer();
-      let srcPdf;
-      try {
-        // ignoreEncryption: certains scanners (CamScanner, Adobe…) ajoutent une
-        // protection même sans mot de passe ; on l'ignore pour pouvoir copier
-        // les pages malgré tout.
-        srcPdf = await PDFDocument.load(arrayBuffer, { ignoreEncryption: true });
-      } catch (loadErr) {
-        throw new Error(`Lecture du PDF impossible : ${loadErr?.message || loadErr}`);
-      }
-      const splitFiles = [];
-      const splitErrors = [];
-      for (const section of sections) {
-        try {
-          // pages 1-indexées dans l'API → 0-indexées dans pdf-lib
-          const indices = [];
-          for (let p = section.pageStart - 1; p <= section.pageEnd - 1; p++) {
-            if (p >= 0 && p < srcPdf.getPageCount()) indices.push(p);
-          }
-          if (indices.length === 0) continue;
-          const newPdf = await PDFDocument.create();
-          const copiedPages = await newPdf.copyPages(srcPdf, indices);
-          copiedPages.forEach(p => newPdf.addPage(p));
-          const bytes = await newPdf.save();
-          const safeLabel = (section.label || section.category).replace(/[^a-zA-Z0-9-_]+/g, '-').slice(0, 50);
-          const sectionName = `${safeLabel}.pdf`;
-          const sectionFile = new File([bytes], sectionName, { type: 'application/pdf' });
-          splitFiles.push({ section, sectionFile, sectionName });
-        } catch (splitErr) {
-          console.error(`Erreur sur section ${section.label}:`, splitErr);
-          splitErrors.push(`"${section.label}" : ${splitErr?.message || splitErr}`);
-        }
-      }
-      if (splitFiles.length === 0) {
-        // Fallback : on uploade le PDF complet comme un seul document client
-        // (catégorie "autre"). L'utilisateur pourra le classer manuellement.
-        const fullPdfFileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const { path: fullPath, error: fullErr } = await uploadFileToBucket(file, fullPdfFileId);
-        if (fullErr || !fullPath) {
-          throw new Error(`Découpage impossible (${splitErrors[0] || 'inconnu'}) et fallback échoué.`);
-        }
-        setFormData(prev => ({
-          ...prev,
-          scannedSections: [{
-            fileId: fullPdfFileId,
-            bucketPath: fullPath,
-            name: file.name || 'dossier-complet.pdf',
-            type: 'application/pdf',
-            size: file.size,
-            subCategory: 'autre',
-            label: 'Dossier complet (non découpé)',
-            note: `⚠️ Découpage automatique impossible (PDF probablement protégé) — fichier complet attaché.`,
-          }],
-        }));
-        deleteFileFromBucket(bucketPath).catch(() => {});
-        setDossierScanState({
-          status: 'error',
-          error: `Découpage impossible : ${splitErrors[0] || 'erreur inconnue'}. Le PDF complet a été attaché au dossier (catégorie "Autre"). Tu peux le re-uploader page par page si tu veux le classer.`,
-          sections: null,
-        });
-        return;
-      }
-
-      // 4) Upload chaque section dans le bucket
-      const scannedSections = [];
-      for (const { section, sectionFile, sectionName } of splitFiles) {
-        const sectionFileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const { path: sectionPath, error: sErr } = await uploadFileToBucket(sectionFile, sectionFileId);
-        if (sErr || !sectionPath) continue; // skip section échouée mais ne bloque pas
-        scannedSections.push({
-          fileId: sectionFileId,
-          bucketPath: sectionPath,
-          name: sectionName,
-          type: 'application/pdf',
-          size: sectionFile.size,
-          subCategory: section.category,
-          label: section.label,
-          note: `📂 ${section.label} (pages ${section.pageStart}-${section.pageEnd}) — confiance ${section.confiance}`,
-        });
-      }
+      const scannedSections = sections.map((section, i) => ({
+        // ID unique par section pour les documents — mais bucketPath partagé
+        // (toutes les sections pointent vers le même PDF physique)
+        fileId: `${scanFileId}_s${i}`,
+        bucketPath,
+        // Nom inclut la plage de pages pour clarté
+        name: section.pageStart === section.pageEnd
+          ? `${section.label} (p.${section.pageStart}).pdf`
+          : `${section.label} (p.${section.pageStart}-${section.pageEnd}).pdf`,
+        type: 'application/pdf',
+        size: file.size,
+        subCategory: section.category,
+        label: section.label,
+        pageStart: section.pageStart,
+        pageEnd: section.pageEnd,
+        note: `📂 ${section.label} — pages ${section.pageStart}${section.pageEnd > section.pageStart ? `-${section.pageEnd}` : ''} (confiance ${section.confiance})`,
+      }));
 
       // 5) Pré-remplit le formulaire avec les champs extraits du bon de commande
       const d = result.bonCommande || {};
@@ -5424,9 +5395,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         return next;
       });
 
-      // Le PDF d'origine n'est plus utile (toutes les pages sont dans les sections),
-      // on le supprime du bucket en background
-      deleteFileFromBucket(bucketPath).catch(() => {});
+      // Le PDF d'origine reste dans le bucket : toutes les sections pointent
+      // vers ce même fichier physique avec des bookmarks pageStart/pageEnd.
 
       setDossierScanState({ status: 'done', error: '', sections });
     } catch (e) {
