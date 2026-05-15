@@ -1072,11 +1072,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
           type: s.type,
           storage: 'bucket',
           storagePath: s.bucketPath,
-          // Plusieurs docs peuvent partager le même bucketPath (scan dossier
-          // complet : 1 PDF + N sections virtuelles avec bookmarks de pages)
-          sharedFile: true,
-          pageStart: s.pageStart || null,
-          pageEnd: s.pageEnd || null,
+          // sharedFile = true uniquement en fallback (pdf-lib serveur en panne) :
+          // dans ce cas plusieurs docs partagent le même bucketPath et on a un
+          // bookmark de page. Si standalone, chaque section a son propre PDF.
+          sharedFile: !s.standalone,
+          pageStart: s.standalone ? null : (s.pageStart || null),
+          pageEnd: s.standalone ? null : (s.pageEnd || null),
           category: 'client',
           subCategory: s.subCategory || null,
           uploadedAt: now,
@@ -5440,30 +5441,31 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       const sections = Array.isArray(result.sections) ? result.sections : [];
       if (sections.length === 0) throw new Error("Aucune section identifiée dans le PDF.");
 
-      // 3) Pas de découpage — on garde le PDF complet dans le bucket et chaque
-      //    "section" devient une entrée Documents qui pointe vers le même PDF
-      //    mais avec un fragment #page=X pour ouvrir à la bonne page.
-      //    Avantage : ça marche avec n'importe quel PDF (même CamScanner) car
-      //    on ne touche pas au contenu du PDF — on l'utilise comme un seul
-      //    fichier avec des "bookmarks" virtuels par section.
+      // 3) Découpage : si le serveur a su scinder le PDF (section.storagePath
+      //    présent), chaque section a son propre fichier PDF dans le bucket.
+      //    Sinon (PDF corrompu / pdf-lib en panne), on retombe sur le PDF
+      //    complet avec un bookmark de page (#page=X).
       setDossierScanState({ status: 'splitting', error: '', sections });
-      const scannedSections = sections.map((section, i) => ({
-        // ID unique par section pour les documents — mais bucketPath partagé
-        // (toutes les sections pointent vers le même PDF physique)
-        fileId: `${scanFileId}_s${i}`,
-        bucketPath,
-        // Nom inclut la plage de pages pour clarté
-        name: section.pageStart === section.pageEnd
-          ? `${section.label} (p.${section.pageStart}).pdf`
-          : `${section.label} (p.${section.pageStart}-${section.pageEnd}).pdf`,
-        type: 'application/pdf',
-        size: file.size,
-        subCategory: section.category,
-        label: section.label,
-        pageStart: section.pageStart,
-        pageEnd: section.pageEnd,
-        note: `📂 ${section.label} — pages ${section.pageStart}${section.pageEnd > section.pageStart ? `-${section.pageEnd}` : ''} (confiance ${section.confiance})`,
-      }));
+      const scannedSections = sections.map((section, i) => {
+        const ownPath = section.storagePath || null;
+        return {
+          fileId: `${scanFileId}_s${i}`,
+          // Path propre si découpé, sinon path partagé avec bookmark de pages
+          bucketPath: ownPath || bucketPath,
+          standalone: !!ownPath,
+          name: section.pageStart === section.pageEnd
+            ? `${section.label} (p.${section.pageStart}).pdf`
+            : `${section.label} (p.${section.pageStart}-${section.pageEnd}).pdf`,
+          type: 'application/pdf',
+          size: file.size,
+          subCategory: section.category,
+          label: section.label,
+          // pageStart/pageEnd uniquement utiles si fichier partagé (bookmark)
+          pageStart: ownPath ? null : section.pageStart,
+          pageEnd: ownPath ? null : section.pageEnd,
+          note: `📂 ${section.label} — pages ${section.pageStart}${section.pageEnd > section.pageStart ? `-${section.pageEnd}` : ''} (confiance ${section.confiance})`,
+        };
+      });
 
       // 5) Pré-remplit le formulaire avec les champs extraits du bon de commande
       const d = result.bonCommande || {};
