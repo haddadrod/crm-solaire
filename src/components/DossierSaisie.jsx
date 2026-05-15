@@ -5325,6 +5325,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         throw new Error(`Lecture du PDF impossible : ${loadErr?.message || loadErr}`);
       }
       const splitFiles = [];
+      const splitErrors = [];
       for (const section of sections) {
         try {
           // pages 1-indexées dans l'API → 0-indexées dans pdf-lib
@@ -5343,10 +5344,38 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
           splitFiles.push({ section, sectionFile, sectionName });
         } catch (splitErr) {
           console.error(`Erreur sur section ${section.label}:`, splitErr);
-          // On continue avec les autres sections
+          splitErrors.push(`"${section.label}" : ${splitErr?.message || splitErr}`);
         }
       }
-      if (splitFiles.length === 0) throw new Error('Aucune section n\'a pu être découpée du PDF.');
+      if (splitFiles.length === 0) {
+        // Fallback : on uploade le PDF complet comme un seul document client
+        // (catégorie "autre"). L'utilisateur pourra le classer manuellement.
+        const fullPdfFileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const { path: fullPath, error: fullErr } = await uploadFileToBucket(file, fullPdfFileId);
+        if (fullErr || !fullPath) {
+          throw new Error(`Découpage impossible (${splitErrors[0] || 'inconnu'}) et fallback échoué.`);
+        }
+        setFormData(prev => ({
+          ...prev,
+          scannedSections: [{
+            fileId: fullPdfFileId,
+            bucketPath: fullPath,
+            name: file.name || 'dossier-complet.pdf',
+            type: 'application/pdf',
+            size: file.size,
+            subCategory: 'autre',
+            label: 'Dossier complet (non découpé)',
+            note: `⚠️ Découpage automatique impossible (PDF probablement protégé) — fichier complet attaché.`,
+          }],
+        }));
+        deleteFileFromBucket(bucketPath).catch(() => {});
+        setDossierScanState({
+          status: 'error',
+          error: `Découpage impossible : ${splitErrors[0] || 'erreur inconnue'}. Le PDF complet a été attaché au dossier (catégorie "Autre"). Tu peux le re-uploader page par page si tu veux le classer.`,
+          sections: null,
+        });
+        return;
+      }
 
       // 4) Upload chaque section dans le bucket
       const scannedSections = [];
