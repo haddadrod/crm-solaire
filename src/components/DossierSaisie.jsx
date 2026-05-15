@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, Lock, Unlock, Shield, KeyRound } from 'lucide-react';
-import { supabase } from '../supabase.js';
+import { supabase, uploadFileToBucket, getSignedUrl, deleteFileFromBucket, downloadFileFromBucket } from '../supabase.js';
 
 // Listes par défaut — modifiables dans Réglages
 const POSEURS_DEFAULT = ['IONERGIK 2', 'IONERGIK', 'TEK', 'RV SERVICE', 'ECO ENERGY', 'MAFATEC', 'RBM', 'RL CONSEILS', 'MASTEROVIT', 'SKY', 'INTERNE', 'LEH', 'CAP SOLEIL', 'INNOVA', 'DDI', 'ALLAN', 'AUTRE'];
@@ -105,9 +105,15 @@ const PRODUITS_DEFAULT = [
   { id: 'AUTRE',           label: 'Autre rénovation',       emoji: '🔨', autoTarif: false },
 ];
 
-// Limite des fichiers — le stockage = 5 Mo max par clé, et le base64 ajoute ~33% d'overhead.
-// On limite donc le fichier brut à ~3,7 Mo pour être sûr que le stockage passe.
-const MAX_FILE_SIZE = Math.floor(3.7 * 1024 * 1024);
+// Limite des fichiers stockés en base64 inline (KV `storage` table) :
+// 5 Mo max par clé Supabase, et le base64 ajoute ~33% d'overhead → 3,7 Mo brut.
+// Utilisé uniquement par FactureFileInput (factures PDF compactes).
+const MAX_FILE_SIZE_KV = Math.floor(3.7 * 1024 * 1024);
+// Limite des fichiers stockés dans le bucket Supabase Storage : 50 Mo
+// (limite imposée par Supabase + cohérent avec SUPABASE_STORAGE_SETUP.sql).
+const MAX_FILE_SIZE_BUCKET = 50 * 1024 * 1024;
+// Alias pour les usages historiques (à supprimer progressivement)
+const MAX_FILE_SIZE = MAX_FILE_SIZE_KV;
 
 const findProduit = (produits, id) => {
   const list = (produits && produits.length) ? produits : PRODUITS_DEFAULT;
@@ -1096,7 +1102,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
     if (!window.confirm(`Supprimer le dossier ${d?.nom || ''} ?${d?.documents?.length ? ` (${d.documents.length} document(s) seront aussi supprimés)` : ''}`)) return;
     if (d?.documents?.length) {
       for (const doc of d.documents) {
-        try { await window.storage.delete(`file:${doc.id}`); } catch (e) {}
+        if (doc.storage === 'bucket' && doc.storagePath) {
+          try { await deleteFileFromBucket(doc.storagePath); } catch (e) {}
+        } else {
+          try { await window.storage.delete(`file:${doc.id}`); } catch (e) {}
+        }
       }
     }
     setDossiers(dossiers.filter(x => x.localId !== id));
@@ -2704,17 +2714,41 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
 
   const handleUpload = async (file) => {
     if (!file) return;
-    if (file.size > MAX_FILE_SIZE) {
-      alert(`❌ Fichier trop gros : ${formatFileSize(file.size)}\n\nMax autorisé : ${formatFileSize(MAX_FILE_SIZE)} (limite imposée par le stockage navigateur).\nAstuce : compresse les PDF avec un outil en ligne (smallpdf, ilovepdf...).`);
+    if (file.size > MAX_FILE_SIZE_BUCKET) {
+      alert(`❌ Fichier trop gros : ${formatFileSize(file.size)}\n\nMax autorisé : ${formatFileSize(MAX_FILE_SIZE_BUCKET)}.`);
       return;
     }
     setUploading(true);
     try {
-      const dataUrl = await readFileAsDataURL(file);
       const fileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const result = await window.storage.set(`file:${fileId}`, JSON.stringify({ dataUrl, name: file.name, type: file.type }));
-      if (!result) {
-        alert('❌ Échec du stockage du fichier.\n\nLe fichier est probablement trop gros une fois encodé. Essaie un PDF plus léger (compresse-le).');
+      // Upload dans le bucket Supabase Storage (gère les gros fichiers jusqu'à 50 Mo).
+      const { path, error: upErr } = await uploadFileToBucket(file, fileId);
+      if (upErr || !path) {
+        // Fallback KV si le bucket n'est pas accessible (pas encore setup, etc.)
+        if (file.size > MAX_FILE_SIZE_KV) {
+          alert(`❌ Échec de l'upload (bucket indisponible) et le fichier dépasse ${formatFileSize(MAX_FILE_SIZE_KV)} pour le stockage de secours.\n\nDétail : ${upErr?.message || 'inconnu'}\n\nVérifie que le bucket "dossier-documents" existe dans Supabase.`);
+          return;
+        }
+        const dataUrl = await readFileAsDataURL(file);
+        const result = await window.storage.set(`file:${fileId}`, JSON.stringify({ dataUrl, name: file.name, type: file.type }));
+        if (!result) {
+          alert(`❌ Échec du stockage du fichier.\n\nDétail : ${upErr?.message || 'inconnu'}`);
+          return;
+        }
+        const newDocKv = {
+          id: fileId,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          storage: 'kv',
+          category: activeCat.key,
+          subCategory: activeCat.subCategory || null,
+          uploadedAt: new Date().toISOString(),
+          montant: null,
+          datePiece: null,
+          note: '',
+        };
+        onUpdate({ ...dossier, documents: [...documents, newDocKv] });
         return;
       }
       const newDoc = {
@@ -2722,6 +2756,8 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
         name: file.name,
         size: file.size,
         type: file.type,
+        storage: 'bucket',
+        storagePath: path,
         category: activeCat.key,
         subCategory: activeCat.subCategory || null,
         uploadedAt: new Date().toISOString(),
@@ -2739,27 +2775,54 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
 
   const handleDelete = async (doc) => {
     if (!window.confirm(`Supprimer "${doc.name}" ?`)) return;
-    try { await window.storage.delete(`file:${doc.id}`); } catch (e) {}
+    if (doc.storage === 'bucket' && doc.storagePath) {
+      try { await deleteFileFromBucket(doc.storagePath); } catch (e) {}
+    } else {
+      try { await window.storage.delete(`file:${doc.id}`); } catch (e) {}
+    }
     onUpdate({ ...dossier, documents: documents.filter(d => d.id !== doc.id) });
   };
 
-  const loadFileData = async (docId) => {
+  // Charge un fichier en mémoire (dataUrl + métadonnées). Compat ascendante :
+  // les anciens docs stockés en KV gardent leur dataUrl base64 ; les nouveaux
+  // docs dans le bucket sont téléchargés et convertis en blob URL.
+  const loadFileData = async (doc) => {
     try {
-      const r = await window.storage.get(`file:${docId}`);
+      if (doc.storage === 'bucket' && doc.storagePath) {
+        const { blob, error } = await downloadFileFromBucket(doc.storagePath);
+        if (error || !blob) return null;
+        const blobUrl = URL.createObjectURL(blob);
+        return { dataUrl: blobUrl, name: doc.name, type: doc.type, isBlobUrl: true };
+      }
+      const r = await window.storage.get(`file:${doc.id}`);
       if (!r?.value) return null;
-      return JSON.parse(r.value);
+      const parsed = JSON.parse(r.value);
+      return { ...parsed, isBlobUrl: false };
     } catch (e) { return null; }
   };
 
   const handleOpen = async (doc) => {
-    const data = await loadFileData(doc.id);
+    const data = await loadFileData(doc);
     if (!data) { alert('❌ Fichier introuvable dans le stockage.'); return; }
-    setPreview({ doc, dataUrl: data.dataUrl, type: data.type || doc.type });
+    setPreview({ doc, dataUrl: data.dataUrl, type: data.type || doc.type, isBlobUrl: !!data.isBlobUrl });
   };
 
   const handleDownload = async (doc) => {
-    const data = await loadFileData(doc.id);
+    const data = await loadFileData(doc);
     if (!data) { alert('❌ Fichier introuvable dans le stockage.'); return; }
+    // Si on a déjà un blob URL (cas bucket), on l'utilise directement
+    if (data.isBlobUrl) {
+      const a = document.createElement('a');
+      a.href = data.dataUrl;
+      a.download = doc.name;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => {
+        document.body.removeChild(a);
+        URL.revokeObjectURL(data.dataUrl);
+      }, 200);
+      return;
+    }
     try {
       // Conversion data URL → blob URL pour un téléchargement robuste dans le sandbox
       const parts = data.dataUrl.split(',');
