@@ -579,6 +579,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Process pose
     dateEnvoiPose: '', dateVisitePose: '',
     statutPose: '', // '' | 'envoyé' | 'visite_ok' | 'client_refuse'
+    tentativesPose: [], // [{date, motif: 'client_absent'|'client_refuse'|'autre', penalite, regie, regleAt}]
     // Originaux signés (entre pose et contrôle livraison)
     dateRecusOriginauxPoseur: '', dateEnvoiOriginauxBanque: '', dateRecusOriginauxBanque: '',
     pasOriginauxRequis: false, // si le dossier ne nécessite pas d'originaux
@@ -968,6 +969,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       envoisHistorique: d.envoisHistorique || [],
       dateEnvoiPose: d.dateEnvoiPose || '', dateVisitePose: d.dateVisitePose || '',
       statutPose: d.statutPose || '',
+      tentativesPose: d.tentativesPose || [],
       dateRecusOriginauxPoseur: d.dateRecusOriginauxPoseur || '',
       dateEnvoiOriginauxBanque: d.dateEnvoiOriginauxBanque || '',
       dateRecusOriginauxBanque: d.dateRecusOriginauxBanque || '',
@@ -6645,6 +6647,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const refPaiement = useRef(null);
   const refEquipeInterne = useRef(null);
 
+  // Formulaire "🔁 Pose ratée" — visible quand l'utilisateur clique le bouton
+  const [poseRateeForm, setPoseRateeForm] = useState({ visible: false, motif: 'client_absent', penalite: 500 });
+
   // Scroll vers la section demandée à l'ouverture
   useEffect(() => {
     if (!scrollTo) return;
@@ -7037,15 +7042,76 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   const reset = (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') ? { statut: 'A_EN_COURS' } : {};
                   onUpdate({ statutPose: 'visite_ok', dateEnvoiPose: d.dateEnvoiPose || today, dateInsta: d.dateInsta || today, ...reset });
                 }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutPose === 'visite_ok' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Posé</button>
-                <button onClick={() => onUpdate({ statutPose: 'client_refuse', statut: 'W2_ANNULER' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutPose === 'client_refuse' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refuse</button>
+                <button onClick={() => setPoseRateeForm({ ...poseRateeForm, visible: !poseRateeForm.visible })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${poseRateeForm.visible ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>🔁 Pose ratée</button>
               </div>
+
+              {poseRateeForm.visible && (
+                <div className="mt-2 p-2 bg-rose-50 border-2 border-rose-300 rounded-lg space-y-2">
+                  <div className="text-[10px] font-bold text-rose-700 uppercase">Pose ratée — pénalité régie</div>
+                  <div>
+                    <label className="block text-[9px] font-semibold text-rose-600 mb-1">Motif</label>
+                    <select value={poseRateeForm.motif} onChange={(e) => setPoseRateeForm({ ...poseRateeForm, motif: e.target.value })} className="w-full px-2 py-1 bg-white border border-rose-300 rounded text-[11px] font-bold text-rose-700">
+                      <option value="client_absent">Client absent</option>
+                      <option value="client_refuse">Client refuse</option>
+                      <option value="autre">Autre</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-semibold text-rose-600 mb-1">Pénalité régie (selon distance)</label>
+                    <div className="grid grid-cols-3 gap-1">
+                      {[500, 750, 1000].map(p => (
+                        <button key={p} onClick={() => setPoseRateeForm({ ...poseRateeForm, penalite: p })} className={`px-1 py-1 rounded text-[10px] font-bold border-2 ${poseRateeForm.penalite === p ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>{p} €</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="flex gap-1">
+                    <button onClick={() => setPoseRateeForm({ visible: false, motif: 'client_absent', penalite: 500 })} className="flex-1 px-2 py-1.5 bg-white border border-slate-300 text-slate-600 rounded text-[10px] font-bold hover:bg-slate-50">Annuler</button>
+                    <button onClick={() => {
+                      const regieNom = (d.regies && d.regies[0]?.nom) || d.regie || '';
+                      const tentative = {
+                        date: d.dateEnvoiPose || new Date().toISOString().split('T')[0],
+                        motif: poseRateeForm.motif,
+                        penalite: poseRateeForm.penalite,
+                        regie: regieNom,
+                        regleAt: null,
+                      };
+                      onUpdate({
+                        tentativesPose: [...(d.tentativesPose || []), tentative],
+                        // Reset des champs pose pour permettre une nouvelle date
+                        dateEnvoiPose: '',
+                        dateVisitePose: '',
+                        statutPose: '',
+                      });
+                      setPoseRateeForm({ visible: false, motif: 'client_absent', penalite: 500 });
+                    }} className="flex-1 px-2 py-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded text-[10px] font-bold">📌 Enregistrer & repartir</button>
+                  </div>
+                </div>
+              )}
+
+              {/* Historique des tentatives ratées */}
+              {(d.tentativesPose || []).length > 0 && (
+                <div className="mt-2 p-2 bg-white border border-rose-200 rounded-lg">
+                  <div className="text-[9px] font-bold text-rose-700 uppercase mb-1">📜 Tentatives ratées ({(d.tentativesPose || []).length})</div>
+                  <div className="space-y-1">
+                    {(d.tentativesPose || []).map((t, i) => {
+                      const fmtD = (iso) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '?';
+                      const motifLabel = t.motif === 'client_absent' ? 'Client absent' : t.motif === 'client_refuse' ? 'Client refuse' : 'Autre';
+                      return (
+                        <div key={i} className="text-[10px] flex items-center gap-1 flex-wrap bg-rose-50 rounded px-1.5 py-1">
+                          <span className="font-bold text-slate-700">{i + 1}.</span>
+                          <span className="text-slate-600">{fmtD(t.date)}</span>
+                          <span className="text-rose-700 font-semibold">· {motifLabel}</span>
+                          {t.regie && <span className="text-slate-500">· {t.regie}</span>}
+                          <span className="ml-auto font-bold text-rose-700">{t.penalite} €</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {d.statutPose === 'visite_ok' && d.dateInsta && (
                 <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ Posé le {new Date(d.dateInsta).toLocaleDateString('fr-FR')} — passe au Consuel ↓</div>
-              )}
-
-              {d.statutPose === 'client_refuse' && (
-                <div className="mt-1.5 px-2 py-1 bg-rose-100 border border-rose-300 rounded text-[10px] text-rose-700 font-bold">⚠️ Client a refusé — dossier annulé</div>
               )}
             </div>
 
