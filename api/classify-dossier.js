@@ -139,6 +139,68 @@ Règles :
 - Ne saute aucune page : chaque page doit appartenir à exactement une section.
 - Pour le bon de commande, si non trouvé, mets des chaînes vides / zéros.`;
 
+// Limite Anthropic : 32 Mo par requête. En base64 ça représente ~24 Mo de PDF
+// brut. On laisse une marge → 18 Mo brut max par chunk.
+const MAX_CHUNK_BYTES = 18 * 1024 * 1024;
+
+// Appel Claude pour un buffer PDF donné. Renvoie l'objet `parsed` (sections +
+// bonCommande) ou throw en cas d'erreur (le caller gère le retry/chunk).
+async function classifyPdfBuffer(client, pdfBuffer, extraContext = '') {
+  const base64 = pdfBuffer.toString('base64');
+  const fullInstructions = extraContext ? `${INSTRUCTIONS}\n\n${extraContext}` : INSTRUCTIONS;
+  const message = await client.messages.create({
+    model: 'claude-opus-4-7',
+    max_tokens: 8000,
+    thinking: { type: 'adaptive' },
+    output_config: {
+      effort: 'medium',
+      format: { type: 'json_schema', schema: CLASSIFY_SCHEMA },
+    },
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+          { type: 'text', text: fullInstructions },
+        ],
+      },
+    ],
+  });
+  const textBlock = message.content.find((b) => b.type === 'text');
+  if (!textBlock || !textBlock.text) throw new Error('Réponse IA vide.');
+  return JSON.parse(textBlock.text);
+}
+
+// Vérifie si un objet bonCommande contient au moins un champ rempli.
+function bonCommandeIsFilled(bc) {
+  if (!bc) return false;
+  return Object.values(bc).some((v) => {
+    if (typeof v === 'string') return v.trim().length > 0;
+    if (typeof v === 'number') return v > 0;
+    return false;
+  });
+}
+
+// Découpe un PDF source en chunks de pages dont la taille reste sous la limite
+// Anthropic. Renvoie [{ bytes, pageOffset, pageCount }, ...].
+async function chunkPdfBySize(sourceDoc, totalSize, totalPages) {
+  // Estime combien de pages par chunk pour rester sous MAX_CHUNK_BYTES
+  const estimatedPerPage = totalSize / totalPages;
+  const pagesPerChunk = Math.max(1, Math.floor(MAX_CHUNK_BYTES / estimatedPerPage));
+  const chunks = [];
+  for (let start = 0; start < totalPages; start += pagesPerChunk) {
+    const end = Math.min(start + pagesPerChunk, totalPages);
+    const chunkDoc = await PDFDocument.create();
+    const indices = [];
+    for (let p = start; p < end; p++) indices.push(p);
+    const copied = await chunkDoc.copyPages(sourceDoc, indices);
+    copied.forEach((page) => chunkDoc.addPage(page));
+    const bytes = Buffer.from(await chunkDoc.save());
+    chunks.push({ bytes, pageOffset: start, pageCount: end - start });
+  }
+  return chunks;
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -172,36 +234,59 @@ export default async function handler(req, res) {
     return json(res, 502, { error: `Téléchargement bucket échoué : ${e.message}` });
   }
 
-  // 2) Appel à Claude avec le PDF en bloc "document"
+  // 2) Appel à Claude — découpe en chunks si le PDF dépasse la limite Anthropic
   try {
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-    const message = await client.messages.create({
-      model: 'claude-opus-4-7',
-      max_tokens: 8000,
-      thinking: { type: 'adaptive' },
-      output_config: {
-        effort: 'medium',
-        format: { type: 'json_schema', schema: CLASSIFY_SCHEMA },
-      },
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: pdfBase64 } },
-            { type: 'text', text: INSTRUCTIONS },
-          ],
-        },
-      ],
-    });
-    const textBlock = message.content.find((b) => b.type === 'text');
-    if (!textBlock || !textBlock.text) {
-      return json(res, 502, { error: 'Réponse IA vide.' });
-    }
+    const sourceBytes = Buffer.from(pdfBase64, 'base64');
     let parsed;
-    try {
-      parsed = JSON.parse(textBlock.text);
-    } catch (e) {
-      return json(res, 502, { error: 'Réponse IA non exploitable.' });
+
+    if (sourceBytes.length <= MAX_CHUNK_BYTES) {
+      // PDF assez petit : un seul appel à Claude
+      parsed = await classifyPdfBuffer(client, sourceBytes);
+    } else {
+      // PDF trop gros : on le scinde en plusieurs PDF de < 18 Mo, on classifie
+      // chacun séparément, puis on fusionne les sections (en décalant les
+      // numéros de page) et on garde le 1er bonCommande rempli trouvé.
+      const sourceDoc = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
+      const totalPages = sourceDoc.getPageCount();
+      const chunks = await chunkPdfBySize(sourceDoc, sourceBytes.length, totalPages);
+      // Vérifie qu'aucun chunk n'est encore trop gros (page unique très lourde)
+      const tooBig = chunks.find((c) => c.bytes.length > MAX_CHUNK_BYTES);
+      if (tooBig) {
+        const mb = (tooBig.bytes.length / 1024 / 1024).toFixed(1);
+        return json(res, 502, {
+          error: `Pages ${tooBig.pageOffset + 1}-${tooBig.pageOffset + tooBig.pageCount} font ${mb} Mo — trop lourdes même découpées. Rescanne en qualité plus basse.`,
+        });
+      }
+      const allSections = [];
+      let bonCommande = null;
+      for (let i = 0; i < chunks.length; i++) {
+        const c = chunks[i];
+        const ctx = `IMPORTANT : ce PDF est la portion ${i + 1}/${chunks.length} (pages ${c.pageOffset + 1} à ${c.pageOffset + c.pageCount}) d'un dossier plus grand. Les numéros pageStart/pageEnd que tu renvoies doivent être relatifs à ce sous-PDF (1 à ${c.pageCount}) — je les recalerai après.`;
+        const chunkResult = await classifyPdfBuffer(client, c.bytes, ctx);
+        const chunkSections = Array.isArray(chunkResult?.sections) ? chunkResult.sections : [];
+        for (const s of chunkSections) {
+          allSections.push({
+            ...s,
+            pageStart: (parseInt(s.pageStart, 10) || 1) + c.pageOffset,
+            pageEnd: (parseInt(s.pageEnd, 10) || 1) + c.pageOffset,
+          });
+        }
+        if (!bonCommande || !bonCommandeIsFilled(bonCommande)) {
+          if (bonCommandeIsFilled(chunkResult?.bonCommande)) {
+            bonCommande = chunkResult.bonCommande;
+          }
+        }
+      }
+      parsed = {
+        totalPages,
+        sections: allSections,
+        bonCommande: bonCommande || {
+          nom: '', prenom: '', adresse: '', codePostal: '', ville: '',
+          telephone: '', email: '', produit: '', puissance: '',
+          montantTTC: 0, montantHT: 0, financement: '', dateSignature: '',
+        },
+      };
     }
 
     // 3) Découpage server-side : pour chaque section, on extrait les pages avec
