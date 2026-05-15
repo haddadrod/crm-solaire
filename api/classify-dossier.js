@@ -271,6 +271,12 @@ export default async function handler(req, res) {
     const msg = e?.message || 'Erreur IA';
     if (e?.status === 401) return json(res, 502, { error: 'Clé API Anthropic invalide.' });
     if (e?.status === 429) return json(res, 502, { error: 'Limite IA atteinte, réessaie dans un instant.' });
+    if (e?.status === 413 || /request_too_large|exceeds the maximum size/i.test(msg)) {
+      const pdfMb = pdfBase64 ? (Buffer.from(pdfBase64, 'base64').length / 1024 / 1024).toFixed(1) : '?';
+      return json(res, 502, {
+        error: `PDF trop volumineux pour l'IA (${pdfMb} Mo — limite 32 Mo). Rescanne-le en qualité plus basse (CamScanner : choisir "Compresser" ou "Email") ou divise-le en plusieurs PDF.`,
+      });
+    }
     if (e?.status === 400 && /credit|balance|insufficient/i.test(msg)) {
       return json(res, 502, { error: 'Crédits IA épuisés — recharge sur console.anthropic.com.' });
     }
