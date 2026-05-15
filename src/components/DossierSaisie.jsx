@@ -925,6 +925,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Auto-statut : si le statut courant est dans le cycle workflow, on le
     // recalcule depuis l'état du dossier (CQ, envoi banque, retour, etc.).
     dossier = applyAutoStatut(dossier);
+    // Auto-archivage / désarchivage selon ANNULER (cohérent avec QuickView)
+    if (dossier.statut === 'W2_ANNULER' && !dossier.archived) {
+      dossier.archived = true;
+      dossier.archivedAt = new Date().toISOString();
+      dossier.autoArchived = true;
+      dossier.autoArchivedReason = 'annule';
+    } else if (dossier.statut !== 'W2_ANNULER' && dossier.archived && dossier.autoArchivedReason === 'annule') {
+      dossier.archived = false;
+      dossier.archivedAt = null;
+      dossier.autoArchived = false;
+      dossier.autoArchivedReason = null;
+    }
     const userTag = currentUser || '(anonyme)';
 
     // Construit l'historique des changements de statut
@@ -2113,6 +2125,27 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 merged = applyAutoStatut(merged);
                 if (merged.statut !== beforeAuto) {
                   merged.historique = [...(merged.historique || []), { date: now, from: beforeAuto, to: merged.statut, action: 'auto_statut', user: userTag }];
+                }
+
+                // Auto-archivage sur ANNULER : on n'a plus besoin du dossier
+                // dans la liste principale. Les pénalités et chiffres restent
+                // visibles dans le Rapport paiements et le Dashboard (qui
+                // utilisent tous les dossiers, archivés inclus).
+                if (merged.statut === 'W2_ANNULER' && !merged.archived && updates.archived === undefined) {
+                  merged.archived = true;
+                  merged.archivedAt = now;
+                  merged.autoArchived = true;
+                  merged.autoArchivedReason = 'annule';
+                }
+                // Auto-désarchivage si le dossier sort d'ANNULER alors qu'il
+                // avait été archivé pour ça (ex : suppression de la tentative
+                // définitive qui le bloquait en annulation).
+                if (merged.statut !== 'W2_ANNULER' && merged.archived && merged.autoArchivedReason === 'annule') {
+                  merged.archived = false;
+                  merged.archivedAt = null;
+                  merged.autoArchived = false;
+                  merged.autoArchivedReason = null;
+                  merged.reprisDuArchive = now;
                 }
 
                 // Auto-archivage : si tout est payé (client + poseurs + fournisseurs + régie + équipe interne) → archiver auto
