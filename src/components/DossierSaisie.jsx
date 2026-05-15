@@ -2818,7 +2818,10 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
   const totalSize = visibleDocs.reduce((s, d) => s + (d.size || 0), 0);
   const totalCount = visibleDocs.length;
 
-  const handleUpload = async (file) => {
+  // handleUpload accepte optionnellement une subCategoryOverride pour les
+  // dropzones par catégorie de l'onglet Client (chaque carte de catégorie a
+  // sa propre zone de drop qui force le subCategory).
+  const handleUpload = async (file, subCategoryOverride = null) => {
     if (!file) return;
     if (file.size > MAX_FILE_SIZE_BUCKET) {
       alert(`❌ Fichier trop gros : ${formatFileSize(file.size)}\n\nMax autorisé : ${formatFileSize(MAX_FILE_SIZE_BUCKET)}.`);
@@ -2848,8 +2851,9 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
           type: file.type,
           storage: 'kv',
           category: activeCat.key,
-          // Onglet Client : utilise la sous-catégorie choisie (sinon "autre")
-          subCategory: activeCat.key === 'client' ? (nextSubCat || 'autre') : (activeCat.subCategory || null),
+          // Onglet Client : la sous-catégorie peut être forcée par la card
+          // de catégorie (subCategoryOverride), sinon on tombe sur le default.
+          subCategory: activeCat.key === 'client' ? (subCategoryOverride || nextSubCat || 'autre') : (activeCat.subCategory || null),
           uploadedAt: new Date().toISOString(),
           montant: null,
           datePiece: null,
@@ -3055,69 +3059,53 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
               <div className="text-xs text-slate-600">{activeCat.desc}</div>
             </div>
 
-            {/* Sélecteur de sous-catégorie avant l'upload (onglet Client uniquement) */}
-            {activeCat.key === 'client' && (
-              <div className="mb-3 bg-white border border-blue-200 rounded-xl p-3 flex items-center gap-2 flex-wrap">
-                <label className="text-xs font-bold text-slate-600 uppercase">📂 Type de document à uploader :</label>
-                <select
-                  value={nextSubCat}
-                  onChange={(e) => setNextSubCat(e.target.value)}
-                  className="flex-1 min-w-[180px] px-3 py-1.5 bg-blue-50 border border-blue-300 rounded-lg text-sm font-bold text-blue-700 focus:outline-none focus:ring-2 focus:ring-violet-400"
-                >
-                  {CLIENT_DOC_SUBCATS.map(c => <option key={c.id} value={c.id}>{c.emoji} {c.label}</option>)}
-                </select>
+            {/* Onglet Client : grille de cartes (une par type de document)
+                avec sa propre drop zone. Plus de menu déroulant. */}
+            {activeCat.key === 'client' ? (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {CLIENT_DOC_SUBCATS.map(subcat => {
+                  const docsInCat = docsActive.filter(d => (d.subCategory || 'autre') === subcat.id);
+                  return (
+                    <SubCategoryCard
+                      key={subcat.id}
+                      subcat={subcat}
+                      docs={docsInCat}
+                      uploading={uploading}
+                      onFile={(file) => handleUpload(file, subcat.id)}
+                      onOpen={handleOpen}
+                      onDownload={handleDownload}
+                      onDelete={handleDelete}
+                      onUpdateMeta={updateDocMeta}
+                    />
+                  );
+                })}
               </div>
-            )}
-
-            {/* Drop zone */}
-            <DropZone onFile={handleUpload} uploading={uploading} accent={activeCat.accent} />
-
-            {/* Liste des fichiers */}
-            <div className="mt-4 space-y-4">
-              {docsActive.length === 0 ? (
-                <div className="text-center py-8 text-slate-400">
-                  <FileText className="w-10 h-10 mx-auto mb-2 opacity-40" />
-                  <p className="text-sm">Aucun document pour le moment</p>
-                  <p className="text-xs">Ajoute-en avec la zone ci-dessus</p>
+            ) : (
+              <>
+                {/* Autres catégories (poseur, régie, fournisseur) : drop zone unique + liste */}
+                <DropZone onFile={(f) => handleUpload(f)} uploading={uploading} accent={activeCat.accent} />
+                <div className="mt-4 space-y-2">
+                  {docsActive.length === 0 ? (
+                    <div className="text-center py-8 text-slate-400">
+                      <FileText className="w-10 h-10 mx-auto mb-2 opacity-40" />
+                      <p className="text-sm">Aucun document pour le moment</p>
+                      <p className="text-xs">Ajoute-en avec la zone ci-dessus</p>
+                    </div>
+                  ) : (
+                    docsActive.map(doc => (
+                      <DocumentItem
+                        key={doc.id}
+                        doc={doc}
+                        onOpen={() => handleOpen(doc)}
+                        onDownload={() => handleDownload(doc)}
+                        onDelete={() => handleDelete(doc)}
+                        onUpdateMeta={(u) => updateDocMeta(doc.id, u)}
+                      />
+                    ))
+                  )}
                 </div>
-              ) : docsActiveGrouped ? (
-                // Onglet Client : groupement par sous-catégorie
-                docsActiveGrouped.map(({ subcat, docs }) => (
-                  <div key={subcat.id} className="bg-white border border-slate-200 rounded-2xl overflow-hidden">
-                    <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
-                      <span className="text-base">{subcat.emoji}</span>
-                      <span className="text-sm font-bold text-slate-700 uppercase tracking-wide">{subcat.label}</span>
-                      <span className="ml-auto text-xs font-semibold text-slate-500 bg-white border border-slate-200 rounded-full px-2 py-0.5">{docs.length}</span>
-                    </div>
-                    <div className="p-2 space-y-2">
-                      {docs.map(doc => (
-                        <DocumentItem
-                          key={doc.id}
-                          doc={doc}
-                          onOpen={() => handleOpen(doc)}
-                          onDownload={() => handleDownload(doc)}
-                          onDelete={() => handleDelete(doc)}
-                          onUpdateMeta={(u) => updateDocMeta(doc.id, u)}
-                          subCats={CLIENT_DOC_SUBCATS}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                // Autres catégories (poseur, régie, fournisseur) : liste simple
-                docsActive.map(doc => (
-                  <DocumentItem
-                    key={doc.id}
-                    doc={doc}
-                    onOpen={() => handleOpen(doc)}
-                    onDownload={() => handleDownload(doc)}
-                    onDelete={() => handleDelete(doc)}
-                    onUpdateMeta={(u) => updateDocMeta(doc.id, u)}
-                  />
-                ))
-              )}
-            </div>
+              </>
+            )}
 
             {/* Total catégorie */}
             {docsActive.length > 0 && (() => {
@@ -3334,6 +3322,79 @@ function PdfViewer({ blobUrl, onDownload }) {
   );
 }
 
+// Carte d'une sous-catégorie de documents Client (Bon de commande, Mandat,
+// Pièce d'identité, etc.). Chaque carte a sa propre zone de drop et affiche
+// les docs déjà uploadés pour cette catégorie.
+function SubCategoryCard({ subcat, docs, uploading, onFile, onOpen, onDownload, onDelete, onUpdateMeta }) {
+  const [dragging, setDragging] = useState(false);
+  const inputRef = useRef(null);
+  const hasDocs = docs.length > 0;
+  return (
+    <div className="bg-white border-2 border-slate-200 rounded-2xl overflow-hidden">
+      <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+        <span className="text-base">{subcat.emoji}</span>
+        <span className="text-xs font-bold text-slate-700 uppercase tracking-wide truncate">{subcat.label}</span>
+        {hasDocs && (
+          <span className="ml-auto text-[10px] font-bold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">{docs.length}</span>
+        )}
+      </div>
+      {/* Zone de drop compacte (toujours visible, même quand il y a des docs) */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragging(false);
+          const file = e.dataTransfer.files?.[0];
+          if (file) onFile(file);
+        }}
+        onClick={() => inputRef.current?.click()}
+        className={`border-2 border-dashed cursor-pointer transition-all ${dragging ? 'border-violet-500 bg-violet-50' : hasDocs ? 'border-slate-200 bg-white hover:bg-slate-50' : 'border-slate-300 bg-slate-50 hover:bg-violet-50 hover:border-violet-300'} ${hasDocs ? 'py-2 px-3' : 'py-5 px-3'}`}
+      >
+        <input
+          ref={inputRef}
+          type="file"
+          className="hidden"
+          accept="application/pdf,image/*"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            if (file) onFile(file);
+            e.target.value = '';
+          }}
+        />
+        {uploading ? (
+          <div className="text-center text-xs text-violet-600 font-semibold">
+            <Sparkles className="w-4 h-4 mx-auto mb-0.5 animate-spin" />
+            Upload…
+          </div>
+        ) : (
+          <div className="text-center text-xs text-slate-500">
+            <Upload className={`mx-auto ${hasDocs ? 'w-4 h-4 mb-0.5' : 'w-6 h-6 mb-1'}`} />
+            {hasDocs ? 'Ajouter un autre fichier' : 'Glisser un fichier ici ou cliquer'}
+          </div>
+        )}
+      </div>
+      {/* Liste des docs de cette catégorie */}
+      {hasDocs && (
+        <div className="p-2 space-y-1.5 max-h-64 overflow-y-auto">
+          {docs.map(doc => (
+            <DocumentItem
+              key={doc.id}
+              doc={doc}
+              onOpen={() => onOpen(doc)}
+              onDownload={() => onDownload(doc)}
+              onDelete={() => onDelete(doc)}
+              onUpdateMeta={(u) => onUpdateMeta(doc.id, u)}
+              subCats={CLIENT_DOC_SUBCATS}
+              compact
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function DropZone({ onFile, uploading, accent }) {
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef(null);
@@ -3378,7 +3439,7 @@ function DropZone({ onFile, uploading, accent }) {
   );
 }
 
-function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats }) {
+function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats, compact = false }) {
   const [expanded, setExpanded] = useState(false);
   const isImage = (doc.type || '').startsWith('image/');
   const isPdf = (doc.type || '') === 'application/pdf';
@@ -3387,25 +3448,30 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-violet-300 transition-colors">
-      <div className="p-3 flex items-center gap-3">
-        <div className={`w-10 h-10 bg-gradient-to-br ${iconColor} rounded-xl flex items-center justify-center flex-shrink-0 shadow-sm`}>
-          <Icon className="w-5 h-5 text-white" />
+      <div className={`flex items-center gap-2 ${compact ? 'p-2' : 'p-3 gap-3'}`}>
+        <div className={`${compact ? 'w-7 h-7' : 'w-10 h-10'} bg-gradient-to-br ${iconColor} rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm`}>
+          <Icon className={`${compact ? 'w-3.5 h-3.5' : 'w-5 h-5'} text-white`} />
         </div>
         <div className="flex-1 min-w-0">
-          <button onClick={onOpen} className="font-semibold text-slate-800 text-sm truncate hover:text-violet-600 text-left w-full">{doc.name}</button>
-          <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
-            <span>{formatFileSize(doc.size)}</span>
-            <span>•</span>
-            <span>📅 {formatDateForSheet(doc.uploadedAt?.split('T')[0])}</span>
-            {doc.montant && <><span>•</span><span className="text-emerald-600 font-semibold">{formatEuro(parseFloat(doc.montant))}</span></>}
-            {doc.datePiece && <><span>•</span><span className="text-blue-600">📄 {formatDateForSheet(doc.datePiece)}</span></>}
-          </div>
+          <button onClick={onOpen} className={`font-semibold text-slate-800 ${compact ? 'text-xs' : 'text-sm'} truncate hover:text-violet-600 text-left w-full block`}>{doc.name}</button>
+          {!compact && (
+            <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
+              <span>{formatFileSize(doc.size)}</span>
+              <span>•</span>
+              <span>📅 {formatDateForSheet(doc.uploadedAt?.split('T')[0])}</span>
+              {doc.montant && <><span>•</span><span className="text-emerald-600 font-semibold">{formatEuro(parseFloat(doc.montant))}</span></>}
+              {doc.datePiece && <><span>•</span><span className="text-blue-600">📄 {formatDateForSheet(doc.datePiece)}</span></>}
+            </div>
+          )}
+          {compact && (
+            <div className="text-[10px] text-slate-500">{formatFileSize(doc.size)}</div>
+          )}
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button onClick={onOpen} title="Ouvrir" className="p-1.5 text-slate-500 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Eye className="w-4 h-4" /></button>
-          <button onClick={onDownload} title="Télécharger" className="p-1.5 text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Download className="w-4 h-4" /></button>
-          <button onClick={() => setExpanded(!expanded)} title="Détails" className={`p-1.5 rounded-lg ${expanded ? 'text-violet-600 bg-violet-50' : 'text-slate-500 hover:text-violet-600 hover:bg-violet-50'}`}><Edit3 className="w-4 h-4" /></button>
-          <button onClick={onDelete} title="Supprimer" className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 className="w-4 h-4" /></button>
+          <button onClick={onOpen} title="Ouvrir / aperçu" className={`${compact ? 'p-1' : 'p-1.5'} text-slate-500 hover:text-violet-600 hover:bg-violet-50 rounded-lg`}><Eye className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} /></button>
+          <button onClick={onDownload} title="Télécharger" className={`${compact ? 'p-1' : 'p-1.5'} text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg`}><Download className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} /></button>
+          <button onClick={() => setExpanded(!expanded)} title="Détails" className={`${compact ? 'p-1' : 'p-1.5'} rounded-lg ${expanded ? 'text-violet-600 bg-violet-50' : 'text-slate-500 hover:text-violet-600 hover:bg-violet-50'}`}><Edit3 className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} /></button>
+          <button onClick={onDelete} title="Supprimer" className={`${compact ? 'p-1' : 'p-1.5'} text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg`}><Trash2 className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} /></button>
         </div>
       </div>
       {expanded && (
