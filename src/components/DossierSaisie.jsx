@@ -7119,6 +7119,17 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           {t.regie && <span className="text-slate-500">· {t.regie}</span>}
                           {t.definitif && <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-red-700 text-white">DÉFINITIF</span>}
                           <span className="ml-auto font-bold text-rose-700">{t.penalite} €</span>
+                          <button
+                            onClick={() => {
+                              if (!window.confirm(`Supprimer la pénalité du ${fmtD(t.date)} (${t.penalite} €) ?`)) return;
+                              const next = (d.tentativesPose || []).filter((_, idx) => idx !== i);
+                              onUpdate({ tentativesPose: next });
+                            }}
+                            title="Supprimer cette pénalité (erreur ou cadeau à la régie)"
+                            className="p-0.5 text-rose-400 hover:text-rose-700 hover:bg-rose-100 rounded transition-colors flex-shrink-0"
+                          >
+                            <Trash2 className="w-3 h-3" />
+                          </button>
                         </div>
                       );
                     })}
