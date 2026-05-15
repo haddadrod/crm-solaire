@@ -12,7 +12,10 @@ const TARIFS_REGIES_DEFAULT = Object.fromEntries(REGIES_DEFAULT.map(n => [n, {}]
 
 const STATUTS = [
   { id: 'A_EN_COURS',           label: 'EN COURS',             color: 'from-slate-400 to-slate-500',   bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '🔄' },
-  { id: 'E_PASSE_COMPTANT',     label: 'PASSE COMPTANT',       color: 'from-pink-500 to-fuchsia-500',  bg: 'bg-pink-100',    text: 'text-pink-700',    emoji: '💵' },
+  { id: 'B_A_ENVOYER_BANQUE',   label: 'À ENVOYER EN BANQUE',  color: 'from-violet-400 to-purple-500', bg: 'bg-violet-100',  text: 'text-violet-700',  emoji: '🏦' },
+  { id: 'B1_EN_COURS_FINANCEMENT', label: 'EN COURS DE FINANCEMENT', color: 'from-blue-400 to-indigo-500', bg: 'bg-blue-100',   text: 'text-blue-700',    emoji: '⏳' },
+  { id: 'B2_A_ENVOYER_POSE',    label: 'À ENVOYER EN POSE',    color: 'from-amber-400 to-orange-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '📤' },
+  { id: 'B3_REFUS_FINANCEMENT', label: 'REFUS DE FINANCEMENT', color: 'from-red-500 to-rose-600',      bg: 'bg-red-100',     text: 'text-red-700',     emoji: '🚫' },
   { id: 'H_NRP_CQ_LIVRAISON',   label: 'NRP CQ LIVRAISON',     color: 'from-amber-400 to-yellow-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '🚚' },
   { id: 'G_ATTENTE_ACCORD_DEF', label: 'ATTENTE ACCORD DEF',   color: 'from-teal-400 to-emerald-500',  bg: 'bg-teal-100',    text: 'text-teal-700',    emoji: '📋' },
   { id: 'F_ATTENTE_DEBLOCAGE',  label: 'ATTENTE DE DEBLOCAGE', color: 'from-yellow-400 to-lime-500',   bg: 'bg-yellow-100',  text: 'text-yellow-700',  emoji: '⏳' },
@@ -29,6 +32,40 @@ const STATUTS = [
   { id: 'Z_DEPLACEMENT',        label: 'DEPLACEMENT',          color: 'from-purple-500 to-fuchsia-500',bg: 'bg-purple-100',  text: 'text-purple-700',  emoji: '🚗' },
   { id: 'F3_MANQUE_RECEP',      label: 'MANQUE RECEP',         color: 'from-slate-300 to-gray-400',    bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '📭' },
 ];
+
+// Statuts gérés par l'auto-statut (cycle workflow CQ → banque → pose).
+// Si le statut courant est dans cette liste, il sera mis à jour automatiquement
+// selon l'état du dossier. Sinon (SAV, LITIGE, ANNULER, etc.), on ne touche pas.
+const AUTO_STATUTS = ['A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B2_A_ENVOYER_POSE', 'B3_REFUS_FINANCEMENT'];
+
+// Calcule le statut workflow à partir de l'état du dossier (CQ, envoi banque,
+// retour banque, envoi pose). Retourne null si on est sorti du cycle (envoi
+// pose effectué → l'utilisateur gère le reste manuellement).
+function computeWorkflowStatut(d) {
+  // Refusé par la banque (sans rebascule) → REFUS DE FINANCEMENT
+  if (d.statutFin === 'refusé') return 'B3_REFUS_FINANCEMENT';
+  // Envoi en pose déjà fait → on sort du cycle auto
+  if (d.dateEnvoiPose) return null;
+  // Accord financement reçu, pas encore envoyé pose → À ENVOYER EN POSE
+  if (d.statutFin === 'accepté') return 'B2_A_ENVOYER_POSE';
+  // Envoyé banque, en attente de retour → EN COURS DE FINANCEMENT
+  if (d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
+  // CQ validé OK, pas encore envoyé banque → À ENVOYER EN BANQUE
+  if (d.statutControleQualite === 'ok') return 'B_A_ENVOYER_BANQUE';
+  // Par défaut → EN COURS
+  return 'A_EN_COURS';
+}
+
+// Applique l'auto-statut à un dossier si son statut courant est dans le cycle.
+// Si l'utilisateur a manuellement choisi un statut hors cycle (SAV, LITIGE,
+// ANNULER, etc.), on respecte sa décision et on ne touche à rien.
+function applyAutoStatut(d) {
+  const current = d.statut || 'A_EN_COURS';
+  if (current && !AUTO_STATUTS.includes(current)) return d;
+  const auto = computeWorkflowStatut(d);
+  if (!auto || auto === current) return d;
+  return { ...d, statut: auto };
+}
 
 const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM', 'FINANCO', 'FRANFINANCE'];
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
@@ -582,7 +619,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (r?.value) {
           const arr = JSON.parse(r.value);
           // Migration : ancien format poseur unique → tableau poseurs + poseursDetail
-          const REMOVED_STATUSES = ['I_CONSUEL_OK', 'CONSUEL_OK', 'J_VISITE_CONSUEL', 'M_VISITE_CONSUEL', 'K_ATTENTE_CONSUEL', 'ATTENTE_CONSUEL', 'K2_PROBLEME_CONSUEL', 'M_PROBLEME_CONSUEL', 'M_ATT_DOSSIER', 'ATT_DOSSIER'];
+          const REMOVED_STATUSES = ['I_CONSUEL_OK', 'CONSUEL_OK', 'J_VISITE_CONSUEL', 'M_VISITE_CONSUEL', 'K_ATTENTE_CONSUEL', 'ATTENTE_CONSUEL', 'K2_PROBLEME_CONSUEL', 'M_PROBLEME_CONSUEL', 'M_ATT_DOSSIER', 'ATT_DOSSIER', 'E_PASSE_COMPTANT', 'PASSE_COMPTANT'];
           const ROLES_KEYS = ['teleprospecteur', 'confirmateur', 'commercial', 'coordinateurProjet', 'responsableEnvoiPose'];
           // Vérifie si tous les paiements d'un dossier sont OK
           const isFullyPaid = (d) => {
@@ -861,7 +898,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
   const handleSubmit = () => {
     if (!formData.nom.trim()) return;
-    const dossier = { ...formData, ...calculs, savedAt: new Date().toISOString() };
+    let dossier = { ...formData, ...calculs, savedAt: new Date().toISOString() };
+    // Auto-statut : si le statut courant est dans le cycle workflow, on le
+    // recalcule depuis l'état du dossier (CQ, envoi banque, retour, etc.).
+    dossier = applyAutoStatut(dossier);
     const userTag = currentUser || '(anonyme)';
 
     // Construit l'historique des changements de statut
@@ -1227,7 +1267,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
       DOSSIER_PAYER: null,
       W_DOSSIER_PAYER: null,
       ANNULER: null,
-      PASSE_COMPTANT: null,
     };
 
     const rappelsStagnation = [];
@@ -1295,7 +1334,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     rappelsPaiement.sort((a, b) => b.jours - a.jours);
 
     // Statuts finaux qui n'ont plus besoin d'alertes
-    const finalStatuses = ['W2_ANNULER', 'ANNULER', 'W_DOSSIER_PAYER', 'DOSSIER_PAYER', 'E_PASSE_COMPTANT', 'PASSE_COMPTANT', 'F1_ACCEPTE', 'ACCEPTE'];
+    const finalStatuses = ['W2_ANNULER', 'ANNULER', 'W_DOSSIER_PAYER', 'DOSSIER_PAYER', 'F1_ACCEPTE', 'ACCEPTE'];
 
     // Rappels Contrôle livraison — Consuel accepté + originaux reçus banque mais contrôle pas encore fait
     const rappelsControleLivraison = [];
@@ -1365,6 +1404,35 @@ export default function DossierSaisie({ authUser, onLogout }) {
       rappelsAEnvoyerPose.push({ dossier: d, jours, level });
     });
     rappelsAEnvoyerPose.sort((a, b) => b.jours - a.jours);
+
+    // Rappels Poseur à assigner — date de pose remplie mais aucun poseur dans
+    // l'équipe. Cas typique : la banque a accordé, on a calé une date avec le
+    // client, mais on a oublié de désigner qui pose.
+    const rappelsPoseurNonAssigne = [];
+    dossiersEnriched.forEach(d => {
+      // Une date de pose est-elle posée ? (envoi en pose, visite, ou pose)
+      const aUneDate = !!(d.dateEnvoiPose || d.dateVisitePose || d.dateInsta);
+      if (!aUneDate) return;
+      // Un poseur est-il assigné ?
+      const poseurs = d.poseurs || [];
+      const poseurAssigne = poseurs.some(p => p && p.nom && p.nom.trim());
+      if (poseurAssigne) return;
+      if (finalStatuses.includes(d.statut)) return;
+      // Référence pour les jours : la date la plus proche (dateInsta > dateVisitePose > dateEnvoiPose)
+      const refDate = d.dateInsta || d.dateVisitePose || d.dateEnvoiPose;
+      const jours = refDate ? Math.floor((today - new Date(refDate)) / 86400000) : 0;
+      // Niveau : critique si la date de pose est proche ou passée
+      let level = 'warn';
+      if (d.dateInsta) {
+        const joursAvantPose = Math.floor((new Date(d.dateInsta) - today) / 86400000);
+        if (joursAvantPose <= 3) level = 'critical';
+        else if (joursAvantPose <= 7) level = 'high';
+      } else if (jours >= 2) {
+        level = 'high';
+      }
+      rappelsPoseurNonAssigne.push({ dossier: d, jours, level });
+    });
+    rappelsPoseurNonAssigne.sort((a, b) => b.jours - a.jours);
 
     // Rappels À envoyer Consuel — pose terminée mais Consuel pas encore envoyé
     const rappelsAEnvoyerConsuel = [];
@@ -1440,7 +1508,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsRecupTva.sort((a, b) => a.joursRestants - b.joursRestants); // les plus urgents en premier
 
-    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva };
+    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva };
   }, [dossiersEnriched, tarifsInternes]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -1669,6 +1737,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsAEnvoyerBanque={dashboard.rappelsAEnvoyerBanque || []}
             rappelsFinancement={dashboard.rappelsFinancement || []}
             rappelsAEnvoyerPose={dashboard.rappelsAEnvoyerPose || []}
+            rappelsPoseurNonAssigne={dashboard.rappelsPoseurNonAssigne || []}
             rappelsAEnvoyerConsuel={dashboard.rappelsAEnvoyerConsuel || []}
             rappelsOriginaux={dashboard.rappelsOriginaux || []}
             rappelsControleLivraison={dashboard.rappelsControleLivraison || []}
@@ -1945,6 +2014,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
               setDossiers(dossiers.map(d => {
                 if (d.localId !== currentQuickDossier.localId) return d;
                 let merged = { ...d, ...updates, savedAt: now, modifiedBy: userTag, modifiedAt: now };
+                // Auto-statut : si l'update modifie un champ du cycle workflow
+                // (CQ, envoi banque, retour banque, envoi pose), recalcule le
+                // statut depuis l'état du dossier. Sauf si l'utilisateur a
+                // explicitement choisi un statut dans cet update.
+                if (!updates.statut) {
+                  const before = merged.statut;
+                  merged = applyAutoStatut(merged);
+                  if (merged.statut !== before) {
+                    merged.historique = [...(d.historique || []), { date: now, from: before, to: merged.statut, action: 'auto_statut', user: userTag }];
+                  }
+                }
                 // Si le statut change, ajouter une entrée d'historique
                 if (updates.statut && updates.statut !== d.statut) {
                   merged.historique = [...(d.historique || []), { date: now, from: d.statut, to: updates.statut, action: 'changement_statut', user: userTag }];
@@ -5535,7 +5615,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Envoi en pose</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📅 Date de pose</label>
                   <div className="flex gap-1">
                     <input type="date" value={formData.dateEnvoiPose || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiPose: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: formData.statutPose || 'envoyé' })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
@@ -5549,7 +5629,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">🔧 Pose réalisée</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Posé le</label>
                   <div className="flex gap-1">
                     <input type="date" value={formData.dateInsta || ''} onChange={(e) => setFormData({ ...formData, dateInsta: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
@@ -6778,12 +6858,10 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
 
             {/* ============ ÉTAPE 2 : FINANCEMENT ============ */}
-            <div className={`border-2 rounded-xl p-2 mb-2 ${d.statut === 'E_PASSE_COMPTANT' ? 'bg-pink-50 border-pink-300' : 'bg-blue-50 border-blue-200'}`}>
+            <div className="border-2 rounded-xl p-2 mb-2 bg-blue-50 border-blue-200">
               <div className="text-[10px] font-bold uppercase mb-1.5 flex items-center justify-between flex-wrap gap-1">
-                <span className={d.statut === 'E_PASSE_COMPTANT' ? 'text-pink-700' : 'text-blue-700'}>2️⃣ 💳 Financement</span>
-                {d.statut === 'E_PASSE_COMPTANT' ? (
-                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-pink-200 text-pink-800">💵 Comptant</span>
-                ) : d.statutFin && (
+                <span className="text-blue-700">2️⃣ 💳 Financement</span>
+                {d.statutFin && (
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
                     d.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
                     d.statutFin === 'refusé' ? 'bg-rose-100 text-rose-700' :
@@ -6794,36 +6872,16 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 )}
               </div>
 
-              {/* Mode comptant : afficher juste un message + bouton "Repasser en financement" */}
-              {d.statut === 'E_PASSE_COMPTANT' ? (
-                <div className="space-y-2">
-                  <div className="px-2 py-2 bg-pink-100 border border-pink-300 rounded-lg text-[11px] text-pink-800 font-bold text-center">
-                    💵 Le client paie en comptant<br/>
-                    <span className="font-normal text-[10px]">Pas besoin de financement — passe directement à la pose ↓</span>
-                  </div>
-                  <button onClick={() => onUpdate({ statut: 'A_EN_COURS' })} className="w-full px-2 py-1.5 bg-white hover:bg-slate-50 border border-pink-200 text-pink-600 rounded-lg text-[10px] font-bold">
-                    ↩️ Annuler — repasser en financement
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {/* Sélecteur du financeur — éditable directement */}
-                  <div className="mb-2">
-                    <label className="block text-[9px] font-semibold text-blue-600 uppercase mb-1">Financeur</label>
-                    <select value={d.financement || ''} onChange={(e) => onUpdate({ financement: e.target.value })} className="w-full px-2 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-bold text-blue-700">
-                      <option value="">— Choisir un financeur —</option>
-                      {FINANCEMENTS.map(f => <option key={f} value={f}>{f}</option>)}
-                    </select>
-                  </div>
+              {/* Sélecteur du financeur — éditable directement (choisir COMPTANT pour un client sans banque) */}
+              <div className="mb-2">
+                <label className="block text-[9px] font-semibold text-blue-600 uppercase mb-1">Financeur</label>
+                <select value={d.financement || ''} onChange={(e) => onUpdate({ financement: e.target.value })} className="w-full px-2 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-bold text-blue-700">
+                  <option value="">— Choisir un financeur —</option>
+                  {FINANCEMENTS.map(f => <option key={f} value={f}>{f}</option>)}
+                </select>
+              </div>
 
-                  {/* Bouton "Client paie comptant" — toujours visible */}
-                  <button onClick={() => onUpdate({ statut: 'E_PASSE_COMPTANT' })} className="w-full mb-2 px-2 py-1.5 bg-gradient-to-r from-pink-100 to-fuchsia-100 hover:from-pink-200 hover:to-fuchsia-200 border-2 border-pink-300 text-pink-700 rounded-lg text-[10px] font-bold flex items-center justify-center gap-1">
-                    💵 Le client paie comptant — pas de banque
-                  </button>
-                </>
-              )}
-
-              {d.envoisHistorique && d.envoisHistorique.length > 0 && d.statut !== 'E_PASSE_COMPTANT' && (
+              {d.envoisHistorique && d.envoisHistorique.length > 0 && (
                 <div className="mb-1.5 p-1.5 bg-white border border-rose-200 rounded">
                   <div className="text-[9px] font-bold text-rose-700 uppercase mb-0.5">📜 Refus précédents ({d.envoisHistorique.length})</div>
                   {d.envoisHistorique.map((env, i) => {
@@ -6840,7 +6898,6 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
               )}
 
-              {d.statut !== 'E_PASSE_COMPTANT' && (<>
               <div className="space-y-1">
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] font-semibold text-blue-600 uppercase w-16 flex-shrink-0">📤 Envoi</span>
@@ -6893,7 +6950,6 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 if (jours <= 2) return <div className="mt-1.5 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-700">⏳ {jours}j — en attente</div>;
                 return <div className="mt-1.5 px-2 py-1 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-700 font-bold">⚠️ {jours}j sans retour — relance !</div>;
               })()}
-              </>)}
             </div>
 
             {/* ============ ÉTAPE 2 : POSE ============ */}
@@ -6913,19 +6969,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
               <div className="space-y-1">
                 <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-amber-600 uppercase w-16 flex-shrink-0">📤 Envoi</span>
-                  <input type="date" value={d.dateEnvoiPose || ''} onChange={(e) => onUpdate({ dateEnvoiPose: e.target.value })} className={inputCls} />
-                  <button onClick={() => onUpdate({ dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: d.statutPose || 'envoyé' })} className="px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold">Auj.</button>
+                  <span className="text-[10px] font-semibold text-amber-600 uppercase w-24 flex-shrink-0 whitespace-nowrap">📅 Date de pose</span>
+                  <input type="date" value={d.dateEnvoiPose || ''} onChange={(e) => onUpdate({ dateEnvoiPose: e.target.value })} className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-xs" />
+                  <button onClick={() => onUpdate({ dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: d.statutPose || 'envoyé' })} className="px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold flex-shrink-0">Auj.</button>
                 </div>
                 <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-amber-600 uppercase w-16 flex-shrink-0">📞 Visite</span>
-                  <input type="date" value={d.dateVisitePose || ''} onChange={(e) => onUpdate({ dateVisitePose: e.target.value })} className={inputCls} />
-                  <button onClick={() => onUpdate({ dateVisitePose: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold">Auj.</button>
+                  <span className="text-[10px] font-semibold text-amber-600 uppercase w-24 flex-shrink-0 whitespace-nowrap">📞 Visite</span>
+                  <input type="date" value={d.dateVisitePose || ''} onChange={(e) => onUpdate({ dateVisitePose: e.target.value })} className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-xs" />
+                  <button onClick={() => onUpdate({ dateVisitePose: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold flex-shrink-0">Auj.</button>
                 </div>
                 <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-amber-600 uppercase w-16 flex-shrink-0">🔧 Pose</span>
-                  <input type="date" value={d.dateInsta || ''} onChange={(e) => onUpdate({ dateInsta: e.target.value })} className={inputCls} />
-                  <button onClick={() => onUpdate({ dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold">Auj.</button>
+                  <span className="text-[10px] font-semibold text-amber-600 uppercase w-24 flex-shrink-0 whitespace-nowrap">✅ Posé le</span>
+                  <input type="date" value={d.dateInsta || ''} onChange={(e) => onUpdate({ dateInsta: e.target.value })} className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-xs" />
+                  <button onClick={() => onUpdate({ dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold flex-shrink-0">Auj.</button>
                 </div>
               </div>
 
@@ -8254,7 +8310,7 @@ const ALERTES_PAR_ROLE = {
   regie: [],  // la régie ne voit aucune alerte
 };
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, isAdmin, currentUserRole, onClick }) {
   // Définition des badges
   const badges = [
     {
@@ -8304,6 +8360,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-orange-200',
       colorText: 'text-orange-700',
       tooltip: 'Banque accordée — dossiers à envoyer en pose',
+    },
+    {
+      type: 'poseurNonAssigne',
+      label: 'Poseur à assigner',
+      emoji: '🔧',
+      count: rappelsPoseurNonAssigne.length,
+      adminOnly: false,
+      color: 'from-amber-500 to-yellow-500',
+      colorBg: 'bg-amber-50',
+      colorBorder: 'border-amber-200',
+      colorText: 'text-amber-700',
+      tooltip: 'Date de pose remplie mais aucun poseur dans l\'équipe',
     },
     {
       type: 'aEnvoyerConsuel',
@@ -8470,6 +8538,21 @@ function AlertesModal({ type, dashboard, STATUTS, onClose, onSelect }) {
       borderColor: 'border-orange-200',
       lineLabel: (d) => `Accord ${d.financement} le ${d.dateAccord && new Date(d.dateAccord).toLocaleDateString('fr-FR')}`,
       suffixLabel: 'depuis accord',
+    },
+    poseurNonAssigne: {
+      title: '🔧 Poseur à assigner',
+      subtitle: 'Date de pose remplie mais aucun poseur dans l\'équipe — assigne quelqu\'un',
+      items: dashboard.rappelsPoseurNonAssigne || [],
+      gradient: 'from-amber-500 to-yellow-500',
+      bgHeader: 'from-amber-50 to-yellow-50',
+      borderColor: 'border-amber-200',
+      lineLabel: (d) => {
+        if (d.dateInsta) return `🔧 Pose prévue le ${new Date(d.dateInsta).toLocaleDateString('fr-FR')}`;
+        if (d.dateVisitePose) return `📞 Visite le ${new Date(d.dateVisitePose).toLocaleDateString('fr-FR')}`;
+        if (d.dateEnvoiPose) return `📤 Envoyé en pose le ${new Date(d.dateEnvoiPose).toLocaleDateString('fr-FR')}`;
+        return 'Date de pose remplie';
+      },
+      suffixLabel: 'depuis date pose',
     },
     aEnvoyerConsuel: {
       title: '📨 Dossiers à envoyer en Consuel',
