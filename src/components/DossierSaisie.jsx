@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, Lock, Unlock, Shield, KeyRound } from 'lucide-react';
-import { PDFDocument } from 'pdf-lib';
 import { supabase, uploadFileToBucket, getSignedUrl, deleteFileFromBucket, downloadFileFromBucket } from '../supabase.js';
 
 // Listes par défaut — modifiables dans Réglages
@@ -5311,8 +5310,10 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       const sections = Array.isArray(result.sections) ? result.sections : [];
       if (sections.length === 0) throw new Error("Aucune section identifiée dans le PDF.");
 
-      // 3) Découpage du PDF côté navigateur avec pdf-lib
+      // 3) Découpage du PDF côté navigateur avec pdf-lib (import dynamique)
       setDossierScanState({ status: 'splitting', error: '', sections });
+      const pdfLib = await import('pdf-lib');
+      const PDFDocument = pdfLib.PDFDocument;
       const arrayBuffer = await file.arrayBuffer();
       const srcPdf = await PDFDocument.load(arrayBuffer);
       const splitFiles = [];
