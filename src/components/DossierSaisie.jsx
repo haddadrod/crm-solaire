@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, Lock, Unlock, Shield, KeyRound } from 'lucide-react';
+import { PDFDocument } from 'pdf-lib';
 import { supabase, uploadFileToBucket, getSignedUrl, deleteFileFromBucket, downloadFileFromBucket } from '../supabase.js';
 
 // Listes par défaut — modifiables dans Réglages
@@ -103,6 +104,24 @@ const PRODUITS_DEFAULT = [
   { id: 'ISOLATION',       label: 'Isolation',              emoji: '🏠', autoTarif: false },
   { id: 'VMC',             label: 'VMC',                    emoji: '💨', autoTarif: false },
   { id: 'AUTRE',           label: 'Autre rénovation',       emoji: '🔨', autoTarif: false },
+];
+
+// Sous-catégories de documents Client — utilisées pour la classification
+// automatique par l'IA quand on scanne un dossier complet multi-pages,
+// et comme onglets dans la modale Documents.
+const CLIENT_DOC_SUBCATS = [
+  { id: 'bon_commande',      label: 'Bon de commande',     emoji: '📄' },
+  { id: 'mandat',            label: 'Mandat administratif', emoji: '📋' },
+  { id: 'attestation',       label: 'Attestation honneur', emoji: '✍️' },
+  { id: 'rge',               label: 'Document RGE',         emoji: '🏅' },
+  { id: 'financement',       label: 'Dossier financement',  emoji: '🏦' },
+  { id: 'piece_identite',    label: "Pièce d'identité",     emoji: '🆔' },
+  { id: 'taxe_fonciere',     label: 'Taxe foncière',        emoji: '🏠' },
+  { id: 'avis_imposition',   label: "Avis d'imposition",    emoji: '💼' },
+  { id: 'justif_domicile',   label: 'Justificatif domicile',emoji: '📋' },
+  { id: 'bulletin_paie',     label: 'Bulletin de paie',     emoji: '💰' },
+  { id: 'rib',               label: 'RIB',                  emoji: '🏦' },
+  { id: 'autre',             label: 'Autre',                emoji: '📑' },
 ];
 
 // Limite des fichiers stockés en base64 inline (KV `storage` table) :
@@ -1020,8 +1039,29 @@ export default function DossierSaisie({ authUser, onLogout }) {
           note: '📸 Importé par scan IA du bon de commande',
         });
       }
-      // On retire scannedBon du dossier persisté (juste un transport entre scan et submit)
+      // Si l'utilisateur a scanné un dossier complet multi-pages, chaque section
+      // découpée par l'IA devient un document séparé avec sa sous-catégorie.
+      const sections = Array.isArray(dossier.scannedSections) ? dossier.scannedSections : [];
+      sections.forEach(s => {
+        if (!s.fileId || !s.bucketPath) return;
+        initialDocs.push({
+          id: s.fileId,
+          name: s.name,
+          size: s.size,
+          type: s.type,
+          storage: 'bucket',
+          storagePath: s.bucketPath,
+          category: 'client',
+          subCategory: s.subCategory || null,
+          uploadedAt: now,
+          montant: null,
+          datePiece: null,
+          note: s.note || `📂 ${s.label || ''}`,
+        });
+      });
+      // On retire scannedBon/scannedSections du dossier persisté (transport seulement)
       delete dossier.scannedBon;
+      delete dossier.scannedSections;
       setDossiers([{ ...dossier, localId: newLocalId, documents: initialDocs }, ...dossiers]);
       setCelebrating(true);
       setTimeout(() => setCelebrating(false), 1500);
@@ -5045,6 +5085,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
   // Scan IA d'un bon de commande manuscrit → pré-remplissage du formulaire.
   const [scanState, setScanState] = useState({ status: 'idle', error: '', result: null });
   const scanBusy = scanState.status === 'compressing' || scanState.status === 'analyzing';
+  // Scan d'un dossier complet (multi-pages → split par catégorie)
+  const [dossierScanState, setDossierScanState] = useState({ status: 'idle', error: '', sections: null });
+  const dossierScanBusy = ['uploading', 'classifying', 'splitting'].includes(dossierScanState.status);
 
   const handleScanBon = async (file) => {
     if (!file) return;
@@ -5143,6 +5186,117 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
     }
   };
 
+  // Scan d'un dossier client complet (PDF multi-pages) : l'IA identifie chaque
+  // type de document, on découpe le PDF côté navigateur avec pdf-lib, et chaque
+  // section est uploadée comme un document séparé du dossier.
+  const handleScanDossier = async (file) => {
+    if (!file) return;
+    if (!(file.type === 'application/pdf' || /\.pdf$/i.test(file.name || ''))) {
+      setDossierScanState({ status: 'error', error: 'Choisis un PDF (multi-pages).', sections: null });
+      return;
+    }
+    setDossierScanState({ status: 'uploading', error: '', sections: null });
+    try {
+      // 1) Upload du PDF complet dans le bucket
+      const scanFileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const { path: bucketPath, error: upErr } = await uploadFileToBucket(file, scanFileId);
+      if (upErr || !bucketPath) throw new Error(`Upload bucket : ${upErr?.message || 'inconnu'}`);
+
+      // 2) Appel API classify-dossier
+      setDossierScanState({ status: 'classifying', error: '', sections: null });
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/classify-dossier', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ storagePath: bucketPath }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      const result = payload.data || {};
+      const sections = Array.isArray(result.sections) ? result.sections : [];
+      if (sections.length === 0) throw new Error("Aucune section identifiée dans le PDF.");
+
+      // 3) Découpage du PDF côté navigateur avec pdf-lib
+      setDossierScanState({ status: 'splitting', error: '', sections });
+      const arrayBuffer = await file.arrayBuffer();
+      const srcPdf = await PDFDocument.load(arrayBuffer);
+      const splitFiles = [];
+      for (const section of sections) {
+        // pages 1-indexées dans l'API → 0-indexées dans pdf-lib
+        const indices = [];
+        for (let p = section.pageStart - 1; p <= section.pageEnd - 1; p++) {
+          if (p >= 0 && p < srcPdf.getPageCount()) indices.push(p);
+        }
+        if (indices.length === 0) continue;
+        const newPdf = await PDFDocument.create();
+        const copiedPages = await newPdf.copyPages(srcPdf, indices);
+        copiedPages.forEach(p => newPdf.addPage(p));
+        const bytes = await newPdf.save();
+        const safeLabel = (section.label || section.category).replace(/[^a-zA-Z0-9-_]+/g, '-').slice(0, 50);
+        const sectionName = `${safeLabel}.pdf`;
+        const sectionFile = new File([bytes], sectionName, { type: 'application/pdf' });
+        splitFiles.push({ section, sectionFile, sectionName });
+      }
+
+      // 4) Upload chaque section dans le bucket
+      const scannedSections = [];
+      for (const { section, sectionFile, sectionName } of splitFiles) {
+        const sectionFileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const { path: sectionPath, error: sErr } = await uploadFileToBucket(sectionFile, sectionFileId);
+        if (sErr || !sectionPath) continue; // skip section échouée mais ne bloque pas
+        scannedSections.push({
+          fileId: sectionFileId,
+          bucketPath: sectionPath,
+          name: sectionName,
+          type: 'application/pdf',
+          size: sectionFile.size,
+          subCategory: section.category,
+          label: section.label,
+          note: `📂 ${section.label} (pages ${section.pageStart}-${section.pageEnd}) — confiance ${section.confiance}`,
+        });
+      }
+
+      // 5) Pré-remplit le formulaire avec les champs extraits du bon de commande
+      const d = result.bonCommande || {};
+      setFormData(prev => {
+        const next = { ...prev };
+        next.scannedSections = scannedSections;
+        if (d.nom) next.nom = String(d.nom).toUpperCase();
+        if (d.prenom) next.prenom = String(d.prenom);
+        if (d.adresse) next.adresse = String(d.adresse);
+        if (d.codePostal) next.codePostal = String(d.codePostal);
+        if (d.ville) next.ville = String(d.ville).toUpperCase();
+        if (d.telephone) next.telephone = String(d.telephone);
+        if (d.email) next.email = String(d.email);
+        if (d.financement) next.financement = String(d.financement).toUpperCase();
+        if (d.dateSignature) next.dateSignature = String(d.dateSignature);
+        const ttc = parseFloat(d.montantTTC);
+        if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
+        const ht = parseFloat(d.montantHT);
+        if (!isNaN(ht) && ht > 0) next.montantHtCustom = String(ht);
+        const p = parseInt(String(d.puissance || '').replace(/\D/g, ''), 10);
+        if (p > 0) {
+          const prods = (prev.produits && prev.produits.length > 0)
+            ? [...prev.produits]
+            : [{ type: 'PANNEAU_SOLAIRE', puissance: 0, description: '', quantite: 1 }];
+          prods[0] = { ...prods[0], type: prods[0].type || 'PANNEAU_SOLAIRE', puissance: p };
+          next.produits = prods;
+        }
+        return next;
+      });
+
+      // Le PDF d'origine n'est plus utile (toutes les pages sont dans les sections),
+      // on le supprime du bucket en background
+      deleteFileFromBucket(bucketPath).catch(() => {});
+
+      setDossierScanState({ status: 'done', error: '', sections });
+    } catch (e) {
+      setDossierScanState({ status: 'error', error: e.message || 'Erreur inconnue', sections: null });
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -5189,6 +5343,58 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   {scanState.result.remarques && (
                     <div className="text-slate-500 mt-0.5">📝 {scanState.result.remarques}</div>
                   )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* SCAN IA — Dossier client complet (multi-pages PDF) */}
+          {!editingId && (
+            <div
+              onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f && !dossierScanBusy) handleScanDossier(f); }}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              className="rounded-2xl border-2 border-dashed border-cyan-300 bg-cyan-50 p-4"
+            >
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className={`px-4 py-2.5 rounded-xl font-semibold text-white text-sm shadow-md flex items-center gap-2 ${dossierScanBusy ? 'bg-slate-400 cursor-wait' : 'bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-600 hover:to-blue-600 cursor-pointer'}`}>
+                  <Sparkles className="w-4 h-4" />
+                  {dossierScanState.status === 'uploading' ? '⏳ Upload…'
+                    : dossierScanState.status === 'classifying' ? '🤖 Analyse IA…'
+                    : dossierScanState.status === 'splitting' ? '✂️ Découpage…'
+                    : '📂 Scanner un dossier complet (PDF)'}
+                  <input type="file" accept="application/pdf" className="hidden" disabled={dossierScanBusy} onChange={(e) => handleScanDossier(e.target.files?.[0])} />
+                </label>
+                <span className="text-xs text-slate-500 flex-1 min-w-[200px]">
+                  Upload un PDF qui contient TOUT le dossier (mandat, bon commande, financement, pièce ID, taxe foncière, etc.) — l'IA découpe chaque document et le range automatiquement.
+                </span>
+              </div>
+              {dossierScanState.status === 'error' && (
+                <div className="mt-2 text-xs text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">
+                  ⚠️ {dossierScanState.error}
+                </div>
+              )}
+              {dossierScanState.status === 'done' && dossierScanState.sections && (
+                <div className="mt-2 text-xs bg-white border border-cyan-200 rounded-lg px-3 py-2">
+                  <div className="font-semibold text-slate-700 mb-1.5">
+                    ✅ {dossierScanState.sections.length} document{dossierScanState.sections.length > 1 ? 's' : ''} identifié{dossierScanState.sections.length > 1 ? 's' : ''} et rangé{dossierScanState.sections.length > 1 ? 's' : ''} dans le dossier :
+                  </div>
+                  <ul className="space-y-0.5">
+                    {dossierScanState.sections.map((s, i) => {
+                      const cat = CLIENT_DOC_SUBCATS.find(c => c.id === s.category);
+                      const emoji = cat?.emoji || '📑';
+                      const confiCol = s.confiance === 'haute' ? 'text-emerald-700'
+                        : s.confiance === 'moyenne' ? 'text-amber-700'
+                        : 'text-rose-700';
+                      return (
+                        <li key={i} className="flex items-center gap-2 flex-wrap">
+                          <span>{emoji}</span>
+                          <span className="font-semibold text-slate-700">{s.label}</span>
+                          <span className="text-slate-400">— p. {s.pageStart}{s.pageEnd > s.pageStart ? `-${s.pageEnd}` : ''}</span>
+                          <span className={`text-[10px] font-bold uppercase ${confiCol}`}>{s.confiance}</span>
+                        </li>
+                      );
+                    })}
+                  </ul>
                 </div>
               )}
             </div>
