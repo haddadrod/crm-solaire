@@ -1459,11 +1459,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Rappels Poseur à assigner — date de pose remplie mais aucun poseur dans
     // l'équipe. Cas typique : la banque a accordé, on a calé une date avec le
     // client, mais on a oublié de désigner qui pose.
-    // ⚠️ On ne filtre PAS par finalStatuses ici : si un dossier est annulé ou
-    // payé mais a quand même une date de pose, c'est une incohérence à
-    // signaler (probablement une saisie qui traîne).
+    // Skippé si le dossier est dans un statut final (annulé volontairement,
+    // dossier payé, etc.) — l'utilisateur a déjà clôturé.
     const rappelsPoseurNonAssigne = [];
     dossiersEnriched.forEach(d => {
+      if (finalStatuses.includes(d.statut)) return;
       // Une date de pose est-elle posée ? (envoi en pose, visite, ou pose)
       const aUneDate = !!(d.dateEnvoiPose || d.dateVisitePose || d.dateInsta);
       if (!aUneDate) return;
