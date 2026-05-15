@@ -6647,8 +6647,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const refPaiement = useRef(null);
   const refEquipeInterne = useRef(null);
 
-  // Formulaire "🔁 Pose ratée" — visible quand l'utilisateur clique le bouton
-  const [poseRateeForm, setPoseRateeForm] = useState({ visible: false, motif: 'client_absent', penalite: 500 });
+  // Formulaire "✗ Refusé" — visible quand l'utilisateur clique le bouton
+  const [poseRateeForm, setPoseRateeForm] = useState({ visible: false, motif: 'client_absent', penalite: 500, definitif: false });
 
   // Scroll vers la section demandée à l'ouverture
   useEffect(() => {
@@ -7064,8 +7064,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       ))}
                     </div>
                   </div>
+                  <label className="flex items-center gap-1.5 text-[10px] font-semibold text-rose-700 cursor-pointer">
+                    <input type="checkbox" checked={poseRateeForm.definitif} onChange={(e) => setPoseRateeForm({ ...poseRateeForm, definitif: e.target.checked })} className="w-3.5 h-3.5 accent-rose-600" />
+                    📛 Annulation définitive (le client ne veut plus rien)
+                  </label>
                   <div className="flex gap-1">
-                    <button onClick={() => setPoseRateeForm({ visible: false, motif: 'client_absent', penalite: 500 })} className="flex-1 px-2 py-1.5 bg-white border border-slate-300 text-slate-600 rounded text-[10px] font-bold hover:bg-slate-50">Annuler</button>
+                    <button onClick={() => setPoseRateeForm({ visible: false, motif: 'client_absent', penalite: 500, definitif: false })} className="flex-1 px-2 py-1.5 bg-white border border-slate-300 text-slate-600 rounded text-[10px] font-bold hover:bg-slate-50">Annuler</button>
                     <button onClick={() => {
                       const regieNom = (d.regies && d.regies[0]?.nom) || d.regie || '';
                       const tentative = {
@@ -7073,17 +7077,28 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         motif: poseRateeForm.motif,
                         penalite: poseRateeForm.penalite,
                         regie: regieNom,
+                        definitif: poseRateeForm.definitif,
                         regleAt: null,
                       };
-                      onUpdate({
-                        tentativesPose: [...(d.tentativesPose || []), tentative],
-                        // Reset des champs pose pour permettre une nouvelle date
-                        dateEnvoiPose: '',
-                        dateVisitePose: '',
-                        statutPose: '',
-                      });
-                      setPoseRateeForm({ visible: false, motif: 'client_absent', penalite: 500 });
-                    }} className="flex-1 px-2 py-1.5 bg-rose-500 hover:bg-rose-600 text-white rounded text-[10px] font-bold">📌 Enregistrer & repartir</button>
+                      if (poseRateeForm.definitif) {
+                        // Annulation définitive : statut → ANNULER, on garde la date
+                        // pour traçabilité et on marque statutPose='client_refuse'.
+                        onUpdate({
+                          tentativesPose: [...(d.tentativesPose || []), tentative],
+                          statutPose: 'client_refuse',
+                          statut: 'W2_ANNULER',
+                        });
+                      } else {
+                        // Pose ratée : on vide les dates pour permettre la reprogrammation
+                        onUpdate({
+                          tentativesPose: [...(d.tentativesPose || []), tentative],
+                          dateEnvoiPose: '',
+                          dateVisitePose: '',
+                          statutPose: '',
+                        });
+                      }
+                      setPoseRateeForm({ visible: false, motif: 'client_absent', penalite: 500, definitif: false });
+                    }} className={`flex-1 px-2 py-1.5 rounded text-[10px] font-bold text-white ${poseRateeForm.definitif ? 'bg-red-700 hover:bg-red-800' : 'bg-rose-500 hover:bg-rose-600'}`}>{poseRateeForm.definitif ? '📛 Annuler le dossier' : '📌 Enregistrer & repartir'}</button>
                   </div>
                 </div>
               )}
@@ -7102,6 +7117,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           <span className="text-slate-600">{fmtD(t.date)}</span>
                           <span className="text-rose-700 font-semibold">· {motifLabel}</span>
                           {t.regie && <span className="text-slate-500">· {t.regie}</span>}
+                          {t.definitif && <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-red-700 text-white">DÉFINITIF</span>}
                           <span className="ml-auto font-bold text-rose-700">{t.penalite} €</span>
                         </div>
                       );
