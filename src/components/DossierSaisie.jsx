@@ -2691,12 +2691,13 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                 if (!iso) return '';
                 try {
                   const date = new Date(iso);
+                  const time = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
                   const days = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
-                  if (days === 0) return "auj.";
-                  if (days === 1) return "hier";
-                  if (days < 7) return `il y a ${days}j`;
-                  if (days < 30) return `il y a ${Math.floor(days / 7)}sem`;
-                  return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+                  if (days === 0) return `auj. à ${time}`;
+                  if (days === 1) return `hier à ${time}`;
+                  if (days < 7) return `il y a ${days}j à ${time}`;
+                  if (days < 30) return `il y a ${Math.floor(days / 7)}sem à ${time}`;
+                  return `${date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })} à ${time}`;
                 } catch (e) { return ''; }
               };
               const lastHist = (d.historique || []).slice(-1)[0];
@@ -6824,12 +6825,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 if (!iso) return '';
                 try {
                   const date = new Date(iso);
+                  const time = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
                   const days = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
-                  if (days === 0) return "auj.";
-                  if (days === 1) return "hier";
-                  if (days < 7) return `il y a ${days}j`;
-                  if (days < 30) return `il y a ${Math.floor(days / 7)}sem`;
-                  return date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' });
+                  if (days === 0) return `auj. à ${time}`;
+                  if (days === 1) return `hier à ${time}`;
+                  if (days < 7) return `il y a ${days}j à ${time}`;
+                  if (days < 30) return `il y a ${Math.floor(days / 7)}sem à ${time}`;
+                  return `${date.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: '2-digit' })} à ${time}`;
                 } catch (e) { return ''; }
               };
               const lastHist = (formData.historique || []).slice(-1)[0];
@@ -7737,12 +7739,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
     if (!iso) return '';
     try {
       const date = new Date(iso);
+      const time = date.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
       const days = Math.floor((Date.now() - date.getTime()) / (1000 * 60 * 60 * 24));
-      if (days === 0) return "auj.";
-      if (days === 1) return "hier";
-      if (days < 7) return `il y a ${days}j`;
-      if (days < 30) return `il y a ${Math.floor(days / 7)}sem`;
-      return formatDate(iso);
+      if (days === 0) return `auj. à ${time}`;
+      if (days === 1) return `hier à ${time}`;
+      if (days < 7) return `il y a ${days}j à ${time}`;
+      if (days < 30) return `il y a ${Math.floor(days / 7)}sem à ${time}`;
+      return `${formatDate(iso)} à ${time}`;
     } catch (e) { return ''; }
   };
 
