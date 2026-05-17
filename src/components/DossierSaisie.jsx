@@ -677,6 +677,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
     provenanceLead: '',
     poseurs: [],
     accordDef: false, consuel: false, observations: '',
+    // ⚖️ Litige client : si statut === 'C_LITIGE', le client réclame un
+    // remboursement. La régie qui a apporté le dossier doit nous rembourser
+    // ce montant (même mécanique que les pénalités de pose).
+    litigeAccordPdfUrl: '', // file ID du PDF accord transactionnel (FactureFileInput)
+    litigeMontantRembourse: '', // montant que je dois rendre au client (= que la régie me doit)
+    litigeRegieNom: '', // quelle régie doit rembourser (utile si plusieurs)
+    litigeRegieRembourse: false, // toggle : la régie m'a remboursé ?
+    litigeDateRembourse: '', // date du remboursement par la régie
+    litigeFactureNo: '', // N° facture émise pour la régie
+    litigeNote: '', // notes libres (motif du litige, contexte)
     historique: [],
     createdBy: '', createdAt: '', modifiedBy: '', modifiedAt: '',
     scannedBon: null, // {dataUrl, name, type, size} si scan IA réussi, sinon null
@@ -1185,6 +1195,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
             : []),
       accordDef: d.accordDef || false, consuel: d.consuel || false,
       observations: d.observations || '',
+      litigeAccordPdfUrl: d.litigeAccordPdfUrl || '',
+      litigeMontantRembourse: d.litigeMontantRembourse || '',
+      litigeRegieNom: d.litigeRegieNom || '',
+      litigeRegieRembourse: d.litigeRegieRembourse || false,
+      litigeDateRembourse: d.litigeDateRembourse || '',
+      litigeFactureNo: d.litigeFactureNo || '',
+      litigeNote: d.litigeNote || '',
       historique: d.historique || [],
       createdBy: d.createdBy || '', createdAt: d.createdAt || '',
       modifiedBy: d.modifiedBy || '', modifiedAt: d.modifiedAt || '',
@@ -1362,7 +1379,36 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const totalPenalitesPaye = penalitesList.reduce((s, p) => s + p.totalPaye, 0);
     const totalPenalitesRestant = penalitesList.reduce((s, p) => s + p.totalRestant, 0);
 
-    return { list, totalGeneralPaye, totalGeneralRestant, totalAPayerMaintenant, totalEnAttenteFinanceur, totalPayeAvance, totalEncaisseClient, totalAEncaisserClient, encaissList, penalitesList, totalPenalitesDu, totalPenalitesPaye, totalPenalitesRestant };
+    // ⚖️ Litiges client — remboursements dus par les régies (même mécanique
+    // que les pénalités, mais avec un PDF d'accord transactionnel et des
+    // montants en général plus élevés).
+    const litigeMap = {};
+    dossiersEnriched.forEach(d => {
+      const montant = parseFloat(d.litigeMontantRembourse);
+      if (!montant || isNaN(montant) || montant <= 0) return;
+      const regie = d.litigeRegieNom || '(régie non identifiée)';
+      if (!litigeMap[regie]) litigeMap[regie] = { nom: regie, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
+      litigeMap[regie].totalDu += montant;
+      if (d.litigeRegieRembourse) litigeMap[regie].totalPaye += montant;
+      else litigeMap[regie].totalRestant += montant;
+      litigeMap[regie].lignes.push({
+        dossierLocalId: d.localId,
+        dossierId: d.id || '—',
+        client: `${d.nom} ${d.prenom || ''}`.trim(),
+        montant,
+        rembourse: !!d.litigeRegieRembourse,
+        dateRembourse: d.litigeDateRembourse || null,
+        factureNo: d.litigeFactureNo || '',
+        accordPdfUrl: d.litigeAccordPdfUrl || '',
+        note: d.litigeNote || '',
+      });
+    });
+    const litigesList = Object.values(litigeMap).sort((a, b) => b.totalRestant - a.totalRestant);
+    const totalLitigesDu = litigesList.reduce((s, p) => s + p.totalDu, 0);
+    const totalLitigesPaye = litigesList.reduce((s, p) => s + p.totalPaye, 0);
+    const totalLitigesRestant = litigesList.reduce((s, p) => s + p.totalRestant, 0);
+
+    return { list, totalGeneralPaye, totalGeneralRestant, totalAPayerMaintenant, totalEnAttenteFinanceur, totalPayeAvance, totalEncaisseClient, totalAEncaisserClient, encaissList, penalitesList, totalPenalitesDu, totalPenalitesPaye, totalPenalitesRestant, litigesList, totalLitigesDu, totalLitigesPaye, totalLitigesRestant };
   }, [dossiersEnriched, tarifsInternes]);
 
   // Dashboard
@@ -2190,6 +2236,21 @@ export default function DossierSaisie({ authUser, onLogout }) {
               if (!tent[tentativeIdx]) return d;
               tent[tentativeIdx] = { ...tent[tentativeIdx], regleAt: tent[tentativeIdx].regleAt ? null : now };
               return { ...d, tentativesPose: tent, savedAt: now, modifiedAt: now };
+            }));
+          }}
+          onToggleLitige={(dossierLocalId) => {
+            const now = new Date().toISOString();
+            const today = now.split('T')[0];
+            setDossiers(dossiers.map(d => {
+              if (d.localId !== dossierLocalId) return d;
+              const willBeRembourse = !d.litigeRegieRembourse;
+              return {
+                ...d,
+                litigeRegieRembourse: willBeRembourse,
+                litigeDateRembourse: willBeRembourse ? (d.litigeDateRembourse || today) : d.litigeDateRembourse,
+                savedAt: now,
+                modifiedAt: now,
+              };
             }));
           }}
         />}
@@ -3582,7 +3643,7 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
 
 // ====================== AUTRES VUES (inchangées) ======================
 
-function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite }) {
+function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite, onToggleLitige }) {
   // Mappe le type de prestataire vers l'ancre de scroll dans le QuickViewPanel
   const scrollTargetFor = (type) => {
     if (type === 'Fournisseur') return 'fournisseurs';
@@ -3872,6 +3933,88 @@ function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite }) {
                         <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold">{motifLabel}</span>
                         {l.definitif && <span className="text-[9px] px-1 py-0.5 rounded bg-red-700 text-white font-bold">DÉF.</span>}
                         <span className={`font-bold ${paye ? 'text-emerald-700 line-through' : 'text-rose-700'}`}>{formatEuro(l.penalite)}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </details>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ⚖️ LITIGES CLIENT — remboursements dus par les régies */}
+      <div className="bg-white rounded-3xl shadow-md border border-purple-200 overflow-hidden">
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-purple-50 to-rose-50">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+            ⚖️ Litiges client (remboursements régies)
+          </h2>
+          <p className="text-xs text-slate-500 mt-1">💡 Quand un client porte plainte et qu'on lui rembourse, la régie qui a apporté le dossier doit nous rembourser à son tour. Coche dès qu'elle l'a fait.</p>
+        </div>
+
+        {rapportPaiements.totalLitigesDu > 0 && (
+          <div className="p-4 bg-slate-50 border-b border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="bg-gradient-to-br from-purple-500 to-fuchsia-500 rounded-2xl p-4 text-white">
+              <div className="text-xs font-semibold opacity-90 uppercase">⚖️ Total dû par les régies</div>
+              <div className="text-2xl font-bold">{formatEuro(rapportPaiements.totalLitigesDu)}</div>
+            </div>
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-4 text-white">
+              <div className="text-xs font-semibold opacity-90 uppercase">✅ Déjà remboursé</div>
+              <div className="text-2xl font-bold">{formatEuro(rapportPaiements.totalLitigesPaye)}</div>
+            </div>
+            <div className="bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl p-4 text-white">
+              <div className="text-xs font-semibold opacity-90 uppercase">⏳ Reste à recevoir</div>
+              <div className="text-2xl font-bold">{formatEuro(rapportPaiements.totalLitigesRestant)}</div>
+            </div>
+          </div>
+        )}
+
+        {rapportPaiements.litigesList.length === 0 ? (
+          <div className="p-8 text-center text-slate-500 text-sm">Aucun litige avec remboursement enregistré.</div>
+        ) : (
+          <div className="p-4 space-y-3">
+            {rapportPaiements.litigesList.map((p) => (
+              <details key={p.nom} className="border border-purple-200 rounded-xl overflow-hidden">
+                <summary className="cursor-pointer px-4 py-3 bg-purple-50 hover:bg-purple-100 flex items-center gap-3 flex-wrap">
+                  <span className="font-bold text-slate-800">🤝 {p.nom}</span>
+                  <span className="text-xs text-slate-500">{p.lignes.length} litige{p.lignes.length > 1 ? 's' : ''}</span>
+                  <span className="ml-auto flex items-center gap-2">
+                    {p.totalRestant > 0 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-orange-100 text-orange-700">{formatEuro(p.totalRestant)} dû</span>
+                    )}
+                    {p.totalPaye > 0 && (
+                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700">{formatEuro(p.totalPaye)} reçu</span>
+                    )}
+                  </span>
+                </summary>
+                <div className="px-4 py-3 space-y-1.5 bg-white">
+                  {p.lignes.map((l, idx) => {
+                    const fmtD = (iso) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '?';
+                    return (
+                      <div key={idx} className={`flex items-center gap-2 px-3 py-2 rounded-lg border-2 transition-colors ${l.rembourse ? 'bg-emerald-50 border-emerald-200' : 'bg-white border-slate-200 hover:border-purple-200'}`}>
+                        <button
+                          onClick={() => onToggleLitige && onToggleLitige(l.dossierLocalId)}
+                          title={l.rembourse ? 'Marquer non remboursé' : 'Marquer comme remboursé'}
+                          className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${l.rembourse ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-white border-slate-300 hover:border-emerald-400'}`}
+                        >
+                          {l.rembourse && <Check className="w-3 h-3" />}
+                        </button>
+                        <button
+                          onClick={() => onShowQuick && onShowQuick(l.dossierLocalId, null)}
+                          className="font-semibold text-slate-700 hover:text-violet-600 hover:underline text-sm text-left flex-1 min-w-0 truncate"
+                        >
+                          {l.client}
+                        </button>
+                        {l.accordPdfUrl && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 font-semibold" title="Accord transactionnel joint">📎 PDF</span>
+                        )}
+                        {l.rembourse && l.dateRembourse && (
+                          <span className="text-[10px] text-slate-500">📅 {fmtD(l.dateRembourse)}</span>
+                        )}
+                        {l.factureNo && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono">{l.factureNo}</span>
+                        )}
+                        <span className={`font-bold ${l.rembourse ? 'text-emerald-700 line-through' : 'text-purple-700'}`}>{formatEuro(l.montant)}</span>
                       </div>
                     );
                   })}
@@ -6726,6 +6869,121 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               );
             })()}
           </Section>
+
+          {/* ⚖️ LITIGE & REMBOURSEMENT — visible uniquement si statut = LITIGE.
+              Suit la même mécanique que les pénalités déplacement : la régie
+              qui a apporté le dossier doit me rembourser ce que je rends
+              au client. */}
+          {formData.statut === 'C_LITIGE' && (
+            <Section title="⚖️ Litige & remboursement client" color="rose">
+              <div className="space-y-3">
+                {/* Accord transactionnel — PDF */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📎 Accord transactionnel signé (PDF)</label>
+                  <FactureFileInput
+                    fileId={formData.litigeAccordPdfUrl}
+                    onChange={(id) => setFormData({ ...formData, litigeAccordPdfUrl: id })}
+                    color="purple"
+                  />
+                </div>
+
+                {/* Régie qui doit rembourser + montant */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🤝 Régie qui doit rembourser</label>
+                    <select
+                      value={formData.litigeRegieNom}
+                      onChange={(e) => setFormData({ ...formData, litigeRegieNom: e.target.value })}
+                      className={inputCls}
+                    >
+                      <option value="">— Aucune / non identifiée —</option>
+                      {/* Régies déjà associées au dossier en premier */}
+                      {(formData.regies || []).filter(r => r.nom).map((r, i) => (
+                        <option key={`d-${i}`} value={r.nom}>{r.nom} (régie du dossier)</option>
+                      ))}
+                      {/* Puis le reste du catalogue */}
+                      {(REGIES || []).filter(r => !(formData.regies || []).some(dr => dr.nom === r)).map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">💸 Montant à me rembourser</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={formData.litigeMontantRembourse}
+                        onChange={(e) => setFormData({ ...formData, litigeMontantRembourse: e.target.value })}
+                        placeholder="0,00"
+                        className={inputCls + ' pr-8 font-bold text-rose-700'}
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-sm">€</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Toggle remboursement + date + N° facture */}
+                <div className={`rounded-xl border-2 p-3 ${formData.litigeRegieRembourse ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-200'}`}>
+                  <label className="flex items-center gap-2 cursor-pointer mb-2">
+                    <input
+                      type="checkbox"
+                      checked={formData.litigeRegieRembourse}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setFormData({
+                          ...formData,
+                          litigeRegieRembourse: checked,
+                          litigeDateRembourse: checked && !formData.litigeDateRembourse
+                            ? new Date().toISOString().split('T')[0]
+                            : formData.litigeDateRembourse,
+                        });
+                      }}
+                      className="w-5 h-5 rounded accent-emerald-500"
+                    />
+                    <span className={`text-sm font-bold ${formData.litigeRegieRembourse ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {formData.litigeRegieRembourse ? '✅ La régie m\'a remboursé' : '⏳ En attente du remboursement de la régie'}
+                    </span>
+                  </label>
+                  {formData.litigeRegieRembourse && (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Date du remboursement</label>
+                        <input
+                          type="date"
+                          value={formData.litigeDateRembourse}
+                          onChange={(e) => setFormData({ ...formData, litigeDateRembourse: e.target.value })}
+                          className={inputCls}
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">N° facture émise à la régie</label>
+                        <input
+                          type="text"
+                          value={formData.litigeFactureNo}
+                          onChange={(e) => setFormData({ ...formData, litigeFactureNo: e.target.value })}
+                          placeholder="Ex : 2026-014"
+                          className={inputCls}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Notes libres */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📝 Note (motif, contexte)</label>
+                  <textarea
+                    value={formData.litigeNote}
+                    onChange={(e) => setFormData({ ...formData, litigeNote: e.target.value })}
+                    rows={2}
+                    placeholder="Ex : Plainte client pour défaut esthétique des panneaux, accord signé le 12/05/2026..."
+                    className={inputCls + ' resize-none'}
+                  />
+                </div>
+              </div>
+            </Section>
+          )}
 
           {isAdmin && (
             <div className="bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 rounded-2xl p-5 text-white shadow-lg">
