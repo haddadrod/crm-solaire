@@ -8477,6 +8477,102 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
           )}
 
+          {/* ⚖️ LITIGE — visible uniquement si statut = LITIGE.
+              Même mécanique que les pénalités : la régie doit me rembourser. */}
+          {d.statut === 'C_LITIGE' && (
+            <div>
+              <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">⚖️ Litige & remboursement</h3>
+              <div className="bg-gradient-to-br from-rose-50 to-pink-50 border-2 border-rose-300 rounded-xl p-2.5 space-y-2">
+                {/* Accord PDF */}
+                <div>
+                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">📎 Accord transactionnel (PDF)</label>
+                  <FactureFileInput
+                    fileId={d.litigeAccordPdfUrl}
+                    onChange={(id) => onUpdate({ litigeAccordPdfUrl: id })}
+                    color="purple"
+                  />
+                </div>
+                {/* Régie + montant */}
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">🤝 Régie qui rembourse</label>
+                    <select
+                      value={d.litigeRegieNom || ''}
+                      onChange={(e) => onUpdate({ litigeRegieNom: e.target.value })}
+                      className={inputCls}
+                    >
+                      <option value="">—</option>
+                      {(d.regies || []).filter(r => r.nom).map((r, i) => (
+                        <option key={`d-${i}`} value={r.nom}>{r.nom} (du dossier)</option>
+                      ))}
+                      {(REGIES || []).filter(r => !(d.regies || []).some(dr => dr.nom === r)).map(r => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">💸 Montant</label>
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={d.litigeMontantRembourse || ''}
+                        onChange={(e) => onUpdate({ litigeMontantRembourse: e.target.value })}
+                        placeholder="0,00"
+                        className={inputCls + ' pr-6 font-bold text-rose-700'}
+                      />
+                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">€</span>
+                    </div>
+                  </div>
+                </div>
+                {/* Toggle remboursé */}
+                <label className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border-2 ${d.litigeRegieRembourse ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-rose-200 hover:bg-rose-50'}`}>
+                  <input
+                    type="checkbox"
+                    checked={!!d.litigeRegieRembourse}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      const today = new Date().toISOString().split('T')[0];
+                      onUpdate({
+                        litigeRegieRembourse: checked,
+                        litigeDateRembourse: checked && !d.litigeDateRembourse ? today : d.litigeDateRembourse,
+                      });
+                    }}
+                    className="w-4 h-4 rounded accent-emerald-500"
+                  />
+                  <span className={`text-[11px] font-bold ${d.litigeRegieRembourse ? 'text-emerald-700' : 'text-rose-700'}`}>
+                    {d.litigeRegieRembourse ? '✅ Régie remboursée' : '⏳ En attente du remboursement régie'}
+                  </span>
+                </label>
+                {d.litigeRegieRembourse && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <input
+                      type="date"
+                      value={d.litigeDateRembourse || ''}
+                      onChange={(e) => onUpdate({ litigeDateRembourse: e.target.value })}
+                      className={inputCls}
+                    />
+                    <input
+                      type="text"
+                      value={d.litigeFactureNo || ''}
+                      onChange={(e) => onUpdate({ litigeFactureNo: e.target.value })}
+                      placeholder="N° facture régie"
+                      className={inputCls}
+                    />
+                  </div>
+                )}
+                {/* Note */}
+                <textarea
+                  value={d.litigeNote || ''}
+                  onChange={(e) => onUpdate({ litigeNote: e.target.value })}
+                  rows={2}
+                  placeholder="Note (motif, contexte)…"
+                  className={inputCls + ' resize-none text-xs'}
+                />
+              </div>
+            </div>
+          )}
+
           {/* RÉGIES — multi, éditables (cachées si équipe interne) */}
           {d.typeRegie !== 'interne' && (
           <div ref={refRegie}>
