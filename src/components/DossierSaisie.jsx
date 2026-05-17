@@ -109,19 +109,36 @@ const PRODUITS_DEFAULT = [
 // automatique par l'IA quand on scanne un dossier complet multi-pages,
 // et comme onglets dans la modale Documents.
 const CLIENT_DOC_SUBCATS = [
-  { id: 'bon_commande',      label: 'Bon de commande',     emoji: '📄' },
-  { id: 'mandat',            label: 'Mandat administratif', emoji: '📋' },
-  { id: 'attestation',       label: 'Attestation honneur', emoji: '✍️' },
-  { id: 'rge',               label: 'Document RGE',         emoji: '🏅' },
-  { id: 'financement',       label: 'Dossier financement',  emoji: '🏦' },
-  { id: 'piece_identite',    label: "Pièce d'identité",     emoji: '🆔' },
-  { id: 'taxe_fonciere',     label: 'Taxe foncière',        emoji: '🏠' },
-  { id: 'avis_imposition',   label: "Avis d'imposition",    emoji: '💼' },
-  { id: 'justif_domicile',   label: 'Justificatif domicile',emoji: '📋' },
-  { id: 'bulletin_paie',     label: 'Bulletin de paie',     emoji: '💰' },
-  { id: 'rib',               label: 'RIB',                  emoji: '🏦' },
-  { id: 'autre',             label: 'Autre',                emoji: '📑' },
+  { id: 'bon_commande',      label: 'Bon de commande',     emoji: '📄', color: 'violet'  },
+  { id: 'mandat',            label: 'Mandat administratif', emoji: '📋', color: 'blue'    },
+  { id: 'attestation',       label: 'Attestation honneur', emoji: '✍️', color: 'amber'   },
+  { id: 'rge',               label: 'Document RGE',         emoji: '🏅', color: 'emerald' },
+  { id: 'financement',       label: 'Dossier financement',  emoji: '🏦', color: 'sky'     },
+  { id: 'piece_identite',    label: "Pièce d'identité",     emoji: '🆔', color: 'pink'    },
+  { id: 'taxe_fonciere',     label: 'Taxe foncière',        emoji: '🏠', color: 'orange'  },
+  { id: 'avis_imposition',   label: "Avis d'imposition",    emoji: '💼', color: 'rose'    },
+  { id: 'justif_domicile',   label: 'Justificatif domicile',emoji: '📋', color: 'cyan'    },
+  { id: 'bulletin_paie',     label: 'Bulletin de paie',     emoji: '💰', color: 'green'   },
+  { id: 'rib',               label: 'RIB',                  emoji: '🏦', color: 'indigo'  },
+  { id: 'autre',             label: 'Autre',                emoji: '📑', color: 'slate'   },
 ];
+
+// Classes Tailwind par couleur — déclarées en clair (pas en construction
+// dynamique) pour que le purge ne les supprime pas en prod.
+const SUBCAT_COLOR_CLASSES = {
+  violet:  { bar: 'bg-violet-500',  headerBg: 'bg-violet-50',  border: 'border-violet-300',  count: 'bg-violet-100 text-violet-700' },
+  blue:    { bar: 'bg-blue-500',    headerBg: 'bg-blue-50',    border: 'border-blue-300',    count: 'bg-blue-100 text-blue-700' },
+  amber:   { bar: 'bg-amber-500',   headerBg: 'bg-amber-50',   border: 'border-amber-300',   count: 'bg-amber-100 text-amber-700' },
+  emerald: { bar: 'bg-emerald-500', headerBg: 'bg-emerald-50', border: 'border-emerald-300', count: 'bg-emerald-100 text-emerald-700' },
+  sky:     { bar: 'bg-sky-500',     headerBg: 'bg-sky-50',     border: 'border-sky-300',     count: 'bg-sky-100 text-sky-700' },
+  pink:    { bar: 'bg-pink-500',    headerBg: 'bg-pink-50',    border: 'border-pink-300',    count: 'bg-pink-100 text-pink-700' },
+  orange:  { bar: 'bg-orange-500',  headerBg: 'bg-orange-50',  border: 'border-orange-300',  count: 'bg-orange-100 text-orange-700' },
+  rose:    { bar: 'bg-rose-500',    headerBg: 'bg-rose-50',    border: 'border-rose-300',    count: 'bg-rose-100 text-rose-700' },
+  cyan:    { bar: 'bg-cyan-500',    headerBg: 'bg-cyan-50',    border: 'border-cyan-300',    count: 'bg-cyan-100 text-cyan-700' },
+  green:   { bar: 'bg-green-500',   headerBg: 'bg-green-50',   border: 'border-green-300',   count: 'bg-green-100 text-green-700' },
+  indigo:  { bar: 'bg-indigo-500',  headerBg: 'bg-indigo-50',  border: 'border-indigo-300',  count: 'bg-indigo-100 text-indigo-700' },
+  slate:   { bar: 'bg-slate-400',   headerBg: 'bg-slate-100',  border: 'border-slate-300',   count: 'bg-slate-200 text-slate-700' },
+};
 
 // Limite des fichiers stockés en base64 inline (KV `storage` table) :
 // 5 Mo max par clé Supabase, et le base64 ajoute ~33% d'overhead → 3,7 Mo brut.
@@ -3363,13 +3380,15 @@ function SubCategoryCard({ subcat, docs, uploading, onFile, onOpen, onDownload, 
   const [dragging, setDragging] = useState(false);
   const inputRef = useRef(null);
   const hasDocs = docs.length > 0;
+  const c = SUBCAT_COLOR_CLASSES[subcat.color] || SUBCAT_COLOR_CLASSES.slate;
   return (
-    <div className="bg-white border-2 border-slate-200 rounded-2xl overflow-hidden">
-      <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-2">
+    <div className={`bg-white border-2 ${c.border} rounded-2xl overflow-hidden shadow-sm hover:shadow-md transition-shadow`}>
+      <div className={`h-1.5 ${c.bar}`} />
+      <div className={`px-3 py-2 ${c.headerBg} border-b ${c.border} flex items-center gap-2`}>
         <span className="text-base">{subcat.emoji}</span>
         <span className="text-xs font-bold text-slate-700 uppercase tracking-wide truncate">{subcat.label}</span>
         {hasDocs && (
-          <span className="ml-auto text-[10px] font-bold text-blue-700 bg-blue-100 rounded-full px-2 py-0.5">{docs.length}</span>
+          <span className={`ml-auto text-[10px] font-bold ${c.count} rounded-full px-2 py-0.5`}>{docs.length}</span>
         )}
       </div>
       {/* Zone de drop compacte (toujours visible, même quand il y a des docs) */}
