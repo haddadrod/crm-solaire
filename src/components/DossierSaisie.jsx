@@ -2446,8 +2446,26 @@ export default function DossierSaisie({ authUser, onLogout }) {
             STATUTS={STATUTS}
             onClose={() => setShowAlertesType(null)}
             onSelect={(localId) => {
+              // Mappe le type d'alerte vers la section à scroller / déplier
+              // dans le panneau aperçu rapide.
+              const scrollMap = {
+                controleQualite: 'cq',
+                aEnvoyerBanque: 'financement',
+                financement: 'financement',
+                aEnvoyerPose: 'pose',
+                poseurNonAssigne: 'poseurs',
+                poseNonFinie: 'pose',
+                aEnvoyerConsuel: 'consuel',
+                originaux: 'paiement',
+                controle: 'paiement',
+                paiement: 'paiement',
+                recup_tva: 'paiement',
+                stagnation: null, // pas de section précise, on ouvre juste le panneau
+              };
+              const target = scrollMap[showAlertesType] || null;
               setShowAlertesType(null);
               setShowQuickViewId(localId);
+              setQuickViewScrollTo(target);
             }}
           />
         )}
@@ -7652,27 +7670,50 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const refFournisseurs = useRef(null);
   const refPaiement = useRef(null);
   const refEquipeInterne = useRef(null);
+  const refCQ = useRef(null);
+  const refFinancement = useRef(null);
+  const refPose = useRef(null);
+  const refConsuel = useRef(null);
+
+  // Pliage des 5 étapes du process (toutes pliées par défaut pour éviter
+  // d'avoir à scroller dans tout le panneau). Clic sur le titre = ouvre/ferme.
+  // Si on arrive via une alerte (scrollTo), l'étape ciblée s'ouvre automatiquement.
+  const [foldedSteps, setFoldedSteps] = useState({ cq: true, fin: true, pose: true, consuel: true, paiement: true });
+  const toggleStep = (key) => setFoldedSteps(prev => ({ ...prev, [key]: !prev[key] }));
 
   // Formulaire "✗ Refusé" — visible quand l'utilisateur clique le bouton
   const [poseRateeForm, setPoseRateeForm] = useState({ visible: false, motif: 'client_absent', penalite: 500, definitif: false });
 
-  // Scroll vers la section demandée à l'ouverture
+  // Scroll vers la section demandée à l'ouverture + déplie l'étape ciblée
   useEffect(() => {
     if (!scrollTo) return;
+    // 1) Déplie automatiquement l'étape concernée
+    const stepKey = ({
+      cq: 'cq', controleQualite: 'cq',
+      financement: 'fin', envoiBanque: 'fin',
+      pose: 'pose', envoiPose: 'pose', poseurs: null,
+      consuel: 'consuel', envoiConsuel: 'consuel',
+      paiement: 'paiement', controleLivraison: 'paiement', originaux: 'paiement', tva: 'paiement', recupTva: 'paiement',
+    })[scrollTo];
+    if (stepKey) setFoldedSteps(prev => ({ ...prev, [stepKey]: false }));
     setTimeout(() => {
       let target = null;
       if (scrollTo === 'regie') target = refRegie.current;
       else if (scrollTo === 'poseurs') target = refPoseurs.current;
       else if (scrollTo === 'fournisseurs') target = refFournisseurs.current;
-      else if (scrollTo === 'paiement') target = refPaiement.current;
+      else if (scrollTo === 'paiement' || scrollTo === 'controleLivraison' || scrollTo === 'originaux' || scrollTo === 'tva' || scrollTo === 'recupTva') target = refPaiement.current;
       else if (scrollTo === 'equipeInterne') target = refEquipeInterne.current;
+      else if (scrollTo === 'cq' || scrollTo === 'controleQualite') target = refCQ.current;
+      else if (scrollTo === 'financement' || scrollTo === 'envoiBanque') target = refFinancement.current;
+      else if (scrollTo === 'pose' || scrollTo === 'envoiPose') target = refPose.current;
+      else if (scrollTo === 'consuel' || scrollTo === 'envoiConsuel') target = refConsuel.current;
       if (target) {
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         // Effet flash pour attirer l'œil
         target.classList.add('ring-4', 'ring-violet-400', 'transition-all');
         setTimeout(() => target.classList.remove('ring-4', 'ring-violet-400'), 1800);
       }
-    }, 100);
+    }, 150);
   }, [scrollTo, dossier.localId]);
 
   const formatDate = (iso) => {
@@ -7849,9 +7890,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">📅 Process du dossier</h3>
 
             {/* ============ ÉTAPE 1 : CONTRÔLE QUALITÉ ============ */}
-            <div className={`border-2 rounded-xl p-2 mb-2 ${d.statutControleQualite === 'ok' ? 'bg-emerald-50 border-emerald-200' : d.statutControleQualite === 'pas_ok' ? 'bg-rose-50 border-rose-200' : 'bg-purple-50 border-purple-200'}`}>
-              <div className="text-[10px] font-bold text-purple-700 uppercase mb-1.5 flex items-center justify-between flex-wrap gap-1">
-                <span>1️⃣ 📋 Contrôle qualité</span>
+            <div ref={refCQ} className={`border-2 rounded-xl p-2 mb-2 ${d.statutControleQualite === 'ok' ? 'bg-emerald-50 border-emerald-200' : d.statutControleQualite === 'pas_ok' ? 'bg-rose-50 border-rose-200' : 'bg-purple-50 border-purple-200'}`}>
+              <button onClick={() => toggleStep('cq')} className={`w-full text-[10px] font-bold text-purple-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.cq ? '' : 'mb-1.5'} hover:opacity-80`}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-purple-600 text-[9px]">{foldedSteps.cq ? '▶' : '▼'}</span>
+                  <span>1️⃣ 📋 Contrôle qualité</span>
+                  {foldedSteps.cq && d.dateControleQualite && (
+                    <span className="text-purple-500 font-normal normal-case ml-1">— {new Date(d.dateControleQualite).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
+                  )}
+                </span>
                 {d.statutControleQualite && (
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
                     d.statutControleQualite === 'ok' ? 'bg-emerald-100 text-emerald-700' :
@@ -7861,8 +7908,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     {d.statutControleQualite === 'ok' ? '✓ Validé' : '✗ Refusé'}
                   </span>
                 )}
-              </div>
+              </button>
 
+              {!foldedSteps.cq && (<>
               <div className="flex items-center gap-1 mb-1.5">
                 <span className="text-[10px] font-semibold text-purple-600 uppercase w-16 flex-shrink-0">📞 CQ</span>
                 <input type="date" value={d.dateControleQualite || ''} onChange={(e) => onUpdate({ dateControleQualite: e.target.value })} className={inputCls} />
@@ -7904,12 +7952,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   </audio>
                 )}
               </div>
+              </>)}
             </div>
 
             {/* ============ ÉTAPE 2 : FINANCEMENT ============ */}
-            <div className="border-2 rounded-xl p-2 mb-2 bg-blue-50 border-blue-200">
-              <div className="text-[10px] font-bold uppercase mb-1.5 flex items-center justify-between flex-wrap gap-1">
-                <span className="text-blue-700">2️⃣ 💳 Financement</span>
+            <div ref={refFinancement} className="border-2 rounded-xl p-2 mb-2 bg-blue-50 border-blue-200">
+              <button onClick={() => toggleStep('fin')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.fin ? '' : 'mb-1.5'} hover:opacity-80`}>
+                <span className="flex items-center gap-1.5 text-blue-700">
+                  <span className="text-blue-600 text-[9px]">{foldedSteps.fin ? '▶' : '▼'}</span>
+                  <span>2️⃣ 💳 Financement</span>
+                  {foldedSteps.fin && d.financement && (
+                    <span className="text-blue-500 font-normal normal-case ml-1">— {d.financement}{d.dateEnvoiFin ? ` · envoi ${new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}` : ''}</span>
+                  )}
+                </span>
                 {d.statutFin && (
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
                     d.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
@@ -7919,8 +7974,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     {d.statutFin === 'accepté' ? '✓' : d.statutFin === 'refusé' ? '✗' : '⏳'} {d.statutFin}
                   </span>
                 )}
-              </div>
+              </button>
 
+              {!foldedSteps.fin && (<>
               {/* Sélecteur du financeur — éditable directement (choisir COMPTANT pour un client sans banque) */}
               <div className="mb-2">
                 <label className="block text-[9px] font-semibold text-blue-600 uppercase mb-1">Financeur</label>
@@ -8011,12 +8067,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 if (jours <= 2) return <div className="mt-1.5 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-700">⏳ {jours}j — en attente</div>;
                 return <div className="mt-1.5 px-2 py-1 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-700 font-bold">⚠️ {jours}j sans retour — relance !</div>;
               })()}
+              </>)}
             </div>
 
             {/* ============ ÉTAPE 2 : POSE ============ */}
-            <div className={`border-2 rounded-xl p-2 mb-2 ${d.statutPose === 'client_refuse' ? 'bg-rose-50 border-rose-300' : 'bg-amber-50 border-amber-200'}`}>
-              <div className="text-[10px] font-bold text-amber-700 uppercase mb-1.5 flex items-center justify-between flex-wrap gap-1">
-                <span>3️⃣ 🔧 Pose</span>
+            <div ref={refPose} className={`border-2 rounded-xl p-2 mb-2 ${d.statutPose === 'client_refuse' ? 'bg-rose-50 border-rose-300' : 'bg-amber-50 border-amber-200'}`}>
+              <button onClick={() => toggleStep('pose')} className={`w-full text-[10px] font-bold text-amber-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.pose ? '' : 'mb-1.5'} hover:opacity-80`}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-amber-600 text-[9px]">{foldedSteps.pose ? '▶' : '▼'}</span>
+                  <span>3️⃣ 🔧 Pose</span>
+                  {foldedSteps.pose && d.dateInsta && (
+                    <span className="text-amber-500 font-normal normal-case ml-1">— {new Date(d.dateInsta).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
+                  )}
+                </span>
                 {d.statutPose && (
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
                     d.statutPose === 'visite_ok' ? 'bg-emerald-100 text-emerald-700' :
@@ -8026,8 +8089,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     {d.statutPose === 'visite_ok' ? '✓ OK' : d.statutPose === 'client_refuse' ? '✗ Refus' : '⏳'}
                   </span>
                 )}
-              </div>
+              </button>
 
+              {!foldedSteps.pose && (<>
               <div className="space-y-1">
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] font-semibold text-amber-600 uppercase w-24 flex-shrink-0 whitespace-nowrap">📅 Date de pose</span>
@@ -8168,12 +8232,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {d.statutPose === 'visite_ok' && d.dateInsta && (
                 <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ Posé le {new Date(d.dateInsta).toLocaleDateString('fr-FR')} — passe au Consuel ↓</div>
               )}
+              </>)}
             </div>
 
             {/* ============ ÉTAPE 3 : CONSUEL ============ */}
-            <div className="bg-cyan-50 border-2 border-cyan-200 rounded-xl p-2 mb-2">
-              <div className="text-[10px] font-bold text-cyan-700 uppercase mb-1.5 flex items-center justify-between flex-wrap gap-1">
-                <span>4️⃣ ⚡ Consuel</span>
+            <div ref={refConsuel} className="bg-cyan-50 border-2 border-cyan-200 rounded-xl p-2 mb-2">
+              <button onClick={() => toggleStep('consuel')} className={`w-full text-[10px] font-bold text-cyan-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.consuel ? '' : 'mb-1.5'} hover:opacity-80`}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-cyan-600 text-[9px]">{foldedSteps.consuel ? '▶' : '▼'}</span>
+                  <span>4️⃣ ⚡ Consuel</span>
+                  {foldedSteps.consuel && d.dateEnvoiConsuel && (
+                    <span className="text-cyan-500 font-normal normal-case ml-1">— envoi {new Date(d.dateEnvoiConsuel).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
+                  )}
+                </span>
                 {d.statutConsuel && (
                   <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
                     d.statutConsuel === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
@@ -8183,8 +8254,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     {d.statutConsuel === 'accepté' ? '✓' : d.statutConsuel === 'refusé' ? '✗' : '⏳'} {d.statutConsuel}
                   </span>
                 )}
-              </div>
+              </button>
 
+              {!foldedSteps.consuel && (<>
               <div className="space-y-1">
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] font-semibold text-cyan-600 uppercase w-16 flex-shrink-0">📤 Envoi</span>
@@ -8282,11 +8354,25 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   </div>
                 )}
               </div>
+              </>)}
             </div>
 
             {/* ============ ÉTAPE 4 : SUIVI PAIEMENT ============ */}
             <div ref={refPaiement} className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-2">
-              <div className="text-[10px] font-bold text-emerald-700 uppercase mb-1.5">5️⃣ 💰 Contrôle &amp; paiement</div>
+              <button onClick={() => toggleStep('paiement')} className={`w-full text-[10px] font-bold text-emerald-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.paiement ? '' : 'mb-1.5'} hover:opacity-80`}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-emerald-600 text-[9px]">{foldedSteps.paiement ? '▶' : '▼'}</span>
+                  <span>5️⃣ 💰 Contrôle &amp; paiement</span>
+                  {foldedSteps.paiement && d.datePaiementBanque && (
+                    <span className="text-emerald-500 font-normal normal-case ml-1">— payé {new Date(d.datePaiementBanque).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
+                  )}
+                </span>
+                {d.payeClient && (
+                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">✓ Payé</span>
+                )}
+              </button>
+
+              {!foldedSteps.paiement && (<>
 
               {/* ===== Originaux signés (pré-requis pour contrôle livraison) ===== */}
               {!d.pasOriginauxRequis && (
@@ -8412,6 +8498,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   </div>
                 );
               })()}
+              </>)}
             </div>
           </div>
 
