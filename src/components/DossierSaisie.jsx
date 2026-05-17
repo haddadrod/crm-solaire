@@ -7684,6 +7684,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
     produits: true, regies: true, poseurs: true, fournisseurs: true,
   });
   const toggleStep = (key) => setFoldedSteps(prev => ({ ...prev, [key]: !prev[key] }));
+  const openStep = (key) => setFoldedSteps(prev => ({ ...prev, [key]: false }));
 
   // Formulaire "✗ Refusé" — visible quand l'utilisateur clique le bouton
   const [poseRateeForm, setPoseRateeForm] = useState({ visible: false, motif: 'client_absent', penalite: 500, definitif: false });
@@ -7903,15 +7904,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <span className="text-purple-500 font-normal normal-case ml-1">— {new Date(d.dateControleQualite).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
                   )}
                 </span>
-                {d.statutControleQualite && (
-                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
-                    d.statutControleQualite === 'ok' ? 'bg-emerald-100 text-emerald-700' :
-                    d.statutControleQualite === 'pas_ok' ? 'bg-rose-100 text-rose-700' :
-                    'bg-purple-100 text-purple-700'
-                  }`}>
-                    {d.statutControleQualite === 'ok' ? '✓ Validé' : '✗ Refusé'}
-                  </span>
-                )}
+                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
+                  d.statutControleQualite === 'ok' ? 'bg-emerald-100 text-emerald-700' :
+                  d.statutControleQualite === 'pas_ok' ? 'bg-rose-100 text-rose-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {d.statutControleQualite === 'ok' ? '✓ Validé' : d.statutControleQualite === 'pas_ok' ? '✗ Refusé' : '⏳ Attente'}
+                </span>
               </button>
 
               {!foldedSteps.cq && (<>
@@ -7969,15 +7968,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <span className="text-blue-500 font-normal normal-case ml-1">— {d.financement}{d.dateEnvoiFin ? ` · envoi ${new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}` : ''}</span>
                   )}
                 </span>
-                {d.statutFin && (
-                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
-                    d.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
-                    d.statutFin === 'refusé' ? 'bg-rose-100 text-rose-700' :
-                    'bg-amber-100 text-amber-700'
-                  }`}>
-                    {d.statutFin === 'accepté' ? '✓' : d.statutFin === 'refusé' ? '✗' : '⏳'} {d.statutFin}
-                  </span>
-                )}
+                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
+                  d.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
+                  d.statutFin === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                  d.statutFin === 'envoyé' ? 'bg-blue-100 text-blue-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {d.statutFin === 'accepté' ? '✓ Accepté' : d.statutFin === 'refusé' ? '✗ Refusé' : d.statutFin === 'envoyé' ? '📤 Envoyé' : '⏳ Pas envoyé'}
+                </span>
               </button>
 
               {!foldedSteps.fin && (<>
@@ -8084,15 +8082,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <span className="text-amber-500 font-normal normal-case ml-1">— {new Date(d.dateInsta).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
                   )}
                 </span>
-                {d.statutPose && (
-                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
-                    d.statutPose === 'visite_ok' ? 'bg-emerald-100 text-emerald-700' :
-                    d.statutPose === 'client_refuse' ? 'bg-rose-100 text-rose-700' :
-                    'bg-amber-100 text-amber-700'
-                  }`}>
-                    {d.statutPose === 'visite_ok' ? '✓ OK' : d.statutPose === 'client_refuse' ? '✗ Refus' : '⏳'}
-                  </span>
-                )}
+                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
+                  d.statutPose === 'visite_ok' ? 'bg-emerald-100 text-emerald-700' :
+                  d.statutPose === 'client_refuse' ? 'bg-rose-100 text-rose-700' :
+                  d.statutPose === 'envoyé' ? 'bg-blue-100 text-blue-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {d.statutPose === 'visite_ok' ? '✓ Posé' : d.statutPose === 'client_refuse' ? '✗ Refus' : d.statutPose === 'envoyé' ? '📅 Planifié' : '⏳ Pas planifié'}
+                </span>
               </button>
 
               {!foldedSteps.pose && (<>
@@ -8249,15 +8246,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <span className="text-cyan-500 font-normal normal-case ml-1">— envoi {new Date(d.dateEnvoiConsuel).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
                   )}
                 </span>
-                {d.statutConsuel && (
-                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
-                    d.statutConsuel === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
-                    d.statutConsuel === 'refusé' ? 'bg-rose-100 text-rose-700' :
-                    'bg-amber-100 text-amber-700'
-                  }`}>
-                    {d.statutConsuel === 'accepté' ? '✓' : d.statutConsuel === 'refusé' ? '✗' : '⏳'} {d.statutConsuel}
-                  </span>
-                )}
+                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
+                  d.statutConsuel === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
+                  d.statutConsuel === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                  d.dateEnvoiConsuel ? 'bg-blue-100 text-blue-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {d.statutConsuel === 'accepté' ? '✓ Accepté' : d.statutConsuel === 'refusé' ? '✗ Refusé' : d.dateEnvoiConsuel ? '📤 Envoyé' : '⏳ Pas envoyé'}
+                </span>
               </button>
 
               {!foldedSteps.consuel && (<>
@@ -8371,9 +8367,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <span className="text-emerald-500 font-normal normal-case ml-1">— payé {new Date(d.datePaiementBanque).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
                   )}
                 </span>
-                {d.payeClient && (
-                  <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">✓ Payé</span>
-                )}
+                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
+                  d.payeClient ? 'bg-emerald-100 text-emerald-700' :
+                  d.dateControleLivraison ? 'bg-blue-100 text-blue-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {d.payeClient ? '✓ Payé' : d.dateControleLivraison ? '🔍 Contrôle OK' : '⏳ Pas payé'}
+                </span>
               </button>
 
               {!foldedSteps.paiement && (<>
@@ -8526,7 +8526,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   );
                 })()}
               </button>
-              <button onClick={addProduit} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('produits'); addProduit(); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
@@ -8689,18 +8689,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <h3 className="text-[10px] font-bold text-purple-700 uppercase">🤝 Régies ({(d.regies || []).length})</h3>
                 {foldedSteps.regies && (d.regies || []).length > 0 && (() => {
                   const regies = d.regies || [];
-                  const noms = regies.filter(r => r.nom).slice(0, 2).map(r => r.nom).join(', ');
-                  const reste = regies.length > 2 ? ` +${regies.length - 2}` : '';
-                  const allPaid = regies.every(r => !r.nom || r.paye);
+                  const named = regies.filter(r => r.nom);
+                  const noms = named.slice(0, 2).map(r => r.nom).join(', ');
+                  const reste = named.length > 2 ? ` +${named.length - 2}` : '';
+                  const allPaid = named.length > 0 && named.every(r => r.paye);
                   return (
                     <span className="text-[9px] font-normal normal-case truncate flex items-center gap-1">
-                      <span className="text-slate-500">— {noms}{reste}</span>
+                      <span className="text-slate-500">— {noms || 'à compléter'}{reste}</span>
                       <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>{allPaid ? '✓ payé' : '⏳'}</span>
                     </span>
                   );
                 })()}
               </button>
-              <button onClick={() => onUpdate({ regies: [...(d.regies || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] })} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('regies'); onUpdate({ regies: [...(d.regies || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] }); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
@@ -8866,18 +8867,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <h3 className="text-[10px] font-bold text-emerald-700 uppercase">🔧 Poseurs ({(d.poseurs || []).length})</h3>
                 {foldedSteps.poseurs && (d.poseurs || []).length > 0 && (() => {
                   const poseurs = d.poseurs || [];
-                  const noms = poseurs.filter(p => p.nom).slice(0, 2).map(p => p.nom).join(', ');
-                  const reste = poseurs.length > 2 ? ` +${poseurs.length - 2}` : '';
-                  const allPaid = poseurs.every(p => !p.nom || p.paye);
+                  const named = poseurs.filter(p => p.nom);
+                  const noms = named.slice(0, 2).map(p => p.nom).join(', ');
+                  const reste = named.length > 2 ? ` +${named.length - 2}` : '';
+                  const allPaid = named.length > 0 && named.every(p => p.paye);
                   return (
                     <span className="text-[9px] font-normal normal-case truncate flex items-center gap-1">
-                      <span className="text-slate-500">— {noms}{reste}</span>
+                      <span className="text-slate-500">— {noms || 'à compléter'}{reste}</span>
                       <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>{allPaid ? '✓ payé' : '⏳'}</span>
                     </span>
                   );
                 })()}
               </button>
-              <button onClick={addPoseur} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('poseurs'); addPoseur(); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
@@ -8964,18 +8966,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <h3 className="text-[10px] font-bold text-orange-700 uppercase">📦 Fournisseurs ({(d.fournisseurs || []).length})</h3>
                 {foldedSteps.fournisseurs && (d.fournisseurs || []).length > 0 && (() => {
                   const fournisseurs = d.fournisseurs || [];
-                  const noms = fournisseurs.filter(f => f.nom).slice(0, 2).map(f => f.nom).join(', ');
-                  const reste = fournisseurs.length > 2 ? ` +${fournisseurs.length - 2}` : '';
-                  const allPaid = fournisseurs.every(f => !f.nom || f.paye);
+                  const named = fournisseurs.filter(f => f.nom);
+                  const noms = named.slice(0, 2).map(f => f.nom).join(', ');
+                  const reste = named.length > 2 ? ` +${named.length - 2}` : '';
+                  const allPaid = named.length > 0 && named.every(f => f.paye);
                   return (
                     <span className="text-[9px] font-normal normal-case truncate flex items-center gap-1">
-                      <span className="text-slate-500">— {noms}{reste}</span>
+                      <span className="text-slate-500">— {noms || 'à compléter'}{reste}</span>
                       <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>{allPaid ? '✓ payé' : '⏳'}</span>
                     </span>
                   );
                 })()}
               </button>
-              <button onClick={addFournisseur} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('fournisseurs'); addFournisseur(); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
