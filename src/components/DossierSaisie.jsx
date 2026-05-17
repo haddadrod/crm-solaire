@@ -635,6 +635,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Étape 1 : contrôle qualité (avant envoi banque)
     dateControleQualite: '', statutControleQualite: '', // '' | 'ok' | 'pas_ok'
     vocalCQUrl: '', // lien vers le fichier audio du contrôle qualité
+    tentativesCQ: [], // [{datetime: ISO}] — historique des appels où le client n'a pas répondu
     dateAccord: '', dateConsuel: '',
     dateEnvoiFin: '', dateRetourFin: '',
     statutFin: '', // '' | 'envoyé' | 'accepté' | 'refusé'
@@ -652,6 +653,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     visitesConsuel: [],
     // Suivi paiement
     dateControleLivraison: '', dateAppelBanque: '', datePaiementBanque: '',
+    tentativesControleLivraison: [], // [{datetime: ISO}] — historique des appels où le client n'a pas répondu pour le contrôle livraison
     // 💰 Récupération TVA pour le client — délai légal 6 mois
     tvaStatus: '', // '' | 'envoyee' | 'recuperee' | 'non_concerne'
     tvaDateDemarche: '', // date où la démarche a été envoyée
@@ -1130,6 +1132,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dateAccord: d.dateAccord || '', dateConsuel: d.dateConsuel || '',
       dateControleQualite: d.dateControleQualite || '', statutControleQualite: d.statutControleQualite || '',
       vocalCQUrl: d.vocalCQUrl || '',
+      tentativesCQ: d.tentativesCQ || [],
       dateEnvoiFin: d.dateEnvoiFin || '', dateRetourFin: d.dateRetourFin || '',
       statutFin: d.statutFin || '',
       envoisHistorique: d.envoisHistorique || [],
@@ -1144,6 +1147,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       statutConsuel: d.statutConsuel || '',
       visitesConsuel: d.visitesConsuel || [],
       dateControleLivraison: d.dateControleLivraison || '', dateAppelBanque: d.dateAppelBanque || '', datePaiementBanque: d.datePaiementBanque || '',
+      tentativesControleLivraison: d.tentativesControleLivraison || [],
       tvaStatus: d.tvaStatus || '',
       tvaDateDemarche: d.tvaDateDemarche || '',
       tvaDateRecuperee: d.tvaDateRecuperee || '',
@@ -7933,6 +7937,40 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutControleQualite === 'pas_ok' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
               </div>
 
+              {/* 📞 Tentatives d'appel — client ne répond pas, on garde la trace */}
+              {!d.statutControleQualite && (
+                <div className="mt-1.5 p-1.5 bg-white border border-purple-200 rounded">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[9px] font-bold text-purple-700 uppercase">📞 Essais d'appel ({(d.tentativesCQ || []).length})</span>
+                    <button
+                      onClick={() => onUpdate({ tentativesCQ: [...(d.tentativesCQ || []), { datetime: new Date().toISOString() }] })}
+                      className="text-[9px] font-bold text-white bg-purple-500 hover:bg-purple-600 px-2 py-0.5 rounded"
+                      title="Logger un appel sans réponse — le client ne décroche pas"
+                    >
+                      + Pas répondu
+                    </button>
+                  </div>
+                  {(d.tentativesCQ || []).length > 0 && (
+                    <div className="space-y-0.5">
+                      {(d.tentativesCQ || []).map((t, i) => {
+                        const dt = new Date(t.datetime);
+                        const fmt = dt.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+                        return (
+                          <div key={i} className="flex items-center gap-1 text-[10px] text-slate-600 px-1 py-0.5 bg-purple-50 rounded">
+                            <span className="flex-1">📞 {fmt}</span>
+                            <button
+                              onClick={() => onUpdate({ tentativesCQ: (d.tentativesCQ || []).filter((_, j) => j !== i) })}
+                              className="text-rose-400 hover:text-rose-600 text-[9px] px-1"
+                              title="Supprimer cet essai"
+                            >✕</button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
               {d.statutControleQualite === 'ok' && !d.dateEnvoiFin && (
                 <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ OK pour envoi banque ↓</div>
               )}
@@ -8424,6 +8462,39 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   <input type="date" value={d.dateControleLivraison || ''} onChange={(e) => onUpdate({ dateControleLivraison: e.target.value })} className={inputCls} />
                   <button onClick={() => onUpdate({ dateControleLivraison: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold">Auj.</button>
                 </div>
+                {/* 📞 Tentatives d'appel contrôle livraison — client ne répond pas */}
+                {!d.dateControleLivraison && (
+                  <div className="ml-16 p-1.5 bg-white border border-emerald-200 rounded">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-[9px] font-bold text-emerald-700 uppercase">📞 Essais d'appel ({(d.tentativesControleLivraison || []).length})</span>
+                      <button
+                        onClick={() => onUpdate({ tentativesControleLivraison: [...(d.tentativesControleLivraison || []), { datetime: new Date().toISOString() }] })}
+                        className="text-[9px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-2 py-0.5 rounded"
+                        title="Logger un appel sans réponse — le client ne décroche pas"
+                      >
+                        + Pas répondu
+                      </button>
+                    </div>
+                    {(d.tentativesControleLivraison || []).length > 0 && (
+                      <div className="space-y-0.5">
+                        {(d.tentativesControleLivraison || []).map((t, i) => {
+                          const dt = new Date(t.datetime);
+                          const fmt = dt.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
+                          return (
+                            <div key={i} className="flex items-center gap-1 text-[10px] text-slate-600 px-1 py-0.5 bg-emerald-50 rounded">
+                              <span className="flex-1">📞 {fmt}</span>
+                              <button
+                                onClick={() => onUpdate({ tentativesControleLivraison: (d.tentativesControleLivraison || []).filter((_, j) => j !== i) })}
+                                className="text-rose-400 hover:text-rose-600 text-[9px] px-1"
+                                title="Supprimer cet essai"
+                              >✕</button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                )}
                 <div className="flex items-center gap-1">
                   <span className="text-[10px] font-semibold text-emerald-600 uppercase w-16 flex-shrink-0" title="Banque appelle le client">📞 Banque</span>
                   <input type="date" value={d.dateAppelBanque || ''} onChange={(e) => onUpdate({ dateAppelBanque: e.target.value })} className={inputCls} />
