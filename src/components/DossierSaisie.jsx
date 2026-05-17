@@ -8200,52 +8200,6 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
           )}
 
-          {/* 💸 BOUTON RAPIDE "TOUT PAYER" — affiché si admin et au moins 1 truc à payer */}
-          {isAdmin && (() => {
-            // Comptabilise ce qu'il reste à payer
-            const aPayer = [];
-            if (!d.payeClient) aPayer.push('Client');
-            (d.poseurs || []).forEach(p => { if (p.nom && !p.paye) aPayer.push(`Poseur ${p.nom}`); });
-            (d.fournisseurs || []).forEach(f => { if (f.nom && !f.paye) aPayer.push(`Fournisseur ${f.nom}`); });
-            if (d.typeRegie !== 'interne') {
-              (d.regies || []).forEach(r => { if (r.nom && !r.paye) aPayer.push(`Régie ${r.nom}`); });
-            }
-            ROLES_INTERNES.forEach(role => { if (d[role.key] && !d[role.key + 'Paye']) aPayer.push(`${role.emoji} ${d[role.key]}`); });
-            if (aPayer.length === 0) return null;
-            return (
-              <div className="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 rounded-xl p-2.5">
-                <div className="text-[10px] font-bold text-emerald-700 uppercase mb-1">💸 {aPayer.length} paiement{aPayer.length > 1 ? 's' : ''} en attente</div>
-                <button
-                  onClick={() => {
-                    const today = new Date().toISOString().split('T')[0];
-                    const updates = {};
-                    if (!d.payeClient) {
-                      updates.payeClient = true;
-                      updates.payeClientDate = d.payeClientDate || today;
-                      updates.datePaiementBanque = d.datePaiementBanque || today;
-                      updates.statut = 'W_DOSSIER_PAYER';
-                    }
-                    updates.poseurs = (d.poseurs || []).map(p => p.nom && !p.paye ? { ...p, paye: true, datePaye: p.datePaye || today } : p);
-                    updates.fournisseurs = (d.fournisseurs || []).map(f => f.nom && !f.paye ? { ...f, paye: true, datePaye: f.datePaye || today } : f);
-                    if (d.typeRegie !== 'interne') {
-                      updates.regies = (d.regies || []).map(r => r.nom && !r.paye ? { ...r, paye: true, datePaye: r.datePaye || today } : r);
-                    }
-                    ROLES_INTERNES.forEach(role => {
-                      if (d[role.key] && !d[role.key + 'Paye']) {
-                        updates[role.key + 'Paye'] = true;
-                        updates[role.key + 'DatePaye'] = d[role.key + 'DatePaye'] || today;
-                      }
-                    });
-                    onUpdate(updates);
-                  }}
-                  className="w-full px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg font-bold text-xs"
-                >
-                  ✅ Tout marquer payé d'un coup ({aPayer.length})
-                </button>
-              </div>
-            );
-          })()}
-
           {/* RÉGIES — multi, éditables (cachées si équipe interne) */}
           {d.typeRegie !== 'interne' && (
           <div ref={refRegie}>
