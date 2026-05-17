@@ -7684,6 +7684,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
     produits: true, regies: true, poseurs: true, fournisseurs: true,
   });
   const toggleStep = (key) => setFoldedSteps(prev => ({ ...prev, [key]: !prev[key] }));
+  const openStep = (key) => setFoldedSteps(prev => ({ ...prev, [key]: false }));
 
   // Formulaire "✗ Refusé" — visible quand l'utilisateur clique le bouton
   const [poseRateeForm, setPoseRateeForm] = useState({ visible: false, motif: 'client_absent', penalite: 500, definitif: false });
@@ -8525,7 +8526,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   );
                 })()}
               </button>
-              <button onClick={addProduit} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('produits'); addProduit(); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
@@ -8700,7 +8701,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   );
                 })()}
               </button>
-              <button onClick={() => onUpdate({ regies: [...(d.regies || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] })} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('regies'); onUpdate({ regies: [...(d.regies || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] }); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
@@ -8878,7 +8879,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   );
                 })()}
               </button>
-              <button onClick={addPoseur} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('poseurs'); addPoseur(); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
@@ -8977,7 +8978,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   );
                 })()}
               </button>
-              <button onClick={addFournisseur} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('fournisseurs'); addFournisseur(); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
