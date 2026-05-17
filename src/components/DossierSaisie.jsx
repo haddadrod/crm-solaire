@@ -7675,10 +7675,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const refPose = useRef(null);
   const refConsuel = useRef(null);
 
-  // Pliage des 5 étapes du process (toutes pliées par défaut pour éviter
-  // d'avoir à scroller dans tout le panneau). Clic sur le titre = ouvre/ferme.
-  // Si on arrive via une alerte (scrollTo), l'étape ciblée s'ouvre automatiquement.
-  const [foldedSteps, setFoldedSteps] = useState({ cq: true, fin: true, pose: true, consuel: true, paiement: true });
+  // Pliage des sections (étapes process + blocs métier). Tout plié par défaut
+  // pour éviter d'avoir à scroller dans tout le panneau. Clic sur le titre =
+  // ouvre/ferme. Si on arrive via une alerte (scrollTo), l'étape ciblée
+  // s'ouvre automatiquement.
+  const [foldedSteps, setFoldedSteps] = useState({
+    cq: true, fin: true, pose: true, consuel: true, paiement: true,
+    produits: true, regies: true, poseurs: true, fournisseurs: true,
+  });
   const toggleStep = (key) => setFoldedSteps(prev => ({ ...prev, [key]: !prev[key] }));
 
   // Formulaire "✗ Refusé" — visible quand l'utilisateur clique le bouton
@@ -8505,13 +8509,28 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           {/* FINANCEMENT — supprimé, intégré dans la section 1️⃣ Process Financement et section 4️⃣ Paiement */}
 
           {/* PRODUITS — éditables */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase">🏠 Produits installés ({dossierProduits.length})</h3>
+          <div className="border-2 border-amber-200 bg-amber-50 rounded-xl p-2 mb-2">
+            <div className={`flex items-center justify-between ${foldedSteps.produits ? '' : 'mb-1.5'}`}>
+              <button onClick={() => toggleStep('produits')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80">
+                <span className="text-amber-600 text-[9px]">{foldedSteps.produits ? '▶' : '▼'}</span>
+                <h3 className="text-[10px] font-bold text-amber-700 uppercase">🏠 Produits installés ({dossierProduits.length})</h3>
+                {foldedSteps.produits && dossierProduits.length > 0 && (() => {
+                  const totalWc = dossierProduits.reduce((s, p) => s + (parseInt(p.puissance) || 0), 0);
+                  const noms = dossierProduits.slice(0, 2).map(p => {
+                    const info = findProduit(produits, p.type);
+                    return info?.label || p.type;
+                  }).join(', ');
+                  const reste = dossierProduits.length > 2 ? ` +${dossierProduits.length - 2}` : '';
+                  return (
+                    <span className="text-[9px] text-slate-500 font-normal normal-case truncate">— {noms}{reste}{totalWc > 0 ? ` · ${totalWc} Wc` : ''}</span>
+                  );
+                })()}
+              </button>
               <button onClick={addProduit} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
+            {!foldedSteps.produits && (
             <div className="space-y-1.5">
               {dossierProduits.map((p, i) => {
                 const prodInfo = findProduit(produits, p.type);
@@ -8542,6 +8561,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div className="text-center py-3 text-slate-400 italic text-[11px] bg-slate-50 rounded-xl">Aucun produit. Clique "Ajouter" ci-dessus.</div>
               )}
             </div>
+            )}
           </div>
 
           {/* MONTANTS (admin only) */}
@@ -8662,13 +8682,29 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
           {/* RÉGIES — multi, éditables (cachées si équipe interne) */}
           {d.typeRegie !== 'interne' && (
-          <div ref={refRegie}>
-            <div className="flex items-center justify-between mb-1.5">
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase">🤝 Régies ({(d.regies || []).length})</h3>
+          <div ref={refRegie} className="border-2 border-purple-200 bg-purple-50 rounded-xl p-2 mb-2">
+            <div className={`flex items-center justify-between ${foldedSteps.regies ? '' : 'mb-1.5'}`}>
+              <button onClick={() => toggleStep('regies')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80 min-w-0">
+                <span className="text-purple-600 text-[9px]">{foldedSteps.regies ? '▶' : '▼'}</span>
+                <h3 className="text-[10px] font-bold text-purple-700 uppercase">🤝 Régies ({(d.regies || []).length})</h3>
+                {foldedSteps.regies && (d.regies || []).length > 0 && (() => {
+                  const regies = d.regies || [];
+                  const noms = regies.filter(r => r.nom).slice(0, 2).map(r => r.nom).join(', ');
+                  const reste = regies.length > 2 ? ` +${regies.length - 2}` : '';
+                  const allPaid = regies.every(r => !r.nom || r.paye);
+                  return (
+                    <span className="text-[9px] font-normal normal-case truncate flex items-center gap-1">
+                      <span className="text-slate-500">— {noms}{reste}</span>
+                      <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>{allPaid ? '✓ payé' : '⏳'}</span>
+                    </span>
+                  );
+                })()}
+              </button>
               <button onClick={() => onUpdate({ regies: [...(d.regies || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] })} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
+            {!foldedSteps.regies && (
             <div className="space-y-1.5">
               {(d.regies || []).map((r, i) => {
                 const updateRegie = (idx, upd) => {
@@ -8735,6 +8771,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 );
               })}
             </div>
+            )}
           </div>
           )}
 
@@ -8822,13 +8859,29 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           )}
 
           {/* POSEURS — éditables */}
-          <div ref={refPoseurs}>
-            <div className="flex items-center justify-between mb-1.5">
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase">🔧 Poseurs ({(d.poseurs || []).length})</h3>
+          <div ref={refPoseurs} className="border-2 border-emerald-200 bg-emerald-50 rounded-xl p-2 mb-2">
+            <div className={`flex items-center justify-between ${foldedSteps.poseurs ? '' : 'mb-1.5'}`}>
+              <button onClick={() => toggleStep('poseurs')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80 min-w-0">
+                <span className="text-emerald-600 text-[9px]">{foldedSteps.poseurs ? '▶' : '▼'}</span>
+                <h3 className="text-[10px] font-bold text-emerald-700 uppercase">🔧 Poseurs ({(d.poseurs || []).length})</h3>
+                {foldedSteps.poseurs && (d.poseurs || []).length > 0 && (() => {
+                  const poseurs = d.poseurs || [];
+                  const noms = poseurs.filter(p => p.nom).slice(0, 2).map(p => p.nom).join(', ');
+                  const reste = poseurs.length > 2 ? ` +${poseurs.length - 2}` : '';
+                  const allPaid = poseurs.every(p => !p.nom || p.paye);
+                  return (
+                    <span className="text-[9px] font-normal normal-case truncate flex items-center gap-1">
+                      <span className="text-slate-500">— {noms}{reste}</span>
+                      <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>{allPaid ? '✓ payé' : '⏳'}</span>
+                    </span>
+                  );
+                })()}
+              </button>
               <button onClick={addPoseur} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
+            {!foldedSteps.poseurs && (
             <div className="space-y-1.5">
               {(d.poseurs || []).map((p, i) => {
                 const poseurTel = p.nom && poseursContacts ? poseursContacts[p.nom] : '';
@@ -8900,16 +8953,33 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div className="text-center py-2 text-slate-400 italic text-[11px] bg-slate-50 rounded-xl">Aucun poseur</div>
               )}
             </div>
+            )}
           </div>
 
           {/* FOURNISSEURS — éditables */}
-          <div ref={refFournisseurs}>
-            <div className="flex items-center justify-between mb-1.5">
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase">📦 Fournisseurs ({(d.fournisseurs || []).length})</h3>
+          <div ref={refFournisseurs} className="border-2 border-orange-200 bg-orange-50 rounded-xl p-2 mb-2">
+            <div className={`flex items-center justify-between ${foldedSteps.fournisseurs ? '' : 'mb-1.5'}`}>
+              <button onClick={() => toggleStep('fournisseurs')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80 min-w-0">
+                <span className="text-orange-600 text-[9px]">{foldedSteps.fournisseurs ? '▶' : '▼'}</span>
+                <h3 className="text-[10px] font-bold text-orange-700 uppercase">📦 Fournisseurs ({(d.fournisseurs || []).length})</h3>
+                {foldedSteps.fournisseurs && (d.fournisseurs || []).length > 0 && (() => {
+                  const fournisseurs = d.fournisseurs || [];
+                  const noms = fournisseurs.filter(f => f.nom).slice(0, 2).map(f => f.nom).join(', ');
+                  const reste = fournisseurs.length > 2 ? ` +${fournisseurs.length - 2}` : '';
+                  const allPaid = fournisseurs.every(f => !f.nom || f.paye);
+                  return (
+                    <span className="text-[9px] font-normal normal-case truncate flex items-center gap-1">
+                      <span className="text-slate-500">— {noms}{reste}</span>
+                      <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>{allPaid ? '✓ payé' : '⏳'}</span>
+                    </span>
+                  );
+                })()}
+              </button>
               <button onClick={addFournisseur} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
+            {!foldedSteps.fournisseurs && (
             <div className="space-y-1.5">
               {(d.fournisseurs || []).map((f, i) => (
                 <div key={i} className={`rounded-xl p-2 space-y-1 border ${f.paye ? 'bg-emerald-50 border-emerald-300' : 'bg-orange-50 border-orange-200'}`}>
@@ -8967,6 +9037,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div className="text-center py-2 text-slate-400 italic text-[11px] bg-slate-50 rounded-xl">Aucun fournisseur</div>
               )}
             </div>
+            )}
           </div>
 
           {/* OBSERVATIONS — éditable */}
