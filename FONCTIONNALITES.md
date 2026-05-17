@@ -133,9 +133,12 @@ Plusieurs `useEffect` ([src/components/DossierSaisie.jsx:554-600](src/components
 
 ### Stockage des fichiers (documents)
 
-Les fichiers (PDF, photos) sont stockés sous forme de **data URL en base64** dans `window.storage` (clé liée à l'ID du document), avec une **limite de ~3,7 Mo par fichier** ([src/components/DossierSaisie.jsx:63](src/components/DossierSaisie.jsx)).
+Deux backends coexistent selon la nature du fichier :
 
-> Pas de bucket Supabase Storage à proprement parler — c'est la table `storage` qui sert de blobstore via base64. C'est une limitation à connaître pour les gros PDF.
+- **Bucket Supabase Storage `dossier-documents`** (par défaut, jusqu'à 50 Mo / fichier) — utilisé pour tous les documents joints à un dossier (PDF, images). Le doc porte `storage: 'bucket'` et `storagePath`. L'ouverture se fait via **signed URL** (1 h) pour un aperçu instantané sans re-télécharger le blob côté front. Helpers : `uploadFileToBucket`, `getSignedUrl`, `deleteFileFromBucket` ([src/supabase.js](src/supabase.js)).
+- **Table KV `storage` en base64** (legacy, ~3,7 Mo / fichier max) — fallback historique encore utilisé par `FactureFileInput` pour les PDF de factures fournisseur compactes. Constantes : `MAX_FILE_SIZE_KV` (3,7 Mo) et `MAX_FILE_SIZE_BUCKET` (50 Mo).
+
+Setup initial du bucket : [SUPABASE_STORAGE_SETUP.sql](SUPABASE_STORAGE_SETUP.sql) (création du bucket + 4 politiques RLS pour les utilisateurs authentifiés).
 
 ---
 
@@ -398,23 +401,39 @@ Le seul champ obligatoire bloquant est `nom` (le bouton Créer/Enregistrer est d
 
 `DocumentsModal`, [src/components/DossierSaisie.jsx:2161-2419](src/components/DossierSaisie.jsx).
 
-### Catégories ([src/components/DossierSaisie.jsx:2171-2186](src/components/DossierSaisie.jsx))
+### Catégories
 
 4 catégories accessibles selon le rôle :
-- **Client** (tous) : contrats, bons de commande, mandats
+- **Client** (tous) : contrats, bons de commande, mandats, financement, pièce ID, taxe foncière, etc.
 - **Poseur** (admin) : factures par poseur
 - **Régie** (admin) : factures de la régie
 - **Fournisseur** (admin) : factures par fournisseur
 
+#### Sous-catégories de l'onglet Client (`CLIENT_DOC_SUBCATS`, [src/components/DossierSaisie.jsx:111](src/components/DossierSaisie.jsx))
+
+12 sous-catégories avec couleur dédiée (`bon_commande`, `mandat`, `attestation`, `rge`, `financement`, `piece_identite`, `taxe_fonciere`, `avis_imposition`, `justif_domicile`, `bulletin_paie`, `rib`, `autre`).
+
+Au lieu d'une dropzone unique + menu déroulant, l'onglet Client affiche une **grille de cartes** (`SubCategoryCard`), une par sous-catégorie, avec sa propre dropzone, sa couleur (bande de 6 px en haut, header tinté, bordure marquée) et la liste des docs déjà uploadés dedans. Pratique pour repérer d'un coup d'œil ce qui manque.
+
 ### Limites & types
 
-- Taille max : **~3,7 Mo / fichier** ([src/components/DossierSaisie.jsx:63](src/components/DossierSaisie.jsx))
+- Taille max : **50 Mo / fichier** (bucket Supabase Storage)
 - Types : `.pdf`, `.png`, `.jpg`, `.jpeg`, `.webp`, `.heic`, `.gif`
 
 ### Upload
 
-- Drag & drop ou clic ([src/components/DossierSaisie.jsx:2609-2650](src/components/DossierSaisie.jsx)) — feedback visuel violet pendant le drag.
+- Drag & drop ou clic sur la dropzone de la sous-catégorie souhaitée — feedback visuel violet pendant le drag.
 - Un seul fichier à la fois.
+- Onglets non-Client : dropzone unique en haut (rôle factures par prestataire).
+
+### Scan IA — Pré-remplissage du formulaire
+
+Deux boutons en haut du formulaire (visibles uniquement en **création** de dossier) :
+
+1. **📸 Scanner un bon de commande** (`handleScanBonCommande`) — Prend en photo ou PDF un bon de commande manuscrit, l'envoie à `api/extract-bon.js` (Claude Opus 4.7 vision/document), qui renvoie les champs structurés (nom, prénom, adresse, téléphone, montant TTC/HT, financement, date signature, etc.). Le formulaire est pré-rempli, le fichier est ajouté aux documents (sous-catégorie `bon_commande`).
+2. **📂 Scanner un dossier complet (PDF)** (`handleScanDossier`) — Upload un PDF multi-pages contenant TOUT le dossier (mandat, bon de commande, financement, pièces d'identité, taxe foncière, etc.). `api/classify-dossier.js` (Claude Opus 4.7) identifie chaque document, renvoie pour chaque section ses bornes de pages + sa catégorie + un label humain, et extrait les champs du bon de commande pour pré-remplir le formulaire. Côté serveur, **pdf-lib découpe ensuite le PDF original** en N sous-PDF standalone (un par section identifiée) qui sont uploadés dans le bucket — chaque section devient son propre document dans la bonne sous-catégorie côté front.
+
+**Limite Anthropic 32 Mo / requête** : si le PDF brut dépasse 18 Mo, l'API le scinde automatiquement en chunks de pages contigües, classifie chaque chunk séparément, puis fusionne les sections (en décalant les `pageStart`/`pageEnd`) et garde le 1er `bonCommande` rempli trouvé. Coût : N appels Claude au lieu d'1 pour les gros PDF.
 
 ### Aperçu (`FilePreviewOverlay`, [src/components/DossierSaisie.jsx:2423-2490](src/components/DossierSaisie.jsx))
 
@@ -804,23 +823,28 @@ Site web, Facebook, Google Ads, Bouche à oreille, Salon / Foire, Téléprospect
 ```
 .
 ├── README.md
-├── SUPABASE_SETUP.sql        # schéma table storage + RLS
-├── index.html                # point d'entrée HTML
+├── SUPABASE_SETUP.sql              # schéma table storage + RLS
+├── SUPABASE_STORAGE_SETUP.sql      # bucket dossier-documents (50 Mo) + RLS
+├── index.html                      # point d'entrée HTML (charge Leaflet + pdf-lib via CDN)
 ├── package.json
 ├── postcss.config.js
 ├── tailwind.config.js
-├── vite.config.js            # port 3000
+├── vite.config.js                  # port 3000
+├── api/                            # fonctions serverless Vercel
+│   ├── extract-bon.js              # Scan IA d'un bon de commande (image ou PDF)
+│   ├── classify-dossier.js         # Scan IA d'un dossier complet + découpage pdf-lib
+│   └── users.js                    # gestion des comptes (admin)
 └── src/
-    ├── App.jsx               # orchestration session + layout
-    ├── Login.jsx             # formulaire auth
-    ├── main.jsx              # bootstrap React
-    ├── supabase.js           # client Supabase
-    ├── storage.js            # API window.storage (Supabase key/value)
-    ├── index.css             # Tailwind directives
+    ├── App.jsx                     # orchestration session + layout
+    ├── Login.jsx                   # formulaire auth
+    ├── main.jsx                    # bootstrap React
+    ├── supabase.js                 # client Supabase + helpers bucket (uploadFileToBucket, getSignedUrl…)
+    ├── storage.js                  # API window.storage (Supabase key/value)
+    ├── index.css                   # Tailwind directives
     └── components/
-        └── DossierSaisie.jsx # ~8100 lignes — toute l'app métier
+        └── DossierSaisie.jsx       # ~9500 lignes — toute l'app métier
 ```
 
-**Important** : [src/components/DossierSaisie.jsx](src/components/DossierSaisie.jsx) contient une quarantaine de composants React dans un seul fichier (DossierSaisie principal + TabButton, StatCard, StatusBreakdown, DossierCard, DocumentsModal, FilePreviewOverlay, PdfViewer, DropZone, DocumentItem, PaiementsView, PrestatairesPayerSection, DashboardView, PerfList, ReglagesView, CommissionsInternesManager, PrestataireManager, UsersManager, ProduitsManager, FournisseursManager, FormulaireDossier, Section, Field, Toggle, PinDialog, ImportDossiersModal, HistoriqueModal, QuickViewPanel, GlobalSearchModal, CalendrierView, AlertesBar, AlertesModal, helpers).
+**Important** : [src/components/DossierSaisie.jsx](src/components/DossierSaisie.jsx) contient une quarantaine de composants React dans un seul fichier (DossierSaisie principal + TabButton, StatCard, StatusBreakdown, DossierCard, DocumentsModal, SubCategoryCard, FilePreviewOverlay, PdfViewer, DropZone, DocumentItem, PaiementsView, PrestatairesPayerSection, DashboardView, PerfList, ReglagesView, CommissionsInternesManager, PrestataireManager, UsersManager, ProduitsManager, FournisseursManager, FormulaireDossier, Section, Field, Toggle, PinDialog, ImportDossiersModal, HistoriqueModal, QuickViewPanel, GlobalSearchModal, CalendrierView, AlertesBar, AlertesModal, helpers).
 
 C'est volontairement laissé en l'état — toute restructuration sort du périmètre de cette documentation.
