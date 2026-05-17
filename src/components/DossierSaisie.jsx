@@ -8509,11 +8509,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           {/* FINANCEMENT — supprimé, intégré dans la section 1️⃣ Process Financement et section 4️⃣ Paiement */}
 
           {/* PRODUITS — éditables */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
+          <div className="border-2 border-amber-200 bg-amber-50 rounded-xl p-2 mb-2">
+            <div className={`flex items-center justify-between ${foldedSteps.produits ? '' : 'mb-1.5'}`}>
               <button onClick={() => toggleStep('produits')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80">
-                <span className="text-slate-400 text-[9px]">{foldedSteps.produits ? '▶' : '▼'}</span>
-                <h3 className="text-[10px] font-bold text-slate-500 uppercase">🏠 Produits installés ({dossierProduits.length})</h3>
+                <span className="text-amber-600 text-[9px]">{foldedSteps.produits ? '▶' : '▼'}</span>
+                <h3 className="text-[10px] font-bold text-amber-700 uppercase">🏠 Produits installés ({dossierProduits.length})</h3>
                 {foldedSteps.produits && dossierProduits.length > 0 && (() => {
                   const totalWc = dossierProduits.reduce((s, p) => s + (parseInt(p.puissance) || 0), 0);
                   const noms = dossierProduits.slice(0, 2).map(p => {
@@ -8682,11 +8682,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
           {/* RÉGIES — multi, éditables (cachées si équipe interne) */}
           {d.typeRegie !== 'interne' && (
-          <div ref={refRegie}>
-            <div className="flex items-center justify-between mb-1.5">
+          <div ref={refRegie} className="border-2 border-purple-200 bg-purple-50 rounded-xl p-2 mb-2">
+            <div className={`flex items-center justify-between ${foldedSteps.regies ? '' : 'mb-1.5'}`}>
               <button onClick={() => toggleStep('regies')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80 min-w-0">
-                <span className="text-slate-400 text-[9px]">{foldedSteps.regies ? '▶' : '▼'}</span>
-                <h3 className="text-[10px] font-bold text-slate-500 uppercase">🤝 Régies ({(d.regies || []).length})</h3>
+                <span className="text-purple-600 text-[9px]">{foldedSteps.regies ? '▶' : '▼'}</span>
+                <h3 className="text-[10px] font-bold text-purple-700 uppercase">🤝 Régies ({(d.regies || []).length})</h3>
                 {foldedSteps.regies && (d.regies || []).length > 0 && (() => {
                   const regies = d.regies || [];
                   const noms = regies.filter(r => r.nom).slice(0, 2).map(r => r.nom).join(', ');
@@ -8859,11 +8859,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           )}
 
           {/* POSEURS — éditables */}
-          <div ref={refPoseurs}>
-            <div className="flex items-center justify-between mb-1.5">
+          <div ref={refPoseurs} className="border-2 border-emerald-200 bg-emerald-50 rounded-xl p-2 mb-2">
+            <div className={`flex items-center justify-between ${foldedSteps.poseurs ? '' : 'mb-1.5'}`}>
               <button onClick={() => toggleStep('poseurs')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80 min-w-0">
-                <span className="text-slate-400 text-[9px]">{foldedSteps.poseurs ? '▶' : '▼'}</span>
-                <h3 className="text-[10px] font-bold text-slate-500 uppercase">🔧 Poseurs ({(d.poseurs || []).length})</h3>
+                <span className="text-emerald-600 text-[9px]">{foldedSteps.poseurs ? '▶' : '▼'}</span>
+                <h3 className="text-[10px] font-bold text-emerald-700 uppercase">🔧 Poseurs ({(d.poseurs || []).length})</h3>
                 {foldedSteps.poseurs && (d.poseurs || []).length > 0 && (() => {
                   const poseurs = d.poseurs || [];
                   const noms = poseurs.filter(p => p.nom).slice(0, 2).map(p => p.nom).join(', ');
@@ -8957,11 +8957,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           </div>
 
           {/* FOURNISSEURS — éditables */}
-          <div ref={refFournisseurs}>
-            <div className="flex items-center justify-between mb-1.5">
+          <div ref={refFournisseurs} className="border-2 border-orange-200 bg-orange-50 rounded-xl p-2 mb-2">
+            <div className={`flex items-center justify-between ${foldedSteps.fournisseurs ? '' : 'mb-1.5'}`}>
               <button onClick={() => toggleStep('fournisseurs')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80 min-w-0">
-                <span className="text-slate-400 text-[9px]">{foldedSteps.fournisseurs ? '▶' : '▼'}</span>
-                <h3 className="text-[10px] font-bold text-slate-500 uppercase">📦 Fournisseurs ({(d.fournisseurs || []).length})</h3>
+                <span className="text-orange-600 text-[9px]">{foldedSteps.fournisseurs ? '▶' : '▼'}</span>
+                <h3 className="text-[10px] font-bold text-orange-700 uppercase">📦 Fournisseurs ({(d.fournisseurs || []).length})</h3>
                 {foldedSteps.fournisseurs && (d.fournisseurs || []).length > 0 && (() => {
                   const fournisseurs = d.fournisseurs || [];
                   const noms = fournisseurs.filter(f => f.nom).slice(0, 2).map(f => f.nom).join(', ');
