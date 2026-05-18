@@ -8867,8 +8867,18 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
             case 'montantTotal':
             case 'montantHtCustom':
               d[field] = parseNumber(val); break;
-            case 'puissance':
-              d[field] = parseInt(parseNumber(val)) || 6000; break;
+            case 'puissance': {
+              // Détecte l'unité par la valeur :
+              //   < 100   → kW (ex : 5)        → × 1000 = Wc
+              //   < 1500  → format Chelly (Wc/10) ex : 500 → × 10 = 5000 Wc
+              //   ≥ 1500  → Wc direct (ex : 6000) — on garde
+              const raw = parseNumber(val);
+              let wc = raw;
+              if (raw > 0 && raw < 100) wc = raw * 1000;
+              else if (raw >= 100 && raw < 1500) wc = raw * 10;
+              d[field] = parseInt(wc) || 6000;
+              break;
+            }
             case 'dateInsta':
             case 'dateAccord':
             case 'dateConsuel':
