@@ -3462,9 +3462,11 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
     return ordered;
   }, [activeCat.key, docsActive]);
 
-  // En mode équipe : ne compter QUE les documents visibles (client uniquement)
-  const visibleDocs = isAdmin ? documents : documents.filter(d => d.category === 'client');
-  // Total de la taille des fichiers visibles
+  // En mode équipe : ne compter QUE les documents visibles (client uniquement).
+  // Inclut aussi les docs virtuels (factures prestataires + récépissé mairie).
+  const visibleDocs = isAdmin
+    ? [...documents, ...virtualFactureDocs]
+    : [...documents.filter(d => d.category === 'client'), ...virtualFactureDocs.filter(d => d.category === 'client')];
   const totalSize = visibleDocs.reduce((s, d) => s + (d.size || 0), 0);
   const totalCount = visibleDocs.length;
 
@@ -3685,10 +3687,10 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
             <div className="p-3 space-y-1.5">
               {categories.map(cat => {
                 const sel = cat.id === activeCatId;
-                // Client : on compte tous les docs client (toutes sous-catégories confondues)
+                // Compte les docs régulier + virtuels (factures sur prestataires, récépissé mairie)
                 const count = cat.key === 'client'
-                  ? documents.filter(d => d.category === 'client').length
-                  : documents.filter(d => d.category === cat.key && (d.subCategory || null) === (cat.subCategory || null)).length;
+                  ? documents.filter(d => d.category === 'client').length + virtualFactureDocs.filter(d => d.category === 'client').length
+                  : documents.filter(d => d.category === cat.key && (d.subCategory || null) === (cat.subCategory || null)).length + virtualFactureDocs.filter(d => d.category === cat.key && (d.subCategory || null) === (cat.subCategory || null)).length;
                 return (
                   <button
                     key={cat.id}
