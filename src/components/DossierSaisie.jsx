@@ -9065,12 +9065,17 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   'Je vous tiens au courant dès que j\'ai un retour.',
                 ].filter(v => v != null).join('\n');
                 const mailSubject = `Bascule financement — ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''} envoyé chez ${nouveau}`;
+                // defaultFromEmail est défini dans l'autre CTA (accord) — on
+                // le redéfinit localement ici pour éviter le ReferenceError
+                // quand l'utilisateur n'a pas encore d'accord (donc l'autre
+                // CTA ne s'est jamais rendue → la variable n'existe pas).
+                const defaultFromEmailB = emailConfig?.smtpUser || gmailOAuth?.email || '';
                 const gmailComposeBascule = (to) => {
                   const params = new URLSearchParams({
                     view: 'cm', fs: '1',
                     to, su: mailSubject, body: message,
                   });
-                  if (defaultFromEmail) params.set('authuser', defaultFromEmail);
+                  if (defaultFromEmailB) params.set('authuser', defaultFromEmailB);
                   return `https://mail.google.com/mail/?${params.toString()}`;
                 };
                 return (
