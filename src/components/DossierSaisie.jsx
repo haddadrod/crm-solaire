@@ -6757,6 +6757,21 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               })}
             </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+              <Field label="🏠 Type de toiture">
+                <select value={formData.typeToit || ''} onChange={(e) => setFormData({ ...formData, typeToit: e.target.value })} className={inputCls + ' font-semibold'}>
+                  <option value="">— Choisir —</option>
+                  {TYPES_TOIT.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                </select>
+              </Field>
+              <Field label="📐 Orientation des panneaux">
+                <select value={formData.orientationPanneaux || ''} onChange={(e) => setFormData({ ...formData, orientationPanneaux: e.target.value })} className={inputCls + ' font-semibold'}>
+                  <option value="">— Choisir —</option>
+                  {ORIENTATIONS_PANNEAUX.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                </select>
+              </Field>
+            </div>
+
             {!calculs.useAutoTarif && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700 leading-relaxed mb-3">
                 💡 <strong>Aucun tarif auto défini</strong> pour ces produits avec ce poseur/régie. Saisis manuellement le HT ci-dessous, ou va dans <strong>Réglages → Poseurs / Régies</strong> pour pré-remplir tes tarifs habituels.
