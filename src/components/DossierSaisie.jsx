@@ -6175,6 +6175,25 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
     setLoadingSupabase(false);
   };
 
+  // Change l'email (= login) d'un compte Supabase.
+  const updateSupabaseUserEmail = async (user, newEmailRaw) => {
+    const newE = (newEmailRaw || '').trim();
+    if (!newE || newE === user.email) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newE)) { alert('Email invalide'); return; }
+    if (!window.confirm(`⚠️ Changer l'email de connexion de ${user.email} → ${newE} ?\n\nL'utilisateur devra utiliser ce nouvel email pour se connecter.`)) return;
+    setLoadingSupabase(true);
+    setSupabaseError('');
+    setSupabaseSuccess('');
+    try {
+      await callUsersApi('PATCH', { body: { user_id: user.id, email: newE } });
+      setSupabaseSuccess(`✅ Email mis à jour : ${user.email} → ${newE}`);
+      await fetchSupabaseUsers();
+    } catch (e) {
+      setSupabaseError(`Erreur : ${e.message}`);
+    }
+    setLoadingSupabase(false);
+  };
+
   // Met à jour le nom affiché et/ou l'emoji d'un compte Supabase.
   const updateSupabaseUserMeta = async (user, patch) => {
     const existingMeta = user.user_metadata || {};
@@ -6323,83 +6342,118 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                   <p className="text-xs mt-1">Clique sur <strong>"Ajouter un membre"</strong> pour créer le premier compte.</p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {supabaseUsers.map(u => {
                     const meta = u.user_metadata || {};
                     const displayName = meta.display_name || u.email?.split('@')[0] || 'Sans nom';
                     const emoji = meta.emoji || '👤';
                     const role = meta.role || 'commercial';
                     const roleInfo = ROLES.find(r => r.id === role) || ROLES[1];
+                    const fieldCls = "w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100";
+                    const labelCls = "block text-[10px] font-bold text-slate-500 uppercase mb-1";
                     return (
-                      <div key={u.id} className="rounded-xl border border-slate-200 bg-white p-3 flex items-center gap-3 flex-wrap">
-                        <input
-                          type="text"
-                          defaultValue={emoji}
-                          onBlur={(e) => updateSupabaseUserMeta(u, { emoji: e.target.value.slice(0, 4) || '👤' })}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                          maxLength={4}
-                          disabled={loadingSupabase}
-                          className="w-11 px-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-center text-lg"
-                          title="Emoji du compte"
-                        />
-                        <div className="flex-1 min-w-[180px]">
+                      <div key={u.id} className="rounded-2xl border-2 border-slate-200 bg-white p-4 hover:border-slate-300 transition-colors">
+                        {/* Ligne 1 : emoji + nom affiché + actions */}
+                        <div className="flex items-start gap-3 mb-3 pb-3 border-b border-slate-100">
                           <input
                             type="text"
-                            defaultValue={displayName}
-                            onBlur={(e) => { const v = e.target.value.trim(); if (v) updateSupabaseUserMeta(u, { display_name: v }); }}
+                            defaultValue={emoji}
+                            onBlur={(e) => updateSupabaseUserMeta(u, { emoji: e.target.value.slice(0, 4) || '👤' })}
                             onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                            maxLength={4}
                             disabled={loadingSupabase}
-                            className="w-full font-bold text-sm text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-slate-300 focus:bg-slate-50 rounded px-1 py-0.5"
-                            title="Nom affiché — clique pour modifier"
+                            className="w-12 h-12 px-1 bg-slate-50 border border-slate-200 rounded-xl text-center text-2xl flex-shrink-0"
+                            title="Emoji du compte (clique pour modifier)"
                           />
-                          <div className="text-[11px] text-slate-500 px-1">{u.email}</div>
+                          <div className="flex-1 min-w-0">
+                            <label className={labelCls}>👤 Prénom / Nom affiché</label>
+                            <input
+                              type="text"
+                              defaultValue={displayName}
+                              onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== displayName) updateSupabaseUserMeta(u, { display_name: v }); }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              disabled={loadingSupabase}
+                              className={fieldCls + ' font-bold text-slate-800'}
+                              placeholder="Marie Dupont"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1 flex-shrink-0">
+                            <button onClick={() => resetPasswordSupabaseUser(u.id, u.email)} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold whitespace-nowrap" title="Changer le mot de passe">
+                              🔑 Reset mdp
+                            </button>
+                            <button onClick={() => deleteSupabaseUser(u.id, u.email)} className="px-3 py-1.5 bg-rose-50 hover:bg-rose-500 hover:text-white text-rose-600 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 whitespace-nowrap" title="Supprimer le compte">
+                              <Trash2 className="w-3 h-3" /> Supprimer
+                            </button>
+                          </div>
                         </div>
-                        <select
-                          value={role}
-                          onChange={(e) => updateSupabaseUserRole(u, e.target.value)}
-                          disabled={loadingSupabase}
-                          className={`px-2 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${roleInfo.color}`}
-                          title="Changer le rôle"
-                        >
-                          {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-                        </select>
-                        {(role === 'poseur' || role === 'regie') && (
-                          <select
-                            value={meta.linkedTo || ''}
-                            onChange={(e) => updateSupabaseUserLinkedTo(u, e.target.value)}
-                            disabled={loadingSupabase}
-                            className={`px-2 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${meta.linkedTo ? 'bg-slate-50 border-slate-300 text-slate-700' : 'bg-rose-50 border-rose-300 text-rose-600'}`}
-                            title={`Rattaché à ${role === 'poseur' ? 'ce poseur' : 'cette régie'}`}
-                          >
-                            <option value="">⚠️ {role === 'poseur' ? 'Poseur' : 'Régie'} ?</option>
-                            {(role === 'poseur' ? poseursList : regiesList).map(n => <option key={n} value={n}>{n}</option>)}
-                          </select>
+
+                        {/* Ligne 2 : email + tél */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                          <div>
+                            <label className={labelCls}>✉️ Email (login)</label>
+                            <input
+                              type="email"
+                              defaultValue={u.email || ''}
+                              onBlur={(e) => updateSupabaseUserEmail(u, e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              disabled={loadingSupabase}
+                              className={fieldCls}
+                              placeholder="marie@email.com"
+                            />
+                          </div>
+                          <div>
+                            <label className={labelCls}>📞 Téléphone (WhatsApp/SMS)</label>
+                            <input
+                              type="tel"
+                              defaultValue={meta.tel || ''}
+                              onBlur={(e) => {
+                                const v = e.target.value.trim();
+                                if (v === (meta.tel || '')) return;
+                                updateSupabaseUserMeta(u, { tel: v });
+                              }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              disabled={loadingSupabase}
+                              className={fieldCls}
+                              placeholder="0612345678"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Ligne 3 : rôle + rattachement + dernière connexion */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+                          <div>
+                            <label className={labelCls}>🎭 Rôle</label>
+                            <select
+                              value={role}
+                              onChange={(e) => updateSupabaseUserRole(u, e.target.value)}
+                              disabled={loadingSupabase}
+                              className={`w-full px-2.5 py-1.5 rounded-lg text-sm font-bold border-2 cursor-pointer ${roleInfo.color}`}
+                            >
+                              {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                            </select>
+                          </div>
+                          {(role === 'poseur' || role === 'regie') ? (
+                            <div>
+                              <label className={labelCls}>🔗 Rattaché à {role === 'poseur' ? 'ce poseur' : 'cette régie'}</label>
+                              <select
+                                value={meta.linkedTo || ''}
+                                onChange={(e) => updateSupabaseUserLinkedTo(u, e.target.value)}
+                                disabled={loadingSupabase}
+                                className={`w-full px-2.5 py-1.5 rounded-lg text-sm font-bold border-2 cursor-pointer ${meta.linkedTo ? 'bg-white border-slate-300 text-slate-700' : 'bg-rose-50 border-rose-300 text-rose-700'}`}
+                              >
+                                <option value="">⚠️ Choisir {role === 'poseur' ? 'le poseur' : 'la régie'}</option>
+                                {(role === 'poseur' ? poseursList : regiesList).map(n => <option key={n} value={n}>{n}</option>)}
+                              </select>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-slate-400 italic self-center">
+                              {u.last_sign_in_at ? `🕐 Dernière connexion : ${new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}` : '🆕 Jamais connecté'}
+                            </div>
+                          )}
+                        </div>
+                        {(role === 'poseur' || role === 'regie') && u.last_sign_in_at && (
+                          <div className="mt-2 text-[11px] text-slate-400 italic">🕐 Dernière connexion : {new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}</div>
                         )}
-                        <input
-                          type="tel"
-                          defaultValue={meta.tel || ''}
-                          onBlur={(e) => {
-                            const v = e.target.value.trim();
-                            if (v === (meta.tel || '')) return;
-                            updateSupabaseUserMeta(u, { tel: v });
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                          disabled={loadingSupabase}
-                          placeholder="📞 tél (WhatsApp)"
-                          className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] w-36"
-                          title="Tél (WhatsApp/SMS) — sert pour les relances depuis le CRM"
-                        />
-                        {u.last_sign_in_at && (
-                          <span className="text-[10px] text-slate-400">
-                            Dernière connexion : {new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}
-                          </span>
-                        )}
-                        <button onClick={() => resetPasswordSupabaseUser(u.id, u.email)} className="px-2 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-[10px] font-semibold" title="Changer le mot de passe">
-                          🔑 Reset mdp
-                        </button>
-                        <button onClick={() => deleteSupabaseUser(u.id, u.email)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg" title="Supprimer le compte">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
                       </div>
                     );
                   })}
