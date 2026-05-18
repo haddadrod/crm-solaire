@@ -614,10 +614,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Contacts régies : { nomRegie: { tel, email } } — pour prévenir la régie
   // par WhatsApp/mail quand le financement est accepté → à programmer en pose.
   const [regiesContacts, setRegiesContacts] = useState({});
-  // Config email SMTP pour envoi auto via Gmail (Réglages → Email d'envoi)
-  // { smtpUser: 'monemail@gmail.com', smtpPass: 'xxxx xxxx xxxx xxxx', fromName: 'Rodney HADDAD' }
-  // smtpPass = mot de passe d'application Gmail (PAS le vrai password).
+  // Config email SMTP pour envoi auto via Gmail (legacy app password, conservé
+  // pour fallback). La méthode primaire est OAuth Google (gmailOAuth ci-dessous).
   const [emailConfig, setEmailConfig] = useState({ smtpUser: '', smtpPass: '', fromName: '' });
+  // Statut OAuth Gmail pour l'utilisateur courant. Chargé via
+  // /api/gmail-oauth-status au mount + après retour du callback OAuth.
+  const [gmailOAuth, setGmailOAuth] = useState({ connected: false, email: null, connectedAt: null });
   const [tarifsRegies, setTarifsRegies] = useState(TARIFS_REGIES_DEFAULT);
   const [tarifsInternes, setTarifsInternes] = useState(TARIFS_INTERNES_DEFAULT);
   const [nomsInternes, setNomsInternes] = useState(NOMS_INTERNES_DEFAULT);
@@ -1091,6 +1093,39 @@ export default function DossierSaisie({ authUser, onLogout }) {
       } catch (e) {}
       setLoading(false);
     })();
+  }, []);
+
+  // Charge le statut OAuth Gmail au démarrage + après le callback OAuth
+  // (?gmail_connected=1&gmail_email=xxx dans l'URL → on rafraîchit + alerte)
+  useEffect(() => {
+    const refreshOAuthStatus = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+        const res = await fetch('/api/gmail-oauth-status', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!res.ok) return;
+        const payload = await res.json();
+        if (payload?.data) setGmailOAuth(payload.data);
+      } catch (e) {}
+    };
+    refreshOAuthStatus();
+    // Gestion du retour callback OAuth
+    try {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get('gmail_connected')) {
+        const email = params.get('gmail_email');
+        alert(`✅ Gmail connecté : ${email || ''}`);
+        // Nettoie l'URL
+        window.history.replaceState({}, '', window.location.pathname);
+        // Re-charge le statut
+        setTimeout(refreshOAuthStatus, 300);
+      } else if (params.get('gmail_error')) {
+        alert(`❌ Connexion Gmail échouée : ${params.get('gmail_error')}`);
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+    } catch (e) {}
   }, []);
 
   // Sauvegardes + backup snapshot par minute (filet de sécurité)
@@ -2599,6 +2634,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             poseursContacts={poseursContacts} setPoseursContacts={setPoseursContacts}
             regiesContacts={regiesContacts} setRegiesContacts={setRegiesContacts}
             emailConfig={emailConfig} setEmailConfig={setEmailConfig}
+            gmailOAuth={gmailOAuth} setGmailOAuth={setGmailOAuth}
           />
         )}
 
@@ -2726,6 +2762,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             poseursContacts={poseursContacts}
             regiesContacts={regiesContacts}
             emailConfig={emailConfig}
+            gmailOAuth={gmailOAuth}
           />
         )}
 
@@ -4828,7 +4865,7 @@ function PerfList({ titre, data, medal, border, header, iconColor }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth }) {
   const [section, setSection] = useState('statuts');
   // Nombre de comptes Supabase, remonté par UsersManager pour le badge de l'onglet.
   const [usersCount, setUsersCount] = useState(null);
@@ -4956,19 +4993,88 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'email' && (
-        <EmailConfigManager config={emailConfig} setConfig={setEmailConfig} />
+        <EmailConfigManager config={emailConfig} setConfig={setEmailConfig} gmailOAuth={gmailOAuth} setGmailOAuth={setGmailOAuth} />
       )}
     </div>
   );
 }
 
-function EmailConfigManager({ config, setConfig }) {
+function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
   const [testing, setTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
   const [showPass, setShowPass] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [oauthBusy, setOauthBusy] = useState(false);
 
   const update = (patch) => setConfig({ ...config, ...patch });
 
+  // Démarre le flow OAuth Google : on passe par /api/google-oauth-start
+  // qui valide le JWT et redirige vers Google.
+  const connectGmail = async () => {
+    setOauthBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) {
+        alert('Reconnecte-toi d\'abord.');
+        setOauthBusy(false);
+        return;
+      }
+      // Redirection vers le start endpoint qui redirige ensuite vers Google
+      window.location.href = `/api/google-oauth-start?token=${encodeURIComponent(session.access_token)}`;
+    } catch (e) {
+      alert(`Erreur démarrage OAuth : ${e.message}`);
+      setOauthBusy(false);
+    }
+  };
+
+  const disconnectGmail = async () => {
+    if (!window.confirm('Déconnecter Gmail du CRM ? Tu pourras te reconnecter en 1 clic ensuite.')) return;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/gmail-oauth-disconnect', { method: 'POST', headers });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      setGmailOAuth({ connected: false, email: null, connectedAt: null });
+    } catch (e) {
+      alert(`Erreur déconnexion : ${e.message}`);
+    }
+  };
+
+  // Test envoi via OAuth (utilise /api/send-email-gmail, l'API officielle Gmail)
+  const testSendOAuth = async () => {
+    if (!gmailOAuth.connected) {
+      alert('Connecte Gmail d\'abord.');
+      return;
+    }
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/send-email-gmail', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          to: gmailOAuth.email,
+          subject: '✅ Test CRM Solaire — Gmail OAuth OK',
+          text: 'Si tu reçois ce mail, l\'envoi automatique via Gmail OAuth marche. Tu peux utiliser le bouton "Envoyer email" dans le CRM.',
+          fromName: config.fromName || 'CRM Solaire',
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      setTestResult({ ok: true, msg: `Envoyé à ${gmailOAuth.email} — vérifie ta boîte mail.` });
+    } catch (e) {
+      setTestResult({ ok: false, msg: e.message });
+    } finally {
+      setTesting(false);
+    }
+  };
+
+  // Test envoi via app password (legacy / fallback)
   const testSend = async () => {
     if (!config.smtpUser || !config.smtpPass) {
       alert("Renseigne d'abord l'email + le mot de passe d'application.");
@@ -4986,7 +5092,7 @@ function EmailConfigManager({ config, setConfig }) {
         body: JSON.stringify({
           to: config.smtpUser,
           subject: '✅ Test CRM Solaire — config email OK',
-          text: 'Si tu reçois ce mail, la config Gmail est OK. Tu peux utiliser le bouton "Envoyer email" dans le CRM pour prévenir tes régies automatiquement.',
+          text: 'Si tu reçois ce mail, la config Gmail est OK.',
           smtpUser: config.smtpUser,
           smtpPass: config.smtpPass,
           fromName: config.fromName || 'CRM Solaire',
@@ -4994,7 +5100,7 @@ function EmailConfigManager({ config, setConfig }) {
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
-      setTestResult({ ok: true, msg: `Envoyé à ${config.smtpUser} — vérifie ta boîte mail (et le spam au cas où).` });
+      setTestResult({ ok: true, msg: `Envoyé à ${config.smtpUser} — vérifie ta boîte mail.` });
     } catch (e) {
       setTestResult({ ok: false, msg: e.message });
     } finally {
@@ -5005,86 +5111,142 @@ function EmailConfigManager({ config, setConfig }) {
   return (
     <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
       <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50">
-        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">📧 Email d'envoi automatique</h2>
-        <p className="text-xs text-slate-500 mt-1">Configure ton Gmail pour que le CRM envoie les emails directement (au lieu d'ouvrir Gmail manuellement).</p>
+        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">📧 Email d'envoi automatique (Gmail)</h2>
+        <p className="text-xs text-slate-500 mt-1">Connecte ton Gmail au CRM en 1 clic pour que les emails partent automatiquement depuis ton adresse.</p>
       </div>
       <div className="p-5 space-y-4">
 
-        {/* Étape 1 : explication */}
-        <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 leading-relaxed space-y-1.5">
-          <div className="font-bold">⚙️ Avant de remplir, génère un mot de passe d'application Gmail :</div>
-          <ol className="list-decimal ml-5 space-y-0.5">
-            <li>Va sur <a href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-semibold">myaccount.google.com/security</a></li>
-            <li>Active la <strong>Validation en 2 étapes</strong> (obligatoire pour la suite)</li>
-            <li>Puis va sur <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline font-semibold">myaccount.google.com/apppasswords</a></li>
-            <li>Crée un mot de passe pour "CRM Solaire" → Google te donne <strong>16 caractères</strong> (ex : <code>abcd efgh ijkl mnop</code>)</li>
-            <li>Copie-colle ces 16 caractères dans le champ ci-dessous (les espaces sont OK)</li>
-          </ol>
-          <div className="mt-1.5 text-amber-700">⚠️ N'utilise <strong>jamais</strong> ton vrai mot de passe Google ici — uniquement le mot de passe d'application.</div>
-        </div>
-
-        {/* Champs */}
-        <div className="space-y-3">
-          <div>
-            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📧 Ton adresse Gmail</label>
-            <input
-              type="email"
-              value={config.smtpUser || ''}
-              onChange={(e) => update({ smtpUser: e.target.value })}
-              placeholder="rodney@gmail.com"
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🔑 Mot de passe d'application (16 caractères Google)</label>
-            <div className="relative">
-              <input
-                type={showPass ? 'text' : 'password'}
-                value={config.smtpPass || ''}
-                onChange={(e) => update({ smtpPass: e.target.value })}
-                placeholder="xxxx xxxx xxxx xxxx"
-                className="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm font-mono"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPass(!showPass)}
-                className="absolute right-2 top-1/2 -translate-y-1/2 px-2 py-1 text-xs text-slate-500 hover:text-slate-700"
-                title={showPass ? 'Cacher' : 'Afficher'}
-              >{showPass ? '🙈' : '👁️'}</button>
+        {/* État OAuth */}
+        {gmailOAuth?.connected ? (
+          <div className="p-4 bg-emerald-50 border-2 border-emerald-300 rounded-xl">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div>
+                <div className="text-sm font-bold text-emerald-800 mb-0.5">✅ Gmail connecté</div>
+                <div className="text-xs text-emerald-700">Email : <strong>{gmailOAuth.email}</strong></div>
+                {gmailOAuth.connectedAt && (
+                  <div className="text-[10px] text-emerald-600 mt-0.5">Depuis le {new Date(gmailOAuth.connectedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
+                )}
+              </div>
+              <button onClick={disconnectGmail} className="px-3 py-1.5 bg-white border border-rose-300 text-rose-600 rounded-lg text-xs font-semibold hover:bg-rose-50">
+                🔌 Déconnecter
+              </button>
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">👤 Nom affiché dans les emails (optionnel)</label>
-            <input
-              type="text"
-              value={config.fromName || ''}
-              onChange={(e) => update({ fromName: e.target.value })}
-              placeholder="Rodney HADDAD — CRM Solaire"
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
-            />
-            <div className="text-[10px] text-slate-500 mt-1">Le destinataire verra : "<strong>{config.fromName || 'CRM Solaire'}</strong> &lt;{config.smtpUser || 'ton@gmail.com'}&gt;"</div>
+        ) : (
+          <div className="p-4 bg-blue-50 border-2 border-blue-300 rounded-xl space-y-3">
+            <div className="text-sm font-bold text-blue-800">🔗 Connecte ton Gmail au CRM</div>
+            <div className="text-xs text-blue-700 leading-relaxed">
+              Tu vas être redirigé vers Google. Choisis ton compte Gmail, autorise le CRM à envoyer des emails en ton nom, et tu reviens automatiquement ici. Pas de mot de passe à donner — Google gère la connexion.
+            </div>
+            <button
+              onClick={connectGmail}
+              disabled={oauthBusy}
+              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center gap-2"
+            >
+              {oauthBusy ? '⏳ Redirection…' : '🔗 Connecter mon Gmail'}
+            </button>
           </div>
+        )}
+
+        {/* Nom affiché */}
+        <div>
+          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">👤 Nom affiché dans les emails (optionnel)</label>
+          <input
+            type="text"
+            value={config.fromName || ''}
+            onChange={(e) => update({ fromName: e.target.value })}
+            placeholder="Rodney HADDAD — CRM Solaire"
+            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+          />
+          <div className="text-[10px] text-slate-500 mt-1">Le destinataire verra : "<strong>{config.fromName || 'CRM Solaire'}</strong> &lt;{gmailOAuth?.email || 'ton@gmail.com'}&gt;"</div>
         </div>
 
         {/* Test */}
-        <div className="border-t border-slate-200 pt-4">
+        {gmailOAuth?.connected && (
+          <div className="border-t border-slate-200 pt-4">
+            <button
+              onClick={testSendOAuth}
+              disabled={testing}
+              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center gap-2"
+            >
+              {testing ? '⏳ Test en cours…' : '✉️ M\'envoyer un mail de test'}
+            </button>
+            {testResult && (
+              <div className={`mt-3 p-3 rounded-xl text-xs ${testResult.ok ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-rose-50 border border-rose-200 text-rose-800'}`}>
+                {testResult.ok ? '✅ ' : '❌ '}{testResult.msg}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Setup Google Cloud (si pas encore fait) */}
+        {!gmailOAuth?.connected && (
+          <details className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 leading-relaxed">
+            <summary className="cursor-pointer font-bold">⚙️ Setup Google Cloud (1 fois, ~30 min) — clique pour voir les étapes</summary>
+            <ol className="list-decimal ml-5 space-y-1 mt-2">
+              <li>Va sur <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">console.cloud.google.com</a> → crée un projet "CRM Solaire"</li>
+              <li>Menu hamburger → APIs &amp; Services → Library → cherche "Gmail API" → Enable</li>
+              <li>OAuth consent screen : User Type "External" → App name "CRM Solaire" → ton email en support → scope <code>gmail.send</code> + <code>userinfo.email</code> → ajoute ton Gmail dans "Test users"</li>
+              <li>Credentials → Create Credentials → OAuth client ID → Web application → Authorized redirect URIs : <code>https://crm-solaire.vercel.app/api/google-oauth-callback</code></li>
+              <li>Copie le Client ID + Client Secret</li>
+              <li>Vercel → Settings → Environment Variables, ajoute :
+                <ul className="list-disc ml-5 mt-1">
+                  <li><code>GOOGLE_CLIENT_ID</code> = (ton Client ID)</li>
+                  <li><code>GOOGLE_CLIENT_SECRET</code> = (ton Client Secret)</li>
+                  <li><code>GOOGLE_REDIRECT_URI</code> = https://crm-solaire.vercel.app/api/google-oauth-callback</li>
+                </ul>
+              </li>
+              <li>Redeploy Vercel</li>
+              <li>Reviens ici et clique 🔗 Connecter mon Gmail</li>
+            </ol>
+          </details>
+        )}
+
+        {/* Méthode alternative app password (avancé / fallback) */}
+        <div className="border-t border-slate-200 pt-3">
           <button
-            onClick={testSend}
-            disabled={testing || !config.smtpUser || !config.smtpPass}
-            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            type="button"
+            onClick={() => setShowAdvanced(!showAdvanced)}
+            className="text-[11px] text-slate-500 hover:text-slate-700 underline"
           >
-            {testing ? '⏳ Test en cours…' : '✉️ M\'envoyer un mail de test'}
+            {showAdvanced ? '▾ Masquer' : '▸ Voir'} la méthode alternative (mot de passe d'application Gmail)
           </button>
-          {testResult && (
-            <div className={`mt-3 p-3 rounded-xl text-xs ${testResult.ok ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-rose-50 border border-rose-200 text-rose-800'}`}>
-              {testResult.ok ? '✅ ' : '❌ '}{testResult.msg}
+          {showAdvanced && (
+            <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
+              <div className="text-[11px] text-slate-600">
+                Si tu ne veux pas configurer Google Cloud, tu peux utiliser un <strong>mot de passe d'application Gmail</strong> à la place. Moins propre (le password reste en base) mais plus rapide.
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <input
+                  type="email"
+                  value={config.smtpUser || ''}
+                  onChange={(e) => update({ smtpUser: e.target.value })}
+                  placeholder="rodney@gmail.com"
+                  className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
+                />
+                <div className="relative">
+                  <input
+                    type={showPass ? 'text' : 'password'}
+                    value={config.smtpPass || ''}
+                    onChange={(e) => update({ smtpPass: e.target.value })}
+                    placeholder="Mot de passe d'application (16 car.)"
+                    className="w-full px-3 py-2 pr-10 bg-white border border-slate-200 rounded-lg text-sm font-mono"
+                  />
+                  <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs">
+                    {showPass ? '🙈' : '👁️'}
+                  </button>
+                </div>
+              </div>
+              <button
+                onClick={testSend}
+                disabled={testing || !config.smtpUser || !config.smtpPass}
+                className="px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
+              >
+                ✉️ Test app password
+              </button>
+              <div className="text-[10px] text-slate-500">Génère le mot de passe d'app sur <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">myaccount.google.com/apppasswords</a> (active la validation 2 étapes d'abord).</div>
             </div>
           )}
-        </div>
-
-        {/* Sécurité */}
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 leading-relaxed">
-          🔒 <strong>Sécurité :</strong> ces identifiants sont stockés dans la base Supabase du CRM. Ils sont accessibles à tous les utilisateurs connectés du CRM. Tu peux révoquer le mot de passe d'application à tout moment depuis Google sans toucher à ton vrai mot de passe Gmail.
         </div>
       </div>
     </div>
@@ -8245,7 +8407,7 @@ const buildWhatsAppLink = (phone, message) => {
   return `https://wa.me/${n}?text=${encodeURIComponent(message)}`;
 };
 
-function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig }) {
+function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth }) {
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
   const canSeeMarges = isAdmin || permissions?.voirMarges === true;
@@ -8756,7 +8918,36 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                   <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📲 Pas de tél.</span>
                                 )}
                                 {email ? (
-                                  emailConfig?.smtpUser && emailConfig?.smtpPass ? (
+                                  gmailOAuth?.connected ? (
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          const { data: { session } } = await supabase.auth.getSession();
+                                          const headers = { 'Content-Type': 'application/json' };
+                                          if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                                          const res = await fetch('/api/send-email-gmail', {
+                                            method: 'POST',
+                                            headers,
+                                            body: JSON.stringify({
+                                              to: email,
+                                              subject: mailSubject,
+                                              text: message,
+                                              fromName: emailConfig?.fromName || 'CRM Solaire',
+                                            }),
+                                          });
+                                          const payload = await res.json().catch(() => ({}));
+                                          if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+                                          alert(`✅ Email envoyé à ${r.nom} (${email}) depuis ${gmailOAuth.email}`);
+                                        } catch (e) {
+                                          alert(`❌ Envoi email : ${e.message}`);
+                                        }
+                                      }}
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      title={`Envoie l'email automatiquement à ${r.nom} (${email}) depuis ${gmailOAuth.email}`}
+                                    >
+                                      📧 Envoyer
+                                    </button>
+                                  ) : emailConfig?.smtpUser && emailConfig?.smtpPass ? (
                                     <button
                                       onClick={async () => {
                                         try {
@@ -8783,7 +8974,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                         }
                                       }}
                                       className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
-                                      title={`Envoie l'email automatiquement à ${r.nom} (${email}) depuis ${emailConfig.smtpUser}`}
+                                      title={`Envoie l'email via SMTP app password depuis ${emailConfig.smtpUser}`}
                                     >
                                       📧 Envoyer
                                     </button>
