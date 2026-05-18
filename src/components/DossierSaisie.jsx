@@ -772,7 +772,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
         voirReglages: true,
         cocherPaiements: true,
         voirCA: true,
-        voirReglages: true,
         filtreDossiers: 'tous', // 'tous' | 'mes' | 'chantiers'
       };
     }
@@ -3052,6 +3051,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             regiesContacts={effectiveRegiesContacts}
             emailConfig={emailConfig}
             gmailOAuth={gmailOAuth}
+            societes={societes}
           />
         )}
 
@@ -9657,7 +9657,7 @@ const buildWhatsAppLink = (phone, message) => {
   return `https://wa.me/${n}?text=${encodeURIComponent(message)}`;
 };
 
-function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth }) {
+function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth, societes = [] }) {
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
   const canSeeMarges = isAdmin || permissions?.voirMarges === true;
@@ -9842,6 +9842,26 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               <Edit3 className="w-3 h-3" />Tout éditer
             </button>
           </div>
+          {/* 🏢 Sélecteur société — clic pour assigner sans ouvrir le form complet */}
+          {societes.length > 1 && (
+            <div className="mt-2 px-2 py-1.5 bg-white/15 border border-white/30 rounded-lg backdrop-blur">
+              <div className="text-[9px] font-bold text-white/80 uppercase mb-1">🏢 Société</div>
+              <div className="flex gap-1 flex-wrap">
+                {societes.map(s => {
+                  const isActive = d.societe === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => onUpdate({ societe: s.id })}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold border ${isActive ? 'bg-white text-slate-800 border-white' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
+                    >
+                      {s.emoji} {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {/* Bouton archiver / désarchiver */}
           <button
             onClick={() => onUpdate({
