@@ -7788,8 +7788,15 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
 // ===================== MODAL HISTORIQUE =====================
 
 function HistoriqueModal({ dossier, onClose }) {
-  const hist = (dossier.historique || []).slice().reverse(); // plus récent d'abord
   const findStatutInfo = (id) => STATUTS.find(s => s.id === id);
+
+  // Fusionne l'historique des changements de statut avec les tentatives
+  // d'appel (CQ + contrôle livraison) → une seule timeline chronologique.
+  const allEvents = [
+    ...((dossier.historique || []).map(h => ({ ...h, kind: 'hist' }))),
+    ...((dossier.tentativesCQ || []).map(t => ({ date: t.datetime, kind: 'tentative_cq' }))),
+    ...((dossier.tentativesControleLivraison || []).map(t => ({ date: t.datetime, kind: 'tentative_liv' }))),
+  ].filter(e => e.date).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
   const formatDateTime = (iso) => {
     if (!iso) return '—';
@@ -7811,30 +7818,53 @@ function HistoriqueModal({ dossier, onClose }) {
               Historique du dossier
             </h2>
             <p className="text-xs text-slate-600 mt-0.5">
-              {dossier.nom} {dossier.prenom} · {hist.length} évènement{hist.length > 1 ? 's' : ''}
+              {dossier.nom} {dossier.prenom} · {allEvents.length} évènement{allEvents.length > 1 ? 's' : ''}
             </p>
           </div>
           <button onClick={onClose} className="p-2 hover:bg-white rounded-xl"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
-          {hist.length === 0 ? (
+          {allEvents.length === 0 ? (
             <div className="text-center py-10 text-slate-400">
               <Activity className="w-12 h-12 mx-auto mb-3 opacity-30" />
               <p className="text-sm">Aucun évènement enregistré pour le moment.</p>
-              <p className="text-xs mt-1">Les changements de statut apparaîtront ici à partir de maintenant.</p>
+              <p className="text-xs mt-1">Les changements de statut et essais d'appel apparaîtront ici à partir de maintenant.</p>
             </div>
           ) : (
             <div className="relative">
               {/* Ligne verticale de la timeline */}
               <div className="absolute left-[15px] top-2 bottom-2 w-0.5 bg-gradient-to-b from-amber-300 via-orange-300 to-rose-300"></div>
               <div className="space-y-4">
-                {hist.map((h, i) => {
+                {allEvents.map((h, i) => {
+                  // Branche selon le type d'évènement
+                  if (h.kind === 'tentative_cq' || h.kind === 'tentative_liv') {
+                    const isCQ = h.kind === 'tentative_cq';
+                    return (
+                      <div key={`t-${i}`} className="relative pl-10">
+                        <div className={`absolute left-0 top-0.5 w-8 h-8 rounded-full flex items-center justify-center text-base shadow-md text-white ${isCQ ? 'bg-gradient-to-br from-purple-400 to-violet-500' : 'bg-gradient-to-br from-emerald-400 to-teal-500'}`}>
+                          📞
+                        </div>
+                        <div className={`rounded-xl p-3 border ${isCQ ? 'bg-purple-50 border-purple-200' : 'bg-emerald-50 border-emerald-200'}`}>
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                            📅 {formatDateTime(h.date)}
+                          </div>
+                          <div className={`text-sm font-bold ${isCQ ? 'text-purple-700' : 'text-emerald-700'}`}>
+                            📞 Essai d'appel — client n'a pas répondu
+                            <span className="text-xs font-normal text-slate-600 ml-1">
+                              ({isCQ ? 'Contrôle qualité' : 'Contrôle livraison'})
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  // Évènement classique de l'historique (création ou changement de statut)
                   const fromInfo = h.from ? findStatutInfo(h.from) : null;
                   const toInfo = findStatutInfo(h.to);
                   const isCreation = h.action === 'création';
                   return (
-                    <div key={i} className="relative pl-10">
+                    <div key={`h-${i}`} className="relative pl-10">
                       {/* Pastille de la timeline */}
                       <div className={`absolute left-0 top-0.5 w-8 h-8 rounded-full flex items-center justify-center text-base shadow-md ${isCreation ? 'bg-gradient-to-br from-emerald-400 to-teal-500 text-white' : 'bg-white border-2 border-amber-400'}`}>
                         {isCreation ? '✨' : (toInfo?.emoji || '🔄')}
