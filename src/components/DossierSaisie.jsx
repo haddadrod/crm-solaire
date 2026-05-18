@@ -10194,14 +10194,27 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 const poseurTel = rawContact ? (typeof rawContact === 'string' ? rawContact : (rawContact.tel || '')) : '';
                 const poseurEmail = rawContact && typeof rawContact === 'object' ? (rawContact.email || '') : '';
                 // Message commun (WhatsApp + email) — descriptif du chantier
+                // avec la liste détaillée des produits à installer
+                const produitsDuDossier = (d.produits && d.produits.length > 0)
+                  ? d.produits.map((prod) => {
+                      const info = findProduit(produits, prod.type);
+                      const qty = prod.quantite || 1;
+                      const qtyPrefix = (!info.autoTarif && qty > 1) ? `${qty}× ` : '';
+                      const label = info.autoTarif && prod.puissance
+                        ? `${qtyPrefix}${info.emoji} ${info.label} ${prod.puissance} Wc`
+                        : `${qtyPrefix}${info.emoji} ${info.label}`;
+                      return `   • ${label}${prod.description ? ' — ' + prod.description : ''}`;
+                    })
+                  : (d.puissance ? [`   • ☀️ Panneaux solaires ${d.puissance} Wc`] : []);
                 const chantierMessage = [
                   `🔧 Nouveau chantier à poser`,
                   ``,
                   `Client : ${(d.nom || '').toUpperCase()} ${d.prenom || ''}`.trim(),
                   (d.adresse || d.ville) ? `📍 ${[d.adresse, d.codePostal, d.ville].filter(Boolean).join(', ')}` : '',
                   d.telephone ? `📞 Client : ${d.telephone}` : '',
+                  d.email ? `📧 Client : ${d.email}` : '',
                   d.dateInsta ? `📅 Pose prévue : ${formatDateForSheet(d.dateInsta)}` : '',
-                  d.puissance ? `☀️ Matériel : ${d.puissance} Wc` : '',
+                  produitsDuDossier.length > 0 ? `\n📦 Matériel à installer :\n${produitsDuDossier.join('\n')}` : '',
                 ].filter(Boolean).join('\n');
                 const chantierSubject = `Nouveau chantier à poser — ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''}`;
                 const poseurFromEmail = emailConfig?.smtpUser || gmailOAuth?.email || '';
