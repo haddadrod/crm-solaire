@@ -1958,8 +1958,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
   // Dashboard
   const dashboard = useMemo(() => {
+    // 🏢 Si une société est active dans le filtre, on restreint TOUS les calculs
+    // (stats, alertes, rappels) à cette société. Sinon vue consolidée.
+    // Renamed local en 'dossiersDash' pour éviter le shadowing du nom externe.
+    const dossiersDash = activeSociete
+      ? dossiersEnriched.filter(d => d.societe === activeSociete)
+      : dossiersEnriched;
     const moisMap = {};
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (!d.dateInsta) return;
       const k = d.dateInsta.substring(0, 7);
       if (!moisMap[k]) moisMap[k] = { mois: k, count: 0, ca: 0, margeTtc: 0 };
@@ -1975,7 +1981,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const moisPrecedent = statsMois.find(m => m.mois === lastStr) || { count: 0, ca: 0, margeTtc: 0 };
 
     const poseurMap = {};
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       (d.poseursDetail || []).forEach(p => {
         if (!poseurMap[p.nom]) poseurMap[p.nom] = { nom: p.nom, count: 0, ca: 0, coutTotal: 0, puissanceTotale: 0, margeApportee: 0 };
         poseurMap[p.nom].count += 1;
@@ -1988,7 +1994,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const statsPoseurs = Object.values(poseurMap).sort((a, b) => b.count - a.count);
 
     const regieMap = {};
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       const regiesArr = d.regiesDetail || [];
       if (regiesArr.length === 0) {
         // Pas de régie sur ce dossier
@@ -2020,7 +2026,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       .sort((a, b) => b.joursAttente - a.joursAttente);
 
     const rappelsPrestataires = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       // Prestataires externes (poseurs, fournisseurs, régie externe) : pose faite + client a payé
       if (d.dateInsta && d.payeClient) {
         const j = Math.floor((today - new Date(d.dateInsta)) / 86400000);
@@ -2083,7 +2089,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     };
 
     const rappelsStagnation = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       const seuil = SEUILS_STATUT[d.statut];
       if (seuil == null) return; // statut final ou non listé
 
@@ -2119,7 +2125,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels financement — envoyés sans retour depuis +2 jours
     const rappelsFinancement = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (!d.dateEnvoiFin) return; // pas envoyé
       if (d.dateRetourFin) return; // déjà reçu retour
       if (d.statutFin === 'accepté' || d.statutFin === 'refusé') return; // déjà répondu
@@ -2134,7 +2140,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels Paiement — contrôle livraison fait sans paiement reçu depuis +2 jours
     const rappelsPaiement = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (!d.dateControleLivraison) return; // pas de contrôle
       if (d.datePaiementBanque || d.payeClient) return; // déjà payé
       const jours = Math.floor((today - new Date(d.dateControleLivraison)) / 86400000);
@@ -2151,7 +2157,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels Contrôle livraison — Consuel accepté + originaux reçus banque mais contrôle pas encore fait
     const rappelsControleLivraison = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       // Consuel accepté ?
       const consuelAccepte = d.statutConsuel === 'accepté' || (d.dateConsuel && d.statutConsuel !== 'refusé');
       if (!consuelAccepte) return;
@@ -2171,7 +2177,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels Contrôle qualité — dossiers à valider/refuser (pas encore décidé)
     const rappelsControleQualite = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (d.statutControleQualite === 'ok' || d.statutControleQualite === 'pas_ok') return; // déjà décidé
       if (finalStatuses.includes(d.statut)) return;
       const ref = d.createdAt || d.savedAt || d.dateInsta;
@@ -2186,7 +2192,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels À envoyer en banque — CQ validé mais pas encore envoyé
     const rappelsAEnvoyerBanque = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (d.statutControleQualite !== 'ok') return; // pas validé OK
       if (d.dateEnvoiFin) return; // déjà envoyé
       if (finalStatuses.includes(d.statut)) return;
@@ -2203,7 +2209,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels À envoyer en pose — financement accordé mais pas encore envoyé en pose
     const rappelsAEnvoyerPose = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (d.statutFin !== 'accepté') return; // pas accordé par banque
       if (d.dateEnvoiPose) return; // déjà envoyé en pose
       if (finalStatuses.includes(d.statut)) return;
@@ -2224,7 +2230,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Skippé si le dossier est dans un statut final (annulé volontairement,
     // dossier payé, etc.) — l'utilisateur a déjà clôturé.
     const rappelsPoseurNonAssigne = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (finalStatuses.includes(d.statut)) return;
       // Une date de pose est-elle posée ? (envoi en pose, visite, ou pose)
       const aUneDate = !!(d.dateEnvoiPose || d.dateVisitePose || d.dateInsta);
@@ -2254,7 +2260,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Cas typique : on a planifié, le poseur y est allé, mais on a oublié
     // de cocher "posé". Ou la pose a été décalée sans mise à jour.
     const rappelsPoseNonFinie = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (!d.dateEnvoiPose) return; // pas de date de pose planifiée
       if (d.dateInsta) return; // déjà marquée posée
       if (d.statutPose === 'visite_ok') return; // déjà OK
@@ -2272,7 +2278,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels Mairie — dossier créé mais déclaration mairie pas envoyée (ou refusée et non renvoyée)
     const rappelsAEnvoyerMairie = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (d.statutMairie === 'accepté' || d.dateAccordMairie) return; // déjà accepté
       if (finalStatuses.includes(d.statut)) return;
       if (d.dateEnvoiMairie && d.statutMairie !== 'refusé') return; // envoyé, en attente de réponse (pas une alerte)
@@ -2289,7 +2295,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels À envoyer Consuel — pose terminée mais Consuel pas encore envoyé
     const rappelsAEnvoyerConsuel = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       // Pose terminée ? (statut visite_ok OU date de pose remplie)
       const poseFinie = d.statutPose === 'visite_ok' || !!d.dateInsta;
       if (!poseFinie) return;
@@ -2307,7 +2313,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels Originaux — pose terminée mais originaux pas reçus banque
     const rappelsOriginaux = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (d.pasOriginauxRequis) return; // pas concerné
       // Pose terminée ?
       const poseFinie = d.statutPose === 'visite_ok' || !!d.dateInsta;
@@ -2330,7 +2336,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // 💰 Récupération TVA — délai 6 mois (180 jours) à partir du paiement banque
     const rappelsRecupTva = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       // Seulement si client payé et démarche pas encore terminée
       if (!d.payeClient) return;
       if (d.tvaStatus === 'recuperee' || d.tvaStatus === 'non_concerne') return;
@@ -2365,7 +2371,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // un prestataire (poseur/régie/fournisseur) a un nom mais pas de facture
     // uploadée. Plus la pose est ancienne, plus c'est urgent.
     const rappelsFacturesManquantes = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       const posee = d.statutPose === 'visite_ok' || !!d.dateInsta;
       if (!posee) return;
       if (finalStatuses.includes(d.statut)) {
@@ -2394,7 +2400,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
     return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes };
-  }, [dossiersEnriched, tarifsInternes]);
+  }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
   // Si un dossier archivé passe en SAV, il est désarchivé automatiquement (voir onUpdate)
