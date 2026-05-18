@@ -5523,9 +5523,8 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                           {setContacts && (
                             <input
                               type="tel"
-                              defaultValue={getTel(nom)}
-                              onBlur={(e) => updateContact(nom, e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              value={getTel(nom)}
+                              onChange={(e) => updateContact(nom, e.target.value)}
                               placeholder="📞 tél. (WhatsApp)"
                               className="w-full mt-1 px-2 py-0.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
                             />
@@ -5533,9 +5532,8 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                           {setContacts && contactsObjectShape && (
                             <input
                               type="email"
-                              defaultValue={getEmail(nom)}
-                              onBlur={(e) => updateEmail(nom, e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              value={getEmail(nom)}
+                              onChange={(e) => updateEmail(nom, e.target.value)}
                               placeholder="📧 email"
                               className="w-full mt-1 px-2 py-0.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
                             />
