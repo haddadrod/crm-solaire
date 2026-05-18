@@ -1644,6 +1644,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     setFormData({
       id: d.id || '', dateInsta: d.dateInsta || new Date().toISOString().split('T')[0],
       dateSignature: d.dateSignature || '',
+      societe: d.societe || activeSociete || (societes[0]?.id || ''),
       dateAccord: d.dateAccord || '', dateConsuel: d.dateConsuel || '',
       dateControleQualite: d.dateControleQualite || '', statutControleQualite: d.statutControleQualite || '',
       vocalCQUrl: d.vocalCQUrl || '',
@@ -2907,6 +2908,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             tarifsPoseurs={tarifsPoseurs} tarifsRegies={tarifsRegies} tarifsInternes={tarifsInternes}
             nomsInternes={nomsInternes} setNomsInternes={setNomsInternes}
             produits={produits}
+            societes={societes}
             currentUser={currentUser}
             onClose={resetForm} onSubmit={handleSubmit} isAdmin={isAdmin}
           />
@@ -6984,7 +6986,7 @@ function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
   );
 }
 
-function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, currentUser, onClose, onSubmit, isAdmin }) {
+function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], currentUser, onClose, onSubmit, isAdmin }) {
   const inputCls = "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400 text-sm";
 
   // Scan IA d'un bon de commande manuscrit → pré-remplissage du formulaire.
@@ -7286,6 +7288,39 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     })}
                   </ul>
                 </div>
+              )}
+            </div>
+          )}
+          {/* 🏢 Société émettrice — choix obligatoire visible en haut du form
+              pour éviter d'envoyer un mail Yolico à un client Elsun. */}
+          {societes.length > 1 && (
+            <div className="mb-4 p-3 bg-gradient-to-r from-slate-50 to-slate-100 border-2 border-slate-200 rounded-2xl">
+              <div className="text-xs font-bold text-slate-600 uppercase mb-2">🏢 Société émettrice du dossier</div>
+              <div className="flex gap-2 flex-wrap">
+                {societes.map(s => {
+                  const isActive = formData.societe === s.id;
+                  const colorMap = {
+                    emerald: { active: 'bg-emerald-500 text-white border-emerald-600 shadow-md', inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
+                    blue:    { active: 'bg-blue-500 text-white border-blue-600 shadow-md',       inactive: 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50' },
+                    violet:  { active: 'bg-violet-500 text-white border-violet-600 shadow-md',   inactive: 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50' },
+                    amber:   { active: 'bg-amber-500 text-white border-amber-600 shadow-md',     inactive: 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50' },
+                    rose:    { active: 'bg-rose-500 text-white border-rose-600 shadow-md',       inactive: 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50' },
+                  };
+                  const cls = (colorMap[s.color] || colorMap.violet)[isActive ? 'active' : 'inactive'];
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, societe: s.id })}
+                      className={`px-4 py-2 rounded-xl text-sm font-bold border-2 transition-all ${cls}`}
+                    >
+                      {s.emoji} {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {!formData.societe && (
+                <div className="mt-2 text-[11px] text-rose-600 font-bold">⚠️ Choisis une société pour éviter d'envoyer les mauvais documents/emails au client.</div>
               )}
             </div>
           )}
