@@ -136,6 +136,7 @@ const CLIENT_DOC_SUBCATS = [
   { id: 'justif_domicile',   label: 'Justificatif domicile',emoji: '📋', color: 'cyan'    },
   { id: 'bulletin_paie',     label: 'Bulletin de paie',     emoji: '💰', color: 'green'   },
   { id: 'rib',               label: 'RIB',                  emoji: '🏦', color: 'indigo'  },
+  { id: 'recepisse_mairie',  label: 'Récépissé mairie',     emoji: '🏛️', color: 'indigo'  },
   { id: 'autre',             label: 'Autre',                emoji: '📑', color: 'slate'   },
 ];
 
@@ -3389,8 +3390,36 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
         });
       }
     });
+    // Récépissé mairie principal (uploadé depuis la section Mairie du dossier)
+    if (dossier.recepisseMairieFileId) {
+      out.push({
+        id: dossier.recepisseMairieFileId,
+        name: `Récépissé mairie${dossier.dateRecepisseMairie ? ' du ' + new Date(dossier.dateRecepisseMairie).toLocaleDateString('fr-FR') : ''}.pdf`,
+        size: 0, type: 'application/pdf',
+        category: 'client', subCategory: 'recepisse_mairie',
+        uploadedAt: dossier.dateRecepisseMairie || dossier.savedAt || new Date().toISOString(),
+        note: '🏛️ Récépissé lié à la section Mairie du dossier',
+        virtual: true,
+        virtualSource: { kind: 'mairie' },
+      });
+    }
+    // Récépissés des renvois mairie (en cas de refus puis renvoi)
+    (dossier.envoisMairie || []).forEach((env, idx) => {
+      if (env.recepisseFileId) {
+        out.push({
+          id: env.recepisseFileId,
+          name: `Récépissé mairie — envoi n°${idx + 1}${env.dateRecepisse ? ' (' + new Date(env.dateRecepisse).toLocaleDateString('fr-FR') + ')' : ''}.pdf`,
+          size: 0, type: 'application/pdf',
+          category: 'client', subCategory: 'recepisse_mairie',
+          uploadedAt: env.dateRecepisse || env.dateEnvoi || dossier.savedAt || new Date().toISOString(),
+          note: `🏛️ Récépissé du renvoi n°${idx + 1} (historique mairie)`,
+          virtual: true,
+          virtualSource: { kind: 'mairie_envoi', index: idx },
+        });
+      }
+    });
     return out;
-  }, [dossier.poseurs, dossier.regies, dossier.fournisseurs, dossier.dateInsta]);
+  }, [dossier.poseurs, dossier.regies, dossier.fournisseurs, dossier.dateInsta, dossier.recepisseMairieFileId, dossier.dateRecepisseMairie, dossier.envoisMairie, dossier.savedAt]);
 
   // Documents pour la catégorie active.
   // Cas spécial Client : on prend TOUS les docs client (toutes sous-catégories),
@@ -3399,7 +3428,10 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
   // fournisseur) gardent leur filtre strict par subCategory + fusion avec
   // les factures virtuelles uploadées depuis l'aperçu rapide.
   const docsActive = activeCat.key === 'client'
-    ? documents.filter(d => d.category === 'client')
+    ? [
+        ...documents.filter(d => d.category === 'client'),
+        ...virtualFactureDocs.filter(d => d.category === 'client'),
+      ]
     : [
         ...documents.filter(d => d.category === activeCat.key && (d.subCategory || null) === (activeCat.subCategory || null)),
         ...virtualFactureDocs.filter(d => d.category === activeCat.key && (d.subCategory || null) === (activeCat.subCategory || null)),
