@@ -17,7 +17,6 @@ const STATUTS = [
   { id: 'B2_A_ENVOYER_POSE',    label: 'À ENVOYER EN POSE',    color: 'from-amber-400 to-orange-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '📤' },
   { id: 'B4_EN_COURS_POSE',     label: 'EN COURS DE POSE',     color: 'from-orange-500 to-red-500',    bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🔧' },
   { id: 'B3_REFUS_FINANCEMENT', label: 'REFUS DE FINANCEMENT', color: 'from-red-500 to-rose-600',      bg: 'bg-red-100',     text: 'text-red-700',     emoji: '🚫' },
-  { id: 'H_NRP_CQ_LIVRAISON',   label: 'NRP CQ LIVRAISON',     color: 'from-amber-400 to-yellow-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '🚚' },
   { id: 'G_ATTENTE_ACCORD_DEF', label: 'ATTENTE ACCORD DEF',   color: 'from-teal-400 to-emerald-500',  bg: 'bg-teal-100',    text: 'text-teal-700',    emoji: '📋' },
   { id: 'F_ATTENTE_DEBLOCAGE',  label: 'ATTENTE DE DEBLOCAGE', color: 'from-yellow-400 to-lime-500',   bg: 'bg-yellow-100',  text: 'text-yellow-700',  emoji: '⏳' },
   { id: 'F1_CONTROLE_LIV_BANQUE', label: 'CONTROLE DE LIV BANQUE', color: 'from-sky-400 to-blue-500', bg: 'bg-sky-100',     text: 'text-sky-700',     emoji: '🏦' },
@@ -28,7 +27,6 @@ const STATUTS = [
   { id: 'C_LITIGE',             label: 'LITIGE',               color: 'from-rose-500 to-red-500',      bg: 'bg-rose-100',    text: 'text-rose-700',    emoji: '⚠️' },
   { id: 'W2_ANNULER',           label: 'ANNULER',              color: 'from-stone-500 to-neutral-600', bg: 'bg-stone-100',   text: 'text-stone-700',   emoji: '❌' },
   { id: 'W1_DEPOSER',           label: 'DEPOSER',              color: 'from-red-600 to-rose-700',      bg: 'bg-red-100',     text: 'text-red-800',     emoji: '📦' },
-  { id: 'G1_ATT_NRP_CL',        label: 'ATT NRP CL',           color: 'from-slate-400 to-gray-500',    bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '📞' },
   { id: 'CONFORMITE_CONTRAT',   label: 'CONFORMITE CONTRAT',   color: 'from-purple-600 to-violet-700', bg: 'bg-purple-100',  text: 'text-purple-700',  emoji: '📝' },
   { id: 'Z_DEPLACEMENT',        label: 'DEPLACEMENT',          color: 'from-purple-500 to-fuchsia-500',bg: 'bg-purple-100',  text: 'text-purple-700',  emoji: '🚗' },
   { id: 'F3_MANQUE_RECEP',      label: 'MANQUE RECEP',         color: 'from-slate-300 to-gray-400',    bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '📭' },
@@ -705,7 +703,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (r?.value) {
           const arr = JSON.parse(r.value);
           // Migration : ancien format poseur unique → tableau poseurs + poseursDetail
-          const REMOVED_STATUSES = ['I_CONSUEL_OK', 'CONSUEL_OK', 'J_VISITE_CONSUEL', 'M_VISITE_CONSUEL', 'K_ATTENTE_CONSUEL', 'ATTENTE_CONSUEL', 'K2_PROBLEME_CONSUEL', 'M_PROBLEME_CONSUEL', 'M_ATT_DOSSIER', 'ATT_DOSSIER', 'E_PASSE_COMPTANT', 'PASSE_COMPTANT'];
+          const REMOVED_STATUSES = ['I_CONSUEL_OK', 'CONSUEL_OK', 'J_VISITE_CONSUEL', 'M_VISITE_CONSUEL', 'K_ATTENTE_CONSUEL', 'ATTENTE_CONSUEL', 'K2_PROBLEME_CONSUEL', 'M_PROBLEME_CONSUEL', 'M_ATT_DOSSIER', 'ATT_DOSSIER', 'E_PASSE_COMPTANT', 'PASSE_COMPTANT', 'H_NRP_CQ_LIVRAISON', 'G1_ATT_NRP_CL'];
           // Statuts legacy (sans préfixe) → renommés vers leur vrai ID actuel.
           // Avant, le bouton "✗ Refuse" stockait 'ANNULER' sans préfixe ; idem
           // pour des migrations partielles précédentes. On les recolle ici.
@@ -2608,6 +2606,20 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           ? <span className="font-bold text-slate-800 text-sm">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</span>
           : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 text-sm hover:text-violet-600 hover:underline transition-colors text-left" title="Voir l'aperçu rapide">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>}
         {statut && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${statut.bg} ${statut.text}`}><span>{statut.emoji}</span>{statut.label}</span>}
+        {(() => {
+          const nCQ = (d.tentativesCQ || []).length;
+          const nLiv = (d.tentativesControleLivraison || []).length;
+          const showCQ = nCQ > 0 && !d.statutControleQualite;
+          const showLiv = nLiv > 0 && !d.dateControleLivraison;
+          if (!showCQ && !showLiv) return null;
+          const total = (showCQ ? nCQ : 0) + (showLiv ? nLiv : 0);
+          const tip = [showCQ ? `${nCQ} essai${nCQ > 1 ? 's' : ''} CQ sans réponse` : null, showLiv ? `${nLiv} essai${nLiv > 1 ? 's' : ''} contrôle livraison sans réponse` : null].filter(Boolean).join(' · ');
+          return (
+            <span title={tip} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300">
+              🔁 {total} essai{total > 1 ? 's' : ''}
+            </span>
+          );
+        })()}
         <span className="text-[11px] text-slate-500">📅 {formatDateForSheet(d.dateInsta)}</span>
         {(() => {
           const firstProd = dossierProduits[0];
@@ -2663,6 +2675,20 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
               {statut && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${statut.bg} ${statut.text}`}><span>{statut.emoji}</span>{statut.label}</span>}
+              {(() => {
+                const nCQ = (d.tentativesCQ || []).length;
+                const nLiv = (d.tentativesControleLivraison || []).length;
+                const showCQ = nCQ > 0 && !d.statutControleQualite;
+                const showLiv = nLiv > 0 && !d.dateControleLivraison;
+                if (!showCQ && !showLiv) return null;
+                const total = (showCQ ? nCQ : 0) + (showLiv ? nLiv : 0);
+                const tip = [showCQ ? `${nCQ} essai${nCQ > 1 ? 's' : ''} CQ sans réponse` : null, showLiv ? `${nLiv} essai${nLiv > 1 ? 's' : ''} contrôle livraison sans réponse` : null].filter(Boolean).join(' · ');
+                return (
+                  <span title={tip} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700 border border-amber-300">
+                    🔁 {total} essai{total > 1 ? 's' : ''}
+                  </span>
+                );
+              })()}
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700"><Calendar className="w-3 h-3" />{formatDateForSheet(d.dateInsta)}</span>
               {d.dateSignature && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-pink-50 text-pink-700">✍️ {formatDateForSheet(d.dateSignature)}</span>}
               {dossierProduits.map((p, i) => {
