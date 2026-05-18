@@ -850,9 +850,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     statutConsuel: '', // '' | 'accepté' | 'refusé'
     visitesConsuel: [],
     // Process mairie (déclaration préalable / autorisation d'urbanisme)
-    dateEnvoiMairie: '', dateAccordMairie: '',
+    dateEnvoiMairie: '', dateRecepisseMairie: '', dateAccordMairie: '',
+    recepisseMairieFileId: '', // PDF du récépissé reçu après dépôt en mairie
     statutMairie: '', // '' | 'accepté' | 'refusé'
-    envoisMairie: [], // historique des envois en cas de refus (chaque envoi : { dateEnvoi, dateReponse, resultat, note })
+    envoisMairie: [], // historique des envois en cas de refus (chaque envoi : { dateEnvoi, dateRecepisse, recepisseFileId, dateReponse, resultat, note })
     // Suivi paiement
     dateControleLivraison: '', dateAppelBanque: '', datePaiementBanque: '',
     tentativesControleLivraison: [], // [{datetime: ISO}] — historique des appels où le client n'a pas répondu pour le contrôle livraison
@@ -1524,7 +1525,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dateEnvoiConsuel: d.dateEnvoiConsuel || '', dateAccordConsuel: d.dateAccordConsuel || '',
       statutConsuel: d.statutConsuel || '',
       visitesConsuel: d.visitesConsuel || [],
-      dateEnvoiMairie: d.dateEnvoiMairie || '', dateAccordMairie: d.dateAccordMairie || '',
+      dateEnvoiMairie: d.dateEnvoiMairie || '', dateRecepisseMairie: d.dateRecepisseMairie || '', dateAccordMairie: d.dateAccordMairie || '',
+      recepisseMairieFileId: d.recepisseMairieFileId || '',
       statutMairie: d.statutMairie || '',
       envoisMairie: d.envoisMairie || [],
       dateControleLivraison: d.dateControleLivraison || '', dateAppelBanque: d.dateAppelBanque || '', datePaiementBanque: d.datePaiementBanque || '',
@@ -7388,12 +7390,19 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 )}
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Envoi mairie</label>
                   <div className="flex gap-1">
                     <input type="date" value={formData.dateEnvoiMairie || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiMairie: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📨 Récépissé reçu</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={formData.dateRecepisseMairie || ''} onChange={(e) => setFormData({ ...formData, dateRecepisseMairie: e.target.value })} className={inputCls} />
+                    <button type="button" onClick={() => setFormData({ ...formData, dateRecepisseMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
@@ -7403,6 +7412,16 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <button type="button" onClick={() => setFormData({ ...formData, dateAccordMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
+              </div>
+
+              {/* Upload du PDF récépissé — comme une facture prestataire */}
+              <div className="mt-3 p-2 bg-white border border-indigo-200 rounded-lg">
+                <div className="text-[10px] font-semibold text-indigo-700 uppercase mb-1.5">📎 Récépissé de dépôt (PDF)</div>
+                <FactureFileInput
+                  fileId={formData.recepisseMairieFileId || ''}
+                  onChange={(id) => setFormData({ ...formData, recepisseMairieFileId: id })}
+                  color="indigo"
+                />
               </div>
 
               {formData.dateEnvoiMairie && (
@@ -7437,7 +7456,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   <button type="button" onClick={() => {
                     setFormData({
                       ...formData,
-                      envoisMairie: [...(formData.envoisMairie || []), { dateEnvoi: '', dateReponse: '', resultat: '', note: '' }]
+                      envoisMairie: [...(formData.envoisMairie || []), { dateEnvoi: '', dateRecepisse: '', recepisseFileId: '', dateReponse: '', resultat: '', note: '' }]
                     });
                   }} className="px-2 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded text-[10px] font-bold flex items-center gap-1">
                     <Plus className="w-3 h-3" />Ajouter un envoi
@@ -7465,15 +7484,27 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             <Trash2 className="w-3 h-3" /><span>Suppr.</span>
                           </button>
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date envoi</label>
                             <input type="date" value={e.dateEnvoi || ''} onChange={(ev) => updE({ dateEnvoi: ev.target.value })} className={inputCls} />
                           </div>
                           <div>
+                            <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date récépissé</label>
+                            <input type="date" value={e.dateRecepisse || ''} onChange={(ev) => updE({ dateRecepisse: ev.target.value })} className={inputCls} />
+                          </div>
+                          <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date réponse</label>
                             <input type="date" value={e.dateReponse || ''} onChange={(ev) => updE({ dateReponse: ev.target.value })} className={inputCls} />
                           </div>
+                        </div>
+                        <div className="mb-2">
+                          <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">📎 Récépissé (PDF)</label>
+                          <FactureFileInput
+                            fileId={e.recepisseFileId || ''}
+                            onChange={(id) => updE({ recepisseFileId: id })}
+                            color="indigo"
+                          />
                         </div>
                         <div className="grid grid-cols-2 gap-1 mb-2">
                           <button type="button" onClick={() => updE({ resultat: 'accepté' })} className={`px-2 py-1 rounded text-[10px] font-bold border ${e.resultat === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-emerald-600 border-emerald-200'}`}>✓ Accepté</button>
@@ -9097,12 +9128,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               </button>
               {!foldedSteps.mairie && (
               <div className="space-y-1.5">
-                <div className="grid grid-cols-2 gap-1.5">
+                <div className="grid grid-cols-3 gap-1.5">
                   <div>
                     <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
                     <div className="flex gap-1">
                       <input type="date" value={d.dateEnvoiMairie || ''} onChange={(e) => onUpdate({ dateEnvoiMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
                       <button onClick={() => onUpdate({ dateEnvoiMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📨 Récépissé</label>
+                    <div className="flex gap-1">
+                      <input type="date" value={d.dateRecepisseMairie || ''} onChange={(e) => onUpdate({ dateRecepisseMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
+                      <button onClick={() => onUpdate({ dateRecepisseMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
                   <div>
@@ -9112,6 +9150,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <button onClick={() => onUpdate({ dateAccordMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
+                </div>
+                {/* Upload PDF récépissé dans l'aperçu rapide */}
+                <div className="px-2 py-1.5 bg-white border border-indigo-200 rounded">
+                  <label className="block text-[9px] font-semibold text-indigo-700 uppercase mb-1">📎 Récépissé (PDF)</label>
+                  <FactureFileInput
+                    fileId={d.recepisseMairieFileId || ''}
+                    onChange={(id) => onUpdate({ recepisseMairieFileId: id })}
+                    color="indigo"
+                  />
                 </div>
                 {d.dateEnvoiMairie && (
                   <div className="mt-1.5 grid grid-cols-3 gap-1">
