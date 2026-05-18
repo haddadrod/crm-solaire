@@ -10183,6 +10183,18 @@ function AlertesModal({ type, dashboard, STATUTS, onClose, onSelect }) {
                         <span className="font-bold text-slate-800 text-sm truncate">{d.nom} {d.prenom}</span>
                         {d.id && <span className="text-[10px] font-mono text-slate-400">#{d.id}</span>}
                         {d.telephone && <a href={`tel:${d.telephone}`} onClick={(e) => e.stopPropagation()} className="text-[10px] font-semibold text-violet-600 hover:underline">📞 {d.telephone}</a>}
+                        {(() => {
+                          // Badge "🔁 N essais" pour les alertes où on appelle le client
+                          const nEssais = type === 'controleQualite' ? (d.tentativesCQ || []).length
+                            : type === 'controle' ? (d.tentativesControleLivraison || []).length
+                            : 0;
+                          if (nEssais === 0) return null;
+                          return (
+                            <span title={`Tu as déjà essayé ${nEssais} fois sans réponse`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300">
+                              🔁 {nEssais} essai{nEssais > 1 ? 's' : ''}
+                            </span>
+                          );
+                        })()}
                       </div>
                       <div className="text-[11px] text-slate-500 mt-0.5">
                         {cfg.lineLabel(d, r)}
