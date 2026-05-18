@@ -4978,7 +4978,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'poseurs' && (
-        <PrestataireManager titre="🔧 Poseurs" description="Tarifs HT — saisissez vos vrais tarifs" data={tarifsPoseurs} setData={setTarifsPoseurs} dossiers={dossiers} dossierField="poseur" type="poseur" produits={produits} contacts={poseursContacts} setContacts={setPoseursContacts} />
+        <PrestataireManager titre="🔧 Poseurs" description="Tarifs HT + tél/email pour envoyer le chantier au poseur (WhatsApp ou email)" data={tarifsPoseurs} setData={setTarifsPoseurs} dossiers={dossiers} dossierField="poseur" type="poseur" produits={produits} contacts={poseursContacts} setContacts={setPoseursContacts} contactsObjectShape={true} />
       )}
 
       {section === 'fournisseurs' && (
@@ -10115,7 +10115,27 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             {!foldedSteps.poseurs && (
             <div className="space-y-1.5">
               {(d.poseurs || []).map((p, i) => {
-                const poseurTel = p.nom && poseursContacts ? poseursContacts[p.nom] : '';
+                // Contact poseur : compatible legacy string (juste tel) ET nouveau format { tel, email }
+                const rawContact = p.nom ? (poseursContacts || {})[p.nom] : null;
+                const poseurTel = rawContact ? (typeof rawContact === 'string' ? rawContact : (rawContact.tel || '')) : '';
+                const poseurEmail = rawContact && typeof rawContact === 'object' ? (rawContact.email || '') : '';
+                // Message commun (WhatsApp + email) — descriptif du chantier
+                const chantierMessage = [
+                  `🔧 Nouveau chantier à poser`,
+                  ``,
+                  `Client : ${(d.nom || '').toUpperCase()} ${d.prenom || ''}`.trim(),
+                  (d.adresse || d.ville) ? `📍 ${[d.adresse, d.codePostal, d.ville].filter(Boolean).join(', ')}` : '',
+                  d.telephone ? `📞 Client : ${d.telephone}` : '',
+                  d.dateInsta ? `📅 Pose prévue : ${formatDateForSheet(d.dateInsta)}` : '',
+                  d.puissance ? `☀️ Matériel : ${d.puissance} Wc` : '',
+                ].filter(Boolean).join('\n');
+                const chantierSubject = `Nouveau chantier à poser — ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''}`;
+                const poseurFromEmail = emailConfig?.smtpUser || gmailOAuth?.email || '';
+                const poseurGmailCompose = (to) => {
+                  const params = new URLSearchParams({ view: 'cm', fs: '1', to, su: chantierSubject, body: chantierMessage });
+                  if (poseurFromEmail) params.set('authuser', poseurFromEmail);
+                  return `https://mail.google.com/mail/?${params.toString()}`;
+                };
                 return (
                 <div key={i} className={`rounded-xl p-2 space-y-1 border ${p.paye ? 'bg-emerald-50 border-emerald-300' : 'bg-amber-50 border-amber-200'}`}>
                   <div className="flex items-center gap-1.5">
@@ -10127,31 +10147,84 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <Trash2 className="w-3 h-3" />
                     </button>
                   </div>
-                  {/* Bouton WhatsApp — envoie le chantier au poseur */}
-                  {p.nom && (
-                    poseurTel ? (
-                      <a
-                        href={buildWhatsAppLink(poseurTel, [
-                          `🔧 Nouveau chantier à poser`,
-                          ``,
-                          `Client : ${(d.nom || '').toUpperCase()} ${d.prenom || ''}`.trim(),
-                          (d.adresse || d.ville) ? `📍 ${[d.adresse, d.codePostal, d.ville].filter(Boolean).join(', ')}` : '',
-                          d.telephone ? `📞 Client : ${d.telephone}` : '',
-                          d.dateInsta ? `📅 Pose prévue : ${formatDateForSheet(d.dateInsta)}` : '',
-                          d.puissance ? `☀️ Matériel : ${d.puissance} Wc` : '',
-                        ].filter(Boolean).join('\n'))}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full flex items-center justify-center gap-1.5 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded-lg text-[10px] font-bold"
-                        title={`Envoyer le chantier à ${p.nom} sur WhatsApp`}
-                      >
-                        <span className="text-sm">📲</span> Envoyer sur WhatsApp
-                      </a>
-                    ) : (
-                      <div className="text-[9px] text-slate-400 italic px-1">
-                        💡 Ajoute le n° de {p.nom} dans Réglages → Poseurs pour l'envoi WhatsApp
-                      </div>
-                    )
+                  {/* Boutons d'envoi du chantier — WhatsApp + Email */}
+                  {p.nom && (poseurTel || poseurEmail) && (
+                    <div className="grid grid-cols-2 gap-1">
+                      {poseurTel ? (
+                        <a
+                          href={buildWhatsAppLink(poseurTel, chantierMessage)}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[10px] font-bold"
+                          title={`Envoyer le chantier à ${p.nom} sur WhatsApp`}
+                        >
+                          📲 WhatsApp
+                        </a>
+                      ) : (
+                        <span className="text-[9px] text-slate-400 italic px-1 py-1.5 text-center">📲 Pas de tél.</span>
+                      )}
+                      {poseurEmail ? (
+                        gmailOAuth?.connected ? (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const { data: { session } } = await supabase.auth.getSession();
+                                const headers = { 'Content-Type': 'application/json' };
+                                if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                                const res = await fetch('/api/send-email-gmail', {
+                                  method: 'POST', headers,
+                                  body: JSON.stringify({ to: poseurEmail, subject: chantierSubject, text: chantierMessage, fromName: emailConfig?.fromName || 'CRM Solaire' }),
+                                });
+                                const pl = await res.json().catch(() => ({}));
+                                if (!res.ok) throw new Error(pl.error || `Erreur ${res.status}`);
+                                alert(`✅ Email envoyé à ${p.nom} (${poseurEmail})`);
+                              } catch (e) { alert(`❌ Envoi email : ${e.message}`); }
+                            }}
+                            className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                            title={`Envoyer le chantier à ${p.nom} par email`}
+                          >
+                            📧 Envoyer
+                          </button>
+                        ) : emailConfig?.smtpUser && emailConfig?.smtpPass ? (
+                          <button
+                            onClick={async () => {
+                              try {
+                                const { data: { session } } = await supabase.auth.getSession();
+                                const headers = { 'Content-Type': 'application/json' };
+                                if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                                const res = await fetch('/api/send-email', {
+                                  method: 'POST', headers,
+                                  body: JSON.stringify({ to: poseurEmail, subject: chantierSubject, text: chantierMessage, smtpUser: emailConfig.smtpUser, smtpPass: emailConfig.smtpPass, fromName: emailConfig.fromName || 'CRM Solaire' }),
+                                });
+                                const pl = await res.json().catch(() => ({}));
+                                if (!res.ok) throw new Error(pl.error || `Erreur ${res.status}`);
+                                alert(`✅ Email envoyé à ${p.nom} (${poseurEmail})`);
+                              } catch (e) { alert(`❌ Envoi email : ${e.message}`); }
+                            }}
+                            className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                          >
+                            📧 Envoyer
+                          </button>
+                        ) : (
+                          <a
+                            href={poseurGmailCompose(poseurEmail)}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                            title={`Ouvre Gmail (configure Réglages → Email d'envoi pour un envoi auto)`}
+                          >
+                            📧 Gmail
+                          </a>
+                        )
+                      ) : (
+                        <span className="text-[9px] text-slate-400 italic px-1 py-1.5 text-center">📧 Pas d'email</span>
+                      )}
+                    </div>
+                  )}
+                  {p.nom && !poseurTel && !poseurEmail && (
+                    <div className="text-[9px] text-amber-600 italic px-1">
+                      ⚠️ Ajoute le tél/email de {p.nom} dans Réglages → Poseurs pour envoyer le chantier
+                    </div>
                   )}
                   {canSeeMarges && (() => {
                     const autoHt = d.poseursDetail?.[i]?.autoHt || 0;
