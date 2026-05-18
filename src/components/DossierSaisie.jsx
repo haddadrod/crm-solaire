@@ -246,14 +246,25 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [meta, setMeta] = useState(null);
+  // Indique que le fileId est défini mais que le fichier est introuvable
+  // dans le storage (rare — ex : ligne supprimée à la main, race condition).
+  const [missingFile, setMissingFile] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    setMissingFile(false);
     if (!fileId) { setMeta(null); return; }
     (async () => {
       try {
         const r = await window.storage.get(`file:${fileId}`);
-        if (cancelled || !r?.value) return;
+        if (cancelled) return;
+        if (!r?.value) {
+          // fileId défini mais aucune row dans storage → fichier perdu
+          console.warn(`[FactureFileInput] file:${fileId} introuvable dans storage`);
+          setMissingFile(true);
+          setMeta(null);
+          return;
+        }
         const data = JSON.parse(r.value);
         setMeta({ name: data.name || 'facture.pdf', type: data.type || 'application/pdf' });
       } catch (e) {}
@@ -391,16 +402,31 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
   }
 
   return (
-    <label
-      onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f) handleUpload(f); }}
-      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-      className={`flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-dashed bg-white text-[10px] cursor-pointer ${palette} ${uploading || extracting ? 'opacity-60' : ''}`}
-    >
-      <span>
-        {uploading ? '⏳ Upload…' : extracting ? '✨ Lecture IA…' : (onExtract ? '📎 Glisser PDF — l\'IA lira la facture ✨' : '📎 Glisser PDF facture ou cliquer')}
-      </span>
-      <input type="file" accept="application/pdf,image/*" className="hidden" disabled={uploading || extracting} onChange={(e) => handleUpload(e.target.files?.[0])} />
-    </label>
+    <>
+      {missingFile && (
+        <div
+          className="mb-1 px-2 py-1 rounded border border-rose-300 bg-rose-50 text-[10px] text-rose-700 flex items-center gap-1"
+          title="Le fichier était attaché mais introuvable maintenant. Glisse-le à nouveau."
+        >
+          <span>⚠️ Fichier facture introuvable — uploade-le à nouveau ci-dessous</span>
+          <button
+            onClick={() => onChange('')}
+            className="ml-auto px-1 py-0.5 text-rose-500 hover:bg-rose-100 rounded font-bold"
+            title="Effacer la référence orpheline"
+          >✕</button>
+        </div>
+      )}
+      <label
+        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f) handleUpload(f); }}
+        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        className={`flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-dashed bg-white text-[10px] cursor-pointer ${palette} ${uploading || extracting ? 'opacity-60' : ''}`}
+      >
+        <span>
+          {uploading ? '⏳ Upload…' : extracting ? '✨ Lecture IA…' : (onExtract ? '📎 Glisser PDF — l\'IA lira la facture ✨' : '📎 Glisser PDF facture ou cliquer')}
+        </span>
+        <input type="file" accept="application/pdf,image/*" className="hidden" disabled={uploading || extracting} onChange={(e) => handleUpload(e.target.files?.[0])} />
+      </label>
+    </>
   );
 }
 
