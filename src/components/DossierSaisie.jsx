@@ -322,21 +322,34 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
     } catch (e) { alert('Erreur : ' + e.message); }
   };
 
+  // Aperçu de la facture : on charge le fichier depuis le storage et on ouvre
+  // l'overlay in-app FilePreviewOverlay (compatible mobile, pas de popup blocker
+  // contrairement à window.open qui est bloqué après un await asynchrone).
+  const [preview, setPreview] = useState(null);
   const handleView = async () => {
     if (!fileId) return;
     try {
       const r = await window.storage.get(`file:${fileId}`);
       if (!r?.value) { alert('❌ Fichier introuvable.'); return; }
       const data = JSON.parse(r.value);
-      const parts = (data.dataUrl || '').split(',');
-      const bytes = atob(parts[1] || '');
-      const arr = new Uint8Array(bytes.length);
-      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-      const blob = new Blob([arr], { type: data.type || 'application/pdf' });
-      const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      setPreview({
+        doc: { name: data.name || 'facture.pdf', size: data.size || 0 },
+        dataUrl: data.dataUrl,
+        type: data.type || 'application/pdf',
+      });
     } catch (e) { alert('Erreur : ' + e.message); }
+  };
+  const handleDownload = () => {
+    if (!preview) return;
+    try {
+      const a = document.createElement('a');
+      a.href = preview.dataUrl;
+      a.download = preview.doc.name || 'facture.pdf';
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => document.body.removeChild(a), 0);
+    } catch (e) { alert('Erreur téléchargement : ' + e.message); }
   };
 
   const handleRemove = async () => {
@@ -355,16 +368,25 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
 
   if (meta) {
     return (
-      <div className={`flex items-center gap-1 px-2 py-1 rounded border bg-white text-[10px] ${palette}`}>
-        <span className="flex-1 truncate font-semibold">📄 {meta.name}</span>
-        {onExtract && (
-          <button onClick={handleReExtract} disabled={extracting} className="px-1 py-0.5 hover:bg-violet-100 text-violet-600 rounded" title="Re-lire les infos de la facture avec l'IA">
-            {extracting ? '⏳' : '✨'}
-          </button>
+      <>
+        <div className={`flex items-center gap-1 px-2 py-1 rounded border bg-white text-[10px] ${palette}`}>
+          <span className="flex-1 truncate font-semibold">📄 {meta.name}</span>
+          {onExtract && (
+            <button onClick={handleReExtract} disabled={extracting} className="px-1 py-0.5 hover:bg-violet-100 text-violet-600 rounded" title="Re-lire les infos de la facture avec l'IA">
+              {extracting ? '⏳' : '✨'}
+            </button>
+          )}
+          <button onClick={handleView} className="px-1 py-0.5 hover:bg-white rounded" title="Voir la facture">👁️</button>
+          <button onClick={handleRemove} className="px-1 py-0.5 text-rose-500 hover:bg-rose-100 rounded" title="Retirer">🗑️</button>
+        </div>
+        {preview && (
+          <FilePreviewOverlay
+            preview={preview}
+            onClose={() => setPreview(null)}
+            onDownload={handleDownload}
+          />
         )}
-        <button onClick={handleView} className="px-1 py-0.5 hover:bg-white rounded" title="Voir la facture">👁️</button>
-        <button onClick={handleRemove} className="px-1 py-0.5 text-rose-500 hover:bg-rose-100 rounded" title="Retirer">🗑️</button>
-      </div>
+      </>
     );
   }
 
