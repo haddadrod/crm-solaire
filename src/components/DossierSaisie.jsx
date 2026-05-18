@@ -675,6 +675,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Ref qui mémorise le dernier JSON écrit par CE client, pour ignorer les
   // évènements realtime qui correspondent à nos propres écritures.
   const lastWrittenDossiersJson = useRef(null);
+  // Idem pour les clés contacts/tarifs/email-config — évite que la sauvegarde
+  // locale soit écrasée par un autre device avec un état stale.
+  const lastWrittenSettings = useRef({});
   const isInitialOrder = useRef(true);
   const isInitialTarifs = useRef(true);
 
@@ -1298,17 +1301,64 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
   useEffect(() => {
     if (isInitialTarifs.current) { if (!loading) isInitialTarifs.current = false; return; }
-    window.storage.set('tarifs-poseurs', JSON.stringify(tarifsPoseurs)).catch(() => {});
-    window.storage.set('tarifs-regies', JSON.stringify(tarifsRegies)).catch(() => {});
-    window.storage.set('tarifs-internes', JSON.stringify(tarifsInternes)).catch(() => {});
-    window.storage.set('noms-internes', JSON.stringify(nomsInternes)).catch(() => {});
-    window.storage.set('liste-fournisseurs', JSON.stringify(listeFournisseurs)).catch(() => {});
-    window.storage.set('tarifs-fournisseurs', JSON.stringify(tarifsFournisseurs)).catch(() => {});
-    window.storage.set('produits', JSON.stringify(produits)).catch(() => {});
-    window.storage.set('poseurs-contacts', JSON.stringify(poseursContacts)).catch(() => {});
-    window.storage.set('regies-contacts', JSON.stringify(regiesContacts)).catch(() => {});
-    window.storage.set('email-config', JSON.stringify(emailConfig)).catch(() => {});
+    // Sauve chaque clé en mémorisant le JSON écrit, pour qu'on puisse ignorer
+    // notre propre écho via la subscription Realtime ci-dessous.
+    const saveAndTrack = (key, value) => {
+      const json = JSON.stringify(value);
+      lastWrittenSettings.current[key] = json;
+      window.storage.set(key, json).catch(() => {});
+    };
+    saveAndTrack('tarifs-poseurs', tarifsPoseurs);
+    saveAndTrack('tarifs-regies', tarifsRegies);
+    saveAndTrack('tarifs-internes', tarifsInternes);
+    saveAndTrack('noms-internes', nomsInternes);
+    saveAndTrack('liste-fournisseurs', listeFournisseurs);
+    saveAndTrack('tarifs-fournisseurs', tarifsFournisseurs);
+    saveAndTrack('produits', produits);
+    saveAndTrack('poseurs-contacts', poseursContacts);
+    saveAndTrack('regies-contacts', regiesContacts);
+    saveAndTrack('email-config', emailConfig);
   }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, loading]);
+
+  // 🔄 Sync Realtime sur les clés de réglages (contacts régies/poseurs,
+  // tarifs, email config, etc.). Évite qu'un device avec un état stale
+  // écrase silencieusement les modifs faites depuis un autre device.
+  useEffect(() => {
+    if (loading) return;
+    const SYNCED_KEYS = {
+      'tarifs-poseurs': setTarifsPoseurs,
+      'tarifs-regies': setTarifsRegies,
+      'tarifs-internes': setTarifsInternes,
+      'noms-internes': setNomsInternes,
+      'liste-fournisseurs': setListeFournisseurs,
+      'tarifs-fournisseurs': setTarifsFournisseurs,
+      'produits': setProduits,
+      'poseurs-contacts': setPoseursContacts,
+      'regies-contacts': setRegiesContacts,
+      'email-config': setEmailConfig,
+    };
+    const channel = supabase
+      .channel('settings-sync')
+      .on('postgres_changes',
+        { event: '*', schema: 'public', table: 'storage' },
+        (payload) => {
+          const key = payload?.new?.key;
+          const newValue = payload?.new?.value;
+          if (!key || !newValue) return;
+          const setter = SYNCED_KEYS[key];
+          if (!setter) return;
+          // Ignore notre propre écho
+          if (newValue === lastWrittenSettings.current[key]) return;
+          try {
+            const parsed = JSON.parse(newValue);
+            lastWrittenSettings.current[key] = newValue;
+            setter(parsed);
+          } catch (e) {}
+        }
+      )
+      .subscribe();
+    return () => { try { supabase.removeChannel(channel); } catch (e) {} };
+  }, [loading]);
 
   // Si l'utilisateur n'a pas accès à l'onglet courant, retour aux dossiers
   useEffect(() => {
@@ -5680,15 +5730,21 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     const c = newN.trim().toUpperCase();
     if (!c || c === oldN) return;
     if (data[c]) { alert(`"${c}" existe déjà`); return; }
-    const nd = {};
-    Object.keys(data).forEach(k => { nd[k === oldN ? c : k] = data[k]; });
-    setData(nd);
-    // Migre aussi le contact (téléphone) si présent
-    if (setContacts && contacts && contacts[oldN] !== undefined) {
-      const nc = { ...contacts };
-      nc[c] = nc[oldN];
-      delete nc[oldN];
-      setContacts(nc);
+    setData(prev => {
+      const nd = {};
+      Object.keys(prev).forEach(k => { nd[k === oldN ? c : k] = prev[k]; });
+      return nd;
+    });
+    // Migre aussi le contact (tél/email) si présent, en functional setState
+    // pour éviter d'écraser une modif récente du contact.
+    if (setContacts) {
+      setContacts(prev => {
+        if (!prev || prev[oldN] === undefined) return prev;
+        const nc = { ...prev };
+        nc[c] = nc[oldN];
+        delete nc[oldN];
+        return nc;
+      });
     }
   };
 
@@ -5699,9 +5755,12 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     const used = usedSingle + usedMulti;
     const msg = used > 0 ? `⚠️ "${nom}" utilisé dans ${used} dossier(s). Supprimer ?` : `Supprimer "${nom}" ?`;
     if (!window.confirm(msg)) return;
-    const nd = { ...data }; delete nd[nom]; setData(nd);
-    if (setContacts && contacts && contacts[nom] !== undefined) {
-      const nc = { ...contacts }; delete nc[nom]; setContacts(nc);
+    setData(prev => { const nd = { ...prev }; delete nd[nom]; return nd; });
+    if (setContacts) {
+      setContacts(prev => {
+        if (!prev || prev[nom] === undefined) return prev;
+        const nc = { ...prev }; delete nc[nom]; return nc;
+      });
     }
   };
 
