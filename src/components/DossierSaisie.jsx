@@ -859,6 +859,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
     provenanceLead: '',
     poseurs: [],
     accordDef: false, consuel: false, observations: '',
+    // 🛠️ Instructions libres pour la pose — incluses dans le message envoyé
+    // au poseur (WhatsApp/email) en plus du descriptif standard (client,
+    // adresse, date, matériel). Ex : 'accès par le portail bleu, pas de
+    // gravier dans la cour, prévoir échelle 4m, branchement Linky à droite'.
+    instructionsPose: '',
     // ⚖️ Litige client : si statut === 'C_LITIGE', le client réclame un
     // remboursement. La régie qui a apporté le dossier doit nous rembourser
     // ce montant (même mécanique que les pénalités de pose).
@@ -1547,6 +1552,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             : []),
       accordDef: d.accordDef || false, consuel: d.consuel || false,
       observations: d.observations || '',
+      instructionsPose: d.instructionsPose || '',
       litigeAccordPdfUrl: d.litigeAccordPdfUrl || '',
       litigeMontantRembourse: d.litigeMontantRembourse || '',
       litigeRegieNom: d.litigeRegieNom || '',
@@ -10185,6 +10191,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
             {!foldedSteps.poseurs && (
             <div className="space-y-1.5">
+              {/* 🛠️ Instructions partagées pour la pose — incluses dans tous
+                  les messages chantier (WhatsApp/email) envoyés aux poseurs. */}
+              <div>
+                <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-1">
+                  🛠️ Instructions pour la pose (optionnel)
+                </label>
+                <textarea
+                  value={d.instructionsPose || ''}
+                  onChange={(e) => onUpdate({ instructionsPose: e.target.value })}
+                  rows={2}
+                  placeholder="Ex : accès par le portail bleu, prévoir échelle 4m, branchement Linky à droite, gravier dans la cour…"
+                  className="w-full px-2 py-1 bg-white border border-emerald-200 rounded text-[10px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400 resize-none"
+                />
+                <div className="text-[9px] text-emerald-600 mt-0.5">💡 Ce texte sera inclus dans le message envoyé à chaque poseur (WhatsApp + email)</div>
+              </div>
               {(d.poseurs || []).map((p, i) => {
                 // Contact poseur : compatible legacy string (juste tel) ET nouveau format { tel, email }
                 const rawContact = p.nom ? (poseursContacts || {})[p.nom] : null;
@@ -10210,8 +10231,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   (d.adresse || d.ville) ? `📍 ${[d.adresse, d.codePostal, d.ville].filter(Boolean).join(', ')}` : '',
                   d.telephone ? `📞 Client : ${d.telephone}` : '',
                   d.email ? `📧 Client : ${d.email}` : '',
-                  d.dateInsta ? `📅 Pose prévue : ${formatDateForSheet(d.dateInsta)}` : '',
+                  d.dateInsta ? `📅 Pose prévue : ${formatDateForSheet(d.dateInsta)}` : '⚠️ Date de pose à confirmer',
                   produitsDuDossier.length > 0 ? `\n📦 Matériel à installer :\n${produitsDuDossier.join('\n')}` : '',
+                  d.instructionsPose ? `\n🛠️ Instructions :\n${d.instructionsPose}` : '',
                 ].filter(Boolean).join('\n');
                 const chantierSubject = `Nouveau chantier à poser — ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''}`;
                 const poseurFromEmail = emailConfig?.smtpUser || gmailOAuth?.email || '';
