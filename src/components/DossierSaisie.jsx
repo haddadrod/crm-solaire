@@ -494,6 +494,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [statutsOrder, setStatutsOrder] = useState(STATUTS.map(s => s.id));
   const [tarifsPoseurs, setTarifsPoseurs] = useState(TARIFS_POSEURS_DEFAULT);
   const [poseursContacts, setPoseursContacts] = useState({}); // { nomPoseur: 'téléphone' } — pour l'envoi WhatsApp
+  // Contacts régies : { nomRegie: { tel, email } } — pour prévenir la régie
+  // par WhatsApp/mail quand le financement est accepté → à programmer en pose.
+  const [regiesContacts, setRegiesContacts] = useState({});
   const [tarifsRegies, setTarifsRegies] = useState(TARIFS_REGIES_DEFAULT);
   const [tarifsInternes, setTarifsInternes] = useState(TARIFS_INTERNES_DEFAULT);
   const [nomsInternes, setNomsInternes] = useState(NOMS_INTERNES_DEFAULT);
@@ -915,6 +918,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         }
       } catch (e) {}
       try {
+        const r = await window.storage.get('regies-contacts');
+        if (r?.value) {
+          const obj = JSON.parse(r.value);
+          if (obj && typeof obj === 'object') setRegiesContacts(obj);
+        }
+      } catch (e) {}
+      try {
         const r = await window.storage.get('tarifs-internes');
         if (r?.value) setTarifsInternes({ ...TARIFS_INTERNES_DEFAULT, ...JSON.parse(r.value) });
       } catch (e) {}
@@ -1097,7 +1107,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     window.storage.set('tarifs-fournisseurs', JSON.stringify(tarifsFournisseurs)).catch(() => {});
     window.storage.set('produits', JSON.stringify(produits)).catch(() => {});
     window.storage.set('poseurs-contacts', JSON.stringify(poseursContacts)).catch(() => {});
-  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, loading]);
+    window.storage.set('regies-contacts', JSON.stringify(regiesContacts)).catch(() => {});
+  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, loading]);
 
   // Si l'utilisateur n'a pas accès à l'onglet courant, retour aux dossiers
   useEffect(() => {
@@ -2453,6 +2464,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             produits={produits} setProduits={setProduits}
             users={users} setUsers={setUsers}
             poseursContacts={poseursContacts} setPoseursContacts={setPoseursContacts}
+            regiesContacts={regiesContacts} setRegiesContacts={setRegiesContacts}
           />
         )}
 
@@ -2578,6 +2590,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             isAdmin={isAdmin}
             permissions={permissions}
             poseursContacts={poseursContacts}
+            regiesContacts={regiesContacts}
           />
         )}
 
@@ -4680,7 +4693,7 @@ function PerfList({ titre, data, medal, border, header, iconColor }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts }) {
   const [section, setSection] = useState('statuts');
   // Nombre de comptes Supabase, remonté par UsersManager pour le badge de l'onglet.
   const [usersCount, setUsersCount] = useState(null);
@@ -4799,7 +4812,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'regies' && (
-        <PrestataireManager titre="🤝 Régies commerciales" description="Tarifs HT — saisissez vos vrais tarifs" data={tarifsRegies} setData={setTarifsRegies} dossiers={dossiers} dossierField="regie" type="régie" produits={produits} />
+        <PrestataireManager titre="🤝 Régies commerciales" description="Tarifs HT + tél/email pour prévenir la régie quand le financement est accepté" data={tarifsRegies} setData={setTarifsRegies} dossiers={dossiers} dossierField="regie" type="régie" produits={produits} contacts={regiesContacts} setContacts={setRegiesContacts} contactsObjectShape={true} />
       )}
 
       {section === 'commissions' && (
@@ -4921,7 +4934,19 @@ function CommissionsInternesManager({ tarifs, setTarifs, noms, setNoms, dossiers
   );
 }
 
-function PrestataireManager({ titre, description, data, setData, dossiers, dossierField, type, produits, contacts, setContacts }) {
+function PrestataireManager({ titre, description, data, setData, dossiers, dossierField, type, produits, contacts, setContacts, contactsObjectShape = false }) {
+  // contactsObjectShape=false : contacts = { [nom]: 'tel' } (legacy poseurs)
+  // contactsObjectShape=true  : contacts = { [nom]: { tel, email } } (régies)
+  const getTel = (nom) => {
+    const c = (contacts || {})[nom];
+    if (c == null) return '';
+    return typeof c === 'string' ? c : (c.tel || '');
+  };
+  const getEmail = (nom) => {
+    const c = (contacts || {})[nom];
+    if (c == null || typeof c === 'string') return '';
+    return c.email || '';
+  };
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
   const noms = Object.keys(data);
@@ -4970,7 +4995,23 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     if (!setContacts) return;
     const nc = { ...(contacts || {}) };
     const v = (tel || '').trim();
-    if (v) nc[nom] = v; else delete nc[nom];
+    if (contactsObjectShape) {
+      const existing = (nc[nom] && typeof nc[nom] === 'object') ? nc[nom] : {};
+      const next = { ...existing, tel: v };
+      if (!next.tel && !next.email) delete nc[nom]; else nc[nom] = next;
+    } else {
+      if (v) nc[nom] = v; else delete nc[nom];
+    }
+    setContacts(nc);
+  };
+  // Email d'un prestataire (uniquement si contactsObjectShape=true).
+  const updateEmail = (nom, email) => {
+    if (!setContacts || !contactsObjectShape) return;
+    const nc = { ...(contacts || {}) };
+    const v = (email || '').trim();
+    const existing = (nc[nom] && typeof nc[nom] === 'object') ? nc[nom] : {};
+    const next = { ...existing, email: v };
+    if (!next.tel && !next.email) delete nc[nom]; else nc[nom] = next;
     setContacts(nc);
   };
 
@@ -5029,10 +5070,20 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                           {setContacts && (
                             <input
                               type="tel"
-                              defaultValue={(contacts || {})[nom] || ''}
+                              defaultValue={getTel(nom)}
                               onBlur={(e) => updateContact(nom, e.target.value)}
                               onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                               placeholder="📞 tél. (WhatsApp)"
+                              className="w-full mt-1 px-2 py-0.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                            />
+                          )}
+                          {setContacts && contactsObjectShape && (
+                            <input
+                              type="email"
+                              defaultValue={getEmail(nom)}
+                              onBlur={(e) => updateEmail(nom, e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              placeholder="📧 email"
                               className="w-full mt-1 px-2 py-0.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
                             />
                           )}
@@ -7925,7 +7976,7 @@ const buildWhatsAppLink = (phone, message) => {
   return `https://wa.me/${n}?text=${encodeURIComponent(message)}`;
 };
 
-function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts }) {
+function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts }) {
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
   const canSeeMarges = isAdmin || permissions?.voirMarges === true;
@@ -8383,6 +8434,75 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   </select>
                 </div>
               )}
+
+              {/* ✅ Accord financement reçu → CTA pour prévenir la régie qui a
+                  apporté le dossier afin qu'elle programme la pose.
+                  S'affiche tant que la date de pose n'est pas remplie. */}
+              {d.statutFin === 'accepté' && !d.dateEnvoiPose && (() => {
+                const regiesDuDossier = (d.regies || []).filter(r => r.nom);
+                if (regiesDuDossier.length === 0) return null;
+                const adresseLignes = [d.adresse, [d.codePostal, d.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+                const message = [
+                  `🌞 Bonjour, accord financement reçu pour ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''} (${d.financement || 'banque'}).`,
+                  '',
+                  d.id ? `Dossier n° ${d.id}` : null,
+                  adresseLignes ? `📍 ${adresseLignes}` : null,
+                  d.telephone ? `📞 ${d.telephone}` : null,
+                  d.puissance ? `☀️ ${d.puissance} Wc` : null,
+                  '',
+                  'Tu peux programmer la pose, merci !',
+                ].filter(v => v != null).join('\n');
+                const mailSubject = `Accord financement — ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''} à programmer en pose`;
+                const mailto = (to) => `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(message)}`;
+                return (
+                  <div className="mt-1.5 p-2 bg-emerald-50 border-2 border-emerald-300 rounded-lg">
+                    <div className="text-[10px] font-bold text-emerald-700 mb-1.5">✅ Accord reçu → prévenir la régie pour programmer la pose</div>
+                    <div className="space-y-1.5">
+                      {regiesDuDossier.map((r, idx) => {
+                        const contact = (regiesContacts || {})[r.nom];
+                        const tel = contact && (typeof contact === 'string' ? contact : contact.tel);
+                        const email = contact && typeof contact === 'object' ? contact.email : '';
+                        const hasContact = tel || email;
+                        return (
+                          <div key={idx} className="bg-white border border-emerald-200 rounded p-1.5">
+                            <div className="text-[10px] font-bold text-slate-700 mb-1">🤝 {r.nom}</div>
+                            {hasContact ? (
+                              <div className="grid grid-cols-2 gap-1">
+                                {tel ? (
+                                  <a
+                                    href={buildWhatsAppLink(tel, message)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[10px] font-bold"
+                                    title={`WhatsApp ${r.nom} (${tel})`}
+                                  >
+                                    📲 WhatsApp
+                                  </a>
+                                ) : (
+                                  <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📲 Pas de tél.</span>
+                                )}
+                                {email ? (
+                                  <a
+                                    href={mailto(email)}
+                                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                    title={`Email ${r.nom} (${email})`}
+                                  >
+                                    📧 Email
+                                  </a>
+                                ) : (
+                                  <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📧 Pas d'email</span>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-[9px] text-amber-600 italic">⚠️ Ajoute le tél/email de {r.nom} dans Réglages → Régies pour pouvoir prévenir en 1 clic</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
 
               {d.dateEnvoiFin && !d.dateRetourFin && d.statutFin === 'envoyé' && (() => {
                 const jours = Math.floor((new Date() - new Date(d.dateEnvoiFin)) / 86400000);
