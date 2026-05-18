@@ -6529,19 +6529,26 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </div>
               </div>
 
-              {formData.dateEnvoiFin && (
-                <div className="mt-3">
-                  <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Statut banque (clique pour changer)</div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <button type="button" onClick={() => setFormData({ ...formData, statutFin: 'envoyé', dateRetourFin: '' })} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'envoyé' || !formData.statutFin ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Envoyé</button>
-                    <button type="button" onClick={() => {
-                      const today = new Date().toISOString().split('T')[0];
-                      setFormData({ ...formData, statutFin: 'accepté', dateRetourFin: formData.dateRetourFin || today, dateAccord: formData.dateAccord || today });
-                    }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
-                    <button type="button" onClick={() => setFormData({ ...formData, statutFin: 'refusé', dateRetourFin: formData.dateRetourFin || new Date().toISOString().split('T')[0] })} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
-                  </div>
+              {/* Statut banque — toujours visible. Chaque bouton remplit
+                  les dates manquantes pour zéro friction (voir QuickViewPanel
+                  pour la même logique). */}
+              <div className="mt-3">
+                <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Statut banque (clique pour changer)</div>
+                <div className="grid grid-cols-3 gap-2">
+                  <button type="button" onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    setFormData({ ...formData, statutFin: 'envoyé', dateEnvoiFin: formData.dateEnvoiFin || today, dateRetourFin: '', dateAccord: '' });
+                  }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'envoyé' || !formData.statutFin ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Envoyé</button>
+                  <button type="button" onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    setFormData({ ...formData, statutFin: 'accepté', dateEnvoiFin: formData.dateEnvoiFin || today, dateRetourFin: formData.dateRetourFin || today, dateAccord: formData.dateAccord || today });
+                  }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
+                  <button type="button" onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    setFormData({ ...formData, statutFin: 'refusé', dateEnvoiFin: formData.dateEnvoiFin || today, dateRetourFin: formData.dateRetourFin || today });
+                  }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
-              )}
+              </div>
 
               {/* Bloc retiré : ancien bouton "Annuler décision" remplacé par les 3 boutons toggleables ci-dessus */}
 
@@ -8087,19 +8094,28 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
               </div>
 
-              {d.dateEnvoiFin && (
-                <div className="mt-1.5">
-                  <div className="text-[9px] font-semibold text-slate-500 uppercase mb-1">Statut banque (clique pour changer)</div>
-                  <div className="grid grid-cols-3 gap-1">
-                    <button onClick={() => onUpdate({ statutFin: 'envoyé', dateRetourFin: '' })} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'envoyé' || !d.statutFin ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Envoyé</button>
-                    <button onClick={() => {
-                      const today = new Date().toISOString().split('T')[0];
-                      onUpdate({ statutFin: 'accepté', dateRetourFin: d.dateRetourFin || today, dateAccord: d.dateAccord || today });
-                    }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
-                    <button onClick={() => onUpdate({ statutFin: 'refusé', dateRetourFin: d.dateRetourFin || new Date().toISOString().split('T')[0] })} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
-                  </div>
+              {/* Statut banque — toujours visible. Chaque bouton remplit les
+                  dates manquantes pour zéro friction :
+                  - ⏳ Envoyé : si pas d'envoi → today, reset retour/accord
+                  - ✓ Accepté : envoi+retour+accord auto à today si vides
+                  - ✗ Refusé : envoi+retour auto à today si vides */}
+              <div className="mt-1.5">
+                <div className="text-[9px] font-semibold text-slate-500 uppercase mb-1">Statut banque (clique pour changer)</div>
+                <div className="grid grid-cols-3 gap-1">
+                  <button onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    onUpdate({ statutFin: 'envoyé', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: '', dateAccord: '' });
+                  }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'envoyé' || !d.statutFin ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Envoyé</button>
+                  <button onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    onUpdate({ statutFin: 'accepté', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: d.dateRetourFin || today, dateAccord: d.dateAccord || today });
+                  }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
+                  <button onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    onUpdate({ statutFin: 'refusé', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: d.dateRetourFin || today });
+                  }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
-              )}
+              </div>
 
               {d.statutFin === 'refusé' && (
                 <div className="mt-1.5 p-2 bg-rose-50 border-2 border-rose-300 rounded-lg">
