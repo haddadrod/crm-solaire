@@ -8980,19 +8980,44 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
           {step === 1 && (
             <div className="space-y-4">
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl text-sm text-blue-800 leading-relaxed">
-                💡 <strong>Comment faire :</strong><br />
-                1. Ouvre ton Google Sheet avec tes dossiers<br />
-                2. Sélectionne les cellules (avec ou sans la ligne d'en-tête)<br />
-                3. <strong>Ctrl+C</strong> (ou Cmd+C) pour copier<br />
-                4. <strong>Ctrl+V</strong> dans la zone ci-dessous
+                💡 <strong>Deux façons :</strong><br />
+                <strong>A.</strong> Bouton <strong>"📂 Charger un CSV"</strong> ci-dessous (recommandé si tu as déjà un fichier CSV/Excel)<br />
+                <strong>B.</strong> Copier-coller : <strong>Ctrl+C</strong> dans Google Sheet/Excel → <strong>Ctrl+V</strong> dans la zone ci-dessous
               </div>
-              <div>
-                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700 mb-2">
+              <div className="flex items-center gap-3 flex-wrap">
+                <label className="inline-flex items-center gap-2 px-4 py-2 bg-violet-500 hover:bg-violet-600 text-white rounded-lg text-sm font-bold cursor-pointer">
+                  📂 Charger un CSV
+                  <input
+                    type="file"
+                    accept=".csv,.tsv,.txt,text/csv,text/tab-separated-values,text/plain"
+                    className="hidden"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      // Lit le fichier en UTF-8 (la plupart des CSV). Si caractères
+                      // bizarres → l'utilisateur peut toujours coller manuellement.
+                      try {
+                        const text = await file.text();
+                        setRawText(text);
+                      } catch (err) {
+                        alert('Erreur lecture fichier : ' + err.message);
+                      }
+                      // Reset l'input pour permettre de re-charger le même fichier
+                      e.target.value = '';
+                    }}
+                  />
+                </label>
+                {rawText && (
+                  <button onClick={() => setRawText('')} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold">
+                    ✕ Vider
+                  </button>
+                )}
+                <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
                   <input type="checkbox" checked={hasHeaders} onChange={(e) => setHasHeaders(e.target.checked)} className="w-4 h-4 accent-violet-500" />
-                  La première ligne contient les noms des colonnes (en-têtes)
+                  1ère ligne = en-têtes
                 </label>
               </div>
-              <textarea value={rawText} onChange={(e) => setRawText(e.target.value)} placeholder="Colle ici ton tableau..." className="w-full h-64 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-violet-400 text-xs font-mono" />
+              <textarea value={rawText} onChange={(e) => setRawText(e.target.value)} placeholder="Colle ici ton tableau OU charge un CSV ci-dessus…" className="w-full h-64 px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-violet-400 text-xs font-mono" />
               <div className="text-xs text-slate-500">
                 {parsed.length > 0 ? <span className="text-emerald-600 font-semibold">✓ {parsed.length} ligne{parsed.length > 1 ? 's' : ''} détectée{parsed.length > 1 ? 's' : ''} ({parsed[0]?.length || 0} colonne{(parsed[0]?.length || 0) > 1 ? 's' : ''})</span> : 'Aucune donnée détectée pour le moment'}
               </div>
