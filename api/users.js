@@ -104,7 +104,7 @@ export default async function handler(req, res) {
       }
 
       // Création normale (bootstrap → 1er admin, ou admin connecté → autre user)
-      const { email, password, display_name, emoji, role, linkedTo } = body;
+      const { email, password, display_name, emoji, role, linkedTo, tel } = body;
       if (!email || !password) return json(res, 400, { error: 'email et password requis' });
       if (String(password).length < 6) return json(res, 400, { error: 'mot de passe min 6 caractères' });
 
@@ -119,6 +119,11 @@ export default async function handler(req, res) {
       if ((finalRole === 'poseur' || finalRole === 'regie') && linkedTo) {
         userMeta.linkedTo = String(linkedTo).trim();
       }
+      // Téléphone (WhatsApp/SMS) — optionnel, surtout utilisé pour les rôles
+      // poseur/régie afin que le CRM puisse relancer le prestataire via wa.me.
+      if (tel) {
+        userMeta.tel = String(tel).trim();
+      }
 
       const { data, error } = await admin.auth.admin.createUser({
         email: String(email).trim(),
@@ -132,7 +137,7 @@ export default async function handler(req, res) {
 
     if (req.method === 'PATCH') {
       const body = req.body || {};
-      const { user_id, password, user_metadata } = body;
+      const { user_id, password, user_metadata, email } = body;
       if (!user_id) return json(res, 400, { error: 'user_id requis' });
       const updates = {};
       if (password) {
@@ -141,6 +146,12 @@ export default async function handler(req, res) {
       }
       if (user_metadata && typeof user_metadata === 'object') {
         updates.user_metadata = user_metadata;
+      }
+      if (email && typeof email === 'string' && email.trim()) {
+        const e = email.trim();
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return json(res, 400, { error: 'email invalide' });
+        updates.email = e;
+        updates.email_confirm = true; // pas de mail de confirmation, on fait confiance à l'admin
       }
       if (Object.keys(updates).length === 0) return json(res, 400, { error: 'rien à mettre à jour' });
       const { data, error } = await admin.auth.admin.updateUserById(user_id, updates);

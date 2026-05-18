@@ -685,6 +685,29 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const REGIES = useMemo(() => Object.keys(tarifsRegies), [tarifsRegies]);
   const FOURNISSEURS = listeFournisseurs;
 
+  // Contacts effectifs des prestataires = source de vérité = comptes
+  // utilisateurs Supabase (via user.linkedTo). On fait l'override des
+  // anciens poseursContacts/regiesContacts pour ne plus avoir 2 endroits
+  // qui se contredisent et causent le bug 'l'email disparaît'.
+  // Fallback sur les contacts legacy pour les prestataires sans compte.
+  const buildEffectiveContacts = (kind, legacy) => {
+    const out = {};
+    users.forEach(u => {
+      if (u.role === kind && u.linkedTo && (u.tel || u.email)) {
+        out[u.linkedTo] = { tel: u.tel || '', email: u.email || '' };
+      }
+    });
+    Object.keys(legacy || {}).forEach(nom => {
+      if (out[nom]) return; // user account prime
+      const c = legacy[nom];
+      if (!c) return;
+      out[nom] = typeof c === 'string' ? { tel: c, email: '' } : { tel: c.tel || '', email: c.email || '' };
+    });
+    return out;
+  };
+  const effectivePoseursContacts = useMemo(() => buildEffectiveContacts('poseur', poseursContacts), [users, poseursContacts]);
+  const effectiveRegiesContacts = useMemo(() => buildEffectiveContacts('regie', regiesContacts), [users, regiesContacts]);
+
   // Rôle de l'utilisateur courant : lu directement dans le user_metadata Supabase.
   // Fallback : recherche dans les profils locaux (anciens dossiers).
   const authUserRole = useMemo(() => {
@@ -2899,8 +2922,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
             produits={produits}
             isAdmin={isAdmin}
             permissions={permissions}
-            poseursContacts={poseursContacts}
-            regiesContacts={regiesContacts}
+            poseursContacts={effectivePoseursContacts}
+            regiesContacts={effectiveRegiesContacts}
             emailConfig={emailConfig}
             gmailOAuth={gmailOAuth}
           />
@@ -2943,6 +2966,15 @@ export default function DossierSaisie({ authUser, onLogout }) {
             type={showAlertesType}
             dashboard={dashboard}
             STATUTS={STATUTS}
+            poseursContacts={effectivePoseursContacts}
+            regiesContacts={effectiveRegiesContacts}
+            onLogAction={(localId, entry) => {
+              const userTag = currentUser || '(anonyme)';
+              setDossiers(prev => prev.map(d => d.localId === localId
+                ? { ...d, historique: [...(d.historique || []), { date: new Date().toISOString(), user: userTag, ...entry }] }
+                : d
+              ));
+            }}
             onClose={() => setShowAlertesType(null)}
             onSelect={(localId) => {
               // Mappe le type d'alerte vers la section à scroller / déplier
@@ -5232,7 +5264,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'poseurs' && (
-        <PrestataireManager titre="🔧 Poseurs" description="Tarifs HT + tél/email pour envoyer le chantier au poseur (WhatsApp ou email)" data={tarifsPoseurs} setData={setTarifsPoseurs} dossiers={dossiers} dossierField="poseur" type="poseur" produits={produits} contacts={poseursContacts} setContacts={setPoseursContacts} contactsObjectShape={true} />
+        <PrestataireManager titre="🔧 Poseurs" description="Tarifs HT par puissance. Tél/email du poseur → onglet Utilisateurs (compte rattaché à ce poseur)." data={tarifsPoseurs} setData={setTarifsPoseurs} dossiers={dossiers} dossierField="poseur" type="poseur" produits={produits} contacts={poseursContacts} setContacts={setPoseursContacts} contactsObjectShape={true} />
       )}
 
       {section === 'fournisseurs' && (
@@ -5240,7 +5272,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'regies' && (
-        <PrestataireManager titre="🤝 Régies commerciales" description="Tarifs HT + tél/email pour prévenir la régie quand le financement est accepté" data={tarifsRegies} setData={setTarifsRegies} dossiers={dossiers} dossierField="regie" type="régie" produits={produits} contacts={regiesContacts} setContacts={setRegiesContacts} contactsObjectShape={true} />
+        <PrestataireManager titre="🤝 Régies commerciales" description="Tarifs HT par puissance. Tél/email de la régie → onglet Utilisateurs (compte rattaché à cette régie)." data={tarifsRegies} setData={setTarifsRegies} dossiers={dossiers} dossierField="regie" type="régie" produits={produits} contacts={regiesContacts} setContacts={setRegiesContacts} contactsObjectShape={true} />
       )}
 
       {section === 'commissions' && (
@@ -5836,15 +5868,7 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                       <tr key={nom} className="border-t border-slate-200 hover:bg-slate-50 group">
                         <td className="px-2 py-1.5 sticky left-0 bg-white group-hover:bg-slate-50 z-10 min-w-[140px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">
                           <input type="text" defaultValue={nom} onBlur={(e) => rename(nom, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="w-full px-2 py-1 bg-transparent border border-transparent hover:border-slate-300 focus:border-violet-400 focus:bg-white focus:outline-none rounded text-xs font-semibold" />
-                          {setContacts && (
-                            <ContactRowEditor
-                              nom={nom}
-                              currentTel={getTel(nom)}
-                              currentEmail={contactsObjectShape ? getEmail(nom) : null}
-                              onSave={(tel, email) => saveContact(nom, tel, email)}
-                              showEmail={contactsObjectShape}
-                            />
-                          )}
+                          {/* Tél/email gérés dans Réglages → Utilisateurs (compte rattaché à ce {type}) — source de vérité unique, plus de bug d'effacement */}
                         </td>
                         {PUISSANCES_PRINCIPALES.map(p => {
                           const isExact = data[nom][p] !== undefined;
@@ -5930,6 +5954,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
   const [newEmoji, setNewEmoji] = useState('👤');
   const [newRole, setNewRole] = useState('commercial');
   const [newLinkedTo, setNewLinkedTo] = useState(''); // poseur/régie rattaché
+  const [newTel, setNewTel] = useState(''); // 📞 tél (WhatsApp/SMS) — surtout pour les poseurs/régies
   const [supabaseUsers, setSupabaseUsers] = useState([]);
   const [loadingSupabase, setLoadingSupabase] = useState(false);
   const [supabaseError, setSupabaseError] = useState('');
@@ -5967,15 +5992,35 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
     return data;
   };
 
-  // Récupère la liste des utilisateurs Supabase
+  // Récupère la liste des utilisateurs Supabase + sync le state local users
+  // (qui sert au reste du CRM, notamment pour récupérer tél/email d'un poseur
+  // ou d'une régie à partir de leur compte rattaché).
   const fetchSupabaseUsers = async () => {
     setLoadingSupabase(true);
     setSupabaseError('');
     try {
       const data = await callUsersApi('GET');
-      setSupabaseUsers(data.users || []);
+      const list = data.users || [];
+      setSupabaseUsers(list);
       setBootstrapMode(!!data.bootstrap);
-      if (onCountChange) onCountChange((data.users || []).length);
+      if (onCountChange) onCountChange(list.length);
+      // Sync local users : rebuild depuis Supabase pour que linkedTo/tel/email
+      // soient à jour partout (le CRM utilise users[].linkedTo pour résoudre
+      // les contacts tél/email des prestataires).
+      const enriched = list.map(u => {
+        const m = u.user_metadata || {};
+        return {
+          name: m.display_name || u.email?.split('@')[0] || '(sans nom)',
+          emoji: m.emoji || '👤',
+          role: m.role || 'commercial',
+          email: u.email || '',
+          linkedTo: m.linkedTo || '',
+          tel: m.tel || '',
+        };
+      });
+      // Préserve les users locaux qui n'ont pas de compte Supabase (ex : '(anonyme)')
+      const localOnly = (users || []).filter(u => !enriched.find(e => e.name.toLowerCase() === (u.name || '').toLowerCase()));
+      setUsers([...enriched, ...localOnly]);
     } catch (e) {
       setSupabaseError(`Erreur lors du chargement : ${e.message}`);
       console.error(e);
@@ -6035,6 +6080,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
         role: newRole,
       };
       if (newRole === 'poseur' || newRole === 'regie') meta.linkedTo = newLinkedTo;
+      if (newTel.trim()) meta.tel = newTel.trim();
       const data = await callUsersApi('POST', { body: meta });
       const bootstrapMsg = data.bootstrapped ? ' (1er compte → admin auto)' : '';
       setSupabaseSuccess(`✅ Compte créé pour ${newEmail.trim()}${bootstrapMsg} ! Mot de passe : ${newPassword}`);
@@ -6042,7 +6088,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
       if (!users.find(u => u.name.toLowerCase() === displayName.toLowerCase())) {
         setUsers([...users, { name: displayName, emoji: newEmoji.trim() || '👤', role: data.bootstrapped ? 'admin' : newRole, email: newEmail.trim() }]);
       }
-      setNewName(''); setNewEmail(''); setNewPassword(''); setNewEmoji('👤'); setNewRole('commercial'); setNewLinkedTo('');
+      setNewName(''); setNewEmail(''); setNewPassword(''); setNewEmoji('👤'); setNewRole('commercial'); setNewLinkedTo(''); setNewTel('');
       setShowAdd(false);
       await fetchSupabaseUsers();
     } catch (e) {
@@ -6126,6 +6172,25 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
     } catch (e) {
       setSupabaseError(`Erreur : ${e.message}`);
       console.error(e);
+    }
+    setLoadingSupabase(false);
+  };
+
+  // Change l'email (= login) d'un compte Supabase.
+  const updateSupabaseUserEmail = async (user, newEmailRaw) => {
+    const newE = (newEmailRaw || '').trim();
+    if (!newE || newE === user.email) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newE)) { alert('Email invalide'); return; }
+    if (!window.confirm(`⚠️ Changer l'email de connexion de ${user.email} → ${newE} ?\n\nL'utilisateur devra utiliser ce nouvel email pour se connecter.`)) return;
+    setLoadingSupabase(true);
+    setSupabaseError('');
+    setSupabaseSuccess('');
+    try {
+      await callUsersApi('PATCH', { body: { user_id: user.id, email: newE } });
+      setSupabaseSuccess(`✅ Email mis à jour : ${user.email} → ${newE}`);
+      await fetchSupabaseUsers();
+    } catch (e) {
+      setSupabaseError(`Erreur : ${e.message}`);
     }
     setLoadingSupabase(false);
   };
@@ -6252,6 +6317,12 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                         </select>
                       </div>
                     )}
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">
+                        📞 Téléphone (WhatsApp/SMS) <span className="text-slate-400 normal-case font-normal">— optionnel mais recommandé pour les poseurs/régies (relances facture)</span>
+                      </label>
+                      <input type="tel" value={newTel} onChange={(e) => setNewTel(e.target.value)} placeholder="0612345678" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm" />
+                    </div>
                   </div>
                   <div className="mt-3 flex gap-2 justify-end">
                     <button onClick={() => { setShowAdd(false); setNewEmail(''); setNewPassword(''); setNewName(''); setSupabaseError(''); }} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-semibold">Annuler</button>
@@ -6272,69 +6343,118 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                   <p className="text-xs mt-1">Clique sur <strong>"Ajouter un membre"</strong> pour créer le premier compte.</p>
                 </div>
               ) : (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {supabaseUsers.map(u => {
                     const meta = u.user_metadata || {};
                     const displayName = meta.display_name || u.email?.split('@')[0] || 'Sans nom';
                     const emoji = meta.emoji || '👤';
                     const role = meta.role || 'commercial';
                     const roleInfo = ROLES.find(r => r.id === role) || ROLES[1];
+                    const fieldCls = "w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100";
+                    const labelCls = "block text-[10px] font-bold text-slate-500 uppercase mb-1";
                     return (
-                      <div key={u.id} className="rounded-xl border border-slate-200 bg-white p-3 flex items-center gap-3 flex-wrap">
-                        <input
-                          type="text"
-                          defaultValue={emoji}
-                          onBlur={(e) => updateSupabaseUserMeta(u, { emoji: e.target.value.slice(0, 4) || '👤' })}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                          maxLength={4}
-                          disabled={loadingSupabase}
-                          className="w-11 px-1 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-center text-lg"
-                          title="Emoji du compte"
-                        />
-                        <div className="flex-1 min-w-[180px]">
+                      <div key={u.id} className="rounded-2xl border-2 border-slate-200 bg-white p-4 hover:border-slate-300 transition-colors">
+                        {/* Ligne 1 : emoji + nom affiché + actions */}
+                        <div className="flex items-start gap-3 mb-3 pb-3 border-b border-slate-100">
                           <input
                             type="text"
-                            defaultValue={displayName}
-                            onBlur={(e) => { const v = e.target.value.trim(); if (v) updateSupabaseUserMeta(u, { display_name: v }); }}
+                            defaultValue={emoji}
+                            onBlur={(e) => updateSupabaseUserMeta(u, { emoji: e.target.value.slice(0, 4) || '👤' })}
                             onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                            maxLength={4}
                             disabled={loadingSupabase}
-                            className="w-full font-bold text-sm text-slate-800 bg-transparent border border-transparent hover:border-slate-200 focus:border-slate-300 focus:bg-slate-50 rounded px-1 py-0.5"
-                            title="Nom affiché — clique pour modifier"
+                            className="w-12 h-12 px-1 bg-slate-50 border border-slate-200 rounded-xl text-center text-2xl flex-shrink-0"
+                            title="Emoji du compte (clique pour modifier)"
                           />
-                          <div className="text-[11px] text-slate-500 px-1">{u.email}</div>
+                          <div className="flex-1 min-w-0">
+                            <label className={labelCls}>👤 Prénom / Nom affiché</label>
+                            <input
+                              type="text"
+                              defaultValue={displayName}
+                              onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== displayName) updateSupabaseUserMeta(u, { display_name: v }); }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              disabled={loadingSupabase}
+                              className={fieldCls + ' font-bold text-slate-800'}
+                              placeholder="Marie Dupont"
+                            />
+                          </div>
+                          <div className="flex flex-col gap-1 flex-shrink-0">
+                            <button onClick={() => resetPasswordSupabaseUser(u.id, u.email)} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold whitespace-nowrap" title="Changer le mot de passe">
+                              🔑 Reset mdp
+                            </button>
+                            <button onClick={() => deleteSupabaseUser(u.id, u.email)} className="px-3 py-1.5 bg-rose-50 hover:bg-rose-500 hover:text-white text-rose-600 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 whitespace-nowrap" title="Supprimer le compte">
+                              <Trash2 className="w-3 h-3" /> Supprimer
+                            </button>
+                          </div>
                         </div>
-                        <select
-                          value={role}
-                          onChange={(e) => updateSupabaseUserRole(u, e.target.value)}
-                          disabled={loadingSupabase}
-                          className={`px-2 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${roleInfo.color}`}
-                          title="Changer le rôle"
-                        >
-                          {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
-                        </select>
-                        {(role === 'poseur' || role === 'regie') && (
-                          <select
-                            value={meta.linkedTo || ''}
-                            onChange={(e) => updateSupabaseUserLinkedTo(u, e.target.value)}
-                            disabled={loadingSupabase}
-                            className={`px-2 py-1 rounded-lg text-[11px] font-bold border cursor-pointer ${meta.linkedTo ? 'bg-slate-50 border-slate-300 text-slate-700' : 'bg-rose-50 border-rose-300 text-rose-600'}`}
-                            title={`Rattaché à ${role === 'poseur' ? 'ce poseur' : 'cette régie'}`}
-                          >
-                            <option value="">⚠️ {role === 'poseur' ? 'Poseur' : 'Régie'} ?</option>
-                            {(role === 'poseur' ? poseursList : regiesList).map(n => <option key={n} value={n}>{n}</option>)}
-                          </select>
+
+                        {/* Ligne 2 : email + tél */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                          <div>
+                            <label className={labelCls}>✉️ Email (login)</label>
+                            <input
+                              type="email"
+                              defaultValue={u.email || ''}
+                              onBlur={(e) => updateSupabaseUserEmail(u, e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              disabled={loadingSupabase}
+                              className={fieldCls}
+                              placeholder="marie@email.com"
+                            />
+                          </div>
+                          <div>
+                            <label className={labelCls}>📞 Téléphone (WhatsApp/SMS)</label>
+                            <input
+                              type="tel"
+                              defaultValue={meta.tel || ''}
+                              onBlur={(e) => {
+                                const v = e.target.value.trim();
+                                if (v === (meta.tel || '')) return;
+                                updateSupabaseUserMeta(u, { tel: v });
+                              }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              disabled={loadingSupabase}
+                              className={fieldCls}
+                              placeholder="0612345678"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Ligne 3 : rôle + rattachement + dernière connexion */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+                          <div>
+                            <label className={labelCls}>🎭 Rôle</label>
+                            <select
+                              value={role}
+                              onChange={(e) => updateSupabaseUserRole(u, e.target.value)}
+                              disabled={loadingSupabase}
+                              className={`w-full px-2.5 py-1.5 rounded-lg text-sm font-bold border-2 cursor-pointer ${roleInfo.color}`}
+                            >
+                              {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+                            </select>
+                          </div>
+                          {(role === 'poseur' || role === 'regie') ? (
+                            <div>
+                              <label className={labelCls}>🔗 Rattaché à {role === 'poseur' ? 'ce poseur' : 'cette régie'}</label>
+                              <select
+                                value={meta.linkedTo || ''}
+                                onChange={(e) => updateSupabaseUserLinkedTo(u, e.target.value)}
+                                disabled={loadingSupabase}
+                                className={`w-full px-2.5 py-1.5 rounded-lg text-sm font-bold border-2 cursor-pointer ${meta.linkedTo ? 'bg-white border-slate-300 text-slate-700' : 'bg-rose-50 border-rose-300 text-rose-700'}`}
+                              >
+                                <option value="">⚠️ Choisir {role === 'poseur' ? 'le poseur' : 'la régie'}</option>
+                                {(role === 'poseur' ? poseursList : regiesList).map(n => <option key={n} value={n}>{n}</option>)}
+                              </select>
+                            </div>
+                          ) : (
+                            <div className="text-[11px] text-slate-400 italic self-center">
+                              {u.last_sign_in_at ? `🕐 Dernière connexion : ${new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}` : '🆕 Jamais connecté'}
+                            </div>
+                          )}
+                        </div>
+                        {(role === 'poseur' || role === 'regie') && u.last_sign_in_at && (
+                          <div className="mt-2 text-[11px] text-slate-400 italic">🕐 Dernière connexion : {new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}</div>
                         )}
-                        {u.last_sign_in_at && (
-                          <span className="text-[10px] text-slate-400">
-                            Dernière connexion : {new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}
-                          </span>
-                        )}
-                        <button onClick={() => resetPasswordSupabaseUser(u.id, u.email)} className="px-2 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-lg text-[10px] font-semibold" title="Changer le mot de passe">
-                          🔑 Reset mdp
-                        </button>
-                        <button onClick={() => deleteSupabaseUser(u.id, u.email)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg" title="Supprimer le compte">
-                          <Trash2 className="w-4 h-4" />
-                        </button>
                       </div>
                     );
                   })}
@@ -8824,6 +8944,31 @@ function HistoriqueModal({ dossier, onClose }) {
                               ({isCQ ? 'Contrôle qualité' : 'Contrôle livraison'})
                             </span>
                           </div>
+                        </div>
+                      </div>
+                    );
+                  }
+                  // Relance WhatsApp (ex : facture manquante)
+                  if (h.action === 'relance_whatsapp') {
+                    const kindEmoji = h.cible_kind === 'poseur' ? '🔧' : h.cible_kind === 'regie' ? '🤝' : h.cible_kind === 'fournisseur' ? '📦' : '👤';
+                    const motifLabel = h.motif === 'facture_manquante' ? 'facture manquante' : (h.motif || '');
+                    return (
+                      <div key={`r-${i}`} className="relative pl-10">
+                        <div className="absolute left-0 top-0.5 w-8 h-8 rounded-full flex items-center justify-center text-base shadow-md text-white bg-gradient-to-br from-emerald-400 to-teal-500">
+                          📲
+                        </div>
+                        <div className="rounded-xl p-3 border bg-emerald-50 border-emerald-200">
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                            📅 {formatDateTime(h.date)}
+                          </div>
+                          <div className="text-sm font-bold text-emerald-700">
+                            📲 Relance WhatsApp initiée
+                            <span className="text-xs font-normal text-slate-600 ml-1">
+                              à {kindEmoji} <strong>{h.cible_nom}</strong>{motifLabel ? ` (${motifLabel})` : ''}
+                            </span>
+                          </div>
+                          {h.user && <div className="text-[10px] text-slate-500 mt-1">👤 par {h.user}</div>}
+                          <div className="text-[9px] text-slate-400 italic mt-1">Le lien WhatsApp a été ouvert — la confirmation d'envoi se fait hors CRM.</div>
                         </div>
                       </div>
                     );
@@ -11870,7 +12015,7 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
 
 // ===================== MODAL ALERTES =====================
 
-function AlertesModal({ type, dashboard, STATUTS, onClose, onSelect }) {
+function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onLogAction, onClose, onSelect }) {
   const config = {
     controleQualite: {
       title: '📋 Contrôle qualité — dossiers à valider',
@@ -12010,17 +12155,58 @@ function AlertesModal({ type, dashboard, STATUTS, onClose, onSelect }) {
     },
     facturesManquantes: {
       title: '🧾 Factures manquantes (compta)',
-      subtitle: 'Dossiers posés où les factures poseur / régie / fournisseur ne sont pas encore reçues',
+      subtitle: 'Dossiers posés où les factures poseur / régie / fournisseur ne sont pas encore reçues. Clic 📲 = relance WhatsApp directe.',
       items: dashboard.rappelsFacturesManquantes || [],
       gradient: 'from-fuchsia-500 to-pink-500',
       bgHeader: 'from-fuchsia-50 to-pink-50',
       borderColor: 'border-fuchsia-200',
       lineLabel: (d, r) => {
-        const parts = [];
-        if (r.poseurs?.length) parts.push(`🔧 ${r.poseurs.join(', ')}`);
-        if (r.regies?.length) parts.push(`🤝 ${r.regies.join(', ')}`);
-        if (r.fournisseurs?.length) parts.push(`📦 ${r.fournisseurs.join(', ')}`);
-        return `Manque : ${parts.join(' · ')}`;
+        // Construit pour chaque prestataire manquant : nom + bouton WhatsApp si on a son tél.
+        const datePose = d.dateInsta ? new Date(d.dateInsta).toLocaleDateString('fr-FR') : 'récemment';
+        const clientLabel = `${d.nom || ''}${d.prenom ? ' ' + d.prenom : ''}`.trim();
+        const buildMsg = (kind, nom) => `Bonjour ${nom},\n\nOn n'a pas encore reçu ta facture pour le chantier de ${clientLabel} posé le ${datePose}. Tu peux nous l'envoyer dès que possible ?\n\nMerci !`;
+        const getTel = (contacts, nom) => {
+          const c = (contacts || {})[nom];
+          if (!c) return '';
+          return typeof c === 'string' ? c : (c.tel || '');
+        };
+        const renderChip = (emoji, nom, tel, kind) => {
+          if (!tel) return <span key={`${kind}:${nom}`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold">{emoji} {nom}</span>;
+          const link = buildWhatsAppLink(tel, buildMsg(kind, nom));
+          return (
+            <a
+              key={`${kind}:${nom}`}
+              href={link}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => {
+                e.stopPropagation();
+                // Log dans l'historique du dossier : WhatsApp initié pour ce
+                // prestataire. NB : on ne peut pas savoir si tu cliques 'Envoyer'
+                // dans WhatsApp — on log seulement l'ouverture du lien.
+                if (onLogAction) {
+                  onLogAction(d.localId, {
+                    action: 'relance_whatsapp',
+                    cible_kind: kind,
+                    cible_nom: nom,
+                    motif: 'facture_manquante',
+                    tel,
+                  });
+                }
+              }}
+              title={`Relancer ${nom} sur WhatsApp (log dans l'historique du dossier)`}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 text-[10px] font-semibold"
+            >
+              📲 {emoji} {nom}
+            </a>
+          );
+        };
+        const chips = [
+          ...(r.poseurs || []).map(nom => renderChip('🔧', nom, getTel(poseursContacts, nom), 'poseur')),
+          ...(r.regies || []).map(nom => renderChip('🤝', nom, getTel(regiesContacts, nom), 'regie')),
+          ...(r.fournisseurs || []).map(nom => renderChip('📦', nom, '', 'fournisseur')),
+        ];
+        return <div className="flex items-center gap-1 flex-wrap">{chips}</div>;
       },
       suffixLabel: 'depuis pose',
     },
