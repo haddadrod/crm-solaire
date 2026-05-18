@@ -5948,13 +5948,15 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
 
 function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList = [], onCountChange }) {
   const [showAdd, setShowAdd] = useState(false);
-  const [newName, setNewName] = useState('');
+  const [newName, setNewName] = useState(''); // = nom (display_name)
+  const [newPrenom, setNewPrenom] = useState('');
   const [newEmail, setNewEmail] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [newEmoji, setNewEmoji] = useState('👤');
   const [newRole, setNewRole] = useState('commercial');
   const [newLinkedTo, setNewLinkedTo] = useState(''); // poseur/régie rattaché
   const [newTel, setNewTel] = useState(''); // 📞 tél (WhatsApp/SMS) — surtout pour les poseurs/régies
+  const [expandedUserId, setExpandedUserId] = useState(null); // ID du compte en cours d'édition
   const [supabaseUsers, setSupabaseUsers] = useState([]);
   const [loadingSupabase, setLoadingSupabase] = useState(false);
   const [supabaseError, setSupabaseError] = useState('');
@@ -6011,6 +6013,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
         const m = u.user_metadata || {};
         return {
           name: m.display_name || u.email?.split('@')[0] || '(sans nom)',
+          prenom: m.prenom || '',
           emoji: m.emoji || '👤',
           role: m.role || 'commercial',
           email: u.email || '',
@@ -6079,6 +6082,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
         emoji: newEmoji.trim() || '👤',
         role: newRole,
       };
+      if (newPrenom.trim()) meta.prenom = newPrenom.trim();
       if (newRole === 'poseur' || newRole === 'regie') meta.linkedTo = newLinkedTo;
       if (newTel.trim()) meta.tel = newTel.trim();
       const data = await callUsersApi('POST', { body: meta });
@@ -6088,7 +6092,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
       if (!users.find(u => u.name.toLowerCase() === displayName.toLowerCase())) {
         setUsers([...users, { name: displayName, emoji: newEmoji.trim() || '👤', role: data.bootstrapped ? 'admin' : newRole, email: newEmail.trim() }]);
       }
-      setNewName(''); setNewEmail(''); setNewPassword(''); setNewEmoji('👤'); setNewRole('commercial'); setNewLinkedTo(''); setNewTel('');
+      setNewName(''); setNewPrenom(''); setNewEmail(''); setNewPassword(''); setNewEmoji('👤'); setNewRole('commercial'); setNewLinkedTo(''); setNewTel('');
       setShowAdd(false);
       await fetchSupabaseUsers();
     } catch (e) {
@@ -6280,10 +6284,14 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
               {showAdd && (
                 <div className="mb-4 p-4 bg-emerald-50 border-2 border-emerald-300 rounded-2xl">
                   <h3 className="text-sm font-bold text-emerald-800 mb-3">➕ Nouveau membre</h3>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Nom affiché</label>
-                      <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Marie Dupont" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm" />
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Prénom</label>
+                      <input type="text" value={newPrenom} onChange={(e) => setNewPrenom(e.target.value)} placeholder="Marie" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm" />
+                    </div>
+                    <div>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Nom</label>
+                      <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Dupont" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm" />
                     </div>
                     <div>
                       <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Emoji</label>
@@ -6343,53 +6351,113 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                   <p className="text-xs mt-1">Clique sur <strong>"Ajouter un membre"</strong> pour créer le premier compte.</p>
                 </div>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-1.5">
                   {supabaseUsers.map(u => {
                     const meta = u.user_metadata || {};
                     const displayName = meta.display_name || u.email?.split('@')[0] || 'Sans nom';
+                    const prenom = meta.prenom || '';
+                    const fullName = prenom ? `${prenom} ${displayName}`.trim() : displayName;
                     const emoji = meta.emoji || '👤';
                     const role = meta.role || 'commercial';
                     const roleInfo = ROLES.find(r => r.id === role) || ROLES[1];
+                    const tel = meta.tel || '';
+                    const linkedTo = meta.linkedTo || '';
+                    const isExpanded = expandedUserId === u.id;
                     const fieldCls = "w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100";
                     const labelCls = "block text-[10px] font-bold text-slate-500 uppercase mb-1";
-                    return (
-                      <div key={u.id} className="rounded-2xl border-2 border-slate-200 bg-white p-4 hover:border-slate-300 transition-colors">
-                        {/* Ligne 1 : emoji + nom affiché + actions */}
-                        <div className="flex items-start gap-3 mb-3 pb-3 border-b border-slate-100">
-                          <input
-                            type="text"
-                            defaultValue={emoji}
-                            onBlur={(e) => updateSupabaseUserMeta(u, { emoji: e.target.value.slice(0, 4) || '👤' })}
-                            onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                            maxLength={4}
-                            disabled={loadingSupabase}
-                            className="w-12 h-12 px-1 bg-slate-50 border border-slate-200 rounded-xl text-center text-2xl flex-shrink-0"
-                            title="Emoji du compte (clique pour modifier)"
-                          />
+
+                    if (!isExpanded) {
+                      // === LIGNE COMPACTE : clic = expand ===
+                      return (
+                        <div
+                          key={u.id}
+                          onClick={() => setExpandedUserId(u.id)}
+                          className="rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-violet-300 cursor-pointer px-3 py-2 flex items-center gap-3"
+                          title="Cliquer pour éditer"
+                        >
+                          <span className="text-xl flex-shrink-0">{emoji}</span>
                           <div className="flex-1 min-w-0">
-                            <label className={labelCls}>👤 Prénom / Nom affiché</label>
+                            <div className="text-sm font-bold text-slate-800 truncate">{fullName}</div>
+                            <div className="text-[11px] text-slate-500 truncate">
+                              {u.email}{tel ? ` · 📞 ${tel}` : ''}
+                            </div>
+                          </div>
+                          <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${roleInfo.color}`}>{roleInfo.label}</span>
+                          {linkedTo && <span className="flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">🔗 {linkedTo}</span>}
+                          {(role === 'poseur' || role === 'regie') && !linkedTo && (
+                            <span className="flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">⚠️ Non rattaché</span>
+                          )}
+                          <button
+                            onClick={(e) => { e.stopPropagation(); setExpandedUserId(u.id); }}
+                            className="flex-shrink-0 px-2 py-1 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded text-[11px] font-bold"
+                            title="Éditer"
+                          >
+                            ✏️ Éditer
+                          </button>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); deleteSupabaseUser(u.id, u.email); }}
+                            className="flex-shrink-0 p-1.5 text-rose-500 hover:bg-rose-100 rounded"
+                            title="Supprimer le compte"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    // === LIGNE EXPANDED : éditeur complet ===
+                    return (
+                      <div key={u.id} className="rounded-xl border-2 border-violet-300 bg-violet-50/30 p-3">
+                        <div className="flex items-center justify-between mb-3">
+                          <div className="text-sm font-bold text-violet-700">✏️ Édition du compte</div>
+                          <button
+                            onClick={() => setExpandedUserId(null)}
+                            className="px-3 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs font-bold"
+                          >
+                            ✓ Fermer
+                          </button>
+                        </div>
+                        {/* Ligne emoji + prénom + nom */}
+                        <div className="grid grid-cols-12 gap-2 mb-2">
+                          <div className="col-span-2">
+                            <label className={labelCls}>Emoji</label>
+                            <input
+                              type="text"
+                              defaultValue={emoji}
+                              onBlur={(e) => updateSupabaseUserMeta(u, { emoji: e.target.value.slice(0, 4) || '👤' })}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              maxLength={4}
+                              disabled={loadingSupabase}
+                              className="w-full px-1 py-1.5 bg-white border border-slate-300 rounded text-center text-xl"
+                            />
+                          </div>
+                          <div className="col-span-5">
+                            <label className={labelCls}>Prénom</label>
+                            <input
+                              type="text"
+                              defaultValue={prenom}
+                              onBlur={(e) => { const v = e.target.value.trim(); if (v !== prenom) updateSupabaseUserMeta(u, { prenom: v }); }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              disabled={loadingSupabase}
+                              className={fieldCls}
+                              placeholder="Marie"
+                            />
+                          </div>
+                          <div className="col-span-5">
+                            <label className={labelCls}>Nom</label>
                             <input
                               type="text"
                               defaultValue={displayName}
                               onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== displayName) updateSupabaseUserMeta(u, { display_name: v }); }}
                               onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                               disabled={loadingSupabase}
-                              className={fieldCls + ' font-bold text-slate-800'}
-                              placeholder="Marie Dupont"
+                              className={fieldCls + ' font-bold'}
+                              placeholder="Dupont"
                             />
                           </div>
-                          <div className="flex flex-col gap-1 flex-shrink-0">
-                            <button onClick={() => resetPasswordSupabaseUser(u.id, u.email)} className="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-700 rounded-lg text-xs font-semibold whitespace-nowrap" title="Changer le mot de passe">
-                              🔑 Reset mdp
-                            </button>
-                            <button onClick={() => deleteSupabaseUser(u.id, u.email)} className="px-3 py-1.5 bg-rose-50 hover:bg-rose-500 hover:text-white text-rose-600 rounded-lg text-xs font-semibold flex items-center justify-center gap-1 whitespace-nowrap" title="Supprimer le compte">
-                              <Trash2 className="w-3 h-3" /> Supprimer
-                            </button>
-                          </div>
                         </div>
-
-                        {/* Ligne 2 : email + tél */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                        {/* Ligne email + tél */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
                           <div>
                             <label className={labelCls}>✉️ Email (login)</label>
                             <input
@@ -6399,19 +6467,14 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                               onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                               disabled={loadingSupabase}
                               className={fieldCls}
-                              placeholder="marie@email.com"
                             />
                           </div>
                           <div>
                             <label className={labelCls}>📞 Téléphone (WhatsApp/SMS)</label>
                             <input
                               type="tel"
-                              defaultValue={meta.tel || ''}
-                              onBlur={(e) => {
-                                const v = e.target.value.trim();
-                                if (v === (meta.tel || '')) return;
-                                updateSupabaseUserMeta(u, { tel: v });
-                              }}
+                              defaultValue={tel}
+                              onBlur={(e) => { const v = e.target.value.trim(); if (v !== tel) updateSupabaseUserMeta(u, { tel: v }); }}
                               onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                               disabled={loadingSupabase}
                               className={fieldCls}
@@ -6419,9 +6482,8 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                             />
                           </div>
                         </div>
-
-                        {/* Ligne 3 : rôle + rattachement + dernière connexion */}
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 items-end">
+                        {/* Ligne rôle + linkedTo */}
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
                           <div>
                             <label className={labelCls}>🎭 Rôle</label>
                             <select
@@ -6433,28 +6495,30 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                               {ROLES.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
                             </select>
                           </div>
-                          {(role === 'poseur' || role === 'regie') ? (
+                          {(role === 'poseur' || role === 'regie') && (
                             <div>
                               <label className={labelCls}>🔗 Rattaché à {role === 'poseur' ? 'ce poseur' : 'cette régie'}</label>
                               <select
-                                value={meta.linkedTo || ''}
+                                value={linkedTo}
                                 onChange={(e) => updateSupabaseUserLinkedTo(u, e.target.value)}
                                 disabled={loadingSupabase}
-                                className={`w-full px-2.5 py-1.5 rounded-lg text-sm font-bold border-2 cursor-pointer ${meta.linkedTo ? 'bg-white border-slate-300 text-slate-700' : 'bg-rose-50 border-rose-300 text-rose-700'}`}
+                                className={`w-full px-2.5 py-1.5 rounded-lg text-sm font-bold border-2 cursor-pointer ${linkedTo ? 'bg-white border-slate-300 text-slate-700' : 'bg-rose-50 border-rose-300 text-rose-700'}`}
                               >
-                                <option value="">⚠️ Choisir {role === 'poseur' ? 'le poseur' : 'la régie'}</option>
+                                <option value="">⚠️ Choisir</option>
                                 {(role === 'poseur' ? poseursList : regiesList).map(n => <option key={n} value={n}>{n}</option>)}
                               </select>
                             </div>
-                          ) : (
-                            <div className="text-[11px] text-slate-400 italic self-center">
-                              {u.last_sign_in_at ? `🕐 Dernière connexion : ${new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}` : '🆕 Jamais connecté'}
-                            </div>
                           )}
                         </div>
-                        {(role === 'poseur' || role === 'regie') && u.last_sign_in_at && (
-                          <div className="mt-2 text-[11px] text-slate-400 italic">🕐 Dernière connexion : {new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}</div>
-                        )}
+                        <div className="flex items-center justify-between pt-2 border-t border-violet-200">
+                          <div className="text-[11px] text-slate-500">{u.last_sign_in_at ? `🕐 Dernière connexion : ${new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}` : '🆕 Jamais connecté'}</div>
+                          <div className="flex gap-2">
+                            <button onClick={() => resetPasswordSupabaseUser(u.id, u.email)} className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs font-semibold">🔑 Reset mdp</button>
+                            <button onClick={() => deleteSupabaseUser(u.id, u.email)} className="px-3 py-1.5 bg-rose-100 hover:bg-rose-500 hover:text-white text-rose-700 rounded text-xs font-semibold flex items-center gap-1">
+                              <Trash2 className="w-3 h-3" /> Supprimer
+                            </button>
+                          </div>
+                        </div>
                       </div>
                     );
                   })}

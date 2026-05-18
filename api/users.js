@@ -104,7 +104,7 @@ export default async function handler(req, res) {
       }
 
       // Création normale (bootstrap → 1er admin, ou admin connecté → autre user)
-      const { email, password, display_name, emoji, role, linkedTo, tel } = body;
+      const { email, password, display_name, emoji, role, linkedTo, tel, prenom } = body;
       if (!email || !password) return json(res, 400, { error: 'email et password requis' });
       if (String(password).length < 6) return json(res, 400, { error: 'mot de passe min 6 caractères' });
 
@@ -123,6 +123,10 @@ export default async function handler(req, res) {
       // poseur/régie afin que le CRM puisse relancer le prestataire via wa.me.
       if (tel) {
         userMeta.tel = String(tel).trim();
+      }
+      // Prénom — séparé de display_name (= nom de famille / affichage)
+      if (prenom) {
+        userMeta.prenom = String(prenom).trim();
       }
 
       const { data, error } = await admin.auth.admin.createUser({
