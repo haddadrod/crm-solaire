@@ -649,6 +649,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [tarifsInternes, setTarifsInternes] = useState(TARIFS_INTERNES_DEFAULT);
   const [nomsInternes, setNomsInternes] = useState(NOMS_INTERNES_DEFAULT);
   const [listeFournisseurs, setListeFournisseurs] = useState(FOURNISSEURS_DEFAULT);
+  // 🏢 Sociétés du groupe : permet de gérer plusieurs marques (Yolico + Elsun)
+  // sur le même CRM. Chaque dossier appartient à une société. Filtre + badge.
+  const [societes, setSocietes] = useState([
+    { id: 'yolico', label: 'Yolico', emoji: '🟢', color: 'emerald', signature: '' },
+    { id: 'elsun',  label: 'Elsun',  emoji: '🔵', color: 'blue',    signature: '' },
+  ]);
+  // Filtre société actif : '' = toutes, ou un id de société
+  const initialSocieteFromHash = (typeof window !== 'undefined' && window.location.hash)
+    ? new URLSearchParams(window.location.hash.replace(/^#/, '').split('?')[1] || '').get('soc') || ''
+    : '';
+  const [activeSociete, setActiveSociete] = useState(initialSocieteFromHash);
   // Tarif au Wc (€) par fournisseur. Ex : { 'ECO NEGOCE': 0.37, 'IONERGIK': 0.55 }
   // Auto-calcul du HT du dossier : tarif × puissance totale solaire.
   const [tarifsFournisseurs, setTarifsFournisseurs] = useState({});
@@ -864,6 +875,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const emptyForm = {
     id: '', dateInsta: new Date().toISOString().split('T')[0],
     dateSignature: '',
+    societe: activeSociete || (societes[0]?.id || ''), // 🏢 société émettrice (Yolico/Elsun)
     // Étape 1 : contrôle qualité (avant envoi banque)
     dateControleQualite: '', statutControleQualite: '', // '' | 'ok' | 'pas_ok'
     vocalCQUrl: '', // lien vers le fichier audio du contrôle qualité
@@ -1156,6 +1168,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
           if (Array.isArray(arr)) setUsers(arr);
         }
       } catch (e) {}
+      try {
+        const r = await window.storage.get('societes');
+        if (r?.value) {
+          const arr = JSON.parse(r.value);
+          if (Array.isArray(arr) && arr.length > 0) setSocietes(arr);
+        }
+      } catch (e) {}
       setLoading(false);
     })();
   }, []);
@@ -1348,7 +1367,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     saveAndTrack('poseurs-contacts', poseursContacts);
     saveAndTrack('regies-contacts', regiesContacts);
     saveAndTrack('email-config', emailConfig);
-  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, loading]);
+    saveAndTrack('societes', societes);
+  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, societes, loading]);
 
   // 🔄 Sync Realtime sur les clés de réglages (contacts régies/poseurs,
   // tarifs, email config, etc.). Évite qu'un device avec un état stale
@@ -1418,6 +1438,19 @@ export default function DossierSaisie({ authUser, onLogout }) {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [activeTab]);
+
+  // 🏢 Persiste la société active dans le hash URL (?soc=yolico).
+  // F5 / refresh garde le filtre société courant.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = window.location.hash.replace(/^#/, '');
+    const [pathPart, queryPart] = raw.split('?');
+    const params = new URLSearchParams(queryPart || '');
+    if (activeSociete) params.set('soc', activeSociete);
+    else params.delete('soc');
+    const newHash = pathPart + (params.toString() ? '?' + params.toString() : '');
+    if (raw !== newHash) window.history.replaceState(null, '', `#${newHash}`);
+  }, [activeSociete]);
 
   const STATUTS_ORDERED = useMemo(() => statutsOrder.map(id => STATUTS.find(s => s.id === id)).filter(Boolean), [statutsOrder]);
 
@@ -2363,6 +2396,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const filteredDossiers = dossiersEnriched
     // Filtre actifs/archivés selon l'onglet
     .filter(d => activeTab === 'archives' ? isArchived(d) : !isArchived(d))
+    // 🏢 Filtre société : si une société est sélectionnée, on ne voit que ses
+    // dossiers. Les dossiers sans société assignée (legacy) sont toujours visibles.
+    .filter(d => !activeSociete || !d.societe || d.societe === activeSociete)
     // Filtre selon le rôle de l'utilisateur courant
     .filter(d => {
       if (permissions.filtreDossiers === 'tous') return true;
@@ -2553,6 +2589,39 @@ export default function DossierSaisie({ authUser, onLogout }) {
               </button>
             </div>
           </div>
+
+          {/* 🏢 Sélecteur société — visible si plusieurs sociétés sont configurées */}
+          {societes.length > 1 && (
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className="text-xs font-bold text-slate-500 uppercase">🏢 Société :</span>
+              <button
+                onClick={() => setActiveSociete('')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${!activeSociete ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+              >
+                👀 Toutes
+              </button>
+              {societes.map(s => {
+                const isActive = activeSociete === s.id;
+                const colorMap = {
+                  emerald: { active: 'bg-emerald-500 text-white border-emerald-600 shadow-md', inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
+                  blue:    { active: 'bg-blue-500 text-white border-blue-600 shadow-md',       inactive: 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50' },
+                  violet:  { active: 'bg-violet-500 text-white border-violet-600 shadow-md',   inactive: 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50' },
+                  amber:   { active: 'bg-amber-500 text-white border-amber-600 shadow-md',     inactive: 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50' },
+                  rose:    { active: 'bg-rose-500 text-white border-rose-600 shadow-md',       inactive: 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50' },
+                };
+                const cls = (colorMap[s.color] || colorMap.violet)[isActive ? 'active' : 'inactive'];
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setActiveSociete(s.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${cls}`}
+                  >
+                    {s.emoji} {s.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Onglets — selon permissions du rôle actif */}
           <div className="flex gap-2 mb-3 bg-white rounded-2xl p-1.5 shadow-sm border border-violet-100 w-fit flex-wrap">
@@ -2758,7 +2827,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <p className="text-slate-500 text-sm">{dossiers.length === 0 ? 'Cliquez sur "Nouveau dossier" pour commencer' : 'Modifiez vos filtres'}</p>
                 </div>
               ) : (
-                filteredDossiers.map(d => <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} />)
+                filteredDossiers.map(d => <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} />)
               )}
             </div>
 
@@ -3139,8 +3208,22 @@ function StatusBreakdown({ dossiers, STATUTS, onSelect, filterStatut }) {
   );
 }
 
-function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs, onShowHist, onShowQuick, viewMode, isAdmin, produits, readOnly }) {
+// 🏢 Map des classes Tailwind pour les badges société (statique pour pas
+// que le purger CSS les vire en prod).
+const SOCIETE_BADGE_CLASSES = {
+  emerald: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  blue:    'bg-blue-100 text-blue-700 border-blue-200',
+  violet:  'bg-violet-100 text-violet-700 border-violet-200',
+  amber:   'bg-amber-100 text-amber-700 border-amber-200',
+  rose:    'bg-rose-100 text-rose-700 border-rose-200',
+  slate:   'bg-slate-100 text-slate-700 border-slate-200',
+};
+
+function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs, onShowHist, onShowQuick, viewMode, isAdmin, produits, readOnly, societes = [] }) {
   const docCount = (d.documents || []).length;
+  // 🏢 Badge société (Yolico / Elsun) — visible si dossier rattaché à une société
+  const societeMeta = d.societe ? societes.find(s => s.id === d.societe) : null;
+  const societeBadgeCls = societeMeta ? (SOCIETE_BADGE_CLASSES[societeMeta.color] || SOCIETE_BADGE_CLASSES.violet) : '';
   // Migration en lecture : si pas de produits[], reconstruit depuis l'ancien format
   const dossierProduits = (d.produits && d.produits.length > 0)
     ? d.produits
@@ -3192,6 +3275,11 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
     return (
       <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border-l-4 px-3 py-2 flex items-center gap-2 flex-wrap" style={{ borderLeftColor: '#a855f7' }}>
         {d.id && <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex-shrink-0">#{d.id}</span>}
+        {societeMeta && (
+          <span title={`Société : ${societeMeta.label}`} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 border ${societeBadgeCls}`}>
+            {societeMeta.emoji} {societeMeta.label}
+          </span>
+        )}
         {readOnly
           ? <span className="font-bold text-slate-800 text-sm">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</span>
           : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 text-sm hover:text-violet-600 hover:underline transition-colors text-left" title="Voir l'aperçu rapide">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>}
