@@ -49,6 +49,15 @@ CREATE POLICY "Utilisateurs connectés peuvent supprimer"
 CREATE INDEX IF NOT EXISTS idx_storage_key_prefix ON storage (key text_pattern_ops);
 
 -- ===================================================
+-- 🔄 Synchronisation temps réel entre appareils
+-- ===================================================
+-- Active Realtime sur la table storage : quand un appareil (téléphone, PC...)
+-- modifie un dossier, tous les autres appareils connectés reçoivent l'update
+-- en direct via WebSocket. Évite le scénario 'last writer wins' qui peut
+-- écraser des données entre 2 devices ouverts en même temps.
+ALTER PUBLICATION supabase_realtime ADD TABLE storage;
+
+-- ===================================================
 -- ✅ Terminé !
 -- Maintenant tu peux :
 -- 1. Aller dans Authentication → Users → "Add user" pour créer des comptes

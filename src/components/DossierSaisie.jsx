@@ -474,6 +474,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const currentUserEmoji = useMemo(() => authUser?.user_metadata?.emoji || '👤', [authUser]);
   const [showEmptyStatuts, setShowEmptyStatuts] = useState(false); // afficher ou non les statuts à 0 dans le filtre
   const isInitialMount = useRef(true);
+  // Ref qui mémorise le dernier JSON écrit par CE client, pour ignorer les
+  // évènements realtime qui correspondent à nos propres écritures.
+  const lastWrittenDossiersJson = useRef(null);
   const isInitialOrder = useRef(true);
   const isInitialTarifs = useRef(true);
 
@@ -891,8 +894,46 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Sauvegardes
   useEffect(() => {
     if (isInitialMount.current) { if (!loading) isInitialMount.current = false; return; }
-    window.storage.set('dossiers-data', JSON.stringify(dossiers)).catch(() => {});
+    const json = JSON.stringify(dossiers);
+    lastWrittenDossiersJson.current = json;
+    window.storage.set('dossiers-data', json).catch(() => {});
   }, [dossiers, loading]);
+
+  // 🔄 Synchronisation temps réel entre appareils — quand un autre device
+  // écrit dans dossiers-data, on rafraîchit notre état local pour rester à
+  // jour. Évite le scénario 'last writer wins' où un PC ouvert depuis longtemps
+  // écrase des dossiers ajoutés depuis le téléphone.
+  //
+  // ⚠️ Requiert que Realtime soit activé sur la table 'storage' côté Supabase :
+  //   ALTER PUBLICATION supabase_realtime ADD TABLE storage;
+  // Si pas activé, le subscribe ne reçoit rien — pas de régression, juste
+  // pas de sync auto.
+  useEffect(() => {
+    if (loading) return;
+    const channel = supabase
+      .channel('dossiers-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'storage', filter: 'key=eq.dossiers-data' },
+        (payload) => {
+          const newValue = payload?.new?.value;
+          if (!newValue) return;
+          // Ignore les évènements qui matchent notre propre dernière écriture
+          // (sinon boucle infinie : on écrit → realtime → on relit → on écrit…)
+          if (newValue === lastWrittenDossiersJson.current) return;
+          try {
+            const parsed = JSON.parse(newValue);
+            if (!Array.isArray(parsed)) return;
+            // Met à jour notre état avec ce que l'autre device vient d'écrire.
+            // On marque ce JSON comme 'déjà écrit' pour pas le réécrire en boucle.
+            lastWrittenDossiersJson.current = newValue;
+            setDossiers(parsed);
+          } catch (e) {}
+        }
+      )
+      .subscribe();
+    return () => { try { supabase.removeChannel(channel); } catch (e) {} };
+  }, [loading]);
 
   useEffect(() => {
     if (loading) return;
