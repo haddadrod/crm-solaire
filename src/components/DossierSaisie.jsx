@@ -9971,7 +9971,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 )}
                               </div>
                             ) : (
-                              <div className="text-[9px] text-amber-600 italic">⚠️ Ajoute le tél/email de {r.nom} dans Réglages → Régies pour pouvoir prévenir en 1 clic</div>
+                              <div className="text-[9px] text-amber-600 italic">⚠️ Ajoute le tél/email du compte rattaché à {r.nom} dans Réglages → Utilisateurs pour pouvoir prévenir en 1 clic</div>
                             )}
                           </div>
                         );
@@ -10105,7 +10105,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 )}
                               </div>
                             ) : (
-                              <div className="text-[9px] text-amber-600 italic">⚠️ Ajoute le tél/email de {r.nom} dans Réglages → Régies pour pouvoir prévenir en 1 clic</div>
+                              <div className="text-[9px] text-amber-600 italic">⚠️ Ajoute le tél/email du compte rattaché à {r.nom} dans Réglages → Utilisateurs pour pouvoir prévenir en 1 clic</div>
                             )}
                           </div>
                         );
