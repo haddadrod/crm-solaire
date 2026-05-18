@@ -8889,7 +8889,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 // ça ouvre la fenêtre de rédaction tout de suite. Plus fiable
                 // que mailto: qui ouvre un client mail aléatoire (Mail.app,
                 // Outlook…) selon les réglages du device.
-                const gmailCompose = (to) => `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(message)}`;
+                // Lien Gmail compose. Si l'utilisateur a configuré son email
+                // par défaut dans Réglages → on ajoute &authuser=X pour que
+                // Gmail ouvre directement avec le bon compte sélectionné
+                // (utile quand plusieurs comptes Google sont ouverts).
+                const defaultFromEmail = emailConfig?.smtpUser || gmailOAuth?.email || '';
+                const gmailCompose = (to) => {
+                  const params = new URLSearchParams({
+                    view: 'cm', fs: '1',
+                    to, su: mailSubject, body: message,
+                  });
+                  if (defaultFromEmail) params.set('authuser', defaultFromEmail);
+                  return `https://mail.google.com/mail/?${params.toString()}`;
+                };
                 return (
                   <div className="mt-1.5 p-2 bg-emerald-50 border-2 border-emerald-300 rounded-lg">
                     <div className="text-[10px] font-bold text-emerald-700 mb-1.5">✅ Accord reçu → prévenir la régie pour programmer la pose</div>
