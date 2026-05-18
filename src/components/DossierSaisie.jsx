@@ -649,6 +649,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [tarifsInternes, setTarifsInternes] = useState(TARIFS_INTERNES_DEFAULT);
   const [nomsInternes, setNomsInternes] = useState(NOMS_INTERNES_DEFAULT);
   const [listeFournisseurs, setListeFournisseurs] = useState(FOURNISSEURS_DEFAULT);
+  // 🏢 Sociétés du groupe : permet de gérer plusieurs marques (Yolico + Elsun)
+  // sur le même CRM. Chaque dossier appartient à une société. Filtre + badge.
+  const [societes, setSocietes] = useState([
+    { id: 'yolico', label: 'Yolico', emoji: '🟢', color: 'emerald', signature: '' },
+    { id: 'elsun',  label: 'Elsun',  emoji: '🔵', color: 'blue',    signature: '' },
+  ]);
+  // Filtre société actif : '' = toutes, ou un id de société
+  const initialSocieteFromHash = (typeof window !== 'undefined' && window.location.hash)
+    ? new URLSearchParams(window.location.hash.replace(/^#/, '').split('?')[1] || '').get('soc') || ''
+    : '';
+  const [activeSociete, setActiveSociete] = useState(initialSocieteFromHash);
   // Tarif au Wc (€) par fournisseur. Ex : { 'ECO NEGOCE': 0.37, 'IONERGIK': 0.55 }
   // Auto-calcul du HT du dossier : tarif × puissance totale solaire.
   const [tarifsFournisseurs, setTarifsFournisseurs] = useState({});
@@ -864,6 +875,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const emptyForm = {
     id: '', dateInsta: new Date().toISOString().split('T')[0],
     dateSignature: '',
+    societe: activeSociete || (societes[0]?.id || ''), // 🏢 société émettrice (Yolico/Elsun)
     // Étape 1 : contrôle qualité (avant envoi banque)
     dateControleQualite: '', statutControleQualite: '', // '' | 'ok' | 'pas_ok'
     vocalCQUrl: '', // lien vers le fichier audio du contrôle qualité
@@ -1156,6 +1168,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
           if (Array.isArray(arr)) setUsers(arr);
         }
       } catch (e) {}
+      try {
+        const r = await window.storage.get('societes');
+        if (r?.value) {
+          const arr = JSON.parse(r.value);
+          if (Array.isArray(arr) && arr.length > 0) setSocietes(arr);
+        }
+      } catch (e) {}
       setLoading(false);
     })();
   }, []);
@@ -1348,7 +1367,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     saveAndTrack('poseurs-contacts', poseursContacts);
     saveAndTrack('regies-contacts', regiesContacts);
     saveAndTrack('email-config', emailConfig);
-  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, loading]);
+    saveAndTrack('societes', societes);
+  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, societes, loading]);
 
   // 🔄 Sync Realtime sur les clés de réglages (contacts régies/poseurs,
   // tarifs, email config, etc.). Évite qu'un device avec un état stale
@@ -1418,6 +1438,19 @@ export default function DossierSaisie({ authUser, onLogout }) {
     window.addEventListener('popstate', onPop);
     return () => window.removeEventListener('popstate', onPop);
   }, [activeTab]);
+
+  // 🏢 Persiste la société active dans le hash URL (?soc=yolico).
+  // F5 / refresh garde le filtre société courant.
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const raw = window.location.hash.replace(/^#/, '');
+    const [pathPart, queryPart] = raw.split('?');
+    const params = new URLSearchParams(queryPart || '');
+    if (activeSociete) params.set('soc', activeSociete);
+    else params.delete('soc');
+    const newHash = pathPart + (params.toString() ? '?' + params.toString() : '');
+    if (raw !== newHash) window.history.replaceState(null, '', `#${newHash}`);
+  }, [activeSociete]);
 
   const STATUTS_ORDERED = useMemo(() => statutsOrder.map(id => STATUTS.find(s => s.id === id)).filter(Boolean), [statutsOrder]);
 
@@ -1611,6 +1644,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     setFormData({
       id: d.id || '', dateInsta: d.dateInsta || new Date().toISOString().split('T')[0],
       dateSignature: d.dateSignature || '',
+      societe: d.societe || activeSociete || (societes[0]?.id || ''),
       dateAccord: d.dateAccord || '', dateConsuel: d.dateConsuel || '',
       dateControleQualite: d.dateControleQualite || '', statutControleQualite: d.statutControleQualite || '',
       vocalCQUrl: d.vocalCQUrl || '',
@@ -2363,6 +2397,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const filteredDossiers = dossiersEnriched
     // Filtre actifs/archivés selon l'onglet
     .filter(d => activeTab === 'archives' ? isArchived(d) : !isArchived(d))
+    // 🏢 Filtre société : si une société est sélectionnée, on ne voit que ses
+    // dossiers. Les dossiers sans société assignée (legacy) sont toujours visibles.
+    .filter(d => !activeSociete || !d.societe || d.societe === activeSociete)
     // Filtre selon le rôle de l'utilisateur courant
     .filter(d => {
       if (permissions.filtreDossiers === 'tous') return true;
@@ -2553,6 +2590,39 @@ export default function DossierSaisie({ authUser, onLogout }) {
               </button>
             </div>
           </div>
+
+          {/* 🏢 Sélecteur société — visible si plusieurs sociétés sont configurées */}
+          {societes.length > 1 && (
+            <div className="flex items-center gap-2 mb-3 flex-wrap">
+              <span className="text-xs font-bold text-slate-500 uppercase">🏢 Société :</span>
+              <button
+                onClick={() => setActiveSociete('')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${!activeSociete ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+              >
+                👀 Toutes
+              </button>
+              {societes.map(s => {
+                const isActive = activeSociete === s.id;
+                const colorMap = {
+                  emerald: { active: 'bg-emerald-500 text-white border-emerald-600 shadow-md', inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
+                  blue:    { active: 'bg-blue-500 text-white border-blue-600 shadow-md',       inactive: 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50' },
+                  violet:  { active: 'bg-violet-500 text-white border-violet-600 shadow-md',   inactive: 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50' },
+                  amber:   { active: 'bg-amber-500 text-white border-amber-600 shadow-md',     inactive: 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50' },
+                  rose:    { active: 'bg-rose-500 text-white border-rose-600 shadow-md',       inactive: 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50' },
+                };
+                const cls = (colorMap[s.color] || colorMap.violet)[isActive ? 'active' : 'inactive'];
+                return (
+                  <button
+                    key={s.id}
+                    onClick={() => setActiveSociete(s.id)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${cls}`}
+                  >
+                    {s.emoji} {s.label}
+                  </button>
+                );
+              })}
+            </div>
+          )}
 
           {/* Onglets — selon permissions du rôle actif */}
           <div className="flex gap-2 mb-3 bg-white rounded-2xl p-1.5 shadow-sm border border-violet-100 w-fit flex-wrap">
@@ -2758,7 +2828,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <p className="text-slate-500 text-sm">{dossiers.length === 0 ? 'Cliquez sur "Nouveau dossier" pour commencer' : 'Modifiez vos filtres'}</p>
                 </div>
               ) : (
-                filteredDossiers.map(d => <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} />)
+                filteredDossiers.map(d => <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} />)
               )}
             </div>
 
@@ -2827,6 +2897,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             regiesContacts={regiesContacts} setRegiesContacts={setRegiesContacts}
             emailConfig={emailConfig} setEmailConfig={setEmailConfig}
             gmailOAuth={gmailOAuth} setGmailOAuth={setGmailOAuth}
+            societes={societes} setSocietes={setSocietes}
           />
         )}
 
@@ -2838,6 +2909,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             tarifsPoseurs={tarifsPoseurs} tarifsRegies={tarifsRegies} tarifsInternes={tarifsInternes}
             nomsInternes={nomsInternes} setNomsInternes={setNomsInternes}
             produits={produits}
+            societes={societes}
             currentUser={currentUser}
             onClose={resetForm} onSubmit={handleSubmit} isAdmin={isAdmin}
           />
@@ -3139,8 +3211,22 @@ function StatusBreakdown({ dossiers, STATUTS, onSelect, filterStatut }) {
   );
 }
 
-function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs, onShowHist, onShowQuick, viewMode, isAdmin, produits, readOnly }) {
+// 🏢 Map des classes Tailwind pour les badges société (statique pour pas
+// que le purger CSS les vire en prod).
+const SOCIETE_BADGE_CLASSES = {
+  emerald: 'bg-emerald-100 text-emerald-700 border-emerald-200',
+  blue:    'bg-blue-100 text-blue-700 border-blue-200',
+  violet:  'bg-violet-100 text-violet-700 border-violet-200',
+  amber:   'bg-amber-100 text-amber-700 border-amber-200',
+  rose:    'bg-rose-100 text-rose-700 border-rose-200',
+  slate:   'bg-slate-100 text-slate-700 border-slate-200',
+};
+
+function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs, onShowHist, onShowQuick, viewMode, isAdmin, produits, readOnly, societes = [] }) {
   const docCount = (d.documents || []).length;
+  // 🏢 Badge société (Yolico / Elsun) — visible si dossier rattaché à une société
+  const societeMeta = d.societe ? societes.find(s => s.id === d.societe) : null;
+  const societeBadgeCls = societeMeta ? (SOCIETE_BADGE_CLASSES[societeMeta.color] || SOCIETE_BADGE_CLASSES.violet) : '';
   // Migration en lecture : si pas de produits[], reconstruit depuis l'ancien format
   const dossierProduits = (d.produits && d.produits.length > 0)
     ? d.produits
@@ -3192,6 +3278,11 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
     return (
       <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border-l-4 px-3 py-2 flex items-center gap-2 flex-wrap" style={{ borderLeftColor: '#a855f7' }}>
         {d.id && <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex-shrink-0">#{d.id}</span>}
+        {societeMeta && (
+          <span title={`Société : ${societeMeta.label}`} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 border ${societeBadgeCls}`}>
+            {societeMeta.emoji} {societeMeta.label}
+          </span>
+        )}
         {readOnly
           ? <span className="font-bold text-slate-800 text-sm">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</span>
           : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 text-sm hover:text-violet-600 hover:underline transition-colors text-left" title="Voir l'aperçu rapide">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>}
@@ -5211,7 +5302,7 @@ function PerfList({ titre, data, medal, border, header, iconColor }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
   // Init depuis le hash URL pour qu'un refresh garde la sous-section.
   // Format : #reglages/utilisateurs → section = 'utilisateurs'
   const sectionFromHash = (typeof window !== 'undefined' && window.location.hash)
@@ -5231,6 +5322,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
 
   const sections = [
     { id: 'statuts',      label: 'Statuts',      emoji: '📊', color: 'from-pink-500 to-rose-500' },
+    { id: 'societes',     label: 'Sociétés',     emoji: '🏢', color: 'from-emerald-500 to-teal-500' },
     { id: 'utilisateurs', label: 'Utilisateurs', emoji: '👥', color: 'from-cyan-500 to-blue-500' },
     { id: 'produits',     label: 'Produits',     emoji: '🛒', color: 'from-amber-500 to-yellow-500' },
     { id: 'poseurs',      label: 'Poseurs',      emoji: '🔧', color: 'from-amber-500 to-orange-500' },
@@ -5325,6 +5417,10 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
             </div>
           </div>
         </div>
+      )}
+
+      {section === 'societes' && (
+        <SocietesManager societes={societes} setSocietes={setSocietes} dossiers={dossiers} />
       )}
 
       {section === 'utilisateurs' && (
@@ -6012,6 +6108,139 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
           <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
             💡 Cliquez sur un nom ou tarif pour modifier. Tarif en <strong>gras</strong> = saisi, en <span className="text-slate-400">gris</span> = vide. Tu peux laisser vide et saisir le HT manuellement à chaque dossier — ou pré-remplir ici pour gagner du temps. Sur un dossier mixte (panneaux + PAC), les tarifs auto se cumulent.
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== SocietesManager : CRUD des sociétés du groupe ==========
+// Permet d'ajouter / éditer / supprimer les sociétés émettrices (Yolico,
+// Elsun, ou n'importe quelle autre marque). Chaque société = nom + emoji
+// + couleur (+ signature email, phase 2).
+function SocietesManager({ societes, setSocietes, dossiers }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
+  const [newEmoji, setNewEmoji] = useState('🏢');
+  const [newColor, setNewColor] = useState('violet');
+  const COLORS = [
+    { id: 'emerald', label: 'Vert',    cls: 'bg-emerald-500' },
+    { id: 'blue',    label: 'Bleu',    cls: 'bg-blue-500' },
+    { id: 'violet',  label: 'Violet',  cls: 'bg-violet-500' },
+    { id: 'amber',   label: 'Orange',  cls: 'bg-amber-500' },
+    { id: 'rose',    label: 'Rose',    cls: 'bg-rose-500' },
+    { id: 'slate',   label: 'Gris',    cls: 'bg-slate-500' },
+  ];
+  const slugify = (str) => String(str || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `soc_${Date.now().toString(36)}`;
+  const addSociete = () => {
+    const label = newLabel.trim();
+    if (!label) { alert('Le nom est obligatoire'); return; }
+    let id = slugify(label);
+    if (societes.find(s => s.id === id)) id = `${id}_${Date.now().toString(36).slice(-4)}`;
+    setSocietes([...societes, { id, label, emoji: newEmoji || '🏢', color: newColor, signature: '' }]);
+    setNewLabel(''); setNewEmoji('🏢'); setNewColor('violet'); setShowAdd(false);
+  };
+  const updateSociete = (id, patch) => {
+    setSocietes(societes.map(s => s.id === id ? { ...s, ...patch } : s));
+  };
+  const deleteSociete = (id) => {
+    const label = societes.find(s => s.id === id)?.label || id;
+    const used = (dossiers || []).filter(d => d.societe === id).length;
+    const msg = used > 0
+      ? `⚠️ "${label}" est utilisée par ${used} dossier(s). Supprimer ? Les dossiers concernés perdront leur badge société.`
+      : `Supprimer "${label}" ?`;
+    if (!window.confirm(msg)) return;
+    setSocietes(societes.filter(s => s.id !== id));
+  };
+  return (
+    <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
+      <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-teal-50">
+        <h2 className="text-lg font-bold text-slate-800">🏢 Sociétés du groupe</h2>
+        <p className="text-xs text-slate-500 mt-1">Configure les marques sur lesquelles tu travailles (Yolico, Elsun, etc.). Chaque dossier appartient à une société — badge coloré + filtre dans la liste.</p>
+      </div>
+      <div className="p-4 space-y-2">
+        {societes.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 italic">Aucune société. Ajoute la première ci-dessous.</div>
+        ) : (
+          <div className="space-y-2">
+            {societes.map(s => {
+              const used = (dossiers || []).filter(d => d.societe === s.id).length;
+              const badgeCls = SOCIETE_BADGE_CLASSES[s.color] || SOCIETE_BADGE_CLASSES.violet;
+              return (
+                <div key={s.id} className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl flex-wrap">
+                  <input
+                    type="text"
+                    defaultValue={s.emoji}
+                    onBlur={(e) => { const v = e.target.value.trim() || '🏢'; if (v !== s.emoji) updateSociete(s.id, { emoji: v }); }}
+                    maxLength={16}
+                    className="w-14 px-1 py-1.5 bg-white border border-slate-300 rounded text-center text-xl"
+                    title="Emoji"
+                  />
+                  <input
+                    type="text"
+                    defaultValue={s.label}
+                    onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== s.label) updateSociete(s.id, { label: v }); }}
+                    className="flex-1 min-w-[150px] px-3 py-1.5 bg-white border border-slate-300 rounded text-sm font-bold"
+                    placeholder="Nom"
+                  />
+                  <div className="flex gap-1">
+                    {COLORS.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => updateSociete(s.id, { color: c.id })}
+                        className={`w-7 h-7 rounded-full border-2 ${c.cls} ${s.color === c.id ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400' : 'border-white opacity-60 hover:opacity-100'}`}
+                        title={c.label}
+                      />
+                    ))}
+                  </div>
+                  <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs font-bold border ${badgeCls}`}>
+                    {s.emoji} {s.label}
+                  </span>
+                  <span className="text-[10px] text-slate-500">{used} dossier{used > 1 ? 's' : ''}</span>
+                  <button onClick={() => deleteSociete(s.id)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cette société">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {!showAdd ? (
+          <button onClick={() => setShowAdd(true)} className="w-full mt-3 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2">
+            <Plus className="w-4 h-4" /> Ajouter une société
+          </button>
+        ) : (
+          <div className="mt-3 p-3 bg-emerald-50 border-2 border-emerald-300 rounded-xl space-y-2">
+            <h3 className="text-sm font-bold text-emerald-800">➕ Nouvelle société</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Emoji</label>
+                <input type="text" value={newEmoji} onChange={(e) => setNewEmoji(e.target.value)} maxLength={16} placeholder="🏢" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-center text-lg" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Nom *</label>
+                <input type="text" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addSociete(); }} placeholder="Ex : Yolico, Elsun, Solar Pro…" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold" autoFocus />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Couleur du badge</label>
+              <div className="flex gap-2">
+                {COLORS.map(c => (
+                  <button key={c.id} type="button" onClick={() => setNewColor(c.id)} className={`w-8 h-8 rounded-full border-2 ${c.cls} ${newColor === c.id ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400' : 'border-white opacity-60 hover:opacity-100'}`} title={c.label} />
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => { setShowAdd(false); setNewLabel(''); }} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold">Annuler</button>
+              <button onClick={addSociete} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold">✓ Créer</button>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
+          💡 Les dossiers existants sans société assignée restent visibles dans tous les filtres. Pour leur assigner une société : ouvre le dossier et clique le bouton 🏢 en haut du formulaire.
         </div>
       </div>
     </div>
@@ -6897,7 +7126,7 @@ function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
   );
 }
 
-function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, currentUser, onClose, onSubmit, isAdmin }) {
+function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], currentUser, onClose, onSubmit, isAdmin }) {
   const inputCls = "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400 text-sm";
 
   // Scan IA d'un bon de commande manuscrit → pré-remplissage du formulaire.
@@ -7199,6 +7428,39 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     })}
                   </ul>
                 </div>
+              )}
+            </div>
+          )}
+          {/* 🏢 Société émettrice — choix obligatoire visible en haut du form
+              pour éviter d'envoyer un mail Yolico à un client Elsun. */}
+          {societes.length > 1 && (
+            <div className="mb-4 p-3 bg-gradient-to-r from-slate-50 to-slate-100 border-2 border-slate-200 rounded-2xl">
+              <div className="text-xs font-bold text-slate-600 uppercase mb-2">🏢 Société émettrice du dossier</div>
+              <div className="flex gap-2 flex-wrap">
+                {societes.map(s => {
+                  const isActive = formData.societe === s.id;
+                  const colorMap = {
+                    emerald: { active: 'bg-emerald-500 text-white border-emerald-600 shadow-md', inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
+                    blue:    { active: 'bg-blue-500 text-white border-blue-600 shadow-md',       inactive: 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50' },
+                    violet:  { active: 'bg-violet-500 text-white border-violet-600 shadow-md',   inactive: 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50' },
+                    amber:   { active: 'bg-amber-500 text-white border-amber-600 shadow-md',     inactive: 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50' },
+                    rose:    { active: 'bg-rose-500 text-white border-rose-600 shadow-md',       inactive: 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50' },
+                  };
+                  const cls = (colorMap[s.color] || colorMap.violet)[isActive ? 'active' : 'inactive'];
+                  return (
+                    <button
+                      key={s.id}
+                      type="button"
+                      onClick={() => setFormData({ ...formData, societe: s.id })}
+                      className={`px-4 py-2 rounded-xl text-sm font-bold border-2 transition-all ${cls}`}
+                    >
+                      {s.emoji} {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+              {!formData.societe && (
+                <div className="mt-2 text-[11px] text-rose-600 font-bold">⚠️ Choisis une société pour éviter d'envoyer les mauvais documents/emails au client.</div>
               )}
             </div>
           )}
@@ -8760,7 +9022,11 @@ function parseBool(str) {
 }
 
 function suggestField(header) {
-  const h = String(header || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+  // Normalise les accents avant la regex : "Prénom" → "prenom", "Téléphone" → "telephone".
+  // Sans NFD, l'accent disparaissait sans remplacer la lettre ("prnom") et le match ratait.
+  const h = String(header || '').toLowerCase().trim()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]/g, '');
   const map = [
     { keys: ['nom', 'lastname'], field: 'nom' },
     { keys: ['prenom', 'firstname'], field: 'prenom' },
@@ -8774,6 +9040,7 @@ function suggestField(header) {
     { keys: ['montant', 'prix', 'ttc', 'total', 'montantttc'], field: 'montantTotal' },
     { keys: ['ht', 'montantht'], field: 'montantHtCustom' },
     { keys: ['datepose', 'datinsta', 'datinst', 'dateinstall', 'dateinsta', 'pose'], field: 'dateInsta' },
+    { keys: ['visite', 'visiteclient', 'rendezvous', 'rdv'], field: 'dateVisitePose' },
     { keys: ['dateaccord', 'accord'], field: 'dateAccord' },
     { keys: ['dateconsuel', 'consuel'], field: 'dateConsuel' },
     { keys: ['regie', 'commercial', 'agence'], field: 'regie' },
@@ -8864,8 +9131,18 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
             case 'montantTotal':
             case 'montantHtCustom':
               d[field] = parseNumber(val); break;
-            case 'puissance':
-              d[field] = parseInt(parseNumber(val)) || 6000; break;
+            case 'puissance': {
+              // Détecte l'unité par la valeur :
+              //   < 100   → kW (ex : 5)        → × 1000 = Wc
+              //   < 1500  → format Chelly (Wc/10) ex : 500 → × 10 = 5000 Wc
+              //   ≥ 1500  → Wc direct (ex : 6000) — on garde
+              const raw = parseNumber(val);
+              let wc = raw;
+              if (raw > 0 && raw < 100) wc = raw * 1000;
+              else if (raw >= 100 && raw < 1500) wc = raw * 10;
+              d[field] = parseInt(wc) || 6000;
+              break;
+            }
             case 'dateInsta':
             case 'dateAccord':
             case 'dateConsuel':
