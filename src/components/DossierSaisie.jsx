@@ -8570,7 +8570,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   'Tu peux programmer la pose, merci !',
                 ].filter(v => v != null).join('\n');
                 const mailSubject = `Accord financement — ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''} à programmer en pose`;
-                const mailto = (to) => `mailto:${encodeURIComponent(to)}?subject=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(message)}`;
+                // Ouvre directement la compose Gmail web avec destinataire + sujet
+                // + corps pré-remplis. Si l'utilisateur est connecté à Gmail,
+                // ça ouvre la fenêtre de rédaction tout de suite. Plus fiable
+                // que mailto: qui ouvre un client mail aléatoire (Mail.app,
+                // Outlook…) selon les réglages du device.
+                const gmailCompose = (to) => `https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(to)}&su=${encodeURIComponent(mailSubject)}&body=${encodeURIComponent(message)}`;
                 return (
                   <div className="mt-1.5 p-2 bg-emerald-50 border-2 border-emerald-300 rounded-lg">
                     <div className="text-[10px] font-bold text-emerald-700 mb-1.5">✅ Accord reçu → prévenir la régie pour programmer la pose</div>
@@ -8600,11 +8605,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 )}
                                 {email ? (
                                   <a
-                                    href={mailto(email)}
+                                    href={gmailCompose(email)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
                                     className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
-                                    title={`Email ${r.nom} (${email})`}
+                                    title={`Ouvre Gmail avec ${r.nom} (${email}) — clique 'Envoyer' dans Gmail`}
                                   >
-                                    📧 Email
+                                    📧 Gmail
                                   </a>
                                 ) : (
                                   <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📧 Pas d'email</span>
