@@ -9231,21 +9231,27 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
               )}
 
-              <div className="space-y-1">
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-blue-600 uppercase w-16 flex-shrink-0">📤 Envoi</span>
-                  <input type="date" value={d.dateEnvoiFin || ''} onChange={(e) => onUpdate({ dateEnvoiFin: e.target.value, statutFin: e.target.value && !d.statutFin ? 'envoyé' : d.statutFin })} className={inputCls} />
-                  <button onClick={() => onUpdate({ dateEnvoiFin: new Date().toISOString().split('T')[0], statutFin: d.statutFin || 'envoyé' })} className="px-1.5 py-1 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded text-[9px] font-bold">Auj.</button>
+              <div className="grid grid-cols-3 gap-1.5">
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.dateEnvoiFin || ''} onChange={(e) => onUpdate({ dateEnvoiFin: e.target.value, statutFin: e.target.value && !d.statutFin ? 'envoyé' : d.statutFin })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[10px]" />
+                    <button onClick={() => onUpdate({ dateEnvoiFin: new Date().toISOString().split('T')[0], statutFin: d.statutFin || 'envoyé' })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-blue-600 uppercase w-16 flex-shrink-0">📥 Retour</span>
-                  <input type="date" value={d.dateRetourFin || ''} onChange={(e) => onUpdate({ dateRetourFin: e.target.value })} className={inputCls} />
-                  <button onClick={() => onUpdate({ dateRetourFin: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded text-[9px] font-bold">Auj.</button>
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📥 Retour</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.dateRetourFin || ''} onChange={(e) => onUpdate({ dateRetourFin: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[10px]" />
+                    <button onClick={() => onUpdate({ dateRetourFin: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-blue-600 uppercase w-16 flex-shrink-0">✅ Accord</span>
-                  <input type="date" value={d.dateAccord || ''} onChange={(e) => onUpdate({ dateAccord: e.target.value })} className={inputCls} />
-                  <button onClick={() => onUpdate({ dateAccord: new Date().toISOString().split('T')[0], statutFin: 'accepté' })} className="px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold">Auj.</button>
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Accord</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.dateAccord || ''} onChange={(e) => onUpdate({ dateAccord: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[10px]" />
+                    <button onClick={() => onUpdate({ dateAccord: new Date().toISOString().split('T')[0], statutFin: 'accepté' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
                 </div>
               </div>
 
