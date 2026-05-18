@@ -2943,6 +2943,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
             type={showAlertesType}
             dashboard={dashboard}
             STATUTS={STATUTS}
+            poseursContacts={poseursContacts}
+            regiesContacts={regiesContacts}
             onClose={() => setShowAlertesType(null)}
             onSelect={(localId) => {
               // Mappe le type d'alerte vers la section à scroller / déplier
@@ -11867,7 +11869,7 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
 
 // ===================== MODAL ALERTES =====================
 
-function AlertesModal({ type, dashboard, STATUTS, onClose, onSelect }) {
+function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onClose, onSelect }) {
   const config = {
     controleQualite: {
       title: '📋 Contrôle qualité — dossiers à valider',
@@ -12007,17 +12009,44 @@ function AlertesModal({ type, dashboard, STATUTS, onClose, onSelect }) {
     },
     facturesManquantes: {
       title: '🧾 Factures manquantes (compta)',
-      subtitle: 'Dossiers posés où les factures poseur / régie / fournisseur ne sont pas encore reçues',
+      subtitle: 'Dossiers posés où les factures poseur / régie / fournisseur ne sont pas encore reçues. Clic 📲 = relance WhatsApp directe.',
       items: dashboard.rappelsFacturesManquantes || [],
       gradient: 'from-fuchsia-500 to-pink-500',
       bgHeader: 'from-fuchsia-50 to-pink-50',
       borderColor: 'border-fuchsia-200',
       lineLabel: (d, r) => {
-        const parts = [];
-        if (r.poseurs?.length) parts.push(`🔧 ${r.poseurs.join(', ')}`);
-        if (r.regies?.length) parts.push(`🤝 ${r.regies.join(', ')}`);
-        if (r.fournisseurs?.length) parts.push(`📦 ${r.fournisseurs.join(', ')}`);
-        return `Manque : ${parts.join(' · ')}`;
+        // Construit pour chaque prestataire manquant : nom + bouton WhatsApp si on a son tél.
+        const datePose = d.dateInsta ? new Date(d.dateInsta).toLocaleDateString('fr-FR') : 'récemment';
+        const clientLabel = `${d.nom || ''}${d.prenom ? ' ' + d.prenom : ''}`.trim();
+        const buildMsg = (kind, nom) => `Bonjour ${nom},\n\nOn n'a pas encore reçu ta facture pour le chantier de ${clientLabel} posé le ${datePose}. Tu peux nous l'envoyer dès que possible ?\n\nMerci !`;
+        const getTel = (contacts, nom) => {
+          const c = (contacts || {})[nom];
+          if (!c) return '';
+          return typeof c === 'string' ? c : (c.tel || '');
+        };
+        const renderChip = (emoji, nom, tel, kind) => {
+          if (!tel) return <span key={`${kind}:${nom}`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold">{emoji} {nom}</span>;
+          const link = buildWhatsAppLink(tel, buildMsg(kind, nom));
+          return (
+            <a
+              key={`${kind}:${nom}`}
+              href={link}
+              target="_blank"
+              rel="noopener noreferrer"
+              onClick={(e) => e.stopPropagation()}
+              title={`Relancer ${nom} sur WhatsApp`}
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 text-[10px] font-semibold"
+            >
+              📲 {emoji} {nom}
+            </a>
+          );
+        };
+        const chips = [
+          ...(r.poseurs || []).map(nom => renderChip('🔧', nom, getTel(poseursContacts, nom), 'poseur')),
+          ...(r.regies || []).map(nom => renderChip('🤝', nom, getTel(regiesContacts, nom), 'regie')),
+          ...(r.fournisseurs || []).map(nom => renderChip('📦', nom, '', 'fournisseur')),
+        ];
+        return <div className="flex items-center gap-1 flex-wrap">{chips}</div>;
       },
       suffixLabel: 'depuis pose',
     },
