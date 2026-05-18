@@ -5006,7 +5006,9 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
 
-  const update = (patch) => setConfig({ ...config, ...patch });
+  // Functional setState pour éviter les race conditions React 18 quand
+  // l'utilisateur tape vite (chaque update voit toujours le dernier state).
+  const update = (patch) => setConfig(prev => ({ ...prev, ...patch }));
 
   // Démarre le flow OAuth Google : on passe par /api/google-oauth-start
   // qui valide le JWT et redirige vers Google.
