@@ -5388,6 +5388,63 @@ function CommissionsInternesManager({ tarifs, setTarifs, noms, setNoms, dossiers
   );
 }
 
+// Éditeur de contact (tél + email optionnel) avec brouillon local et
+// bouton 'Enregistrer' explicite. Évite les sauvegardes silencieuses qui
+// semblent ne pas marcher (perception utilisateur) — l'utilisateur clique,
+// voit "✓ Enregistré", il est sûr que c'est en base.
+function ContactRowEditor({ nom, currentTel, currentEmail, onSave, showEmail }) {
+  const [tel, setTel] = useState(currentTel || '');
+  const [email, setEmail] = useState(currentEmail || '');
+  const [savedFlash, setSavedFlash] = useState(false);
+
+  // Resync quand la prop change (autre device, reload), seulement si pas en cours d'édition
+  useEffect(() => { setTel(currentTel || ''); }, [currentTel]);
+  useEffect(() => { setEmail(currentEmail || ''); }, [currentEmail]);
+
+  const dirty = (tel || '') !== (currentTel || '') || (showEmail && (email || '') !== (currentEmail || ''));
+
+  const save = () => {
+    onSave(tel.trim(), email.trim());
+    setSavedFlash(true);
+    setTimeout(() => setSavedFlash(false), 2000);
+  };
+
+  return (
+    <div className="mt-1 space-y-1">
+      <input
+        type="tel"
+        value={tel}
+        onChange={(e) => setTel(e.target.value)}
+        onKeyDown={(e) => { if (e.key === 'Enter' && dirty) save(); }}
+        placeholder="📞 tél. (WhatsApp)"
+        className="w-full px-2 py-0.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
+      />
+      {showEmail && (
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          onKeyDown={(e) => { if (e.key === 'Enter' && dirty) save(); }}
+          placeholder="📧 email"
+          className="w-full px-2 py-0.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
+        />
+      )}
+      {dirty && (
+        <button
+          type="button"
+          onClick={save}
+          className="w-full px-2 py-0.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+        >
+          💾 Enregistrer
+        </button>
+      )}
+      {savedFlash && (
+        <div className="text-[9px] text-emerald-700 font-bold text-center">✓ Enregistré</div>
+      )}
+    </div>
+  );
+}
+
 function PrestataireManager({ titre, description, data, setData, dossiers, dossierField, type, produits, contacts, setContacts, contactsObjectShape = false }) {
   // contactsObjectShape=false : contacts = { [nom]: 'tel' } (legacy poseurs)
   // contactsObjectShape=true  : contacts = { [nom]: { tel, email } } (régies)
@@ -5522,21 +5579,15 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                         <td className="px-2 py-1.5 sticky left-0 bg-white group-hover:bg-slate-50 z-10 min-w-[140px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">
                           <input type="text" defaultValue={nom} onBlur={(e) => rename(nom, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="w-full px-2 py-1 bg-transparent border border-transparent hover:border-slate-300 focus:border-violet-400 focus:bg-white focus:outline-none rounded text-xs font-semibold" />
                           {setContacts && (
-                            <input
-                              type="tel"
-                              value={getTel(nom)}
-                              onChange={(e) => updateContact(nom, e.target.value)}
-                              placeholder="📞 tél. (WhatsApp)"
-                              className="w-full mt-1 px-2 py-0.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
-                            />
-                          )}
-                          {setContacts && contactsObjectShape && (
-                            <input
-                              type="email"
-                              value={getEmail(nom)}
-                              onChange={(e) => updateEmail(nom, e.target.value)}
-                              placeholder="📧 email"
-                              className="w-full mt-1 px-2 py-0.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                            <ContactRowEditor
+                              nom={nom}
+                              currentTel={getTel(nom)}
+                              currentEmail={contactsObjectShape ? getEmail(nom) : null}
+                              onSave={(tel, email) => {
+                                updateContact(nom, tel);
+                                if (contactsObjectShape) updateEmail(nom, email);
+                              }}
+                              showEmail={contactsObjectShape}
                             />
                           )}
                         </td>
