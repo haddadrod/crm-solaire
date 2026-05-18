@@ -11541,6 +11541,62 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
     .map(id => dossiers.find(d => d.localId === id))
     .filter(Boolean);
 
+  // ===== Dictée vocale (Web Speech API) =====
+  // Chrome/Edge/Safari supportent. Pas Firefox. On dégrade silencieusement.
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef(null);
+  const baseTranscriptRef = useRef('');
+  const speechSupported = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  const startDictation = () => {
+    if (!speechSupported) {
+      alert("🎤 Dictée vocale non supportée sur ce navigateur. Utilise Chrome, Edge ou Safari.");
+      return;
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const rec = new SR();
+    rec.lang = 'fr-FR';
+    rec.continuous = true;
+    rec.interimResults = true;
+    baseTranscriptRef.current = command;
+    rec.onresult = (event) => {
+      let finalText = '';
+      let interimText = '';
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const r = event.results[i];
+        if (r.isFinal) finalText += r[0].transcript;
+        else interimText += r[0].transcript;
+      }
+      const sep = baseTranscriptRef.current && !baseTranscriptRef.current.endsWith(' ') ? ' ' : '';
+      const next = baseTranscriptRef.current + sep + finalText + interimText;
+      setCommand(next);
+      if (finalText) baseTranscriptRef.current = baseTranscriptRef.current + sep + finalText;
+    };
+    rec.onerror = (e) => {
+      console.warn('Speech recognition error', e);
+      setIsListening(false);
+      if (e.error === 'not-allowed') {
+        alert("🎤 Accès micro refusé. Autorise le micro dans les réglages du navigateur.");
+      }
+    };
+    rec.onend = () => { setIsListening(false); };
+    try {
+      rec.start();
+      setIsListening(true);
+      recognitionRef.current = rec;
+    } catch (e) {
+      setIsListening(false);
+    }
+  };
+
+  const stopDictation = () => {
+    try { recognitionRef.current?.stop(); } catch (e) {}
+    setIsListening(false);
+  };
+
+  // Stop la reconnaissance si on quitte la modale
+  useEffect(() => () => { try { recognitionRef.current?.stop(); } catch (e) {} }, []);
+
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -11558,18 +11614,30 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
           {phase === 'input' && (
             <>
-              <label className="block text-sm font-bold text-slate-700">Ton ordre</label>
+              <div className="flex items-center justify-between">
+                <label className="block text-sm font-bold text-slate-700">Ton ordre</label>
+                {speechSupported && (
+                  <button
+                    type="button"
+                    onClick={isListening ? stopDictation : startDictation}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all ${isListening ? 'bg-rose-500 hover:bg-rose-600 text-white animate-pulse' : 'bg-violet-100 hover:bg-violet-200 text-violet-700'}`}
+                    title={isListening ? 'Cliquer pour arrêter la dictée' : 'Dicter au lieu de taper'}
+                  >
+                    {isListening ? '⏹ Arrêter' : '🎤 Dicter'}
+                  </button>
+                )}
+              </div>
               <textarea
                 value={command}
-                onChange={(e) => setCommand(e.target.value)}
+                onChange={(e) => { setCommand(e.target.value); baseTranscriptRef.current = e.target.value; }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) askIa(); }}
                 rows={5}
                 placeholder={`Exemples :\n• Envoie un mail à Marage pour confirmer la pose mardi prochain\n• Réponds à Borbeau pour lui demander son RIB\n• Mail à HADDAD pour le remercier après la pose`}
-                className="w-full px-3 py-2 bg-white border-2 border-slate-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 rounded-xl text-sm resize-none"
+                className={`w-full px-3 py-2 bg-white border-2 rounded-xl text-sm resize-none ${isListening ? 'border-rose-400 ring-2 ring-rose-100' : 'border-slate-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100'}`}
                 autoFocus
               />
               <div className="text-[11px] text-slate-500 flex items-center justify-between">
-                <span>💡 Ctrl/Cmd + Entrée pour envoyer</span>
+                <span>{isListening ? '🎤 Écoute en cours…' : '💡 Ctrl/Cmd + Entrée pour envoyer'}</span>
                 <span>{command.length} caractères</span>
               </div>
               {error && <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-sm text-rose-700">{error}</div>}
