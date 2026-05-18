@@ -260,7 +260,7 @@ const computeTtcPresta = (ht, sansTva, legacyTauxTva) => {
 // ou clic. Stocke le fichier inline (window.storage `file:<id>`) et garde
 // l'ID du fichier dans la prop `fileId`. Onglet 👁️ pour prévisualiser dans
 // un nouvel onglet.
-function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false, pennylaneInfo = null, onPennylaneSuccess = null }) {
+function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false, pennylaneInfo = null, onPennylaneSuccess = null, label = 'facture' }) {
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [pushingPennylane, setPushingPennylane] = useState(false);
@@ -509,7 +509,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
         className={`flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-dashed bg-white text-[10px] cursor-pointer ${palette} ${uploading || extracting ? 'opacity-60' : ''}`}
       >
         <span>
-          {uploading ? '⏳ Upload…' : extracting ? '✨ Lecture IA…' : (onExtract ? '📎 Glisser PDF — l\'IA lira la facture ✨' : '📎 Glisser PDF facture ou cliquer')}
+          {uploading ? '⏳ Upload…' : extracting ? '✨ Lecture IA…' : (onExtract ? `📎 Glisser PDF — l'IA lira la ${label} ✨` : `📎 Glisser PDF ${label} ou cliquer`)}
         </span>
         <input type="file" accept="application/pdf,image/*" className="hidden" disabled={uploading || extracting} onChange={(e) => handleUpload(e.target.files?.[0])} />
       </label>
@@ -7421,6 +7421,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   fileId={formData.recepisseMairieFileId || ''}
                   onChange={(id) => setFormData({ ...formData, recepisseMairieFileId: id })}
                   color="indigo"
+                  label="récépissé mairie"
                 />
               </div>
 
@@ -7504,6 +7505,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             fileId={e.recepisseFileId || ''}
                             onChange={(id) => updE({ recepisseFileId: id })}
                             color="indigo"
+                            label="récépissé mairie"
                           />
                         </div>
                         <div className="grid grid-cols-2 gap-1 mb-2">
@@ -9158,6 +9160,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     fileId={d.recepisseMairieFileId || ''}
                     onChange={(id) => onUpdate({ recepisseMairieFileId: id })}
                     color="indigo"
+                    label="récépissé mairie"
                   />
                 </div>
                 {d.dateEnvoiMairie && (
