@@ -3308,10 +3308,14 @@ function Mini({ label, value, sub, color }) {
 
 function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
   const documents = dossier.documents || [];
-  const fournisseursDuDossier = (dossier.fournisseursDetail || []).map(f => f.nom);
+  // On lit poseurs/fournisseurs/regies directement (pas les versions ...Detail enrichies)
+  // car le dossier passé ici est brut (state), pas dossiersEnriched.
+  const fournisseursDuDossier = (dossier.fournisseurs || []).map(f => f.nom).filter(Boolean);
   const fournisseursUniques = [...new Set(fournisseursDuDossier)];
-  const poseursDuDossier = (dossier.poseursDetail || []).map(p => p.nom);
+  const poseursDuDossier = (dossier.poseurs || []).map(p => p.nom).filter(Boolean);
   const poseursUniques = [...new Set(poseursDuDossier)];
+  const regiesDuDossier = (dossier.regies || []).map(r => r.nom).filter(Boolean);
+  const regiesUniques = [...new Set(regiesDuDossier)];
 
   // Catégories disponibles dans le modal
   const categories = useMemo(() => {
@@ -3323,13 +3327,14 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
       poseursUniques.forEach(nom => {
         cats.push({ id: `poseur:${nom}`, key: 'poseur', subCategory: nom, label: 'Poseur', sublabel: nom, emoji: '🔧', color: 'from-amber-500 to-orange-500', bg: 'bg-amber-50', border: 'border-amber-200', accent: 'text-amber-700', desc: `Factures ${nom}` });
       });
-      cats.push({ id: 'regie', key: 'regie', subCategory: null, label: 'Régie', sublabel: dossier.regie || '—', emoji: '🤝', color: 'from-purple-500 to-violet-500', bg: 'bg-purple-50', border: 'border-purple-200', accent: 'text-purple-700', desc: 'Factures de la régie' });
+      const regieSublabel = regiesUniques.length > 0 ? regiesUniques.join(', ') : (dossier.regie || '—');
+      cats.push({ id: 'regie', key: 'regie', subCategory: null, label: 'Régie', sublabel: regieSublabel, emoji: '🤝', color: 'from-purple-500 to-violet-500', bg: 'bg-purple-50', border: 'border-purple-200', accent: 'text-purple-700', desc: 'Factures de la régie' });
       fournisseursUniques.forEach(nom => {
         cats.push({ id: `fournisseur:${nom}`, key: 'fournisseur', subCategory: nom, label: 'Fournisseur', sublabel: nom, emoji: '📦', color: 'from-orange-500 to-red-500', bg: 'bg-orange-50', border: 'border-orange-200', accent: 'text-orange-700', desc: `Factures ${nom}` });
       });
     }
     return cats;
-  }, [dossier, fournisseursUniques, poseursUniques, isAdmin]);
+  }, [dossier, fournisseursUniques, poseursUniques, regiesUniques, isAdmin]);
 
   const [activeCatId, setActiveCatId] = useState(categories[0].id);
   const activeCat = categories.find(c => c.id === activeCatId) || categories[0];
