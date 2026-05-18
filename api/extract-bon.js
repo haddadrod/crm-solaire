@@ -41,9 +41,10 @@ async function getCaller(req) {
 }
 
 // Schéma de sortie structurée — l'IA est contrainte de renvoyer exactement ces champs.
-const EXTRACTION_SCHEMA = {
-  type: 'object',
-  properties: {
+// Construit dynamiquement pour inclure 'societe' enum si availableSocietes fourni.
+function buildExtractionSchema(availableSocietes = []) {
+  const socIds = availableSocietes.map(s => s.id).filter(Boolean);
+  const props = {
     nom: { type: 'string', description: 'Nom de famille du client' },
     prenom: { type: 'string', description: 'Prénom du client' },
     adresse: { type: 'string', description: "Adresse (numéro et rue), sans code postal ni ville" },
@@ -59,14 +60,22 @@ const EXTRACTION_SCHEMA = {
     dateSignature: { type: 'string', description: 'Date de signature au format AAAA-MM-JJ si présente, sinon vide' },
     confiance: { type: 'string', enum: ['haute', 'moyenne', 'faible'], description: 'Niveau de confiance global de la lecture' },
     remarques: { type: 'string', description: 'Champs illisibles ou incertains à vérifier (court), sinon vide' },
-  },
-  required: [
+  };
+  const required = [
     'nom', 'prenom', 'adresse', 'codePostal', 'ville', 'telephone', 'email',
     'produit', 'puissance', 'montantTTC', 'montantHT', 'financement',
     'dateSignature', 'confiance', 'remarques',
-  ],
-  additionalProperties: false,
-};
+  ];
+  if (socIds.length > 0) {
+    props.societe = {
+      type: 'string',
+      enum: ['', ...socIds],
+      description: `Identifiant de la société émettrice du bon de commande. Regarde le LOGO en haut, la raison sociale, le SIRET. Valeurs : ${availableSocietes.map(s => `'${s.id}' (${s.label})`).join(', ')}. Si pas sûr, mets ''.`,
+    };
+    required.push('societe');
+  }
+  return { type: 'object', properties: props, required, additionalProperties: false };
+}
 
 const INSTRUCTIONS = `Tu lis des bons de commande manuscrits d'une entreprise française de vente et pose de panneaux solaires.
 Extrais les informations du client et de la vente depuis l'image.
@@ -93,10 +102,16 @@ export default async function handler(req, res) {
   if (!caller) return json(res, 401, { error: 'Connexion requise.' });
 
   const body = req.body || {};
-  const { imageBase64, mediaType, storagePath } = body;
+  const { imageBase64, mediaType, storagePath, availableSocietes } = body;
   if ((!imageBase64 && !storagePath) || !mediaType) {
     return json(res, 400, { error: 'Fichier manquant (imageBase64 ou storagePath requis).' });
   }
+  const socList = Array.isArray(availableSocietes)
+    ? availableSocietes
+        .filter(s => s && typeof s.id === 'string' && typeof s.label === 'string' && s.id && s.label)
+        .map(s => ({ id: s.id, label: s.label }))
+        .slice(0, 10)
+    : [];
   const isImage = /^image\/(jpeg|png|webp|gif)$/.test(mediaType);
   const isPdf = mediaType === 'application/pdf';
   if (!isImage && !isPdf) {
@@ -137,14 +152,15 @@ export default async function handler(req, res) {
       thinking: { type: 'adaptive' },
       output_config: {
         effort: 'medium',
-        format: { type: 'json_schema', schema: EXTRACTION_SCHEMA },
+        format: { type: 'json_schema', schema: buildExtractionSchema(socList) },
       },
       messages: [
         {
           role: 'user',
           content: [
             fileBlock,
-            { type: 'text', text: INSTRUCTIONS },
+            { type: 'text', text: INSTRUCTIONS + (socList.length > 0 ? `\n\nSOCIÉTÉS DISPONIBLES : ${socList.map(s => `${s.id} (${s.label})`).join(', ')}. Identifie la société émettrice via le LOGO / raison sociale / SIRET / pied de page. Renvoie l'identifiant exact dans 'societe'.` : ''),
+            },
           ],
         },
       ],

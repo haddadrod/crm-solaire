@@ -630,15 +630,28 @@ Pour chaque utilisateur : nb dossiers créés, modifiés, changements de statut,
 
 `ReglagesView`, [src/components/DossierSaisie.jsx:3440-4407](src/components/DossierSaisie.jsx). Admin uniquement.
 
-### 7 sections gérables
+### 8 sections gérables
 
 1. **Statuts** ([src/components/DossierSaisie.jsx:3509-3556](src/components/DossierSaisie.jsx)) : réordonnancement via flèches ↑/↓ ; nb dossiers par statut ; bouton « Réinitialiser ».
-2. **Utilisateurs** : voir §16.3.
-3. **Produits** : voir §16.4.
-4. **Poseurs** : voir §16.5 (PrestataireManager).
-5. **Fournisseurs** : voir §16.6.
-6. **Régies** : voir §16.5 (PrestataireManager).
-7. **Équipe interne** : voir §16.7 (CommissionsInternesManager).
+2. **🏢 Sociétés** : voir §16.2.
+3. **Utilisateurs** : voir §16.3.
+4. **Produits** : voir §16.4.
+5. **Poseurs** : voir §16.5 (PrestataireManager).
+6. **Fournisseurs** : voir §16.6.
+7. **Régies** : voir §16.5 (PrestataireManager).
+8. **Équipe interne** : voir §16.7 (CommissionsInternesManager).
+
+### 16.2 SocietesManager — gestion multi-marque (Yolico / Elsun / …)
+
+Permet d'opérer plusieurs marques sur le même CRM tout en évitant les confusions (ex : envoyer un mail signé Yolico à un client Elsun).
+
+- **CRUD complet** : ajouter / renommer / supprimer / changer la couleur du badge (6 couleurs)
+- **Stockage** : clé `societes` dans `window.storage` → `[{ id, label, emoji, color, signature }]`
+- **Champ `societe` sur chaque dossier** : sélectionné dans le formulaire (badge en haut) + dans le header de l'aperçu rapide
+- **Sélecteur global** dans la barre du haut : `[👀 Toutes] [🟢 Yolico] [🔵 Elsun]` (persisté URL hash `?soc=yolico`)
+- **Filtres automatiques** quand société active : dossiers list, dashboard alerts, rapport paiements
+- **Rapport paiements séparé** : Projexio peut nous devoir 30k sur Yolico ET 20k sur Elsun → 2 entrées distinctes
+- **IA détection auto** : le scan PDF (extract-bon, classify-dossier) reconnaît la société émettrice via le logo / raison sociale / SIRET du bon de commande et pré-coche le champ
 
 Plus la gestion du **PIN admin** : configurer, changer, retirer (cf. §18).
 
