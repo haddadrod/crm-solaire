@@ -8758,7 +8758,11 @@ function parseBool(str) {
 }
 
 function suggestField(header) {
-  const h = String(header || '').toLowerCase().trim().replace(/[^a-z0-9]/g, '');
+  // Normalise les accents avant la regex : "Prénom" → "prenom", "Téléphone" → "telephone".
+  // Sans NFD, l'accent disparaissait sans remplacer la lettre ("prnom") et le match ratait.
+  const h = String(header || '').toLowerCase().trim()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]/g, '');
   const map = [
     { keys: ['nom', 'lastname'], field: 'nom' },
     { keys: ['prenom', 'firstname'], field: 'prenom' },
@@ -8772,6 +8776,7 @@ function suggestField(header) {
     { keys: ['montant', 'prix', 'ttc', 'total', 'montantttc'], field: 'montantTotal' },
     { keys: ['ht', 'montantht'], field: 'montantHtCustom' },
     { keys: ['datepose', 'datinsta', 'datinst', 'dateinstall', 'dateinsta', 'pose'], field: 'dateInsta' },
+    { keys: ['visite', 'visiteclient', 'rendezvous', 'rdv'], field: 'dateVisitePose' },
     { keys: ['dateaccord', 'accord'], field: 'dateAccord' },
     { keys: ['dateconsuel', 'consuel'], field: 'dateConsuel' },
     { keys: ['regie', 'commercial', 'agence'], field: 'regie' },
