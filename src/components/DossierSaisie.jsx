@@ -685,6 +685,29 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const REGIES = useMemo(() => Object.keys(tarifsRegies), [tarifsRegies]);
   const FOURNISSEURS = listeFournisseurs;
 
+  // Contacts effectifs des prestataires = source de vérité = comptes
+  // utilisateurs Supabase (via user.linkedTo). On fait l'override des
+  // anciens poseursContacts/regiesContacts pour ne plus avoir 2 endroits
+  // qui se contredisent et causent le bug 'l'email disparaît'.
+  // Fallback sur les contacts legacy pour les prestataires sans compte.
+  const buildEffectiveContacts = (kind, legacy) => {
+    const out = {};
+    users.forEach(u => {
+      if (u.role === kind && u.linkedTo && (u.tel || u.email)) {
+        out[u.linkedTo] = { tel: u.tel || '', email: u.email || '' };
+      }
+    });
+    Object.keys(legacy || {}).forEach(nom => {
+      if (out[nom]) return; // user account prime
+      const c = legacy[nom];
+      if (!c) return;
+      out[nom] = typeof c === 'string' ? { tel: c, email: '' } : { tel: c.tel || '', email: c.email || '' };
+    });
+    return out;
+  };
+  const effectivePoseursContacts = useMemo(() => buildEffectiveContacts('poseur', poseursContacts), [users, poseursContacts]);
+  const effectiveRegiesContacts = useMemo(() => buildEffectiveContacts('regie', regiesContacts), [users, regiesContacts]);
+
   // Rôle de l'utilisateur courant : lu directement dans le user_metadata Supabase.
   // Fallback : recherche dans les profils locaux (anciens dossiers).
   const authUserRole = useMemo(() => {
@@ -2899,8 +2922,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
             produits={produits}
             isAdmin={isAdmin}
             permissions={permissions}
-            poseursContacts={poseursContacts}
-            regiesContacts={regiesContacts}
+            poseursContacts={effectivePoseursContacts}
+            regiesContacts={effectiveRegiesContacts}
             emailConfig={emailConfig}
             gmailOAuth={gmailOAuth}
           />
@@ -2943,8 +2966,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
             type={showAlertesType}
             dashboard={dashboard}
             STATUTS={STATUTS}
-            poseursContacts={poseursContacts}
-            regiesContacts={regiesContacts}
+            poseursContacts={effectivePoseursContacts}
+            regiesContacts={effectiveRegiesContacts}
             onLogAction={(localId, entry) => {
               const userTag = currentUser || '(anonyme)';
               setDossiers(prev => prev.map(d => d.localId === localId
@@ -5240,7 +5263,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'poseurs' && (
-        <PrestataireManager titre="🔧 Poseurs" description="Tarifs HT + tél/email pour envoyer le chantier au poseur (WhatsApp ou email)" data={tarifsPoseurs} setData={setTarifsPoseurs} dossiers={dossiers} dossierField="poseur" type="poseur" produits={produits} contacts={poseursContacts} setContacts={setPoseursContacts} contactsObjectShape={true} />
+        <PrestataireManager titre="🔧 Poseurs" description="Tarifs HT par puissance. Tél/email du poseur → onglet Utilisateurs (compte rattaché à ce poseur)." data={tarifsPoseurs} setData={setTarifsPoseurs} dossiers={dossiers} dossierField="poseur" type="poseur" produits={produits} contacts={poseursContacts} setContacts={setPoseursContacts} contactsObjectShape={true} />
       )}
 
       {section === 'fournisseurs' && (
@@ -5248,7 +5271,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'regies' && (
-        <PrestataireManager titre="🤝 Régies commerciales" description="Tarifs HT + tél/email pour prévenir la régie quand le financement est accepté" data={tarifsRegies} setData={setTarifsRegies} dossiers={dossiers} dossierField="regie" type="régie" produits={produits} contacts={regiesContacts} setContacts={setRegiesContacts} contactsObjectShape={true} />
+        <PrestataireManager titre="🤝 Régies commerciales" description="Tarifs HT par puissance. Tél/email de la régie → onglet Utilisateurs (compte rattaché à cette régie)." data={tarifsRegies} setData={setTarifsRegies} dossiers={dossiers} dossierField="regie" type="régie" produits={produits} contacts={regiesContacts} setContacts={setRegiesContacts} contactsObjectShape={true} />
       )}
 
       {section === 'commissions' && (
@@ -5844,15 +5867,7 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                       <tr key={nom} className="border-t border-slate-200 hover:bg-slate-50 group">
                         <td className="px-2 py-1.5 sticky left-0 bg-white group-hover:bg-slate-50 z-10 min-w-[140px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">
                           <input type="text" defaultValue={nom} onBlur={(e) => rename(nom, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="w-full px-2 py-1 bg-transparent border border-transparent hover:border-slate-300 focus:border-violet-400 focus:bg-white focus:outline-none rounded text-xs font-semibold" />
-                          {setContacts && (
-                            <ContactRowEditor
-                              nom={nom}
-                              currentTel={getTel(nom)}
-                              currentEmail={contactsObjectShape ? getEmail(nom) : null}
-                              onSave={(tel, email) => saveContact(nom, tel, email)}
-                              showEmail={contactsObjectShape}
-                            />
-                          )}
+                          {/* Tél/email gérés dans Réglages → Utilisateurs (compte rattaché à ce {type}) — source de vérité unique, plus de bug d'effacement */}
                         </td>
                         {PUISSANCES_PRINCIPALES.map(p => {
                           const isExact = data[nom][p] !== undefined;
@@ -5938,6 +5953,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
   const [newEmoji, setNewEmoji] = useState('👤');
   const [newRole, setNewRole] = useState('commercial');
   const [newLinkedTo, setNewLinkedTo] = useState(''); // poseur/régie rattaché
+  const [newTel, setNewTel] = useState(''); // 📞 tél (WhatsApp/SMS) — surtout pour les poseurs/régies
   const [supabaseUsers, setSupabaseUsers] = useState([]);
   const [loadingSupabase, setLoadingSupabase] = useState(false);
   const [supabaseError, setSupabaseError] = useState('');
@@ -5975,15 +5991,35 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
     return data;
   };
 
-  // Récupère la liste des utilisateurs Supabase
+  // Récupère la liste des utilisateurs Supabase + sync le state local users
+  // (qui sert au reste du CRM, notamment pour récupérer tél/email d'un poseur
+  // ou d'une régie à partir de leur compte rattaché).
   const fetchSupabaseUsers = async () => {
     setLoadingSupabase(true);
     setSupabaseError('');
     try {
       const data = await callUsersApi('GET');
-      setSupabaseUsers(data.users || []);
+      const list = data.users || [];
+      setSupabaseUsers(list);
       setBootstrapMode(!!data.bootstrap);
-      if (onCountChange) onCountChange((data.users || []).length);
+      if (onCountChange) onCountChange(list.length);
+      // Sync local users : rebuild depuis Supabase pour que linkedTo/tel/email
+      // soient à jour partout (le CRM utilise users[].linkedTo pour résoudre
+      // les contacts tél/email des prestataires).
+      const enriched = list.map(u => {
+        const m = u.user_metadata || {};
+        return {
+          name: m.display_name || u.email?.split('@')[0] || '(sans nom)',
+          emoji: m.emoji || '👤',
+          role: m.role || 'commercial',
+          email: u.email || '',
+          linkedTo: m.linkedTo || '',
+          tel: m.tel || '',
+        };
+      });
+      // Préserve les users locaux qui n'ont pas de compte Supabase (ex : '(anonyme)')
+      const localOnly = (users || []).filter(u => !enriched.find(e => e.name.toLowerCase() === (u.name || '').toLowerCase()));
+      setUsers([...enriched, ...localOnly]);
     } catch (e) {
       setSupabaseError(`Erreur lors du chargement : ${e.message}`);
       console.error(e);
@@ -6043,6 +6079,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
         role: newRole,
       };
       if (newRole === 'poseur' || newRole === 'regie') meta.linkedTo = newLinkedTo;
+      if (newTel.trim()) meta.tel = newTel.trim();
       const data = await callUsersApi('POST', { body: meta });
       const bootstrapMsg = data.bootstrapped ? ' (1er compte → admin auto)' : '';
       setSupabaseSuccess(`✅ Compte créé pour ${newEmail.trim()}${bootstrapMsg} ! Mot de passe : ${newPassword}`);
@@ -6050,7 +6087,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
       if (!users.find(u => u.name.toLowerCase() === displayName.toLowerCase())) {
         setUsers([...users, { name: displayName, emoji: newEmoji.trim() || '👤', role: data.bootstrapped ? 'admin' : newRole, email: newEmail.trim() }]);
       }
-      setNewName(''); setNewEmail(''); setNewPassword(''); setNewEmoji('👤'); setNewRole('commercial'); setNewLinkedTo('');
+      setNewName(''); setNewEmail(''); setNewPassword(''); setNewEmoji('👤'); setNewRole('commercial'); setNewLinkedTo(''); setNewTel('');
       setShowAdd(false);
       await fetchSupabaseUsers();
     } catch (e) {
@@ -6260,6 +6297,12 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                         </select>
                       </div>
                     )}
+                    <div className="md:col-span-2">
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">
+                        📞 Téléphone (WhatsApp/SMS) <span className="text-slate-400 normal-case font-normal">— optionnel mais recommandé pour les poseurs/régies (relances facture)</span>
+                      </label>
+                      <input type="tel" value={newTel} onChange={(e) => setNewTel(e.target.value)} placeholder="0612345678" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm" />
+                    </div>
                   </div>
                   <div className="mt-3 flex gap-2 justify-end">
                     <button onClick={() => { setShowAdd(false); setNewEmail(''); setNewPassword(''); setNewName(''); setSupabaseError(''); }} className="px-4 py-2 bg-slate-100 text-slate-600 rounded-lg text-sm font-semibold">Annuler</button>
@@ -6332,6 +6375,20 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                             {(role === 'poseur' ? poseursList : regiesList).map(n => <option key={n} value={n}>{n}</option>)}
                           </select>
                         )}
+                        <input
+                          type="tel"
+                          defaultValue={meta.tel || ''}
+                          onBlur={(e) => {
+                            const v = e.target.value.trim();
+                            if (v === (meta.tel || '')) return;
+                            updateSupabaseUserMeta(u, { tel: v });
+                          }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                          disabled={loadingSupabase}
+                          placeholder="📞 tél (WhatsApp)"
+                          className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-[11px] w-36"
+                          title="Tél (WhatsApp/SMS) — sert pour les relances depuis le CRM"
+                        />
                         {u.last_sign_in_at && (
                           <span className="text-[10px] text-slate-400">
                             Dernière connexion : {new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}
