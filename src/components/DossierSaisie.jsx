@@ -626,7 +626,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [showStatutFilter, setShowStatutFilter] = useState(false); // 🔻 replier/déplier le filtre par statut
   const [copiedId, setCopiedId] = useState(null);
   const [celebrating, setCelebrating] = useState(false);
-  const [activeTab, setActiveTab] = useState('dossiers');
+  // Init depuis le hash URL pour qu'un refresh F5 garde l'onglet courant.
+  // Format : #onglet ou #onglet/sous-section (ex : #reglages/utilisateurs)
+  const initialTabFromHash = (typeof window !== 'undefined' && window.location.hash)
+    ? window.location.hash.replace(/^#/, '').split('/')[0] || 'dossiers'
+    : 'dossiers';
+  const VALID_TABS = ['dossiers', 'archives', 'calendrier', 'paiements', 'dashboard', 'reglages'];
+  const [activeTab, setActiveTab] = useState(VALID_TABS.includes(initialTabFromHash) ? initialTabFromHash : 'dossiers');
   const [statutsOrder, setStatutsOrder] = useState(STATUTS.map(s => s.id));
   const [tarifsPoseurs, setTarifsPoseurs] = useState(TARIFS_POSEURS_DEFAULT);
   const [poseursContacts, setPoseursContacts] = useState({}); // { nomPoseur: 'téléphone' } — pour l'envoi WhatsApp
@@ -1389,6 +1395,28 @@ export default function DossierSaisie({ authUser, onLogout }) {
     if (activeTab === 'dashboard' && !permissions.voirDashboard) setActiveTab('dossiers');
     if (activeTab === 'reglages' && !permissions.voirReglages) setActiveTab('dossiers');
   }, [permissions, activeTab]);
+
+  // Persiste l'onglet courant dans le hash URL pour que F5 / refresh garde
+  // la position. On préserve la sous-section après '/' (gérée dans ReglagesView).
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const current = window.location.hash.replace(/^#/, '');
+    const sub = current.includes('/') ? '/' + current.split('/').slice(1).join('/') : '';
+    const target = activeTab + sub;
+    if (current !== target) {
+      window.history.replaceState(null, '', `#${target}`);
+    }
+  }, [activeTab]);
+
+  // Écoute le bouton retour navigateur pour resync activeTab depuis le hash.
+  useEffect(() => {
+    const onPop = () => {
+      const h = window.location.hash.replace(/^#/, '').split('/')[0];
+      if (h && VALID_TABS.includes(h) && h !== activeTab) setActiveTab(h);
+    };
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [activeTab]);
 
   const STATUTS_ORDERED = useMemo(() => statutsOrder.map(id => STATUTS.find(s => s.id === id)).filter(Boolean), [statutsOrder]);
 
@@ -5152,7 +5180,20 @@ function PerfList({ titre, data, medal, border, header, iconColor }) {
 }
 
 function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth }) {
-  const [section, setSection] = useState('statuts');
+  // Init depuis le hash URL pour qu'un refresh garde la sous-section.
+  // Format : #reglages/utilisateurs → section = 'utilisateurs'
+  const sectionFromHash = (typeof window !== 'undefined' && window.location.hash)
+    ? window.location.hash.replace(/^#/, '').split('/')[1] || 'statuts'
+    : 'statuts';
+  const [section, setSection] = useState(sectionFromHash);
+  // Sync le hash quand la section change (préfixe 'reglages' déjà géré par l'App)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const target = `reglages/${section}`;
+    if (window.location.hash.replace(/^#/, '') !== target) {
+      window.history.replaceState(null, '', `#${target}`);
+    }
+  }, [section]);
   // Nombre de comptes Supabase, remonté par UsersManager pour le badge de l'onglet.
   const [usersCount, setUsersCount] = useState(null);
 
