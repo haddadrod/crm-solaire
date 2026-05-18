@@ -5604,29 +5604,23 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     }
   };
 
-  // Met à jour le téléphone d'un prestataire (utilisé pour l'envoi WhatsApp).
-  const updateContact = (nom, tel) => {
+  // Sauvegarde tél + email d'un prestataire en UN SEUL setContacts.
+  // Utiliser 2 setContacts back-to-back fait perdre la 1ère valeur (closure stale).
+  // Utilise functional setState pour être safe sur React 18 batching.
+  const saveContact = (nom, tel, email) => {
     if (!setContacts) return;
-    const nc = { ...(contacts || {}) };
-    const v = (tel || '').trim();
-    if (contactsObjectShape) {
-      const existing = (nc[nom] && typeof nc[nom] === 'object') ? nc[nom] : {};
-      const next = { ...existing, tel: v };
-      if (!next.tel && !next.email) delete nc[nom]; else nc[nom] = next;
-    } else {
-      if (v) nc[nom] = v; else delete nc[nom];
-    }
-    setContacts(nc);
-  };
-  // Email d'un prestataire (uniquement si contactsObjectShape=true).
-  const updateEmail = (nom, email) => {
-    if (!setContacts || !contactsObjectShape) return;
-    const nc = { ...(contacts || {}) };
-    const v = (email || '').trim();
-    const existing = (nc[nom] && typeof nc[nom] === 'object') ? nc[nom] : {};
-    const next = { ...existing, email: v };
-    if (!next.tel && !next.email) delete nc[nom]; else nc[nom] = next;
-    setContacts(nc);
+    const tVal = (tel || '').trim();
+    const eVal = (email || '').trim();
+    setContacts(prev => {
+      const nc = { ...(prev || {}) };
+      if (contactsObjectShape) {
+        const next = { tel: tVal, email: eVal };
+        if (!next.tel && !next.email) delete nc[nom]; else nc[nom] = next;
+      } else {
+        if (tVal) nc[nom] = tVal; else delete nc[nom];
+      }
+      return nc;
+    });
   };
 
   const updateTarif = (nom, key, v) => {
@@ -5686,10 +5680,7 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                               nom={nom}
                               currentTel={getTel(nom)}
                               currentEmail={contactsObjectShape ? getEmail(nom) : null}
-                              onSave={(tel, email) => {
-                                updateContact(nom, tel);
-                                if (contactsObjectShape) updateEmail(nom, email);
-                              }}
+                              onSave={(tel, email) => saveContact(nom, tel, email)}
                               showEmail={contactsObjectShape}
                             />
                           )}
