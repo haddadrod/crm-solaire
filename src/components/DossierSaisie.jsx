@@ -9807,7 +9807,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             <div className={`flex items-center justify-between ${foldedSteps.produits ? '' : 'mb-1.5'}`}>
               <button onClick={() => toggleStep('produits')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80">
                 <span className="text-amber-600 text-[9px]">{foldedSteps.produits ? '▶' : '▼'}</span>
-                <h3 className="text-[10px] font-bold text-amber-700 uppercase">🏠 Produits installés ({dossierProduits.length})</h3>
+                <h3 className="text-[10px] font-bold text-amber-700 uppercase">🏠 Produits ({dossierProduits.length})</h3>
                 {foldedSteps.produits && dossierProduits.length > 0 && (() => {
                   const totalWc = dossierProduits.reduce((s, p) => s + (parseInt(p.puissance) || 0), 0);
                   const noms = dossierProduits.slice(0, 2).map(p => {
