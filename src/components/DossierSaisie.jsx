@@ -242,9 +242,10 @@ const computeTtcPresta = (ht, sansTva, legacyTauxTva) => {
 // ou clic. Stocke le fichier inline (window.storage `file:<id>`) et garde
 // l'ID du fichier dans la prop `fileId`. Onglet 👁️ pour prévisualiser dans
 // un nouvel onglet.
-function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false }) {
+function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false, pennylaneInfo = null, onPennylaneSuccess = null }) {
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
+  const [pushingPennylane, setPushingPennylane] = useState(false);
   const [meta, setMeta] = useState(null);
   // Indique que le fileId est défini mais que le fichier est introuvable
   // dans le storage (rare — ex : ligne supprimée à la main, race condition).
@@ -333,6 +334,57 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
     } catch (e) { alert('Erreur : ' + e.message); }
   };
 
+  // Push la facture vers Pennylane via /api/pennylane-push-facture.
+  // Validation : il faut au moins nom fournisseur + N° facture + montants
+  // + un fichier uploadé (pour éviter d'envoyer du n'importe quoi).
+  const handlePushPennylane = async () => {
+    if (!pennylaneInfo || !fileId) return;
+    const missing = [];
+    if (!pennylaneInfo.supplierName) missing.push('nom du fournisseur');
+    if (!pennylaneInfo.factureNo) missing.push('N° facture');
+    if (!pennylaneInfo.dateFacture) missing.push('date facture');
+    if (!pennylaneInfo.montantHt || pennylaneInfo.montantHt <= 0) missing.push('montant HT');
+    if (!pennylaneInfo.montantTtc || pennylaneInfo.montantTtc <= 0) missing.push('montant TTC');
+    if (missing.length > 0) {
+      alert(`Impossible d'envoyer à Pennylane — manque : ${missing.join(', ')}.`);
+      return;
+    }
+    setPushingPennylane(true);
+    try {
+      const r = await window.storage.get(`file:${fileId}`);
+      if (!r?.value) throw new Error('Fichier introuvable dans le storage local.');
+      const data = JSON.parse(r.value);
+      const fileBase64 = (data.dataUrl || '').split(',')[1] || '';
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/pennylane-push-facture', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          supplierName: pennylaneInfo.supplierName,
+          factureNo: pennylaneInfo.factureNo,
+          dateFacture: pennylaneInfo.dateFacture,
+          montantHt: pennylaneInfo.montantHt,
+          montantTtc: pennylaneInfo.montantTtc,
+          tauxTva: pennylaneInfo.tauxTva ?? 20,
+          fileBase64,
+          fileName: data.name || 'facture.pdf',
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      if (onPennylaneSuccess && payload.data?.pennylaneInvoiceId) {
+        onPennylaneSuccess(payload.data.pennylaneInvoiceId);
+      }
+      alert(`✅ Facture envoyée à Pennylane (ID ${payload.data?.pennylaneInvoiceId || '?'})`);
+    } catch (e) {
+      alert(`Envoi Pennylane : ${e.message}`);
+    } finally {
+      setPushingPennylane(false);
+    }
+  };
+
   // Aperçu de la facture : on charge le fichier depuis le storage et on ouvre
   // l'overlay in-app FilePreviewOverlay (compatible mobile, pas de popup blocker
   // contrairement à window.open qui est bloqué après un await asynchrone).
@@ -378,6 +430,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
   }[color] || 'border-slate-200 text-slate-700 hover:bg-slate-50';
 
   if (meta) {
+    const pennylanePushed = pennylaneInfo?.pushedId;
     return (
       <>
         <div className={`flex items-center gap-1 px-2 py-1 rounded border bg-white text-[10px] ${palette}`}>
@@ -386,6 +439,22 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
             <button onClick={handleReExtract} disabled={extracting} className="px-1 py-0.5 hover:bg-violet-100 text-violet-600 rounded" title="Re-lire les infos de la facture avec l'IA">
               {extracting ? '⏳' : '✨'}
             </button>
+          )}
+          {pennylaneInfo && (
+            pennylanePushed ? (
+              <span className="px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[9px] font-bold" title={`Déjà envoyé à Pennylane (ID ${pennylanePushed})`}>
+                ✓ Pennylane
+              </span>
+            ) : (
+              <button
+                onClick={handlePushPennylane}
+                disabled={pushingPennylane}
+                className="px-1.5 py-0.5 bg-violet-500 hover:bg-violet-600 text-white rounded text-[9px] font-bold"
+                title="Envoyer cette facture à Pennylane (compta)"
+              >
+                {pushingPennylane ? '⏳' : '📤 Pennylane'}
+              </button>
+            )
           )}
           <button onClick={handleView} className="px-1 py-0.5 hover:bg-white rounded" title="Voir la facture">👁️</button>
           <button onClick={handleRemove} className="px-1 py-0.5 text-rose-500 hover:bg-rose-100 rounded" title="Retirer">🗑️</button>
@@ -9307,8 +9376,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 if (typeof data.tauxTva === 'number' && data.tauxTva === 0 && !r.sansTva) {
                                   upd.sansTva = true; upd.tauxTva = 0;
                                 }
+                                if (data.dateFacture && !r.dateFacture) upd.dateFacture = String(data.dateFacture);
                                 if (Object.keys(upd).length > 0) updateRegie(i, upd);
                               }}
+                              pennylaneInfo={{
+                                supplierName: r.nom,
+                                factureNo: r.factureNo,
+                                dateFacture: r.dateFacture || new Date().toISOString().slice(0, 10),
+                                montantHt: parseFloat(r.htCustom) || (d.regiesDetail?.[i]?.autoHt) || 0,
+                                montantTtc: d.regiesDetail?.[i]?.ttc || 0,
+                                tauxTva: r.sansTva ? 0 : 20,
+                                pushedId: r.pennylaneInvoiceId,
+                              }}
+                              onPennylaneSuccess={(id) => updateRegie(i, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
                             />
                           </>
                         )}
@@ -9518,8 +9598,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           if (data.factureNo && !p.factureNo) upd.factureNo = String(data.factureNo);
                           if (data.bl && !p.bl) upd.bl = String(data.bl);
                           if (data.montantHt && data.montantHt > 0 && !p.htCustom) upd.htCustom = String(data.montantHt);
+                          if (data.dateFacture && !p.dateFacture) upd.dateFacture = String(data.dateFacture);
                           if (Object.keys(upd).length > 0) updatePoseur(i, upd);
                         }}
+                        pennylaneInfo={{
+                          supplierName: p.nom,
+                          factureNo: p.factureNo,
+                          dateFacture: p.dateFacture || new Date().toISOString().slice(0, 10),
+                          montantHt: parseFloat(p.htCustom) || (d.poseursDetail?.[i]?.autoHt) || 0,
+                          montantTtc: d.poseursDetail?.[i]?.ttc || 0,
+                          tauxTva: 0, // poseurs : toujours sans TVA
+                          pushedId: p.pennylaneInvoiceId,
+                        }}
+                        onPennylaneSuccess={(id) => updatePoseur(i, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
                       />
                     </>
                   )}
@@ -9629,8 +9720,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           if (typeof data.tauxTva === 'number' && data.tauxTva === 0 && !f.sansTva) {
                             upd.sansTva = true; upd.tauxTva = 0;
                           }
+                          if (data.dateFacture && !f.dateFacture) upd.dateFacture = String(data.dateFacture);
                           if (Object.keys(upd).length > 0) updateFournisseur(i, upd);
                         }}
+                        pennylaneInfo={{
+                          supplierName: f.nom,
+                          factureNo: f.factureNo,
+                          dateFacture: f.dateFacture || new Date().toISOString().slice(0, 10),
+                          montantHt: parseFloat(f.htCustom) || (d.fournisseursDetail?.[i]?.autoHt) || 0,
+                          montantTtc: d.fournisseursDetail?.[i]?.ttc || 0,
+                          tauxTva: f.sansTva ? 0 : 20,
+                          pushedId: f.pennylaneInvoiceId,
+                        }}
+                        onPennylaneSuccess={(id) => updateFournisseur(i, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
                       />
                     </>
                   )}
