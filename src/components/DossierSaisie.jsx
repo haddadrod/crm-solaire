@@ -1821,11 +1821,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Rapport paiements
   const rapportPaiements = useMemo(() => {
     const ROLES_INTERNES_LABELS = ['Téléprospecteur', 'Confirmateur', 'Commercial', 'Coordinateur projet', 'Resp. envoi pose'];
+    // 🏢 Filtre société : si une société est sélectionnée, on ne compte que ses
+    // dossiers. Évite que Projexio (qui finance Yolico ET Elsun) apparaisse
+    // avec un total fusionné — la compta voit la vraie dette par marque.
+    const dossiersFiltres = activeSociete
+      ? dossiersEnriched.filter(d => d.societe === activeSociete)
+      : dossiersEnriched;
     const map = {};
+    // Clé inclut la société → 'IONERGIK chez Yolico' et 'IONERGIK chez Elsun'
+    // restent séparés même en vue 'Toutes'. C'est la réalité comptable.
     const addEntry = (nom, type, ttc, paye, datePaye, dossier) => {
       if (!nom || !ttc) return;
-      const key = `${type}::${nom}`;
-      if (!map[key]) map[key] = { nom, type, totalDu: 0, totalPaye: 0, totalRestant: 0, totalAPayerMaintenant: 0, totalEnAttenteFinanceur: 0, totalPayeAvance: 0, lignes: [] };
+      const soc = dossier.societe || '';
+      const key = `${type}::${nom}::${soc}`;
+      if (!map[key]) map[key] = { nom, type, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, totalAPayerMaintenant: 0, totalEnAttenteFinanceur: 0, totalPayeAvance: 0, lignes: [] };
       map[key].totalDu += ttc;
       const isInterne = ROLES_INTERNES_LABELS.includes(type);
       const payeAvance = paye && !dossier.payeClient && !isInterne;
@@ -1839,9 +1848,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (isInterne || dossier.payeClient) map[key].totalAPayerMaintenant += ttc;
         else map[key].totalEnAttenteFinanceur += ttc;
       }
-      map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne, prestataireType: type });
+      map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne, prestataireType: type, societe: soc });
     };
-    dossiersEnriched.forEach(d => {
+    dossiersFiltres.forEach(d => {
       (d.fournisseursDetail || []).forEach(f => addEntry(f.nom, 'Fournisseur', f.ttc, f.paye, f.datePaye, d));
       // Multi-régies : itère sur regiesDetail
       (d.regiesDetail || []).forEach(r => addEntry(r.nom, 'Régie', r.ttc, r.paye, r.datePaye, d));
@@ -1865,30 +1874,35 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const totalPayeAvance = list.reduce((s, p) => s + p.totalPayeAvance, 0);
 
     const encaissMap = {};
-    dossiersEnriched.forEach(d => {
+    dossiersFiltres.forEach(d => {
       const fin = d.financement || 'AUTRE';
+      const soc = d.societe || '';
+      // Banque × société = clé unique. Projexio peut nous devoir 30k sur Yolico
+      // ET 20k sur Elsun — deux dettes distinctes à recouvrer séparément.
+      const key = `${fin}::${soc}`;
       const m = d.montantTotal || 0;
-      // On garde TOUS les financeurs (même à 0€) pour que l'utilisateur voie toujours sa liste complète
-      if (!encaissMap[fin]) encaissMap[fin] = { nom: fin, totalAttendu: 0, totalRecu: 0, totalRestant: 0, lignes: [] };
-      encaissMap[fin].totalAttendu += m;
-      if (d.payeClient) encaissMap[fin].totalRecu += m;
-      else encaissMap[fin].totalRestant += m;
-      encaissMap[fin].lignes.push({ dossierId: d.id || '—', dossierLocalId: d.localId, client: `${d.nom} ${d.prenom || ''}`.trim(), date: d.dateInsta, ttc: m, paye: d.payeClient });
+      if (!encaissMap[key]) encaissMap[key] = { nom: fin, societe: soc, totalAttendu: 0, totalRecu: 0, totalRestant: 0, lignes: [] };
+      encaissMap[key].totalAttendu += m;
+      if (d.payeClient) encaissMap[key].totalRecu += m;
+      else encaissMap[key].totalRestant += m;
+      encaissMap[key].lignes.push({ dossierId: d.id || '—', dossierLocalId: d.localId, client: `${d.nom} ${d.prenom || ''}`.trim(), date: d.dateInsta, ttc: m, paye: d.payeClient, societe: soc });
     });
     const encaissList = Object.values(encaissMap).sort((a, b) => b.totalRestant - a.totalRestant);
     const totalEncaisseClient = encaissList.reduce((s, e) => s + e.totalRecu, 0);
     const totalAEncaisserClient = encaissList.reduce((s, e) => s + e.totalRestant, 0);
 
-    // Pénalités régies (poses ratées) — agrégées par régie
+    // Pénalités régies (poses ratées) — agrégées par régie × société
     const penaliteMap = {};
-    dossiersEnriched.forEach(d => {
+    dossiersFiltres.forEach(d => {
       (d.tentativesPose || []).forEach((t, idx) => {
         const regie = t.regie || '(régie non spécifiée)';
-        if (!penaliteMap[regie]) penaliteMap[regie] = { nom: regie, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
-        penaliteMap[regie].totalDu += t.penalite || 0;
-        if (t.regleAt) penaliteMap[regie].totalPaye += t.penalite || 0;
-        else penaliteMap[regie].totalRestant += t.penalite || 0;
-        penaliteMap[regie].lignes.push({
+        const soc = d.societe || '';
+        const key = `${regie}::${soc}`;
+        if (!penaliteMap[key]) penaliteMap[key] = { nom: regie, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
+        penaliteMap[key].totalDu += t.penalite || 0;
+        if (t.regleAt) penaliteMap[key].totalPaye += t.penalite || 0;
+        else penaliteMap[key].totalRestant += t.penalite || 0;
+        penaliteMap[key].lignes.push({
           dossierLocalId: d.localId,
           dossierId: d.id || '—',
           client: `${d.nom} ${d.prenom || ''}`.trim(),
@@ -1898,6 +1912,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           regleAt: t.regleAt || null,
           definitif: !!t.definitif,
           tentativeIdx: idx,
+          societe: soc,
         });
       });
     });
@@ -1910,15 +1925,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // que les pénalités, mais avec un PDF d'accord transactionnel et des
     // montants en général plus élevés).
     const litigeMap = {};
-    dossiersEnriched.forEach(d => {
+    dossiersFiltres.forEach(d => {
       const montant = parseFloat(d.litigeMontantRembourse);
       if (!montant || isNaN(montant) || montant <= 0) return;
       const regie = d.litigeRegieNom || '(régie non identifiée)';
-      if (!litigeMap[regie]) litigeMap[regie] = { nom: regie, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
-      litigeMap[regie].totalDu += montant;
-      if (d.litigeRegieRembourse) litigeMap[regie].totalPaye += montant;
-      else litigeMap[regie].totalRestant += montant;
-      litigeMap[regie].lignes.push({
+      const soc = d.societe || '';
+      const key = `${regie}::${soc}`;
+      if (!litigeMap[key]) litigeMap[key] = { nom: regie, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
+      litigeMap[key].totalDu += montant;
+      if (d.litigeRegieRembourse) litigeMap[key].totalPaye += montant;
+      else litigeMap[key].totalRestant += montant;
+      litigeMap[key].lignes.push({
         dossierLocalId: d.localId,
         dossierId: d.id || '—',
         client: `${d.nom} ${d.prenom || ''}`.trim(),
@@ -1928,6 +1945,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         factureNo: d.litigeFactureNo || '',
         accordPdfUrl: d.litigeAccordPdfUrl || '',
         note: d.litigeNote || '',
+        societe: soc,
       });
     });
     const litigesList = Object.values(litigeMap).sort((a, b) => b.totalRestant - a.totalRestant);
@@ -1935,8 +1953,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const totalLitigesPaye = litigesList.reduce((s, p) => s + p.totalPaye, 0);
     const totalLitigesRestant = litigesList.reduce((s, p) => s + p.totalRestant, 0);
 
-    return { list, totalGeneralPaye, totalGeneralRestant, totalAPayerMaintenant, totalEnAttenteFinanceur, totalPayeAvance, totalEncaisseClient, totalAEncaisserClient, encaissList, penalitesList, totalPenalitesDu, totalPenalitesPaye, totalPenalitesRestant, litigesList, totalLitigesDu, totalLitigesPaye, totalLitigesRestant };
-  }, [dossiersEnriched, tarifsInternes]);
+    return { list, totalGeneralPaye, totalGeneralRestant, totalAPayerMaintenant, totalEnAttenteFinanceur, totalPayeAvance, totalEncaisseClient, totalAEncaisserClient, encaissList, penalitesList, totalPenalitesDu, totalPenalitesPaye, totalPenalitesRestant, litigesList, totalLitigesDu, totalLitigesPaye, totalLitigesRestant, activeSociete };
+  }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Dashboard
   const dashboard = useMemo(() => {
@@ -2841,6 +2859,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {/* PAIEMENTS */}
         {activeTab === 'paiements' && <PaiementsView
           rapportPaiements={rapportPaiements}
+          societes={societes}
           onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }}
           onTogglePenalite={(dossierLocalId, tentativeIdx) => {
             const now = new Date().toISOString();
@@ -4484,7 +4503,15 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
 
 // ====================== AUTRES VUES (inchangées) ======================
 
-function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite, onToggleLitige }) {
+function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onTogglePenalite, onToggleLitige }) {
+  // Helper pour afficher le badge société à côté du nom prestataire/banque
+  const renderSocieteBadge = (societeId) => {
+    if (!societeId) return null;
+    const s = societes.find(x => x.id === societeId);
+    if (!s) return null;
+    const cls = SOCIETE_BADGE_CLASSES[s.color] || SOCIETE_BADGE_CLASSES.violet;
+    return <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold border ml-1.5 ${cls}`} title={`Société : ${s.label}`}>{s.emoji} {s.label}</span>;
+  };
   // Mappe le type de prestataire vers l'ancre de scroll dans le QuickViewPanel
   const scrollTargetFor = (type) => {
     if (type === 'Fournisseur') return 'fournisseurs';
@@ -4532,7 +4559,7 @@ function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite, onTogg
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div>
                         <div className="text-xs opacity-90 uppercase">💳 Financeur</div>
-                        <div className="text-xl font-bold">{e.nom}</div>
+                        <div className="text-xl font-bold flex items-center flex-wrap">{e.nom}{renderSocieteBadge(e.societe)}</div>
                       </div>
                       {restant ? (
                         <div className="text-right">
@@ -4647,7 +4674,7 @@ function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite, onTogg
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${colors}`}>{p.type}</span>
                       <div className="min-w-0">
-                        <div className="font-bold text-slate-800 truncate">{p.nom}</div>
+                        <div className="font-bold text-slate-800 truncate flex items-center flex-wrap">{p.nom}{renderSocieteBadge(p.societe)}</div>
                         <div className="text-xs text-slate-500">{p.lignes.length} dossier{p.lignes.length > 1 ? 's' : ''}</div>
                       </div>
                     </div>
@@ -4737,9 +4764,9 @@ function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite, onTogg
         ) : (
           <div className="p-4 space-y-3">
             {rapportPaiements.penalitesList.map((p) => (
-              <details key={p.nom} className="border border-rose-200 rounded-xl overflow-hidden">
+              <details key={`${p.nom}::${p.societe || ''}`} className="border border-rose-200 rounded-xl overflow-hidden">
                 <summary className="cursor-pointer px-4 py-3 bg-rose-50 hover:bg-rose-100 flex items-center gap-3 flex-wrap">
-                  <span className="font-bold text-slate-800">🤝 {p.nom}</span>
+                  <span className="font-bold text-slate-800 flex items-center flex-wrap">🤝 {p.nom}{renderSocieteBadge(p.societe)}</span>
                   <span className="text-xs text-slate-500">{p.lignes.length} pose{p.lignes.length > 1 ? 's' : ''} ratée{p.lignes.length > 1 ? 's' : ''}</span>
                   <span className="ml-auto flex items-center gap-2">
                     {p.totalRestant > 0 && (
@@ -4815,9 +4842,9 @@ function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite, onTogg
         ) : (
           <div className="p-4 space-y-3">
             {rapportPaiements.litigesList.map((p) => (
-              <details key={p.nom} className="border border-purple-200 rounded-xl overflow-hidden">
+              <details key={`${p.nom}::${p.societe || ''}`} className="border border-purple-200 rounded-xl overflow-hidden">
                 <summary className="cursor-pointer px-4 py-3 bg-purple-50 hover:bg-purple-100 flex items-center gap-3 flex-wrap">
-                  <span className="font-bold text-slate-800">🤝 {p.nom}</span>
+                  <span className="font-bold text-slate-800 flex items-center flex-wrap">🤝 {p.nom}{renderSocieteBadge(p.societe)}</span>
                   <span className="text-xs text-slate-500">{p.lignes.length} litige{p.lignes.length > 1 ? 's' : ''}</span>
                   <span className="ml-auto flex items-center gap-2">
                     {p.totalRestant > 0 && (
