@@ -2945,6 +2945,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
             STATUTS={STATUTS}
             poseursContacts={poseursContacts}
             regiesContacts={regiesContacts}
+            onLogAction={(localId, entry) => {
+              const userTag = currentUser || '(anonyme)';
+              setDossiers(prev => prev.map(d => d.localId === localId
+                ? { ...d, historique: [...(d.historique || []), { date: new Date().toISOString(), user: userTag, ...entry }] }
+                : d
+              ));
+            }}
             onClose={() => setShowAlertesType(null)}
             onSelect={(localId) => {
               // Mappe le type d'alerte vers la section à scroller / déplier
@@ -8828,6 +8835,31 @@ function HistoriqueModal({ dossier, onClose }) {
                       </div>
                     );
                   }
+                  // Relance WhatsApp (ex : facture manquante)
+                  if (h.action === 'relance_whatsapp') {
+                    const kindEmoji = h.cible_kind === 'poseur' ? '🔧' : h.cible_kind === 'regie' ? '🤝' : h.cible_kind === 'fournisseur' ? '📦' : '👤';
+                    const motifLabel = h.motif === 'facture_manquante' ? 'facture manquante' : (h.motif || '');
+                    return (
+                      <div key={`r-${i}`} className="relative pl-10">
+                        <div className="absolute left-0 top-0.5 w-8 h-8 rounded-full flex items-center justify-center text-base shadow-md text-white bg-gradient-to-br from-emerald-400 to-teal-500">
+                          📲
+                        </div>
+                        <div className="rounded-xl p-3 border bg-emerald-50 border-emerald-200">
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                            📅 {formatDateTime(h.date)}
+                          </div>
+                          <div className="text-sm font-bold text-emerald-700">
+                            📲 Relance WhatsApp initiée
+                            <span className="text-xs font-normal text-slate-600 ml-1">
+                              à {kindEmoji} <strong>{h.cible_nom}</strong>{motifLabel ? ` (${motifLabel})` : ''}
+                            </span>
+                          </div>
+                          {h.user && <div className="text-[10px] text-slate-500 mt-1">👤 par {h.user}</div>}
+                          <div className="text-[9px] text-slate-400 italic mt-1">Le lien WhatsApp a été ouvert — la confirmation d'envoi se fait hors CRM.</div>
+                        </div>
+                      </div>
+                    );
+                  }
                   // Évènement classique de l'historique (création ou changement de statut)
                   const fromInfo = h.from ? findStatutInfo(h.from) : null;
                   const toInfo = findStatutInfo(h.to);
@@ -11869,7 +11901,7 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
 
 // ===================== MODAL ALERTES =====================
 
-function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onClose, onSelect }) {
+function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onLogAction, onClose, onSelect }) {
   const config = {
     controleQualite: {
       title: '📋 Contrôle qualité — dossiers à valider',
@@ -12033,8 +12065,22 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
               href={link}
               target="_blank"
               rel="noopener noreferrer"
-              onClick={(e) => e.stopPropagation()}
-              title={`Relancer ${nom} sur WhatsApp`}
+              onClick={(e) => {
+                e.stopPropagation();
+                // Log dans l'historique du dossier : WhatsApp initié pour ce
+                // prestataire. NB : on ne peut pas savoir si tu cliques 'Envoyer'
+                // dans WhatsApp — on log seulement l'ouverture du lien.
+                if (onLogAction) {
+                  onLogAction(d.localId, {
+                    action: 'relance_whatsapp',
+                    cible_kind: kind,
+                    cible_nom: nom,
+                    motif: 'facture_manquante',
+                    tel,
+                  });
+                }
+              }}
+              title={`Relancer ${nom} sur WhatsApp (log dans l'historique du dossier)`}
               className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 text-[10px] font-semibold"
             >
               📲 {emoji} {nom}
