@@ -3283,16 +3283,71 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
   // Aperçu inline (overlay plein écran) — pas de window.open car bloqué par le sandbox
   const [preview, setPreview] = useState(null); // { doc, dataUrl } | null
 
+  // Docs virtuels : les factures uploadées directement depuis l'aperçu rapide
+  // (sur chaque poseur/régie/fournisseur via FactureFileInput) sont stockées
+  // sur le prestataire (p.factureFile, r.factureFile, f.factureFile) et pas
+  // dans dossier.documents[]. On les expose ici comme docs virtuels pour
+  // qu'ils apparaissent dans la modale Documents sous le bon onglet.
+  // virtualSource permet de retracer l'origine pour la suppression.
+  const virtualFactureDocs = useMemo(() => {
+    const out = [];
+    (dossier.poseurs || []).forEach((p, idx) => {
+      if (p.factureFile && p.nom) {
+        out.push({
+          id: p.factureFile,
+          name: `Facture ${p.nom}${p.factureNo ? ' n°' + p.factureNo : ''}.pdf`,
+          size: 0, type: 'application/pdf',
+          category: 'poseur', subCategory: p.nom,
+          uploadedAt: p.dateFacture || dossier.dateInsta || new Date().toISOString(),
+          note: '📎 Facture liée au bloc Poseur du dossier',
+          virtual: true,
+          virtualSource: { kind: 'poseur', index: idx },
+        });
+      }
+    });
+    (dossier.regies || []).forEach((r, idx) => {
+      if (r.factureFile && r.nom) {
+        out.push({
+          id: r.factureFile,
+          name: `Facture ${r.nom}${r.factureNo ? ' n°' + r.factureNo : ''}.pdf`,
+          size: 0, type: 'application/pdf',
+          category: 'regie', subCategory: null,
+          uploadedAt: r.dateFacture || dossier.dateInsta || new Date().toISOString(),
+          note: '📎 Facture liée au bloc Régie du dossier',
+          virtual: true,
+          virtualSource: { kind: 'regie', index: idx },
+        });
+      }
+    });
+    (dossier.fournisseurs || []).forEach((f, idx) => {
+      if (f.factureFile && f.nom) {
+        out.push({
+          id: f.factureFile,
+          name: `Facture ${f.nom}${f.factureNo ? ' n°' + f.factureNo : ''}.pdf`,
+          size: 0, type: 'application/pdf',
+          category: 'fournisseur', subCategory: f.nom,
+          uploadedAt: f.dateFacture || dossier.dateInsta || new Date().toISOString(),
+          note: '📎 Facture liée au bloc Fournisseur du dossier',
+          virtual: true,
+          virtualSource: { kind: 'fournisseur', index: idx },
+        });
+      }
+    });
+    return out;
+  }, [dossier.poseurs, dossier.regies, dossier.fournisseurs, dossier.dateInsta]);
+
   // Documents pour la catégorie active.
   // Cas spécial Client : on prend TOUS les docs client (toutes sous-catégories),
   // ils seront groupés à l'affichage par sous-catégorie (Bon de commande,
   // Mandat, Pièce d'identité, etc.). Les autres catégories (poseur, régie,
-  // fournisseur) gardent leur filtre strict par subCategory.
+  // fournisseur) gardent leur filtre strict par subCategory + fusion avec
+  // les factures virtuelles uploadées depuis l'aperçu rapide.
   const docsActive = activeCat.key === 'client'
     ? documents.filter(d => d.category === 'client')
-    : documents.filter(d =>
-        d.category === activeCat.key && (d.subCategory || null) === (activeCat.subCategory || null)
-      );
+    : [
+        ...documents.filter(d => d.category === activeCat.key && (d.subCategory || null) === (activeCat.subCategory || null)),
+        ...virtualFactureDocs.filter(d => d.category === activeCat.key && (d.subCategory || null) === (activeCat.subCategory || null)),
+      ];
 
   // Groupement par sous-catégorie pour l'affichage de l'onglet Client
   const docsActiveGrouped = useMemo(() => {
@@ -3394,6 +3449,25 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
 
   const handleDelete = async (doc) => {
     if (!window.confirm(`Supprimer "${doc.name}" ?`)) return;
+    // Doc virtuel = facture liée au bloc poseur/régie/fournisseur du dossier.
+    // On supprime le fichier puis on vide le champ factureFile du prestataire.
+    if (doc.virtual && doc.virtualSource) {
+      try { await window.storage.delete(`file:${doc.id}`); } catch (e) {}
+      const { kind, index } = doc.virtualSource;
+      const patch = {};
+      if (kind === 'poseur') {
+        const list = [...(dossier.poseurs || [])];
+        if (list[index]) { list[index] = { ...list[index], factureFile: '' }; patch.poseurs = list; }
+      } else if (kind === 'regie') {
+        const list = [...(dossier.regies || [])];
+        if (list[index]) { list[index] = { ...list[index], factureFile: '' }; patch.regies = list; }
+      } else if (kind === 'fournisseur') {
+        const list = [...(dossier.fournisseurs || [])];
+        if (list[index]) { list[index] = { ...list[index], factureFile: '' }; patch.fournisseurs = list; }
+      }
+      onUpdate({ ...dossier, ...patch });
+      return;
+    }
     if (doc.storage === 'bucket' && doc.storagePath) {
       // Si plusieurs documents partagent le même bucketPath (scan dossier
       // complet : 1 PDF + N sections virtuelles), on ne supprime le fichier
