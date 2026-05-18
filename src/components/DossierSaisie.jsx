@@ -5108,145 +5108,166 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
     }
   };
 
+  // Auto-détection du serveur SMTP à partir du domaine de l'email
+  const detectedSmtp = (() => {
+    const email = (config.smtpUser || '').toLowerCase();
+    const domain = email.includes('@') ? email.split('@')[1] : '';
+    if (!domain) return null;
+    if (domain === 'gmail.com' || domain.endsWith('.gmail.com')) return { host: 'smtp.gmail.com', port: 465, label: 'Gmail' };
+    if (domain === 'outlook.com' || domain === 'hotmail.com' || domain === 'live.com' || domain === 'msn.com') return { host: 'smtp-mail.outlook.com', port: 587, label: 'Outlook/Hotmail' };
+    if (domain === 'yahoo.com' || domain === 'yahoo.fr') return { host: 'smtp.mail.yahoo.com', port: 465, label: 'Yahoo' };
+    if (domain.endsWith('ovh.fr') || domain.endsWith('ovh.com') || domain.endsWith('ovh.net')) return { host: 'ssl0.ovh.net', port: 465, label: 'OVH' };
+    if (domain === 'orange.fr' || domain === 'wanadoo.fr') return { host: 'smtp.orange.fr', port: 465, label: 'Orange' };
+    if (domain === 'free.fr') return { host: 'smtp.free.fr', port: 465, label: 'Free' };
+    if (domain === 'sfr.fr') return { host: 'smtp.sfr.fr', port: 465, label: 'SFR' };
+    // Google Workspace (domaine perso routé via Google) → on suppose Gmail SMTP
+    // L'utilisateur peut écraser avec le formulaire avancé.
+    return { host: 'smtp.gmail.com', port: 465, label: 'Google Workspace (présumé)' };
+  })();
+
   return (
     <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
       <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-indigo-50">
-        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">📧 Email d'envoi automatique (Gmail)</h2>
-        <p className="text-xs text-slate-500 mt-1">Connecte ton Gmail au CRM en 1 clic pour que les emails partent automatiquement depuis ton adresse.</p>
+        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">📧 Email d'envoi automatique</h2>
+        <p className="text-xs text-slate-500 mt-1">Renseigne ton email + mot de passe — les emails du CRM partiront automatiquement depuis ton adresse.</p>
       </div>
       <div className="p-5 space-y-4">
 
-        {/* État OAuth */}
-        {gmailOAuth?.connected ? (
-          <div className="p-4 bg-emerald-50 border-2 border-emerald-300 rounded-xl">
-            <div className="flex items-center justify-between gap-3 flex-wrap">
-              <div>
-                <div className="text-sm font-bold text-emerald-800 mb-0.5">✅ Gmail connecté</div>
-                <div className="text-xs text-emerald-700">Email : <strong>{gmailOAuth.email}</strong></div>
-                {gmailOAuth.connectedAt && (
-                  <div className="text-[10px] text-emerald-600 mt-0.5">Depuis le {new Date(gmailOAuth.connectedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-                )}
-              </div>
-              <button onClick={disconnectGmail} className="px-3 py-1.5 bg-white border border-rose-300 text-rose-600 rounded-lg text-xs font-semibold hover:bg-rose-50">
-                🔌 Déconnecter
+        {/* Formulaire principal : email + password + SMTP auto */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📧 E-mail <span className="text-rose-500">*</span></label>
+            <input
+              type="email"
+              value={config.smtpUser || ''}
+              onChange={(e) => update({ smtpUser: e.target.value })}
+              placeholder="rodney@gmail.com"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🔑 Mot de passe <span className="text-rose-500">*</span></label>
+            <div className="relative">
+              <input
+                type={showPass ? 'text' : 'password'}
+                value={config.smtpPass || ''}
+                onChange={(e) => update({ smtpPass: e.target.value })}
+                placeholder="Mot de passe d'application Google"
+                className="w-full px-3 py-2 pr-10 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm font-mono"
+              />
+              <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs text-slate-500 hover:text-slate-700">
+                {showPass ? '🙈' : '👁️'}
               </button>
             </div>
           </div>
-        ) : (
-          <div className="p-4 bg-blue-50 border-2 border-blue-300 rounded-xl space-y-3">
-            <div className="text-sm font-bold text-blue-800">🔗 Connecte ton Gmail au CRM</div>
-            <div className="text-xs text-blue-700 leading-relaxed">
-              Tu vas être redirigé vers Google. Choisis ton compte Gmail, autorise le CRM à envoyer des emails en ton nom, et tu reviens automatiquement ici. Pas de mot de passe à donner — Google gère la connexion.
-            </div>
-            <button
-              onClick={connectGmail}
-              disabled={oauthBusy}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center gap-2"
-            >
-              {oauthBusy ? '⏳ Redirection…' : '🔗 Connecter mon Gmail'}
-            </button>
-          </div>
-        )}
-
-        {/* Nom affiché */}
-        <div>
-          <label className="block text-xs font-bold text-slate-600 uppercase mb-1">👤 Nom affiché dans les emails (optionnel)</label>
-          <input
-            type="text"
-            value={config.fromName || ''}
-            onChange={(e) => update({ fromName: e.target.value })}
-            placeholder="Rodney HADDAD — CRM Solaire"
-            className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
-          />
-          <div className="text-[10px] text-slate-500 mt-1">Le destinataire verra : "<strong>{config.fromName || 'CRM Solaire'}</strong> &lt;{gmailOAuth?.email || 'ton@gmail.com'}&gt;"</div>
         </div>
 
-        {/* Test */}
-        {gmailOAuth?.connected && (
-          <div className="border-t border-slate-200 pt-4">
-            <button
-              onClick={testSendOAuth}
-              disabled={testing}
-              className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center gap-2"
-            >
-              {testing ? '⏳ Test en cours…' : '✉️ M\'envoyer un mail de test'}
-            </button>
-            {testResult && (
-              <div className={`mt-3 p-3 rounded-xl text-xs ${testResult.ok ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-rose-50 border border-rose-200 text-rose-800'}`}>
-                {testResult.ok ? '✅ ' : '❌ '}{testResult.msg}
-              </div>
-            )}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Serveur SMTP</label>
+            <input
+              type="text"
+              value={detectedSmtp ? detectedSmtp.host : ''}
+              disabled
+              placeholder="Auto-détecté à partir de l'email"
+              className="w-full px-3 py-2 bg-slate-100 border border-slate-200 rounded-xl text-sm text-slate-700"
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Nom de l'émetteur</label>
+            <input
+              type="text"
+              value={config.fromName || ''}
+              onChange={(e) => update({ fromName: e.target.value })}
+              placeholder="Rodney HADDAD"
+              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-400 text-sm"
+            />
+          </div>
+        </div>
+
+        {detectedSmtp && config.smtpUser && (
+          <div className="text-[11px] text-slate-500 px-1">
+            ℹ️ Le CRM utilisera <strong>{detectedSmtp.host}:{detectedSmtp.port}</strong> ({detectedSmtp.label}). Le destinataire verra "<strong>{config.fromName || 'CRM Solaire'}</strong> &lt;{config.smtpUser}&gt;".
           </div>
         )}
 
-        {/* Setup Google Cloud (si pas encore fait) */}
-        {!gmailOAuth?.connected && (
-          <details className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 leading-relaxed">
-            <summary className="cursor-pointer font-bold">⚙️ Setup Google Cloud (1 fois, ~30 min) — clique pour voir les étapes</summary>
-            <ol className="list-decimal ml-5 space-y-1 mt-2">
-              <li>Va sur <a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">console.cloud.google.com</a> → crée un projet "CRM Solaire"</li>
-              <li>Menu hamburger → APIs &amp; Services → Library → cherche "Gmail API" → Enable</li>
-              <li>OAuth consent screen : User Type "External" → App name "CRM Solaire" → ton email en support → scope <code>gmail.send</code> + <code>userinfo.email</code> → ajoute ton Gmail dans "Test users"</li>
-              <li>Credentials → Create Credentials → OAuth client ID → Web application → Authorized redirect URIs : <code>https://crm-solaire.vercel.app/api/google-oauth-callback</code></li>
-              <li>Copie le Client ID + Client Secret</li>
-              <li>Vercel → Settings → Environment Variables, ajoute :
-                <ul className="list-disc ml-5 mt-1">
-                  <li><code>GOOGLE_CLIENT_ID</code> = (ton Client ID)</li>
-                  <li><code>GOOGLE_CLIENT_SECRET</code> = (ton Client Secret)</li>
-                  <li><code>GOOGLE_REDIRECT_URI</code> = https://crm-solaire.vercel.app/api/google-oauth-callback</li>
-                </ul>
-              </li>
-              <li>Redeploy Vercel</li>
-              <li>Reviens ici et clique 🔗 Connecter mon Gmail</li>
+        {/* Aide : Gmail = app password obligatoire */}
+        {config.smtpUser && (config.smtpUser.includes('@gmail.com') || detectedSmtp?.host === 'smtp.gmail.com') && (
+          <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 leading-relaxed">
+            <div className="font-bold mb-1">⚠️ Pour Gmail / Google Workspace :</div>
+            <div>Google n'accepte PAS ton vrai mot de passe Google ici. Tu dois utiliser un <strong>mot de passe d'application</strong> :</div>
+            <ol className="list-decimal ml-5 mt-1.5 space-y-0.5">
+              <li>Active la <a href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">validation en 2 étapes</a></li>
+              <li>Va sur <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">myaccount.google.com/apppasswords</a></li>
+              <li>Crée un mot de passe pour "CRM Solaire" (16 caractères)</li>
+              <li>Colle-les dans le champ Mot de passe ci-dessus</li>
             </ol>
-          </details>
+          </div>
         )}
 
-        {/* Méthode alternative app password (avancé / fallback) */}
+        {/* Test */}
+        <div className="border-t border-slate-200 pt-4">
+          <button
+            onClick={testSend}
+            disabled={testing || !config.smtpUser || !config.smtpPass}
+            className="px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-xl text-sm font-bold disabled:opacity-50 flex items-center gap-2"
+          >
+            {testing ? '⏳ Test en cours…' : '✉️ M\'envoyer un mail de test'}
+          </button>
+          {testResult && (
+            <div className={`mt-3 p-3 rounded-xl text-xs ${testResult.ok ? 'bg-emerald-50 border border-emerald-200 text-emerald-800' : 'bg-rose-50 border border-rose-200 text-rose-800'}`}>
+              {testResult.ok ? '✅ ' : '❌ '}{testResult.msg}
+            </div>
+          )}
+        </div>
+
+        {/* Méthode alternative OAuth (1 clic sans password mais setup Google Cloud) */}
         <div className="border-t border-slate-200 pt-3">
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="text-[11px] text-slate-500 hover:text-slate-700 underline"
           >
-            {showAdvanced ? '▾ Masquer' : '▸ Voir'} la méthode alternative (mot de passe d'application Gmail)
+            {showAdvanced ? '▾ Masquer' : '▸ Voir'} la méthode alternative (OAuth Google — sans password mais setup ~30 min)
           </button>
           {showAdvanced && (
             <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
-              <div className="text-[11px] text-slate-600">
-                Si tu ne veux pas configurer Google Cloud, tu peux utiliser un <strong>mot de passe d'application Gmail</strong> à la place. Moins propre (le password reste en base) mais plus rapide.
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <input
-                  type="email"
-                  value={config.smtpUser || ''}
-                  onChange={(e) => update({ smtpUser: e.target.value })}
-                  placeholder="rodney@gmail.com"
-                  className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm"
-                />
-                <div className="relative">
-                  <input
-                    type={showPass ? 'text' : 'password'}
-                    value={config.smtpPass || ''}
-                    onChange={(e) => update({ smtpPass: e.target.value })}
-                    placeholder="Mot de passe d'application (16 car.)"
-                    className="w-full px-3 py-2 pr-10 bg-white border border-slate-200 rounded-lg text-sm font-mono"
-                  />
-                  <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-2 top-1/2 -translate-y-1/2 text-xs">
-                    {showPass ? '🙈' : '👁️'}
-                  </button>
+              {gmailOAuth?.connected ? (
+                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg">
+                  <div className="text-xs font-bold text-emerald-800">✅ OAuth Gmail connecté : {gmailOAuth.email}</div>
+                  <button onClick={disconnectGmail} className="mt-2 px-3 py-1 bg-white border border-rose-300 text-rose-600 rounded text-xs font-semibold hover:bg-rose-50">🔌 Déconnecter OAuth</button>
                 </div>
-              </div>
-              <button
-                onClick={testSend}
-                disabled={testing || !config.smtpUser || !config.smtpPass}
-                className="px-3 py-1.5 bg-slate-500 hover:bg-slate-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
-              >
-                ✉️ Test app password
-              </button>
-              <div className="text-[10px] text-slate-500">Génère le mot de passe d'app sur <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">myaccount.google.com/apppasswords</a> (active la validation 2 étapes d'abord).</div>
+              ) : (
+                <>
+                  <div className="text-[11px] text-slate-600 leading-relaxed">
+                    Avec OAuth, pas de mot de passe à copier — tu cliques "Connecter Gmail" → consent screen Google → fini. Mais ça nécessite un setup Google Cloud côté admin (~30 min, 1 fois).
+                  </div>
+                  <button
+                    onClick={connectGmail}
+                    disabled={oauthBusy}
+                    className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
+                  >
+                    {oauthBusy ? '⏳ Redirection…' : '🔗 Connecter Gmail (OAuth)'}
+                  </button>
+                  <details className="text-[11px] text-slate-600">
+                    <summary className="cursor-pointer font-bold">⚙️ Voir les étapes setup Google Cloud</summary>
+                    <ol className="list-decimal ml-5 space-y-0.5 mt-2">
+                      <li><a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">console.cloud.google.com</a> → New project "CRM Solaire"</li>
+                      <li>APIs &amp; Services → Library → Gmail API → Enable</li>
+                      <li>OAuth consent screen : External → ajoute scopes <code>gmail.send</code> + <code>userinfo.email</code> + ton email en test user</li>
+                      <li>Credentials → OAuth client ID → Web app → redirect URI <code>https://crm-solaire.vercel.app/api/google-oauth-callback</code></li>
+                      <li>Vercel env : <code>GOOGLE_CLIENT_ID</code>, <code>GOOGLE_CLIENT_SECRET</code>, <code>GOOGLE_REDIRECT_URI</code></li>
+                    </ol>
+                  </details>
+                </>
+              )}
             </div>
           )}
+        </div>
+
+        {/* Sécurité */}
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 leading-relaxed">
+          🔒 <strong>Sécurité :</strong> ces identifiants sont stockés dans la base Supabase du CRM (accessibles aux utilisateurs connectés). Pour Gmail, utilise un mot de passe d'application dédié au CRM — révocable à tout moment depuis Google sans toucher à ton vrai mot de passe.
         </div>
       </div>
     </div>

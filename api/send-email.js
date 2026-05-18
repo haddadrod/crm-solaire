@@ -70,11 +70,25 @@ export default async function handler(req, res) {
   if (!smtpUser) return json(res, 400, { error: "Email expéditeur (smtpUser) requis — configure-le dans Réglages → Email d'envoi." });
   if (!smtpPass) return json(res, 400, { error: "Mot de passe d'application Gmail (smtpPass) requis — configure-le dans Réglages → Email d'envoi." });
 
+  // Auto-détection du serveur SMTP à partir du domaine (Gmail par défaut)
+  const detectSmtp = (email) => {
+    const d = String(email || '').toLowerCase().split('@')[1] || '';
+    if (d === 'outlook.com' || d === 'hotmail.com' || d === 'live.com' || d === 'msn.com') return { host: 'smtp-mail.outlook.com', port: 587, secure: false };
+    if (d === 'yahoo.com' || d === 'yahoo.fr') return { host: 'smtp.mail.yahoo.com', port: 465, secure: true };
+    if (d.endsWith('ovh.fr') || d.endsWith('ovh.com') || d.endsWith('ovh.net')) return { host: 'ssl0.ovh.net', port: 465, secure: true };
+    if (d === 'orange.fr' || d === 'wanadoo.fr') return { host: 'smtp.orange.fr', port: 465, secure: true };
+    if (d === 'free.fr') return { host: 'smtp.free.fr', port: 465, secure: true };
+    if (d === 'sfr.fr') return { host: 'smtp.sfr.fr', port: 465, secure: true };
+    // Gmail + Google Workspace par défaut
+    return { host: 'smtp.gmail.com', port: 465, secure: true };
+  };
+  const smtp = detectSmtp(smtpUser);
+
   try {
     const transporter = nodemailer.createTransport({
-      host: 'smtp.gmail.com',
-      port: 465,
-      secure: true,
+      host: smtp.host,
+      port: smtp.port,
+      secure: smtp.secure,
       auth: {
         user: smtpUser,
         pass: smtpPass,
