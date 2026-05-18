@@ -2897,6 +2897,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             regiesContacts={regiesContacts} setRegiesContacts={setRegiesContacts}
             emailConfig={emailConfig} setEmailConfig={setEmailConfig}
             gmailOAuth={gmailOAuth} setGmailOAuth={setGmailOAuth}
+            societes={societes} setSocietes={setSocietes}
           />
         )}
 
@@ -5300,7 +5301,7 @@ function PerfList({ titre, data, medal, border, header, iconColor }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
   // Init depuis le hash URL pour qu'un refresh garde la sous-section.
   // Format : #reglages/utilisateurs → section = 'utilisateurs'
   const sectionFromHash = (typeof window !== 'undefined' && window.location.hash)
@@ -5320,6 +5321,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
 
   const sections = [
     { id: 'statuts',      label: 'Statuts',      emoji: '📊', color: 'from-pink-500 to-rose-500' },
+    { id: 'societes',     label: 'Sociétés',     emoji: '🏢', color: 'from-emerald-500 to-teal-500' },
     { id: 'utilisateurs', label: 'Utilisateurs', emoji: '👥', color: 'from-cyan-500 to-blue-500' },
     { id: 'produits',     label: 'Produits',     emoji: '🛒', color: 'from-amber-500 to-yellow-500' },
     { id: 'poseurs',      label: 'Poseurs',      emoji: '🔧', color: 'from-amber-500 to-orange-500' },
@@ -5414,6 +5416,10 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
             </div>
           </div>
         </div>
+      )}
+
+      {section === 'societes' && (
+        <SocietesManager societes={societes} setSocietes={setSocietes} dossiers={dossiers} />
       )}
 
       {section === 'utilisateurs' && (
@@ -6101,6 +6107,139 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
           <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
             💡 Cliquez sur un nom ou tarif pour modifier. Tarif en <strong>gras</strong> = saisi, en <span className="text-slate-400">gris</span> = vide. Tu peux laisser vide et saisir le HT manuellement à chaque dossier — ou pré-remplir ici pour gagner du temps. Sur un dossier mixte (panneaux + PAC), les tarifs auto se cumulent.
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== SocietesManager : CRUD des sociétés du groupe ==========
+// Permet d'ajouter / éditer / supprimer les sociétés émettrices (Yolico,
+// Elsun, ou n'importe quelle autre marque). Chaque société = nom + emoji
+// + couleur (+ signature email, phase 2).
+function SocietesManager({ societes, setSocietes, dossiers }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
+  const [newEmoji, setNewEmoji] = useState('🏢');
+  const [newColor, setNewColor] = useState('violet');
+  const COLORS = [
+    { id: 'emerald', label: 'Vert',    cls: 'bg-emerald-500' },
+    { id: 'blue',    label: 'Bleu',    cls: 'bg-blue-500' },
+    { id: 'violet',  label: 'Violet',  cls: 'bg-violet-500' },
+    { id: 'amber',   label: 'Orange',  cls: 'bg-amber-500' },
+    { id: 'rose',    label: 'Rose',    cls: 'bg-rose-500' },
+    { id: 'slate',   label: 'Gris',    cls: 'bg-slate-500' },
+  ];
+  const slugify = (str) => String(str || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || `soc_${Date.now().toString(36)}`;
+  const addSociete = () => {
+    const label = newLabel.trim();
+    if (!label) { alert('Le nom est obligatoire'); return; }
+    let id = slugify(label);
+    if (societes.find(s => s.id === id)) id = `${id}_${Date.now().toString(36).slice(-4)}`;
+    setSocietes([...societes, { id, label, emoji: newEmoji || '🏢', color: newColor, signature: '' }]);
+    setNewLabel(''); setNewEmoji('🏢'); setNewColor('violet'); setShowAdd(false);
+  };
+  const updateSociete = (id, patch) => {
+    setSocietes(societes.map(s => s.id === id ? { ...s, ...patch } : s));
+  };
+  const deleteSociete = (id) => {
+    const label = societes.find(s => s.id === id)?.label || id;
+    const used = (dossiers || []).filter(d => d.societe === id).length;
+    const msg = used > 0
+      ? `⚠️ "${label}" est utilisée par ${used} dossier(s). Supprimer ? Les dossiers concernés perdront leur badge société.`
+      : `Supprimer "${label}" ?`;
+    if (!window.confirm(msg)) return;
+    setSocietes(societes.filter(s => s.id !== id));
+  };
+  return (
+    <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
+      <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-teal-50">
+        <h2 className="text-lg font-bold text-slate-800">🏢 Sociétés du groupe</h2>
+        <p className="text-xs text-slate-500 mt-1">Configure les marques sur lesquelles tu travailles (Yolico, Elsun, etc.). Chaque dossier appartient à une société — badge coloré + filtre dans la liste.</p>
+      </div>
+      <div className="p-4 space-y-2">
+        {societes.length === 0 ? (
+          <div className="text-center py-8 text-slate-400 italic">Aucune société. Ajoute la première ci-dessous.</div>
+        ) : (
+          <div className="space-y-2">
+            {societes.map(s => {
+              const used = (dossiers || []).filter(d => d.societe === s.id).length;
+              const badgeCls = SOCIETE_BADGE_CLASSES[s.color] || SOCIETE_BADGE_CLASSES.violet;
+              return (
+                <div key={s.id} className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl flex-wrap">
+                  <input
+                    type="text"
+                    defaultValue={s.emoji}
+                    onBlur={(e) => { const v = e.target.value.trim() || '🏢'; if (v !== s.emoji) updateSociete(s.id, { emoji: v }); }}
+                    maxLength={16}
+                    className="w-14 px-1 py-1.5 bg-white border border-slate-300 rounded text-center text-xl"
+                    title="Emoji"
+                  />
+                  <input
+                    type="text"
+                    defaultValue={s.label}
+                    onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== s.label) updateSociete(s.id, { label: v }); }}
+                    className="flex-1 min-w-[150px] px-3 py-1.5 bg-white border border-slate-300 rounded text-sm font-bold"
+                    placeholder="Nom"
+                  />
+                  <div className="flex gap-1">
+                    {COLORS.map(c => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => updateSociete(s.id, { color: c.id })}
+                        className={`w-7 h-7 rounded-full border-2 ${c.cls} ${s.color === c.id ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400' : 'border-white opacity-60 hover:opacity-100'}`}
+                        title={c.label}
+                      />
+                    ))}
+                  </div>
+                  <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs font-bold border ${badgeCls}`}>
+                    {s.emoji} {s.label}
+                  </span>
+                  <span className="text-[10px] text-slate-500">{used} dossier{used > 1 ? 's' : ''}</span>
+                  <button onClick={() => deleteSociete(s.id)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cette société">
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {!showAdd ? (
+          <button onClick={() => setShowAdd(true)} className="w-full mt-3 px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-sm font-bold flex items-center justify-center gap-2">
+            <Plus className="w-4 h-4" /> Ajouter une société
+          </button>
+        ) : (
+          <div className="mt-3 p-3 bg-emerald-50 border-2 border-emerald-300 rounded-xl space-y-2">
+            <h3 className="text-sm font-bold text-emerald-800">➕ Nouvelle société</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Emoji</label>
+                <input type="text" value={newEmoji} onChange={(e) => setNewEmoji(e.target.value)} maxLength={16} placeholder="🏢" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-center text-lg" />
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Nom *</label>
+                <input type="text" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addSociete(); }} placeholder="Ex : Yolico, Elsun, Solar Pro…" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold" autoFocus />
+              </div>
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Couleur du badge</label>
+              <div className="flex gap-2">
+                {COLORS.map(c => (
+                  <button key={c.id} type="button" onClick={() => setNewColor(c.id)} className={`w-8 h-8 rounded-full border-2 ${c.cls} ${newColor === c.id ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400' : 'border-white opacity-60 hover:opacity-100'}`} title={c.label} />
+                ))}
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button onClick={() => { setShowAdd(false); setNewLabel(''); }} className="px-3 py-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold">Annuler</button>
+              <button onClick={addSociete} className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold">✓ Créer</button>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
+          💡 Les dossiers existants sans société assignée restent visibles dans tous les filtres. Pour leur assigner une société : ouvre le dossier et clique le bouton 🏢 en haut du formulaire.
         </div>
       </div>
     </div>
