@@ -103,6 +103,24 @@ const PRODUITS_DEFAULT = [
   { id: 'AUTRE',           label: 'Autre rénovation',       emoji: '🔨', autoTarif: false },
 ];
 
+// Caractéristiques techniques de la toiture pour les panneaux solaires.
+// Le poseur en a besoin pour préparer son matériel (fixations, etc.).
+const TYPES_TOIT = [
+  { id: 'tuile',      label: 'Tuile' },
+  { id: 'ardoise',    label: 'Ardoise' },
+  { id: 'tole',       label: 'Tôle' },
+  { id: 'zinc',       label: 'Zinc' },
+  { id: 'fibro',      label: 'Fibro' },
+  { id: 'bac_acier',  label: 'Bac Acier' },
+  { id: 'toit_plat',  label: 'Toit plat' },
+  { id: 'a_valider',  label: 'À VALIDER' },
+];
+const ORIENTATIONS_PANNEAUX = [
+  { id: 'paysage',   label: 'Paysage' },
+  { id: 'portrait',  label: 'Portrait' },
+  { id: 'les_deux',  label: 'Paysage + Portrait' },
+];
+
 // Sous-catégories de documents Client — utilisées pour la classification
 // automatique par l'IA quand on scanne un dossier complet multi-pages,
 // et comme onglets dans la modale Documents.
@@ -864,6 +882,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // adresse, date, matériel). Ex : 'accès par le portail bleu, pas de
     // gravier dans la cour, prévoir échelle 4m, branchement Linky à droite'.
     instructionsPose: '',
+    // 🏠 Caractéristiques de la toiture pour les panneaux solaires
+    typeToit: '', // '' | 'tuile' | 'ardoise' | 'tole' | 'zinc' | 'fibro' | 'bac_acier' | 'toit_plat' | 'a_valider'
+    orientationPanneaux: '', // '' | 'paysage' | 'portrait' | 'les_deux'
     // ⚖️ Litige client : si statut === 'C_LITIGE', le client réclame un
     // remboursement. La régie qui a apporté le dossier doit nous rembourser
     // ce montant (même mécanique que les pénalités de pose).
@@ -1553,6 +1574,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       accordDef: d.accordDef || false, consuel: d.consuel || false,
       observations: d.observations || '',
       instructionsPose: d.instructionsPose || '',
+      typeToit: d.typeToit || '',
+      orientationPanneaux: d.orientationPanneaux || '',
       litigeAccordPdfUrl: d.litigeAccordPdfUrl || '',
       litigeMontantRembourse: d.litigeMontantRembourse || '',
       litigeRegieNom: d.litigeRegieNom || '',
@@ -9797,6 +9820,33 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
             {!foldedSteps.produits && (
             <div className="space-y-1.5">
+              {/* 🏠 Type de toiture + orientation des panneaux — info utile
+                  pour le poseur (fixations, calepinage). Incluse dans le
+                  message chantier envoyé. */}
+              <div className="grid grid-cols-2 gap-1.5 p-2 bg-white border border-amber-200 rounded-xl">
+                <div>
+                  <label className="block text-[9px] font-bold text-amber-700 uppercase mb-1">🏠 Type de toit</label>
+                  <select
+                    value={d.typeToit || ''}
+                    onChange={(e) => onUpdate({ typeToit: e.target.value })}
+                    className="w-full px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[11px] font-semibold text-amber-800"
+                  >
+                    <option value="">— Choisir —</option>
+                    {TYPES_TOIT.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[9px] font-bold text-amber-700 uppercase mb-1">📐 Orientation panneaux</label>
+                  <select
+                    value={d.orientationPanneaux || ''}
+                    onChange={(e) => onUpdate({ orientationPanneaux: e.target.value })}
+                    className="w-full px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[11px] font-semibold text-amber-800"
+                  >
+                    <option value="">— Choisir —</option>
+                    {ORIENTATIONS_PANNEAUX.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                  </select>
+                </div>
+              </div>
               {dossierProduits.map((p, i) => {
                 const prodInfo = findProduit(produits, p.type);
                 return (
@@ -10224,6 +10274,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       return `   • ${label}${prod.description ? ' — ' + prod.description : ''}`;
                     })
                   : (d.puissance ? [`   • ☀️ Panneaux solaires ${d.puissance} Wc`] : []);
+                const toitLabel = TYPES_TOIT.find(t => t.id === d.typeToit)?.label || null;
+                const orientLabel = ORIENTATIONS_PANNEAUX.find(o => o.id === d.orientationPanneaux)?.label || null;
                 const chantierMessage = [
                   `🔧 Nouveau chantier à poser`,
                   ``,
@@ -10233,6 +10285,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   d.email ? `📧 Client : ${d.email}` : '',
                   d.dateInsta ? `📅 Pose prévue : ${formatDateForSheet(d.dateInsta)}` : '⚠️ Date de pose à confirmer',
                   produitsDuDossier.length > 0 ? `\n📦 Matériel à installer :\n${produitsDuDossier.join('\n')}` : '',
+                  toitLabel ? `🏠 Toit : ${toitLabel}` : '',
+                  orientLabel ? `📐 Orientation : ${orientLabel}` : '',
                   d.instructionsPose ? `\n🛠️ Instructions :\n${d.instructionsPose}` : '',
                 ].filter(Boolean).join('\n');
                 const chantierSubject = `Nouveau chantier à poser — ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''}`;
