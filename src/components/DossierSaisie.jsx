@@ -5997,16 +5997,96 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
   const [newLinkedTo, setNewLinkedTo] = useState(''); // poseur/régie rattaché
   const [newTel, setNewTel] = useState(''); // 📞 tél (WhatsApp/SMS) — surtout pour les poseurs/régies
   const [expandedUserId, setExpandedUserId] = useState(null); // ID du compte en cours d'édition
+  // Buffer d'édition local par compte — évite le save auto au blur (qui
+  // déclenchait un refresh visible). On save tout d'un coup au clic 💾.
+  // Structure : { [userId]: { prenom, displayName, email, tel, emoji } }
+  const [editBuffer, setEditBuffer] = useState({});
+  const [savingUserId, setSavingUserId] = useState(null);
+
+  // Ouvre une ligne en édition : init le buffer avec les valeurs actuelles.
+  const openEdit = (u) => {
+    const m = u.user_metadata || {};
+    setEditBuffer(prev => ({
+      ...prev,
+      [u.id]: {
+        prenom: m.prenom || '',
+        displayName: m.display_name || u.email?.split('@')[0] || '',
+        email: u.email || '',
+        tel: m.tel || '',
+        emoji: m.emoji || '👤',
+      },
+    }));
+    setExpandedUserId(u.id);
+  };
+
+  // Sauve toutes les modifs en attente puis ferme la ligne.
+  const saveEdit = async (u) => {
+    const buf = editBuffer[u.id];
+    if (!buf) { setExpandedUserId(null); return; }
+    const m = u.user_metadata || {};
+    const origin = {
+      prenom: m.prenom || '',
+      displayName: m.display_name || u.email?.split('@')[0] || '',
+      email: u.email || '',
+      tel: m.tel || '',
+      emoji: m.emoji || '👤',
+    };
+    const metaPatch = {};
+    if (buf.prenom.trim() !== origin.prenom) metaPatch.prenom = buf.prenom.trim();
+    if (buf.displayName.trim() && buf.displayName.trim() !== origin.displayName) metaPatch.display_name = buf.displayName.trim();
+    if (buf.tel.trim() !== origin.tel) metaPatch.tel = buf.tel.trim();
+    if (buf.emoji.trim() && buf.emoji.trim() !== origin.emoji) metaPatch.emoji = buf.emoji.trim();
+    const emailChanged = buf.email.trim() && buf.email.trim() !== origin.email;
+    if (Object.keys(metaPatch).length === 0 && !emailChanged) {
+      // Rien à sauver
+      setExpandedUserId(null);
+      return;
+    }
+    setSavingUserId(u.id);
+    try {
+      if (Object.keys(metaPatch).length > 0) {
+        await updateSupabaseUserMeta(u, metaPatch);
+      }
+      if (emailChanged) {
+        await updateSupabaseUserEmail(u, buf.email.trim());
+      }
+      setExpandedUserId(null);
+      setEditBuffer(prev => { const n = { ...prev }; delete n[u.id]; return n; });
+    } finally {
+      setSavingUserId(null);
+    }
+  };
+
+  // Annule sans sauver
+  const cancelEdit = (u) => {
+    setExpandedUserId(null);
+    setEditBuffer(prev => { const n = { ...prev }; delete n[u.id]; return n; });
+  };
+
+  // Met à jour un champ du buffer pour le user en cours d'édition.
+  const setBufferField = (userId, field, value) => {
+    setEditBuffer(prev => ({ ...prev, [userId]: { ...prev[userId], [field]: value } }));
+  };
   const [supabaseUsers, setSupabaseUsers] = useState([]);
   const [loadingSupabase, setLoadingSupabase] = useState(false);
   const [supabaseError, setSupabaseError] = useState('');
   const [supabaseSuccess, setSupabaseSuccess] = useState('');
   const [bootstrapMode, setBootstrapMode] = useState(false);
 
-  // Suggestions cliquables — pratique pour ceux qui n'ont pas le clavier emoji
-  // (Win + . sur Windows, Ctrl+Cmd+Espace sur Mac). On peut aussi taper/coller
-  // n'importe quel emoji dans le champ.
-  const COMMON_EMOJIS = ['👤', '👑', '💼', '🔧', '🤝', '💰', '🏦', '👷', '👨', '👩', '🧑', '👨‍💼', '👩‍💼', '🛠️', '⭐', '🔥'];
+  // Picker emoji — large sélection groupée. On peut aussi taper/coller
+  // n'importe quel emoji dans le champ (Win + . sur Windows, Ctrl+Cmd+Espace sur Mac).
+  const COMMON_EMOJIS = [
+    // Personnes
+    '👤', '👨', '👩', '🧑', '👦', '👧', '👴', '👵', '🧒',
+    // Rôles & métiers
+    '👑', '💼', '🔧', '🛠️', '🤝', '💰', '🏦', '👷', '👨‍💼', '👩‍💼', '👨‍💻', '👩‍💻', '🧑‍🔧', '🏗️',
+    // Émotions / styles
+    '😀', '😎', '🥳', '🤩', '🙂', '😊', '🤓', '🧐', '😇', '🤠',
+    // Symboles métier
+    '⭐', '🔥', '⚡', '💡', '✨', '🌟', '💎', '🎯', '🚀', '💪', '🦾',
+    // Solaire / outils
+    '☀️', '🔆', '⚙️', '🔩', '🪛', '🪚',
+  ];
 
   const ROLES = [
     { id: 'admin', label: '👑 Admin', desc: 'Accès complet, voit tout, fait tout', color: 'bg-violet-100 text-violet-700 border-violet-300' },
@@ -6421,7 +6501,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                       return (
                         <div
                           key={u.id}
-                          onClick={() => setExpandedUserId(u.id)}
+                          onClick={() => openEdit(u)}
                           className="rounded-xl border border-slate-200 bg-white hover:bg-slate-50 hover:border-violet-300 cursor-pointer px-3 py-2 flex items-center gap-3"
                           title="Cliquer pour éditer"
                         >
@@ -6438,7 +6518,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                             <span className="flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">⚠️ Non rattaché</span>
                           )}
                           <button
-                            onClick={(e) => { e.stopPropagation(); setExpandedUserId(u.id); }}
+                            onClick={(e) => { e.stopPropagation(); openEdit(u); }}
                             className="flex-shrink-0 px-2 py-1 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded text-[11px] font-bold"
                             title="Éditer"
                           >
@@ -6455,39 +6535,53 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                       );
                     }
 
-                    // === LIGNE EXPANDED : éditeur complet ===
+                    // === LIGNE EXPANDED : éditeur complet avec save manuel ===
+                    const buf = editBuffer[u.id] || { prenom, displayName, email: u.email || '', tel, emoji };
+                    const dirty = (
+                      buf.prenom.trim() !== prenom ||
+                      buf.displayName.trim() !== displayName ||
+                      buf.email.trim() !== (u.email || '') ||
+                      buf.tel.trim() !== tel ||
+                      buf.emoji.trim() !== emoji
+                    );
+                    const saving = savingUserId === u.id;
                     return (
                       <div key={u.id} className="rounded-xl border-2 border-violet-300 bg-violet-50/30 p-3">
                         <div className="flex items-center justify-between mb-3">
                           <div className="text-sm font-bold text-violet-700">✏️ Édition du compte</div>
-                          <button
-                            onClick={() => setExpandedUserId(null)}
-                            className="px-3 py-1 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs font-bold"
-                          >
-                            ✓ Fermer
-                          </button>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => cancelEdit(u)}
+                              disabled={saving}
+                              className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded text-xs font-bold disabled:opacity-50"
+                            >
+                              ✕ Annuler
+                            </button>
+                            <button
+                              onClick={() => saveEdit(u)}
+                              disabled={saving || !dirty}
+                              className={`px-4 py-1.5 rounded text-xs font-bold text-white ${dirty && !saving ? 'bg-violet-600 hover:bg-violet-700' : 'bg-slate-300 cursor-not-allowed'}`}
+                            >
+                              {saving ? '⏳ Enregistrement…' : '💾 Enregistrer'}
+                            </button>
+                          </div>
                         </div>
                         {/* Ligne emoji + prénom + nom */}
                         <div className="grid grid-cols-12 gap-2 mb-2">
                           <div className="col-span-2">
                             <label className={labelCls}>Emoji</label>
                             <input
-                              key={`emoji-${u.id}-${emoji}`}
                               type="text"
-                              defaultValue={emoji}
-                              onBlur={(e) => {
-                                const v = (e.target.value || '').trim();
-                                if (v && v !== emoji) updateSupabaseUserMeta(u, { emoji: v });
-                              }}
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                              value={buf.emoji}
+                              onChange={(e) => setBufferField(u.id, 'emoji', e.target.value)}
                               maxLength={16}
-                              disabled={loadingSupabase}
+                              disabled={saving}
                               className="w-full px-1 py-1.5 bg-white border border-slate-300 rounded text-center text-xl"
-                              title="Tape ou colle un emoji, puis clique ailleurs"
+                              title="Tape, colle un emoji, ou choisis dans le picker ci-dessous"
                             />
-                            <div className="flex flex-wrap gap-0.5 mt-1">
+                            <div className="flex flex-wrap gap-0.5 mt-1 max-h-32 overflow-y-auto">
                               {COMMON_EMOJIS.map(em => (
-                                <button key={em} type="button" onClick={() => updateSupabaseUserMeta(u, { emoji: em })} className={`w-6 h-6 text-sm rounded hover:bg-violet-100 ${emoji === em ? 'bg-violet-200 ring-1 ring-violet-400' : 'bg-slate-50'}`} title={`Choisir ${em}`}>{em}</button>
+                                <button key={em} type="button" onClick={() => setBufferField(u.id, 'emoji', em)} className={`w-6 h-6 text-sm rounded hover:bg-violet-100 ${buf.emoji === em ? 'bg-violet-200 ring-1 ring-violet-400' : 'bg-slate-50'}`} title={`Choisir ${em}`}>{em}</button>
                               ))}
                             </div>
                           </div>
@@ -6495,10 +6589,9 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                             <label className={labelCls}>Prénom</label>
                             <input
                               type="text"
-                              defaultValue={prenom}
-                              onBlur={(e) => { const v = e.target.value.trim(); if (v !== prenom) updateSupabaseUserMeta(u, { prenom: v }); }}
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                              disabled={loadingSupabase}
+                              value={buf.prenom}
+                              onChange={(e) => setBufferField(u.id, 'prenom', e.target.value)}
+                              disabled={saving}
                               className={fieldCls}
                               placeholder="Marie"
                             />
@@ -6507,10 +6600,9 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                             <label className={labelCls}>Nom</label>
                             <input
                               type="text"
-                              defaultValue={displayName}
-                              onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== displayName) updateSupabaseUserMeta(u, { display_name: v }); }}
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                              disabled={loadingSupabase}
+                              value={buf.displayName}
+                              onChange={(e) => setBufferField(u.id, 'displayName', e.target.value)}
+                              disabled={saving}
                               className={fieldCls + ' font-bold'}
                               placeholder="Dupont"
                             />
@@ -6522,10 +6614,9 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                             <label className={labelCls}>✉️ Email (login)</label>
                             <input
                               type="email"
-                              defaultValue={u.email || ''}
-                              onBlur={(e) => updateSupabaseUserEmail(u, e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                              disabled={loadingSupabase}
+                              value={buf.email}
+                              onChange={(e) => setBufferField(u.id, 'email', e.target.value)}
+                              disabled={saving}
                               className={fieldCls}
                             />
                           </div>
@@ -6533,19 +6624,18 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                             <label className={labelCls}>📞 Téléphone (WhatsApp/SMS)</label>
                             <input
                               type="tel"
-                              defaultValue={tel}
-                              onBlur={(e) => { const v = e.target.value.trim(); if (v !== tel) updateSupabaseUserMeta(u, { tel: v }); }}
-                              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                              disabled={loadingSupabase}
+                              value={buf.tel}
+                              onChange={(e) => setBufferField(u.id, 'tel', e.target.value)}
+                              disabled={saving}
                               className={fieldCls}
                               placeholder="0612345678"
                             />
                           </div>
                         </div>
-                        {/* Ligne rôle + linkedTo */}
+                        {/* Ligne rôle + linkedTo — save auto (selects = clic délibéré) */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
                           <div>
-                            <label className={labelCls}>🎭 Rôle</label>
+                            <label className={labelCls}>🎭 Rôle <span className="text-slate-400 normal-case font-normal">(save auto)</span></label>
                             <select
                               value={role}
                               onChange={(e) => updateSupabaseUserRole(u, e.target.value)}
@@ -6557,7 +6647,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                           </div>
                           {(role === 'poseur' || role === 'regie') && (
                             <div>
-                              <label className={labelCls}>🔗 Rattaché à {role === 'poseur' ? 'ce poseur' : 'cette régie'}</label>
+                              <label className={labelCls}>🔗 Rattaché à {role === 'poseur' ? 'ce poseur' : 'cette régie'} <span className="text-slate-400 normal-case font-normal">(save auto)</span></label>
                               <select
                                 value={linkedTo}
                                 onChange={(e) => updateSupabaseUserLinkedTo(u, e.target.value)}
