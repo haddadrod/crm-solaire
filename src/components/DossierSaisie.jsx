@@ -9194,6 +9194,29 @@ function HistoriqueModal({ dossier, onClose }) {
                       </div>
                     );
                   }
+                  // Notification régie après accord financement (clic Envoyer/WhatsApp)
+                  if (h.action === 'notif_regie_accord') {
+                    const channelLabel = h.channel === 'whatsapp' ? '📲 WhatsApp' : h.channel === 'email_oauth' ? '📧 Email (Gmail)' : h.channel === 'email_smtp' ? '📧 Email (SMTP)' : '📧 Gmail compose';
+                    return (
+                      <div key={`n-${i}`} className="relative pl-10">
+                        <div className="absolute left-0 top-0.5 w-8 h-8 rounded-full flex items-center justify-center text-base shadow-md text-white bg-gradient-to-br from-emerald-400 to-teal-500">
+                          ✅
+                        </div>
+                        <div className="rounded-xl p-3 border bg-emerald-50 border-emerald-200">
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                            📅 {formatDateTime(h.date)}
+                          </div>
+                          <div className="text-sm font-bold text-emerald-700">
+                            ✅ Régie prévenue de l'accord
+                            <span className="text-xs font-normal text-slate-600 ml-1">
+                              à 🤝 <strong>{h.cible_nom}</strong> via {channelLabel}
+                            </span>
+                          </div>
+                          {h.user && <div className="text-[10px] text-slate-500 mt-1">👤 par {h.user}</div>}
+                        </div>
+                      </div>
+                    );
+                  }
                   // Relance WhatsApp (ex : facture manquante)
                   if (h.action === 'relance_whatsapp') {
                     const kindEmoji = h.cible_kind === 'poseur' ? '🔧' : h.cible_kind === 'regie' ? '🤝' : h.cible_kind === 'fournisseur' ? '📦' : '👤';
@@ -9838,8 +9861,28 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   apporté le dossier afin qu'elle programme la pose.
                   S'affiche tant que la date de pose n'est pas remplie. */}
               {d.statutFin === 'accepté' && !d.dateEnvoiPose && (() => {
-                const regiesDuDossier = (d.regies || []).filter(r => r.nom);
+                // On masque les régies déjà prévenues (map { [regieNom]: ISO }).
+                // Si TOUTES les régies du dossier sont prévenues → on cache la CTA.
+                const notified = d.regiesNotifiedAccord || {};
+                const regiesDuDossier = (d.regies || []).filter(r => r.nom && !notified[r.nom]);
                 if (regiesDuDossier.length === 0) return null;
+                // Marque une régie comme prévenue (cache la CTA pour elle) +
+                // ajoute une entrée dans l'historique du dossier.
+                const markNotified = (regieNom, channel) => {
+                  const now = new Date().toISOString();
+                  const nextNotified = { ...(d.regiesNotifiedAccord || {}), [regieNom]: now };
+                  const histEntry = {
+                    date: now,
+                    action: 'notif_regie_accord',
+                    cible_nom: regieNom,
+                    channel, // 'whatsapp' | 'email_oauth' | 'email_smtp' | 'gmail_compose'
+                    motif: 'accord_financement',
+                  };
+                  onUpdate({
+                    regiesNotifiedAccord: nextNotified,
+                    historique: [...(d.historique || []), histEntry],
+                  });
+                };
                 const adresseLignes = [d.adresse, [d.codePostal, d.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
                 const message = [
                   `🌞 Bonjour, accord financement reçu pour ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''} (${d.financement || 'banque'}).`,
@@ -9889,6 +9932,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                     href={buildWhatsAppLink(tel, message)}
                                     target="_blank"
                                     rel="noopener noreferrer"
+                                    onClick={() => markNotified(r.nom, 'whatsapp')}
                                     className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[10px] font-bold"
                                     title={`WhatsApp ${r.nom} (${tel})`}
                                   >
@@ -9917,6 +9961,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                           });
                                           const payload = await res.json().catch(() => ({}));
                                           if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+                                          markNotified(r.nom, 'email_oauth');
                                           alert(`✅ Email envoyé à ${r.nom} (${email}) depuis ${gmailOAuth.email}`);
                                         } catch (e) {
                                           alert(`❌ Envoi email : ${e.message}`);
@@ -9948,6 +9993,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                           });
                                           const payload = await res.json().catch(() => ({}));
                                           if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+                                          markNotified(r.nom, 'email_smtp');
                                           alert(`✅ Email envoyé à ${r.nom} (${email})`);
                                         } catch (e) {
                                           alert(`❌ Envoi email : ${e.message}`);
@@ -9963,6 +10009,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                       href={gmailCompose(email)}
                                       target="_blank"
                                       rel="noopener noreferrer"
+                                      onClick={() => markNotified(r.nom, 'gmail_compose')}
                                       className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
                                       title={`Ouvre Gmail (configure Réglages → Email d'envoi pour un envoi auto)`}
                                     >
