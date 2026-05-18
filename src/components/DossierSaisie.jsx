@@ -8953,16 +8953,34 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <>
                         {canSeeMarges && (
                           <>
-                            <div className="grid grid-cols-[1fr_auto] gap-1 items-end">
-                              <div>
-                                <label className="block text-[9px] font-semibold text-purple-600 uppercase mb-0.5">💰 HT (€)</label>
-                                <input type="number" step="0.01" value={r.htCustom || ''} onChange={(e) => updateRegie(i, { htCustom: e.target.value })} placeholder="Auto" className="w-full px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
-                              </div>
-                              <div>
-                                <label className="block text-[9px] font-semibold text-purple-600 uppercase mb-0.5">TTC (TVA 20 %)</label>
-                                <div className="px-2 py-1 bg-purple-50 border border-purple-200 rounded text-[10px] font-bold text-purple-800 min-w-[80px] text-right">{formatEuro(ttcRegie)}</div>
-                              </div>
-                            </div>
+                            {(() => {
+                              const autoHt = d.regiesDetail?.[i]?.autoHt || 0;
+                              const usingAuto = !r.htCustom && autoHt > 0;
+                              return (
+                                <>
+                                  <div className="grid grid-cols-[1fr_auto] gap-1 items-end">
+                                    <div>
+                                      <label className="text-[9px] font-semibold text-purple-600 uppercase mb-0.5 flex items-center justify-between gap-1">
+                                        <span>💰 HT (€)</span>
+                                        {autoHt > 0 && (
+                                          <span className={`text-[9px] font-bold normal-case px-1 py-0.5 rounded ${usingAuto ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                            {usingAuto ? '✓ Auto' : 'Auto'} : {formatEuro(autoHt)}
+                                          </span>
+                                        )}
+                                      </label>
+                                      <input type="number" step="0.01" value={r.htCustom || ''} onChange={(e) => updateRegie(i, { htCustom: e.target.value })} placeholder={autoHt > 0 ? `Vide → auto ${autoHt} €` : 'Saisir'} className="w-full px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
+                                    </div>
+                                    <div>
+                                      <label className="block text-[9px] font-semibold text-purple-600 uppercase mb-0.5">TTC (TVA 20 %)</label>
+                                      <div className="px-2 py-1 bg-purple-50 border border-purple-200 rounded text-[10px] font-bold text-purple-800 min-w-[80px] text-right">{formatEuro(ttcRegie)}</div>
+                                    </div>
+                                  </div>
+                                  {autoHt === 0 && (
+                                    <div className="text-[9px] text-rose-500">⚠️ Aucun tarif défini pour {r.nom} dans Réglages → Régies</div>
+                                  )}
+                                </>
+                              );
+                            })()}
                             <label className="flex items-center gap-1.5 text-[10px] font-semibold text-purple-700 cursor-pointer">
                               <input type="checkbox" checked={!!r.sansTva || r.tauxTva === 0 || r.tauxTva === '0'} onChange={(e) => updateRegie(i, { sansTva: e.target.checked, tauxTva: e.target.checked ? 0 : 20 })} className="w-3.5 h-3.5 accent-purple-600" />
                               Sans TVA <span className="text-purple-500 font-normal">(auto-entrepreneur / société étrangère)</span>
@@ -9145,12 +9163,33 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       </div>
                     )
                   )}
-                  {canSeeMarges && (
-                    <div>
-                      <label className="block text-[9px] font-semibold text-amber-600 uppercase mb-0.5">💰 HT (€) <span className="text-amber-500 font-normal">— pas de TVA sur les poseurs</span></label>
-                      <input type="number" step="0.01" value={p.htCustom || ''} onChange={(e) => updatePoseur(i, { htCustom: e.target.value })} placeholder="Vide = tarif auto" className="w-full px-2 py-1 bg-white border border-amber-200 rounded text-[10px]" />
-                    </div>
-                  )}
+                  {canSeeMarges && (() => {
+                    const autoHt = d.poseursDetail?.[i]?.autoHt || 0;
+                    const usingAuto = !p.htCustom && autoHt > 0;
+                    return (
+                      <div>
+                        <label className="text-[9px] font-semibold text-amber-600 uppercase mb-0.5 flex items-center justify-between gap-2">
+                          <span>💰 HT (€) <span className="text-amber-500 font-normal">— pas de TVA</span></span>
+                          {autoHt > 0 && (
+                            <span className={`text-[9px] font-bold normal-case px-1.5 py-0.5 rounded ${usingAuto ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                              {usingAuto ? '✓ Auto' : 'Auto'} : {formatEuro(autoHt)}
+                            </span>
+                          )}
+                        </label>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={p.htCustom || ''}
+                          onChange={(e) => updatePoseur(i, { htCustom: e.target.value })}
+                          placeholder={autoHt > 0 ? `Vide → auto ${autoHt} €` : 'Saisir le tarif'}
+                          className="w-full px-2 py-1 bg-white border border-amber-200 rounded text-[10px]"
+                        />
+                        {autoHt === 0 && p.nom && (
+                          <div className="text-[9px] text-rose-500 mt-0.5">⚠️ Aucun tarif défini pour {p.nom} dans Réglages → Poseurs</div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {canSeeBLFactures && (
                     <>
                       <div className="grid grid-cols-2 gap-1">
