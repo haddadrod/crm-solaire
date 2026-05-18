@@ -136,6 +136,7 @@ const CLIENT_DOC_SUBCATS = [
   { id: 'justif_domicile',   label: 'Justificatif domicile',emoji: '📋', color: 'cyan'    },
   { id: 'bulletin_paie',     label: 'Bulletin de paie',     emoji: '💰', color: 'green'   },
   { id: 'rib',               label: 'RIB',                  emoji: '🏦', color: 'indigo'  },
+  { id: 'recepisse_mairie',  label: 'Récépissé mairie',     emoji: '🏛️', color: 'indigo'  },
   { id: 'autre',             label: 'Autre',                emoji: '📑', color: 'slate'   },
 ];
 
@@ -3308,10 +3309,14 @@ function Mini({ label, value, sub, color }) {
 
 function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
   const documents = dossier.documents || [];
-  const fournisseursDuDossier = (dossier.fournisseursDetail || []).map(f => f.nom);
+  // On lit poseurs/fournisseurs/regies directement (pas les versions ...Detail enrichies)
+  // car le dossier passé ici est brut (state), pas dossiersEnriched.
+  const fournisseursDuDossier = (dossier.fournisseurs || []).map(f => f.nom).filter(Boolean);
   const fournisseursUniques = [...new Set(fournisseursDuDossier)];
-  const poseursDuDossier = (dossier.poseursDetail || []).map(p => p.nom);
+  const poseursDuDossier = (dossier.poseurs || []).map(p => p.nom).filter(Boolean);
   const poseursUniques = [...new Set(poseursDuDossier)];
+  const regiesDuDossier = (dossier.regies || []).map(r => r.nom).filter(Boolean);
+  const regiesUniques = [...new Set(regiesDuDossier)];
 
   // Catégories disponibles dans le modal
   const categories = useMemo(() => {
@@ -3323,13 +3328,14 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
       poseursUniques.forEach(nom => {
         cats.push({ id: `poseur:${nom}`, key: 'poseur', subCategory: nom, label: 'Poseur', sublabel: nom, emoji: '🔧', color: 'from-amber-500 to-orange-500', bg: 'bg-amber-50', border: 'border-amber-200', accent: 'text-amber-700', desc: `Factures ${nom}` });
       });
-      cats.push({ id: 'regie', key: 'regie', subCategory: null, label: 'Régie', sublabel: dossier.regie || '—', emoji: '🤝', color: 'from-purple-500 to-violet-500', bg: 'bg-purple-50', border: 'border-purple-200', accent: 'text-purple-700', desc: 'Factures de la régie' });
+      const regieSublabel = regiesUniques.length > 0 ? regiesUniques.join(', ') : (dossier.regie || '—');
+      cats.push({ id: 'regie', key: 'regie', subCategory: null, label: 'Régie', sublabel: regieSublabel, emoji: '🤝', color: 'from-purple-500 to-violet-500', bg: 'bg-purple-50', border: 'border-purple-200', accent: 'text-purple-700', desc: 'Factures de la régie' });
       fournisseursUniques.forEach(nom => {
         cats.push({ id: `fournisseur:${nom}`, key: 'fournisseur', subCategory: nom, label: 'Fournisseur', sublabel: nom, emoji: '📦', color: 'from-orange-500 to-red-500', bg: 'bg-orange-50', border: 'border-orange-200', accent: 'text-orange-700', desc: `Factures ${nom}` });
       });
     }
     return cats;
-  }, [dossier, fournisseursUniques, poseursUniques, isAdmin]);
+  }, [dossier, fournisseursUniques, poseursUniques, regiesUniques, isAdmin]);
 
   const [activeCatId, setActiveCatId] = useState(categories[0].id);
   const activeCat = categories.find(c => c.id === activeCatId) || categories[0];
@@ -3390,8 +3396,36 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
         });
       }
     });
+    // Récépissé mairie principal (uploadé depuis la section Mairie du dossier)
+    if (dossier.recepisseMairieFileId) {
+      out.push({
+        id: dossier.recepisseMairieFileId,
+        name: `Récépissé mairie${dossier.dateRecepisseMairie ? ' du ' + new Date(dossier.dateRecepisseMairie).toLocaleDateString('fr-FR') : ''}.pdf`,
+        size: 0, type: 'application/pdf',
+        category: 'client', subCategory: 'recepisse_mairie',
+        uploadedAt: dossier.dateRecepisseMairie || dossier.savedAt || new Date().toISOString(),
+        note: '🏛️ Récépissé lié à la section Mairie du dossier',
+        virtual: true,
+        virtualSource: { kind: 'mairie' },
+      });
+    }
+    // Récépissés des renvois mairie (en cas de refus puis renvoi)
+    (dossier.envoisMairie || []).forEach((env, idx) => {
+      if (env.recepisseFileId) {
+        out.push({
+          id: env.recepisseFileId,
+          name: `Récépissé mairie — envoi n°${idx + 1}${env.dateRecepisse ? ' (' + new Date(env.dateRecepisse).toLocaleDateString('fr-FR') + ')' : ''}.pdf`,
+          size: 0, type: 'application/pdf',
+          category: 'client', subCategory: 'recepisse_mairie',
+          uploadedAt: env.dateRecepisse || env.dateEnvoi || dossier.savedAt || new Date().toISOString(),
+          note: `🏛️ Récépissé du renvoi n°${idx + 1} (historique mairie)`,
+          virtual: true,
+          virtualSource: { kind: 'mairie_envoi', index: idx },
+        });
+      }
+    });
     return out;
-  }, [dossier.poseurs, dossier.regies, dossier.fournisseurs, dossier.dateInsta]);
+  }, [dossier.poseurs, dossier.regies, dossier.fournisseurs, dossier.dateInsta, dossier.recepisseMairieFileId, dossier.dateRecepisseMairie, dossier.envoisMairie, dossier.savedAt]);
 
   // Documents pour la catégorie active.
   // Cas spécial Client : on prend TOUS les docs client (toutes sous-catégories),
@@ -3400,7 +3434,10 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
   // fournisseur) gardent leur filtre strict par subCategory + fusion avec
   // les factures virtuelles uploadées depuis l'aperçu rapide.
   const docsActive = activeCat.key === 'client'
-    ? documents.filter(d => d.category === 'client')
+    ? [
+        ...documents.filter(d => d.category === 'client'),
+        ...virtualFactureDocs.filter(d => d.category === 'client'),
+      ]
     : [
         ...documents.filter(d => d.category === activeCat.key && (d.subCategory || null) === (activeCat.subCategory || null)),
         ...virtualFactureDocs.filter(d => d.category === activeCat.key && (d.subCategory || null) === (activeCat.subCategory || null)),
@@ -3431,9 +3468,11 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
     return ordered;
   }, [activeCat.key, docsActive]);
 
-  // En mode équipe : ne compter QUE les documents visibles (client uniquement)
-  const visibleDocs = isAdmin ? documents : documents.filter(d => d.category === 'client');
-  // Total de la taille des fichiers visibles
+  // En mode équipe : ne compter QUE les documents visibles (client uniquement).
+  // Inclut aussi les docs virtuels (factures prestataires + récépissé mairie).
+  const visibleDocs = isAdmin
+    ? [...documents, ...virtualFactureDocs]
+    : [...documents.filter(d => d.category === 'client'), ...virtualFactureDocs.filter(d => d.category === 'client')];
   const totalSize = visibleDocs.reduce((s, d) => s + (d.size || 0), 0);
   const totalCount = visibleDocs.length;
 
@@ -3654,10 +3693,10 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
             <div className="p-3 space-y-1.5">
               {categories.map(cat => {
                 const sel = cat.id === activeCatId;
-                // Client : on compte tous les docs client (toutes sous-catégories confondues)
+                // Compte les docs régulier + virtuels (factures sur prestataires, récépissé mairie)
                 const count = cat.key === 'client'
-                  ? documents.filter(d => d.category === 'client').length
-                  : documents.filter(d => d.category === cat.key && (d.subCategory || null) === (cat.subCategory || null)).length;
+                  ? documents.filter(d => d.category === 'client').length + virtualFactureDocs.filter(d => d.category === 'client').length
+                  : documents.filter(d => d.category === cat.key && (d.subCategory || null) === (cat.subCategory || null)).length + virtualFactureDocs.filter(d => d.category === cat.key && (d.subCategory || null) === (cat.subCategory || null)).length;
                 return (
                   <button
                     key={cat.id}
