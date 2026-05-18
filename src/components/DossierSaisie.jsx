@@ -9045,6 +9045,129 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 if (jours <= 2) return <div className="mt-1.5 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-700">⏳ {jours}j — en attente</div>;
                 return <div className="mt-1.5 px-2 py-1 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-700 font-bold">⚠️ {jours}j sans retour — relance !</div>;
               })()}
+
+              {/* 🔄 Bascule banque effectuée → CTA pour prévenir la régie que
+                  le dossier a été renvoyé chez un autre financeur après refus.
+                  S'affiche quand on a au moins 1 refus archivé ET qu'on est
+                  reparti en attente chez un nouveau financeur. */}
+              {d.statutFin === 'envoyé' && Array.isArray(d.envoisHistorique) && d.envoisHistorique.some(h => h.statut === 'refusé') && (() => {
+                const regiesDuDossier = (d.regies || []).filter(r => r.nom);
+                if (regiesDuDossier.length === 0) return null;
+                const dernierRefus = [...d.envoisHistorique].reverse().find(h => h.statut === 'refusé');
+                const ancien = dernierRefus?.financeur || 'la précédente banque';
+                const nouveau = d.financement || 'un nouveau financeur';
+                const message = [
+                  `🌞 Bonjour, mise à jour pour ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''}.`,
+                  '',
+                  d.id ? `Dossier n° ${d.id}` : null,
+                  '',
+                  `❌ Refusé par ${ancien}.`,
+                  `📤 Renvoyé chez ${nouveau} — en attente de retour.`,
+                  '',
+                  'Je vous tiens au courant dès que j\'ai un retour.',
+                ].filter(v => v != null).join('\n');
+                const mailSubject = `Bascule financement — ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''} envoyé chez ${nouveau}`;
+                const gmailComposeBascule = (to) => {
+                  const params = new URLSearchParams({
+                    view: 'cm', fs: '1',
+                    to, su: mailSubject, body: message,
+                  });
+                  if (defaultFromEmail) params.set('authuser', defaultFromEmail);
+                  return `https://mail.google.com/mail/?${params.toString()}`;
+                };
+                return (
+                  <div className="mt-1.5 p-2 bg-blue-50 border-2 border-blue-300 rounded-lg">
+                    <div className="text-[10px] font-bold text-blue-700 mb-1.5">🔄 Bascule banque effectuée → prévenir la régie</div>
+                    <div className="space-y-1.5">
+                      {regiesDuDossier.map((r, idx) => {
+                        const contact = (regiesContacts || {})[r.nom];
+                        const tel = contact && (typeof contact === 'string' ? contact : contact.tel);
+                        const email = contact && typeof contact === 'object' ? contact.email : '';
+                        const hasContact = tel || email;
+                        return (
+                          <div key={idx} className="bg-white border border-blue-200 rounded p-1.5">
+                            <div className="text-[10px] font-bold text-slate-700 mb-1">🤝 {r.nom}</div>
+                            {hasContact ? (
+                              <div className="grid grid-cols-2 gap-1">
+                                {tel ? (
+                                  <a
+                                    href={buildWhatsAppLink(tel, message)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[10px] font-bold"
+                                    title={`WhatsApp ${r.nom} (${tel})`}
+                                  >
+                                    📲 WhatsApp
+                                  </a>
+                                ) : (
+                                  <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📲 Pas de tél.</span>
+                                )}
+                                {email ? (
+                                  gmailOAuth?.connected ? (
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          const { data: { session } } = await supabase.auth.getSession();
+                                          const headers = { 'Content-Type': 'application/json' };
+                                          if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                                          const res = await fetch('/api/send-email-gmail', {
+                                            method: 'POST', headers,
+                                            body: JSON.stringify({ to: email, subject: mailSubject, text: message, fromName: emailConfig?.fromName || 'CRM Solaire' }),
+                                          });
+                                          const p = await res.json().catch(() => ({}));
+                                          if (!res.ok) throw new Error(p.error || `Erreur ${res.status}`);
+                                          alert(`✅ Email envoyé à ${r.nom} (${email})`);
+                                        } catch (e) { alert(`❌ Envoi email : ${e.message}`); }
+                                      }}
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                    >
+                                      📧 Envoyer
+                                    </button>
+                                  ) : emailConfig?.smtpUser && emailConfig?.smtpPass ? (
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          const { data: { session } } = await supabase.auth.getSession();
+                                          const headers = { 'Content-Type': 'application/json' };
+                                          if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                                          const res = await fetch('/api/send-email', {
+                                            method: 'POST', headers,
+                                            body: JSON.stringify({ to: email, subject: mailSubject, text: message, smtpUser: emailConfig.smtpUser, smtpPass: emailConfig.smtpPass, fromName: emailConfig.fromName || 'CRM Solaire' }),
+                                          });
+                                          const p = await res.json().catch(() => ({}));
+                                          if (!res.ok) throw new Error(p.error || `Erreur ${res.status}`);
+                                          alert(`✅ Email envoyé à ${r.nom} (${email})`);
+                                        } catch (e) { alert(`❌ Envoi email : ${e.message}`); }
+                                      }}
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                    >
+                                      📧 Envoyer
+                                    </button>
+                                  ) : (
+                                    <a
+                                      href={gmailComposeBascule(email)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      title={`Ouvre Gmail (configure Réglages → Email d'envoi pour un envoi auto)`}
+                                    >
+                                      📧 Gmail
+                                    </a>
+                                  )
+                                ) : (
+                                  <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📧 Pas d'email</span>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-[9px] text-amber-600 italic">⚠️ Ajoute le tél/email de {r.nom} dans Réglages → Régies pour pouvoir prévenir en 1 clic</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
               </>)}
             </div>
 
