@@ -242,8 +242,9 @@ const computeTtcPresta = (ht, sansTva, legacyTauxTva) => {
 // ou clic. Stocke le fichier inline (window.storage `file:<id>`) et garde
 // l'ID du fichier dans la prop `fileId`. Onglet 👁️ pour prévisualiser dans
 // un nouvel onglet.
-function FactureFileInput({ fileId, onChange, color = 'orange' }) {
+function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false }) {
   const [uploading, setUploading] = useState(false);
+  const [extracting, setExtracting] = useState(false);
   const [meta, setMeta] = useState(null);
 
   useEffect(() => {
@@ -260,6 +261,30 @@ function FactureFileInput({ fileId, onChange, color = 'orange' }) {
     return () => { cancelled = true; };
   }, [fileId]);
 
+  // Appelle l'API IA pour lire la facture et renvoyer les champs extraits.
+  const runExtraction = async (base64DataUrl, mimeType) => {
+    if (!onExtract) return;
+    setExtracting(true);
+    try {
+      const base64 = (base64DataUrl || '').split(',')[1] || '';
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/extract-facture', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ imageBase64: base64, mediaType: mimeType }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      onExtract(payload.data || {});
+    } catch (e) {
+      alert(`Lecture IA de la facture : ${e.message}`);
+    } finally {
+      setExtracting(false);
+    }
+  };
+
   const handleUpload = async (file) => {
     if (!file) return;
     if (file.size > MAX_FILE_SIZE) {
@@ -275,11 +300,26 @@ function FactureFileInput({ fileId, onChange, color = 'orange' }) {
       if (fileId) { try { await window.storage.delete(`file:${fileId}`); } catch (e) {} }
       onChange(id);
       setMeta({ name: file.name, type: file.type });
+      // Auto-extraction si activée (ex : Lire la facture dès qu'on l'upload)
+      if (autoExtract && onExtract) {
+        runExtraction(dataUrl, file.type);
+      }
     } catch (e) {
       alert('Erreur : ' + e.message);
     } finally {
       setUploading(false);
     }
+  };
+
+  // Re-déclenche la lecture IA sur le fichier déjà uploadé (bouton ✨).
+  const handleReExtract = async () => {
+    if (!fileId || !onExtract) return;
+    try {
+      const r = await window.storage.get(`file:${fileId}`);
+      if (!r?.value) { alert('❌ Fichier introuvable.'); return; }
+      const data = JSON.parse(r.value);
+      await runExtraction(data.dataUrl, data.type || 'application/pdf');
+    } catch (e) { alert('Erreur : ' + e.message); }
   };
 
   const handleView = async () => {
@@ -317,6 +357,11 @@ function FactureFileInput({ fileId, onChange, color = 'orange' }) {
     return (
       <div className={`flex items-center gap-1 px-2 py-1 rounded border bg-white text-[10px] ${palette}`}>
         <span className="flex-1 truncate font-semibold">📄 {meta.name}</span>
+        {onExtract && (
+          <button onClick={handleReExtract} disabled={extracting} className="px-1 py-0.5 hover:bg-violet-100 text-violet-600 rounded" title="Re-lire les infos de la facture avec l'IA">
+            {extracting ? '⏳' : '✨'}
+          </button>
+        )}
         <button onClick={handleView} className="px-1 py-0.5 hover:bg-white rounded" title="Voir la facture">👁️</button>
         <button onClick={handleRemove} className="px-1 py-0.5 text-rose-500 hover:bg-rose-100 rounded" title="Retirer">🗑️</button>
       </div>
@@ -327,10 +372,12 @@ function FactureFileInput({ fileId, onChange, color = 'orange' }) {
     <label
       onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f) handleUpload(f); }}
       onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-      className={`flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-dashed bg-white text-[10px] cursor-pointer ${palette} ${uploading ? 'opacity-60' : ''}`}
+      className={`flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-dashed bg-white text-[10px] cursor-pointer ${palette} ${uploading || extracting ? 'opacity-60' : ''}`}
     >
-      <span>{uploading ? '⏳ Upload…' : '📎 Glisser PDF facture ou cliquer'}</span>
-      <input type="file" accept="application/pdf,image/*" className="hidden" disabled={uploading} onChange={(e) => handleUpload(e.target.files?.[0])} />
+      <span>
+        {uploading ? '⏳ Upload…' : extracting ? '✨ Lecture IA…' : (onExtract ? '📎 Glisser PDF — l\'IA lira la facture ✨' : '📎 Glisser PDF facture ou cliquer')}
+      </span>
+      <input type="file" accept="application/pdf,image/*" className="hidden" disabled={uploading || extracting} onChange={(e) => handleUpload(e.target.files?.[0])} />
     </label>
   );
 }
@@ -9052,6 +9099,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               fileId={r.factureFile || ''}
                               onChange={(id) => updateRegie(i, { factureFile: id })}
                               color="purple"
+                              autoExtract={true}
+                              onExtract={(data) => {
+                                // Pré-remplit les champs vides avec ce que l'IA a trouvé
+                                const upd = {};
+                                if (data.factureNo && !r.factureNo) upd.factureNo = String(data.factureNo);
+                                if (data.bl && !r.bl) upd.bl = String(data.bl);
+                                if (data.montantHt && data.montantHt > 0 && !r.htCustom) upd.htCustom = String(data.montantHt);
+                                if (typeof data.tauxTva === 'number' && data.tauxTva === 0 && !r.sansTva) {
+                                  upd.sansTva = true; upd.tauxTva = 0;
+                                }
+                                if (Object.keys(upd).length > 0) updateRegie(i, upd);
+                              }}
                             />
                           </>
                         )}
@@ -9255,6 +9314,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         fileId={p.factureFile || ''}
                         onChange={(id) => updatePoseur(i, { factureFile: id })}
                         color="amber"
+                        autoExtract={true}
+                        onExtract={(data) => {
+                          const upd = {};
+                          if (data.factureNo && !p.factureNo) upd.factureNo = String(data.factureNo);
+                          if (data.bl && !p.bl) upd.bl = String(data.bl);
+                          if (data.montantHt && data.montantHt > 0 && !p.htCustom) upd.htCustom = String(data.montantHt);
+                          if (Object.keys(upd).length > 0) updatePoseur(i, upd);
+                        }}
                       />
                     </>
                   )}
@@ -9355,6 +9422,17 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         fileId={f.factureFile || ''}
                         onChange={(id) => updateFournisseur(i, { factureFile: id })}
                         color="orange"
+                        autoExtract={true}
+                        onExtract={(data) => {
+                          const upd = {};
+                          if (data.factureNo && !f.factureNo) upd.factureNo = String(data.factureNo);
+                          if (data.bl && !f.bl) upd.bl = String(data.bl);
+                          if (data.montantHt && data.montantHt > 0 && !f.htCustom) upd.htCustom = String(data.montantHt);
+                          if (typeof data.tauxTva === 'number' && data.tauxTva === 0 && !f.sansTva) {
+                            upd.sansTva = true; upd.tauxTva = 0;
+                          }
+                          if (Object.keys(upd).length > 0) updateFournisseur(i, upd);
+                        }}
                       />
                     </>
                   )}
