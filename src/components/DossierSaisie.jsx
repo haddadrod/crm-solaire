@@ -345,7 +345,7 @@ const findClosestTarif = (tarifs, puissance) => {
 
 // Enrichit un dossier brut avec les champs calculés (HT, marges, totaux, etc.)
 // Utilisé à l'affichage pour que les anciens dossiers aient aussi ces infos.
-const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits) => {
+const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs = {}) => {
   if (!d) return d;
   // Liste des produits du dossier (fallback ancien format)
   const produitsList = (d.produits && d.produits.length > 0)
@@ -375,8 +375,11 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits) => {
   const tauxTva = montantHt > 0 ? ((tvaVente / montantHt) * 100) : 0;
 
   const fournisseursDetail = (d.fournisseurs || []).map(f => {
-    const ht = parseFloat(f.htCustom) || 0;
-    return { nom: f.nom, ht, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
+    // Tarif auto : €/Wc × puissance solaire totale du dossier
+    const tarifWc = parseFloat(tarifsFournisseurs[f.nom]) || 0;
+    const autoHt = tarifWc > 0 && totalPuissance > 0 ? tarifWc * totalPuissance : 0;
+    const ht = (f.htCustom !== '' && f.htCustom !== undefined && f.htCustom !== null) ? (parseFloat(f.htCustom) || 0) : autoHt;
+    return { nom: f.nom, ht, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
   });
   const fournisseurHt = fournisseursDetail.reduce((s, f) => s + f.ht, 0);
   const fournisseurTtc = fournisseursDetail.reduce((s, f) => s + f.ttc, 0);
@@ -448,6 +451,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [tarifsInternes, setTarifsInternes] = useState(TARIFS_INTERNES_DEFAULT);
   const [nomsInternes, setNomsInternes] = useState(NOMS_INTERNES_DEFAULT);
   const [listeFournisseurs, setListeFournisseurs] = useState(FOURNISSEURS_DEFAULT);
+  // Tarif au Wc (€) par fournisseur. Ex : { 'ECO NEGOCE': 0.37, 'IONERGIK': 0.55 }
+  // Auto-calcul du HT du dossier : tarif × puissance totale solaire.
+  const [tarifsFournisseurs, setTarifsFournisseurs] = useState({});
   const [produits, setProduits] = useState(PRODUITS_DEFAULT);
   const [users, setUsers] = useState([]);
   const [showDocsForId, setShowDocsForId] = useState(null); // 📎 modal documents
@@ -874,6 +880,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (r?.value) setListeFournisseurs(JSON.parse(r.value));
       } catch (e) {}
       try {
+        const r = await window.storage.get('tarifs-fournisseurs');
+        if (r?.value) {
+          const obj = JSON.parse(r.value);
+          if (obj && typeof obj === 'object') setTarifsFournisseurs(obj);
+        }
+      } catch (e) {}
+      try {
         const r = await window.storage.get('produits');
         if (r?.value) {
           const arr = JSON.parse(r.value);
@@ -1034,9 +1047,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     window.storage.set('tarifs-internes', JSON.stringify(tarifsInternes)).catch(() => {});
     window.storage.set('noms-internes', JSON.stringify(nomsInternes)).catch(() => {});
     window.storage.set('liste-fournisseurs', JSON.stringify(listeFournisseurs)).catch(() => {});
+    window.storage.set('tarifs-fournisseurs', JSON.stringify(tarifsFournisseurs)).catch(() => {});
     window.storage.set('produits', JSON.stringify(produits)).catch(() => {});
     window.storage.set('poseurs-contacts', JSON.stringify(poseursContacts)).catch(() => {});
-  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, produits, poseursContacts, loading]);
+  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, loading]);
 
   // Si l'utilisateur n'a pas accès à l'onglet courant, retour aux dossiers
   useEffect(() => {
@@ -1077,8 +1091,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const tauxTva = montantHt > 0 ? ((tvaVente / montantHt) * 100) : 0;
 
     const fournisseursDetail = (formData.fournisseurs || []).map(f => {
-      const ht = parseFloat(f.htCustom) || 0;
-      return { nom: f.nom, ht, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
+      const tarifWc = parseFloat(tarifsFournisseurs?.[f.nom]) || 0;
+      const autoHt = tarifWc > 0 && totalPuissance > 0 ? tarifWc * totalPuissance : 0;
+      const ht = (f.htCustom !== '' && f.htCustom !== undefined && f.htCustom !== null) ? (parseFloat(f.htCustom) || 0) : autoHt;
+      return { nom: f.nom, ht, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
     });
     const fournisseurHt = fournisseursDetail.reduce((s, f) => s + f.ht, 0);
     const fournisseurTtc = fournisseursDetail.reduce((s, f) => s + f.ttc, 0);
@@ -1109,7 +1125,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const hasAnyAutoTarif = regiesDetail.some(r => r.autoHt > 0) || poseursDetail.some(p => p.autoHt > 0);
 
     return { montantTotal, montantHt, tvaVente, tauxTva, fournisseursDetail, fournisseurHt, fournisseurTtc, regiesDetail, regieHt, regieAutoHt, regieTtc, poseursDetail, poseurHt, poseurTtc, margeTtc, margeHt, tva, puissance: totalPuissance, useAutoTarif: hasAnyAutoTarif, computeAutoTarif };
-  }, [formData, tarifsPoseurs, tarifsRegies, produits]);
+  }, [formData, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs]);
 
   const resetForm = () => { setFormData(emptyForm); setEditingId(null); setShowForm(false); };
 
@@ -1391,8 +1407,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Dossiers enrichis : calcule à la volée HT, marges, totaux poseurs/régie/fournisseur, etc.
   // Permet d'afficher correctement les anciens dossiers qui n'ont pas ces champs stockés.
   const dossiersEnriched = useMemo(() => {
-    return dossiers.map(d => enrichDossier(d, tarifsPoseurs, tarifsRegies, produits));
-  }, [dossiers, tarifsPoseurs, tarifsRegies, produits]);
+    return dossiers.map(d => enrichDossier(d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs));
+  }, [dossiers, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs]);
 
   const stats = useMemo(() => {
     const totalCA = dossiersEnriched.reduce((s, d) => s + (d.montantTotal || 0), 0);
@@ -2386,6 +2402,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             tarifsInternes={tarifsInternes} setTarifsInternes={setTarifsInternes}
             nomsInternes={nomsInternes} setNomsInternes={setNomsInternes}
             listeFournisseurs={listeFournisseurs} setListeFournisseurs={setListeFournisseurs}
+            tarifsFournisseurs={tarifsFournisseurs} setTarifsFournisseurs={setTarifsFournisseurs}
             produits={produits} setProduits={setProduits}
             users={users} setUsers={setUsers}
             poseursContacts={poseursContacts} setPoseursContacts={setPoseursContacts}
@@ -4617,7 +4634,7 @@ function PerfList({ titre, data, medal, border, header, iconColor }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts }) {
   const [section, setSection] = useState('statuts');
   // Nombre de comptes Supabase, remonté par UsersManager pour le badge de l'onglet.
   const [usersCount, setUsersCount] = useState(null);
@@ -4732,7 +4749,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'fournisseurs' && (
-        <FournisseursManager data={listeFournisseurs} setData={setListeFournisseurs} dossiers={dossiers} />
+        <FournisseursManager data={listeFournisseurs} setData={setListeFournisseurs} dossiers={dossiers} tarifs={tarifsFournisseurs} setTarifs={setTarifsFournisseurs} />
       )}
 
       {section === 'regies' && (
@@ -5560,7 +5577,7 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
   );
 }
 
-function FournisseursManager({ data, setData, dossiers }) {
+function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
 
@@ -5575,19 +5592,37 @@ function FournisseursManager({ data, setData, dossiers }) {
     if (!c || c === oldN) return;
     if (data.includes(c)) { alert(`"${c}" existe déjà`); return; }
     setData(data.map(f => f === oldN ? c : f));
+    // Renomme aussi la clé du tarif si elle existe
+    if (setTarifs && tarifs && tarifs[oldN] !== undefined) {
+      const next = { ...tarifs };
+      next[c] = next[oldN];
+      delete next[oldN];
+      setTarifs(next);
+    }
   };
   const del = (nom) => {
     const used = dossiers.filter(d => (d.fournisseursDetail || []).some(f => f.nom === nom)).length;
     const msg = used > 0 ? `⚠️ "${nom}" utilisé dans ${used} dossier(s). Supprimer ?` : `Supprimer "${nom}" ?`;
     if (!window.confirm(msg)) return;
     setData(data.filter(f => f !== nom));
+    if (setTarifs && tarifs && tarifs[nom] !== undefined) {
+      const next = { ...tarifs }; delete next[nom]; setTarifs(next);
+    }
+  };
+  const setTarif = (nom, val) => {
+    if (!setTarifs) return;
+    const num = parseFloat(val);
+    const next = { ...(tarifs || {}) };
+    if (isNaN(num) || num <= 0) { delete next[nom]; }
+    else { next[nom] = num; }
+    setTarifs(next);
   };
 
   return (
     <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
       <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-gray-50">
         <h2 className="text-lg font-bold text-slate-800">📦 Fournisseurs (matériel)</h2>
-        <p className="text-xs text-slate-500 mt-1">Liste des fournisseurs (les prix sont saisis manuellement à chaque dossier)</p>
+        <p className="text-xs text-slate-500 mt-1">Tarif au Wc (€) — multiplié par la puissance solaire du dossier pour calculer le HT automatiquement.</p>
       </div>
       <div className="p-4">
         <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
@@ -5604,14 +5639,34 @@ function FournisseursManager({ data, setData, dossiers }) {
             </div>
           )}
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
           {data.map(nom => {
             const used = dossiers.filter(d => (d.fournisseursDetail || []).some(f => f.nom === nom)).length;
+            const tarif = tarifs?.[nom];
             return (
-              <div key={nom} className="bg-slate-50 rounded-xl border border-slate-200 p-2.5 flex items-center gap-2">
-                <input type="text" defaultValue={nom} onBlur={(e) => rename(nom, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="flex-1 px-2 py-1 bg-white border border-transparent hover:border-slate-300 focus:border-violet-400 focus:outline-none rounded text-sm font-semibold" />
-                <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${used > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-400'}`}>{used}</span>
-                <button onClick={() => del(nom)} className="p-1 text-rose-500 hover:bg-rose-100 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+              <div key={nom} className="bg-slate-50 rounded-xl border border-slate-200 p-2.5 space-y-1.5">
+                <div className="flex items-center gap-2">
+                  <input type="text" defaultValue={nom} onBlur={(e) => rename(nom, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="flex-1 px-2 py-1 bg-white border border-transparent hover:border-slate-300 focus:border-violet-400 focus:outline-none rounded text-sm font-semibold" />
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${used > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-400'}`} title={`${used} dossier(s) utilisent ce fournisseur`}>{used}</span>
+                  <button onClick={() => del(nom)} className="p-1 text-rose-500 hover:bg-rose-100 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
+                <div className="flex items-center gap-2 pl-1">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase">💰 Tarif</span>
+                  <input
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    defaultValue={tarif != null ? String(tarif) : ''}
+                    onBlur={(e) => setTarif(nom, e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                    placeholder="0,00"
+                    className="w-20 px-2 py-0.5 bg-white border border-slate-200 rounded text-xs font-bold text-slate-700 text-right"
+                  />
+                  <span className="text-[10px] text-slate-500">€ / Wc</span>
+                  {tarif > 0 && (
+                    <span className="text-[10px] text-slate-400 ml-auto">ex : 6000 Wc → {(tarif * 6000).toFixed(2)} €</span>
+                  )}
+                </div>
               </div>
             );
           })}
@@ -9259,19 +9314,33 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     </button>
                   </div>
                   {canSeeMarges && (() => {
-                    const ttcF = (d.fournisseursDetail && d.fournisseursDetail[i]?.ttc) || 0;
+                    const detail = d.fournisseursDetail?.[i];
+                    const ttcF = detail?.ttc || 0;
+                    const autoHt = detail?.autoHt || 0;
+                    const tarifWc = detail?.tarifWc || 0;
+                    const usingAuto = !f.htCustom && autoHt > 0;
                     return (
                       <>
                         <div className="grid grid-cols-[1fr_auto] gap-1 items-end">
                           <div>
-                            <label className="block text-[9px] font-semibold text-orange-600 uppercase mb-0.5">💰 HT (€)</label>
-                            <input type="number" step="0.01" value={f.htCustom || ''} onChange={(e) => updateFournisseur(i, { htCustom: e.target.value })} placeholder="Coût" className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                            <label className="text-[9px] font-semibold text-orange-600 uppercase mb-0.5 flex items-center justify-between gap-1">
+                              <span>💰 HT (€)</span>
+                              {autoHt > 0 && (
+                                <span title={`Tarif : ${tarifWc} €/Wc × ${d.puissance || 0} Wc`} className={`text-[9px] font-bold normal-case px-1 py-0.5 rounded ${usingAuto ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                  {usingAuto ? '✓ Auto' : 'Auto'} : {formatEuro(autoHt)}
+                                </span>
+                              )}
+                            </label>
+                            <input type="number" step="0.01" value={f.htCustom || ''} onChange={(e) => updateFournisseur(i, { htCustom: e.target.value })} placeholder={autoHt > 0 ? `Vide → auto ${autoHt.toFixed(2)} €` : 'Coût HT'} className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
                           </div>
                           <div>
                             <label className="block text-[9px] font-semibold text-orange-600 uppercase mb-0.5">TTC (TVA 20 %)</label>
                             <div className="px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] font-bold text-orange-800 min-w-[80px] text-right">{formatEuro(ttcF)}</div>
                           </div>
                         </div>
+                        {autoHt === 0 && f.nom && (
+                          <div className="text-[9px] text-rose-500">⚠️ Pas de tarif €/Wc pour {f.nom} dans Réglages → Fournisseurs</div>
+                        )}
                         <label className="flex items-center gap-1.5 text-[10px] font-semibold text-orange-700 cursor-pointer">
                           <input type="checkbox" checked={!!f.sansTva || f.tauxTva === 0 || f.tauxTva === '0'} onChange={(e) => updateFournisseur(i, { sansTva: e.target.checked, tauxTva: e.target.checked ? 0 : 20 })} className="w-3.5 h-3.5 accent-orange-600" />
                           Sans TVA <span className="text-orange-500 font-normal">(auto-entrepreneur / société étrangère)</span>
