@@ -2207,7 +2207,39 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsRecupTva.sort((a, b) => a.joursRestants - b.joursRestants); // les plus urgents en premier
 
-    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva };
+    // 🧾 Factures manquantes — pour la compta : dossiers posés où au moins
+    // un prestataire (poseur/régie/fournisseur) a un nom mais pas de facture
+    // uploadée. Plus la pose est ancienne, plus c'est urgent.
+    const rappelsFacturesManquantes = [];
+    dossiersEnriched.forEach(d => {
+      const posee = d.statutPose === 'visite_ok' || !!d.dateInsta;
+      if (!posee) return;
+      if (finalStatuses.includes(d.statut)) {
+        // Sauf annulé : si déjà payé, on garde l'alerte tant que les factures
+        // manquent (la compta peut avoir besoin de les récupérer même après).
+        if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') return;
+      }
+      const poseursManquants = (d.poseurs || []).filter(p => p.nom && !p.factureFile).map(p => p.nom);
+      const regiesManquantes = (d.regies || []).filter(r => r.nom && !r.factureFile).map(r => r.nom);
+      const fournisseursManquants = (d.fournisseurs || []).filter(f => f.nom && !f.factureFile).map(f => f.nom);
+      const total = poseursManquants.length + regiesManquantes.length + fournisseursManquants.length;
+      if (total === 0) return;
+      const ref = d.dateInsta || d.savedAt;
+      const jours = ref ? Math.floor((today - new Date(ref)) / 86400000) : 0;
+      let level = 'warn';
+      if (jours >= 30) level = 'critical';
+      else if (jours >= 14) level = 'high';
+      rappelsFacturesManquantes.push({
+        dossier: d, jours, level,
+        poseurs: poseursManquants,
+        regies: regiesManquantes,
+        fournisseurs: fournisseursManquants,
+        total,
+      });
+    });
+    rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
+
+    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes };
   }, [dossiersEnriched, tarifsInternes]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -2445,6 +2477,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsPaiement={dashboard.rappelsPaiement || []}
             rappelsStagnation={dashboard.rappelsStagnation || []}
             rappelsRecupTva={dashboard.rappelsRecupTva || []}
+            rappelsFacturesManquantes={dashboard.rappelsFacturesManquantes || []}
             isAdmin={isAdmin}
             currentUserRole={currentUserRole}
             onClick={(type) => setShowAlertesType(type)}
@@ -2873,6 +2906,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 poseNonFinie: 'pose',
                 aEnvoyerMairie: 'mairie',
                 aEnvoyerConsuel: 'consuel',
+                facturesManquantes: 'poseurs',
                 originaux: 'paiement',
                 controle: 'paiement',
                 paiement: 'paiement',
@@ -11554,7 +11588,7 @@ const ALERTES_PAR_ROLE = {
   regie: [],  // la régie ne voit aucune alerte
 };
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, isAdmin, currentUserRole, onClick }) {
   // Définition des badges
   const badges = [
     {
@@ -11712,6 +11746,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-rose-200',
       colorText: 'text-rose-700',
       tooltip: 'Dossiers bloqués trop longtemps',
+    },
+    {
+      type: 'facturesManquantes',
+      label: 'Factures manquantes',
+      emoji: '🧾',
+      count: (rappelsFacturesManquantes || []).length,
+      adminOnly: false,
+      color: 'from-fuchsia-500 to-pink-500',
+      colorBg: 'bg-fuchsia-50',
+      colorBorder: 'border-fuchsia-200',
+      colorText: 'text-fuchsia-700',
+      tooltip: 'Pose terminée mais factures poseur/régie/fournisseur pas encore reçues',
     },
   ];
 
@@ -11899,6 +11945,22 @@ function AlertesModal({ type, dashboard, STATUTS, onClose, onSelect }) {
         return `${statut?.label || d.statut} · seuil ${r.seuil}j`;
       },
       suffixLabel: 'au total',
+    },
+    facturesManquantes: {
+      title: '🧾 Factures manquantes (compta)',
+      subtitle: 'Dossiers posés où les factures poseur / régie / fournisseur ne sont pas encore reçues',
+      items: dashboard.rappelsFacturesManquantes || [],
+      gradient: 'from-fuchsia-500 to-pink-500',
+      bgHeader: 'from-fuchsia-50 to-pink-50',
+      borderColor: 'border-fuchsia-200',
+      lineLabel: (d, r) => {
+        const parts = [];
+        if (r.poseurs?.length) parts.push(`🔧 ${r.poseurs.join(', ')}`);
+        if (r.regies?.length) parts.push(`🤝 ${r.regies.join(', ')}`);
+        if (r.fournisseurs?.length) parts.push(`📦 ${r.fournisseurs.join(', ')}`);
+        return `Manque : ${parts.join(' · ')}`;
+      },
+      suffixLabel: 'depuis pose',
     },
     recup_tva: {
       title: '💰 Récupération TVA — démarches à faire',
