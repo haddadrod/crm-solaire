@@ -9612,21 +9612,27 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               </button>
 
               {!foldedSteps.pose && (<>
-              <div className="space-y-1">
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-amber-600 uppercase w-24 flex-shrink-0 whitespace-nowrap">📅 Date de pose</span>
-                  <input type="date" value={d.dateEnvoiPose || ''} onChange={(e) => onUpdate({ dateEnvoiPose: e.target.value })} className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-xs" />
-                  <button onClick={() => onUpdate({ dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: d.statutPose || 'envoyé' })} className="px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold flex-shrink-0">Auj.</button>
+              <div className="grid grid-cols-3 gap-1.5">
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📅 Date pose</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.dateEnvoiPose || ''} onChange={(e) => onUpdate({ dateEnvoiPose: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                    <button onClick={() => onUpdate({ dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: d.statutPose || 'envoyé' })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-amber-600 uppercase w-24 flex-shrink-0 whitespace-nowrap">📞 Visite</span>
-                  <input type="date" value={d.dateVisitePose || ''} onChange={(e) => onUpdate({ dateVisitePose: e.target.value })} className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-xs" />
-                  <button onClick={() => onUpdate({ dateVisitePose: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold flex-shrink-0">Auj.</button>
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📞 Visite</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.dateVisitePose || ''} onChange={(e) => onUpdate({ dateVisitePose: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                    <button onClick={() => onUpdate({ dateVisitePose: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-amber-600 uppercase w-24 flex-shrink-0 whitespace-nowrap">✅ Posé le</span>
-                  <input type="date" value={d.dateInsta || ''} onChange={(e) => onUpdate({ dateInsta: e.target.value })} className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-xs" />
-                  <button onClick={() => onUpdate({ dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold flex-shrink-0">Auj.</button>
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Posé le</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.dateInsta || ''} onChange={(e) => onUpdate({ dateInsta: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                    <button onClick={() => onUpdate({ dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
                 </div>
               </div>
 
@@ -9776,16 +9782,20 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               </button>
 
               {!foldedSteps.consuel && (<>
-              <div className="space-y-1">
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-cyan-600 uppercase w-16 flex-shrink-0">📤 Envoi</span>
-                  <input type="date" value={d.dateEnvoiConsuel || ''} onChange={(e) => onUpdate({ dateEnvoiConsuel: e.target.value })} className={inputCls} />
-                  <button onClick={() => onUpdate({ dateEnvoiConsuel: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[9px] font-bold">Auj.</button>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.dateEnvoiConsuel || ''} onChange={(e) => onUpdate({ dateEnvoiConsuel: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-cyan-200 rounded text-[10px]" />
+                    <button onClick={() => onUpdate({ dateEnvoiConsuel: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-cyan-600 uppercase w-16 flex-shrink-0">✅ Accord</span>
-                  <input type="date" value={d.dateConsuel || ''} onChange={(e) => onUpdate({ dateConsuel: e.target.value, consuel: !!e.target.value })} className={inputCls} />
-                  <button onClick={() => onUpdate({ dateConsuel: new Date().toISOString().split('T')[0], consuel: true })} className="px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold">Auj.</button>
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Accord</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.dateConsuel || ''} onChange={(e) => onUpdate({ dateConsuel: e.target.value, consuel: !!e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-cyan-200 rounded text-[10px]" />
+                    <button onClick={() => onUpdate({ dateConsuel: new Date().toISOString().split('T')[0], consuel: true })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
                 </div>
               </div>
 
@@ -9904,21 +9914,27 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <span>📑 Originaux signés (pré-requis)</span>
                     {d.dateRecusOriginauxBanque && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">✓ Reçus banque</span>}
                   </div>
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-semibold text-amber-600 uppercase w-20 flex-shrink-0">📥 Du poseur</span>
-                      <input type="date" value={d.dateRecusOriginauxPoseur || ''} onChange={(e) => onUpdate({ dateRecusOriginauxPoseur: e.target.value })} className={inputCls} />
-                      <button onClick={() => onUpdate({ dateRecusOriginauxPoseur: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold">Auj.</button>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <div>
+                      <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📥 Du poseur</label>
+                      <div className="flex gap-1">
+                        <input type="date" value={d.dateRecusOriginauxPoseur || ''} onChange={(e) => onUpdate({ dateRecusOriginauxPoseur: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                        <button onClick={() => onUpdate({ dateRecusOriginauxPoseur: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-semibold text-amber-600 uppercase w-20 flex-shrink-0">📤 → Banque</span>
-                      <input type="date" value={d.dateEnvoiOriginauxBanque || ''} onChange={(e) => onUpdate({ dateEnvoiOriginauxBanque: e.target.value })} className={inputCls} />
-                      <button onClick={() => onUpdate({ dateEnvoiOriginauxBanque: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold">Auj.</button>
+                    <div>
+                      <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 → Banque</label>
+                      <div className="flex gap-1">
+                        <input type="date" value={d.dateEnvoiOriginauxBanque || ''} onChange={(e) => onUpdate({ dateEnvoiOriginauxBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                        <button onClick={() => onUpdate({ dateEnvoiOriginauxBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1">
-                      <span className="text-[10px] font-semibold text-emerald-600 uppercase w-20 flex-shrink-0">✅ Reçus banque</span>
-                      <input type="date" value={d.dateRecusOriginauxBanque || ''} onChange={(e) => onUpdate({ dateRecusOriginauxBanque: e.target.value })} className={inputCls} />
-                      <button onClick={() => onUpdate({ dateRecusOriginauxBanque: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold">Auj.</button>
+                    <div>
+                      <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Reçus banque</label>
+                      <div className="flex gap-1">
+                        <input type="date" value={d.dateRecusOriginauxBanque || ''} onChange={(e) => onUpdate({ dateRecusOriginauxBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                        <button onClick={() => onUpdate({ dateRecusOriginauxBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
                     </div>
                   </div>
 
@@ -9937,15 +9953,36 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
               )}
 
-              <div className="space-y-1">
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-emerald-600 uppercase w-16 flex-shrink-0" title="Toi qui appelles le client">📞 Ctrl liv.</span>
-                  <input type="date" value={d.dateControleLivraison || ''} onChange={(e) => onUpdate({ dateControleLivraison: e.target.value })} className={inputCls} />
-                  <button onClick={() => onUpdate({ dateControleLivraison: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold">Auj.</button>
+              <div className="grid grid-cols-3 gap-1.5">
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5" title="Toi qui appelles le client">📞 Ctrl liv.</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.dateControleLivraison || ''} onChange={(e) => onUpdate({ dateControleLivraison: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
+                    <button onClick={() => onUpdate({ dateControleLivraison: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
                 </div>
-                {/* 📞 Tentatives d'appel contrôle livraison — client ne répond pas */}
-                {!d.dateControleLivraison && (
-                  <div className="ml-16 p-1.5 bg-white border border-emerald-200 rounded">
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5" title="Banque appelle le client">📞 Banque</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.dateAppelBanque || ''} onChange={(e) => onUpdate({ dateAppelBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
+                    <button onClick={() => onUpdate({ dateAppelBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">💰 Payé</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.datePaiementBanque || ''} onChange={(e) => onUpdate({ datePaiementBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
+                    <button onClick={() => {
+                      const today = new Date().toISOString().split('T')[0];
+                      onUpdate({ datePaiementBanque: today, payeClient: true, payeClientDate: d.payeClientDate || today });
+                    }} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
+                </div>
+              </div>
+
+              {/* 📞 Tentatives d'appel contrôle livraison — client ne répond pas (sous la grille) */}
+              {!d.dateControleLivraison && (
+                <div className="mt-2 p-1.5 bg-white border border-emerald-200 rounded">
                     <div className="flex items-center justify-between mb-1">
                       <span className="text-[9px] font-bold text-emerald-700 uppercase">📞 Essais d'appel ({(d.tentativesControleLivraison || []).length})</span>
                       <button
@@ -9976,20 +10013,6 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     )}
                   </div>
                 )}
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-emerald-600 uppercase w-16 flex-shrink-0" title="Banque appelle le client">📞 Banque</span>
-                  <input type="date" value={d.dateAppelBanque || ''} onChange={(e) => onUpdate({ dateAppelBanque: e.target.value })} className={inputCls} />
-                  <button onClick={() => onUpdate({ dateAppelBanque: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold">Auj.</button>
-                </div>
-                <div className="flex items-center gap-1">
-                  <span className="text-[10px] font-semibold text-emerald-600 uppercase w-16 flex-shrink-0">💰 Payé</span>
-                  <input type="date" value={d.datePaiementBanque || ''} onChange={(e) => onUpdate({ datePaiementBanque: e.target.value })} className={inputCls} />
-                  <button onClick={() => {
-                    const today = new Date().toISOString().split('T')[0];
-                    onUpdate({ datePaiementBanque: today, payeClient: true, payeClientDate: d.payeClientDate || today });
-                  }} className="px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold">Auj.</button>
-                </div>
-              </div>
 
               {/* Alerte paiement — > 2 jours après contrôle livraison */}
               {d.dateControleLivraison && !d.datePaiementBanque && !d.payeClient && (() => {
