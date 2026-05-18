@@ -474,6 +474,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const currentUserEmoji = useMemo(() => authUser?.user_metadata?.emoji || '👤', [authUser]);
   const [showEmptyStatuts, setShowEmptyStatuts] = useState(false); // afficher ou non les statuts à 0 dans le filtre
   const isInitialMount = useRef(true);
+  // Ref qui mémorise le dernier JSON écrit par CE client, pour ignorer les
+  // évènements realtime qui correspondent à nos propres écritures.
+  const lastWrittenDossiersJson = useRef(null);
   const isInitialOrder = useRef(true);
   const isInitialTarifs = useRef(true);
 
@@ -888,11 +891,116 @@ export default function DossierSaisie({ authUser, onLogout }) {
     })();
   }, []);
 
-  // Sauvegardes
+  // Sauvegardes + backup snapshot par minute (filet de sécurité)
   useEffect(() => {
     if (isInitialMount.current) { if (!loading) isInitialMount.current = false; return; }
-    window.storage.set('dossiers-data', JSON.stringify(dossiers)).catch(() => {});
+    const json = JSON.stringify(dossiers);
+    lastWrittenDossiersJson.current = json;
+    (async () => {
+      try {
+        await window.storage.set('dossiers-data', json);
+        // 🛡️ Backup snapshot : 1 max par minute (upsert sur la même clé).
+        // Permet de remonter dans le temps si data perdue/écrasée.
+        // Cleanup auto des backups > 7 jours au chargement de l'app.
+        const now = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const bkKey = `dossiers-data-bk-${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}`;
+        await window.storage.set(bkKey, json);
+      } catch (e) {}
+    })();
   }, [dossiers, loading]);
+
+  // 🧹 Nettoyage des backups > 7 jours, au chargement de l'app (1 fois par session)
+  useEffect(() => {
+    (async () => {
+      try {
+        const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+        const pad = (n) => String(n).padStart(2, '0');
+        const cutoffKey = `dossiers-data-bk-${cutoff.getUTCFullYear()}${pad(cutoff.getUTCMonth() + 1)}${pad(cutoff.getUTCDate())}${pad(cutoff.getUTCHours())}${pad(cutoff.getUTCMinutes())}`;
+        const list = await window.storage.list('dossiers-data-bk-');
+        const oldKeys = (list?.keys || []).filter((k) => k < cutoffKey);
+        for (const k of oldKeys) {
+          try { await window.storage.delete(k); } catch (e) {}
+        }
+      } catch (e) {}
+    })();
+  }, []);
+
+  // 🚨 Détection de perte de données : au chargement, on compare le nombre
+  // de dossiers actuels avec les snapshots récents. Si un backup contient
+  // PLUS de dossiers que l'état actuel, c'est suspect (probable écrasement
+  // involontaire). On alerte et on propose la restauration en 1 clic.
+  useEffect(() => {
+    if (loading) return;
+    (async () => {
+      try {
+        const list = await window.storage.list('dossiers-data-bk-');
+        const keys = (list?.keys || []).sort().reverse().slice(0, 20); // 20 plus récents
+        for (const k of keys) {
+          const row = await window.storage.get(k);
+          if (!row?.value) continue;
+          let arr;
+          try { arr = JSON.parse(row.value); } catch (e) { continue; }
+          if (!Array.isArray(arr)) continue;
+          if (arr.length > dossiers.length) {
+            const diff = arr.length - dossiers.length;
+            const ts = k.replace('dossiers-data-bk-', '');
+            const dt = `${ts.slice(6, 8)}/${ts.slice(4, 6)}/${ts.slice(0, 4)} à ${ts.slice(8, 10)}:${ts.slice(10, 12)} UTC`;
+            const restore = window.confirm(
+              `⚠️ ALERTE PERTE DE DONNÉES\n\n` +
+              `Un backup du ${dt} contient ${arr.length} dossiers, ` +
+              `mais ton CRM n'en affiche que ${dossiers.length} actuellement ` +
+              `(manque ${diff} dossier${diff > 1 ? 's' : ''}).\n\n` +
+              `Veux-tu RESTAURER ce backup ?\n\n` +
+              `(Tes données actuelles seront remplacées par celles du backup. ` +
+              `Si tu refuses, le CRM continue avec ${dossiers.length} dossiers.)`
+            );
+            if (restore) {
+              setDossiers(arr);
+              lastWrittenDossiersJson.current = row.value;
+            }
+            return; // on arrête après le 1er backup avec plus de dossiers
+          }
+        }
+      } catch (e) { console.warn('[safety] backup check failed', e); }
+    })();
+  }, [loading]);
+
+  // 🔄 Synchronisation temps réel entre appareils — quand un autre device
+  // écrit dans dossiers-data, on rafraîchit notre état local pour rester à
+  // jour. Évite le scénario 'last writer wins' où un PC ouvert depuis longtemps
+  // écrase des dossiers ajoutés depuis le téléphone.
+  //
+  // ⚠️ Requiert que Realtime soit activé sur la table 'storage' côté Supabase :
+  //   ALTER PUBLICATION supabase_realtime ADD TABLE storage;
+  // Si pas activé, le subscribe ne reçoit rien — pas de régression, juste
+  // pas de sync auto.
+  useEffect(() => {
+    if (loading) return;
+    const channel = supabase
+      .channel('dossiers-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'storage', filter: 'key=eq.dossiers-data' },
+        (payload) => {
+          const newValue = payload?.new?.value;
+          if (!newValue) return;
+          // Ignore les évènements qui matchent notre propre dernière écriture
+          // (sinon boucle infinie : on écrit → realtime → on relit → on écrit…)
+          if (newValue === lastWrittenDossiersJson.current) return;
+          try {
+            const parsed = JSON.parse(newValue);
+            if (!Array.isArray(parsed)) return;
+            // Met à jour notre état avec ce que l'autre device vient d'écrire.
+            // On marque ce JSON comme 'déjà écrit' pour pas le réécrire en boucle.
+            lastWrittenDossiersJson.current = newValue;
+            setDossiers(parsed);
+          } catch (e) {}
+        }
+      )
+      .subscribe();
+    return () => { try { supabase.removeChannel(channel); } catch (e) {} };
+  }, [loading]);
 
   useEffect(() => {
     if (loading) return;
