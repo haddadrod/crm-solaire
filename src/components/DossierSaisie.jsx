@@ -5962,6 +5962,11 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
   const [supabaseSuccess, setSupabaseSuccess] = useState('');
   const [bootstrapMode, setBootstrapMode] = useState(false);
 
+  // Suggestions cliquables — pratique pour ceux qui n'ont pas le clavier emoji
+  // (Win + . sur Windows, Ctrl+Cmd+Espace sur Mac). On peut aussi taper/coller
+  // n'importe quel emoji dans le champ.
+  const COMMON_EMOJIS = ['👤', '👑', '💼', '🔧', '🤝', '💰', '🏦', '👷', '👨', '👩', '🧑', '👨‍💼', '👩‍💼', '🛠️', '⭐', '🔥'];
+
   const ROLES = [
     { id: 'admin', label: '👑 Admin', desc: 'Accès complet, voit tout, fait tout', color: 'bg-violet-100 text-violet-700 border-violet-300' },
     { id: 'commercial', label: '💼 Commercial', desc: 'Voit tous les dossiers, sans les marges ni les coûts', color: 'bg-blue-100 text-blue-700 border-blue-300' },
@@ -6294,7 +6299,12 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                     </div>
                     <div>
                       <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Emoji</label>
-                      <input type="text" value={newEmoji} onChange={(e) => setNewEmoji(e.target.value.slice(0, 4))} placeholder="👤" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-center" maxLength={4} />
+                      <input type="text" value={newEmoji} onChange={(e) => setNewEmoji(e.target.value)} placeholder="👤" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-center" maxLength={16} />
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {COMMON_EMOJIS.map(em => (
+                          <button key={em} type="button" onClick={() => setNewEmoji(em)} className={`w-7 h-7 text-base rounded hover:bg-violet-100 ${newEmoji === em ? 'bg-violet-200 ring-2 ring-violet-400' : 'bg-slate-50'}`}>{em}</button>
+                        ))}
+                      </div>
                     </div>
                     <div className="md:col-span-2">
                       <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Email *</label>
@@ -6421,14 +6431,24 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                           <div className="col-span-2">
                             <label className={labelCls}>Emoji</label>
                             <input
+                              key={`emoji-${u.id}-${emoji}`}
                               type="text"
                               defaultValue={emoji}
-                              onBlur={(e) => updateSupabaseUserMeta(u, { emoji: e.target.value.slice(0, 4) || '👤' })}
+                              onBlur={(e) => {
+                                const v = (e.target.value || '').trim();
+                                if (v && v !== emoji) updateSupabaseUserMeta(u, { emoji: v });
+                              }}
                               onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                              maxLength={4}
+                              maxLength={16}
                               disabled={loadingSupabase}
                               className="w-full px-1 py-1.5 bg-white border border-slate-300 rounded text-center text-xl"
+                              title="Tape ou colle un emoji, puis clique ailleurs"
                             />
+                            <div className="flex flex-wrap gap-0.5 mt-1">
+                              {COMMON_EMOJIS.map(em => (
+                                <button key={em} type="button" onClick={() => updateSupabaseUserMeta(u, { emoji: em })} className={`w-6 h-6 text-sm rounded hover:bg-violet-100 ${emoji === em ? 'bg-violet-200 ring-1 ring-violet-400' : 'bg-slate-50'}`} title={`Choisir ${em}`}>{em}</button>
+                              ))}
+                            </div>
                           </div>
                           <div className="col-span-5">
                             <label className={labelCls}>Prénom</label>
