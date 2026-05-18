@@ -659,6 +659,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [showQuickViewId, setShowQuickViewId] = useState(null); // 👁️ panneau aperçu rapide
   const [quickViewScrollTo, setQuickViewScrollTo] = useState(null); // 🎯 section à scroller dans la bannière
   const [showSearch, setShowSearch] = useState(false); // 🔍 recherche globale Ctrl+K
+  const [showAssistantIa, setShowAssistantIa] = useState(false); // 🤖 modale assistant IA email
   const [showAlertesType, setShowAlertesType] = useState(null); // 🔔 type d'alerte ouvert : null | 'financement' | 'consuel' | 'paiement' | 'stagnation'
   const [showImport, setShowImport] = useState(false); // 📥 modal import dossiers
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
@@ -2987,6 +2988,36 @@ export default function DossierSaisie({ authUser, onLogout }) {
             }}
           />
         )}
+
+        {/* ASSISTANT IA — secrétaire qui rédige les mails clients */}
+        {showAssistantIa && (
+          <AssistantIaModal
+            dossiers={dossiers}
+            gmailOAuth={gmailOAuth}
+            emailConfig={emailConfig}
+            currentUser={currentUser}
+            onClose={() => setShowAssistantIa(false)}
+            onSent={(localId, entry) => {
+              const userTag = currentUser || '(anonyme)';
+              setDossiers(prev => prev.map(d => d.localId === localId
+                ? { ...d, historique: [...(d.historique || []), { date: new Date().toISOString(), user: userTag, ...entry }] }
+                : d
+              ));
+            }}
+          />
+        )}
+
+        {/* Bouton flottant 🤖 Assistant IA — accessible partout, comme une
+            secrétaire toujours dispo. Bottom-right pour ne pas gêner les
+            actions principales. */}
+        <button
+          onClick={() => setShowAssistantIa(true)}
+          title="Assistant IA — envoie un mail à un client en lui donnant un ordre"
+          className="fixed bottom-6 right-6 z-40 px-4 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center gap-2 font-bold text-sm"
+        >
+          <Sparkles className="w-5 h-5" />
+          <span className="hidden sm:inline">Assistant IA</span>
+        </button>
 
         {/* MODAL ALERTES (financement, consuel, paiement, stagnation) */}
         {showAlertesType && (
@@ -11407,6 +11438,213 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
         }
       `}</style>
     </>
+  );
+}
+
+// ===================== ASSISTANT IA — façon secrétaire =====================
+// Tape un ordre en langage naturel ("Envoie un mail à Marage pour confirmer
+// la pose mardi"), Claude identifie le client + rédige le mail, tu valides
+// et tu envoies via Gmail OAuth ou SMTP.
+function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onClose, onSent }) {
+  const [phase, setPhase] = useState('input'); // 'input' | 'draft' | 'sending'
+  const [command, setCommand] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  // draft = { targetLocalId, ambiguous, candidateLocalIds, subject, body, reasoning }
+  const [draft, setDraft] = useState(null);
+  const [editedSubject, setEditedSubject] = useState('');
+  const [editedBody, setEditedBody] = useState('');
+  const [chosenLocalId, setChosenLocalId] = useState('');
+  const [sending, setSending] = useState(false);
+
+  const targetDossier = useMemo(() => {
+    const id = chosenLocalId || draft?.targetLocalId || '';
+    return dossiers.find(d => d.localId === id) || null;
+  }, [chosenLocalId, draft, dossiers]);
+
+  const askIa = async () => {
+    if (!command.trim()) return;
+    setLoading(true); setError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/ai-email-assistant', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          command: command.trim(),
+          dossiers: dossiers.map(d => ({
+            localId: d.localId, nom: d.nom, prenom: d.prenom, email: d.email,
+            telephone: d.telephone, statut: d.statut, dateInsta: d.dateInsta,
+            financement: d.financement,
+          })),
+          senderName: currentUser || '',
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      const d = payload.data || {};
+      setDraft(d);
+      setEditedSubject(d.subject || '');
+      setEditedBody(d.body || '');
+      setChosenLocalId(d.targetLocalId || '');
+      setPhase('draft');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const sendEmail = async () => {
+    if (!targetDossier?.email) {
+      setError('Le dossier choisi n\'a pas d\'email.');
+      return;
+    }
+    setSending(true); setError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      // Tentative OAuth Gmail d'abord, fallback SMTP, sinon erreur.
+      const useOAuth = !!gmailOAuth?.connected;
+      const useSmtp = !useOAuth && !!(emailConfig?.smtpUser && emailConfig?.smtpPass);
+      if (!useOAuth && !useSmtp) {
+        throw new Error("Aucun email d'envoi configuré. Va dans Réglages → Email d'envoi pour connecter Gmail ou ajouter SMTP.");
+      }
+      const endpoint = useOAuth ? '/api/send-email-gmail' : '/api/send-email';
+      const bodyReq = useOAuth
+        ? { to: targetDossier.email, subject: editedSubject, text: editedBody, fromName: emailConfig?.fromName || 'CRM Solaire' }
+        : { to: targetDossier.email, subject: editedSubject, text: editedBody, smtpUser: emailConfig.smtpUser, smtpPass: emailConfig.smtpPass, fromName: emailConfig?.fromName || 'CRM Solaire' };
+      const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(bodyReq) });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      // Log dans l'historique du dossier + ferme la modale.
+      if (onSent) onSent(targetDossier.localId, {
+        action: 'email_ia',
+        to: targetDossier.email,
+        subject: editedSubject,
+        via: useOAuth ? 'gmail_oauth' : 'smtp',
+        command: command.trim(),
+      });
+      alert(`✅ Email envoyé à ${targetDossier.prenom || ''} ${targetDossier.nom || ''} (${targetDossier.email})`);
+      onClose();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const candidates = (draft?.candidateLocalIds || [])
+    .map(id => dossiers.find(d => d.localId === id))
+    .filter(Boolean);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-violet-50 to-fuchsia-50 flex items-center justify-between">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-fuchsia-500" />
+              Assistant IA — comme ta secrétaire
+            </h2>
+            <p className="text-xs text-slate-600 mt-0.5">Donne un ordre, l'IA identifie le client et rédige le mail. Tu valides avant l'envoi.</p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/60 rounded-lg" title="Fermer"><X className="w-5 h-5 text-slate-600" /></button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-5 space-y-4">
+          {phase === 'input' && (
+            <>
+              <label className="block text-sm font-bold text-slate-700">Ton ordre</label>
+              <textarea
+                value={command}
+                onChange={(e) => setCommand(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) askIa(); }}
+                rows={5}
+                placeholder={`Exemples :\n• Envoie un mail à Marage pour confirmer la pose mardi prochain\n• Réponds à Borbeau pour lui demander son RIB\n• Mail à HADDAD pour le remercier après la pose`}
+                className="w-full px-3 py-2 bg-white border-2 border-slate-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100 rounded-xl text-sm resize-none"
+                autoFocus
+              />
+              <div className="text-[11px] text-slate-500 flex items-center justify-between">
+                <span>💡 Ctrl/Cmd + Entrée pour envoyer</span>
+                <span>{command.length} caractères</span>
+              </div>
+              {error && <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-sm text-rose-700">{error}</div>}
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={onClose} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold">Annuler</button>
+                <button onClick={askIa} disabled={loading || !command.trim()} className="px-5 py-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 text-white rounded-lg text-sm font-bold disabled:opacity-50">
+                  {loading ? '✨ Génération…' : '🤖 Demander à l\'IA'}
+                </button>
+              </div>
+            </>
+          )}
+
+          {phase === 'draft' && draft && (
+            <>
+              {/* Bandeau client identifié */}
+              {draft.ambiguous || !targetDossier ? (
+                <div className="p-3 bg-amber-50 border-2 border-amber-300 rounded-xl">
+                  <div className="text-sm font-bold text-amber-800 mb-2">⚠️ Plusieurs clients possibles — choisis :</div>
+                  <div className="space-y-1">
+                    {candidates.length > 0 ? candidates.map(c => (
+                      <button key={c.localId} onClick={() => setChosenLocalId(c.localId)} className={`w-full text-left px-3 py-2 rounded-lg border-2 ${chosenLocalId === c.localId ? 'bg-violet-100 border-violet-400' : 'bg-white border-slate-200 hover:border-violet-300'}`}>
+                        <span className="font-bold text-slate-800 text-sm">{c.nom} {c.prenom}</span>
+                        {c.email && <span className="text-xs text-slate-500 ml-2">✉️ {c.email}</span>}
+                      </button>
+                    )) : <div className="text-xs text-amber-700 italic">Aucun candidat — change ton ordre pour préciser.</div>}
+                  </div>
+                </div>
+              ) : (
+                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center gap-3">
+                  <span className="text-2xl">👤</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-emerald-800">{targetDossier.nom} {targetDossier.prenom}</div>
+                    <div className="text-xs text-emerald-700">✉️ {targetDossier.email || <em className="text-rose-600">PAS D'EMAIL</em>}</div>
+                  </div>
+                  {draft.reasoning && <div className="text-[10px] text-emerald-600 italic max-w-[180px] text-right">{draft.reasoning}</div>}
+                </div>
+              )}
+
+              {/* Champs éditables */}
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Sujet</label>
+                <input
+                  type="text"
+                  value={editedSubject}
+                  onChange={(e) => setEditedSubject(e.target.value)}
+                  className="w-full px-3 py-2 bg-white border-2 border-slate-200 focus:border-violet-400 rounded-lg text-sm font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-bold text-slate-600 uppercase mb-1">Message</label>
+                <textarea
+                  value={editedBody}
+                  onChange={(e) => setEditedBody(e.target.value)}
+                  rows={10}
+                  className="w-full px-3 py-2 bg-white border-2 border-slate-200 focus:border-violet-400 rounded-lg text-sm font-mono whitespace-pre-wrap resize-vertical"
+                />
+                <div className="text-[10px] text-slate-500 mt-1">Édite à ta sauce avant d'envoyer. Signature à compléter (remplace [Ton nom]).</div>
+              </div>
+
+              {error && <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-sm text-rose-700">{error}</div>}
+
+              <div className="flex items-center justify-between pt-2 border-t border-slate-100">
+                <button onClick={() => { setPhase('input'); setDraft(null); }} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">← Reformuler l'ordre</button>
+                <div className="flex gap-2">
+                  <button onClick={onClose} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold">Annuler</button>
+                  <button onClick={sendEmail} disabled={sending || !targetDossier?.email} className="px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 text-white rounded-lg text-sm font-bold disabled:opacity-50">
+                    {sending ? '📤 Envoi…' : `📧 Envoyer à ${targetDossier?.nom || ''}`}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
