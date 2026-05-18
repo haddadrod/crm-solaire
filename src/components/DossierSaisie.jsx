@@ -849,6 +849,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dateEnvoiConsuel: '', dateAccordConsuel: '',
     statutConsuel: '', // '' | 'accepté' | 'refusé'
     visitesConsuel: [],
+    // Process mairie (déclaration préalable / autorisation d'urbanisme)
+    dateEnvoiMairie: '', dateAccordMairie: '',
+    statutMairie: '', // '' | 'accepté' | 'refusé'
+    envoisMairie: [], // historique des envois en cas de refus (chaque envoi : { dateEnvoi, dateReponse, resultat, note })
     // Suivi paiement
     dateControleLivraison: '', dateAppelBanque: '', datePaiementBanque: '',
     tentativesControleLivraison: [], // [{datetime: ISO}] — historique des appels où le client n'a pas répondu pour le contrôle livraison
@@ -1520,6 +1524,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dateEnvoiConsuel: d.dateEnvoiConsuel || '', dateAccordConsuel: d.dateAccordConsuel || '',
       statutConsuel: d.statutConsuel || '',
       visitesConsuel: d.visitesConsuel || [],
+      dateEnvoiMairie: d.dateEnvoiMairie || '', dateAccordMairie: d.dateAccordMairie || '',
+      statutMairie: d.statutMairie || '',
+      envoisMairie: d.envoisMairie || [],
       dateControleLivraison: d.dateControleLivraison || '', dateAppelBanque: d.dateAppelBanque || '', datePaiementBanque: d.datePaiementBanque || '',
       tentativesControleLivraison: d.tentativesControleLivraison || [],
       tvaStatus: d.tvaStatus || '',
@@ -2106,6 +2113,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsPoseNonFinie.sort((a, b) => b.jours - a.jours);
 
+    // Rappels Mairie — dossier créé mais déclaration mairie pas envoyée (ou refusée et non renvoyée)
+    const rappelsAEnvoyerMairie = [];
+    dossiersEnriched.forEach(d => {
+      if (d.statutMairie === 'accepté' || d.dateAccordMairie) return; // déjà accepté
+      if (finalStatuses.includes(d.statut)) return;
+      if (d.dateEnvoiMairie && d.statutMairie !== 'refusé') return; // envoyé, en attente de réponse (pas une alerte)
+      // Si refusé : il faut renvoyer → reste en alerte
+      const ref = d.savedAt || d.createdAt;
+      const jours = ref ? Math.floor((today - new Date(ref)) / 86400000) : 0;
+      let level = 'warn';
+      if (jours >= 10) level = 'critical';
+      else if (jours >= 5) level = 'high';
+      const refus = d.statutMairie === 'refusé';
+      rappelsAEnvoyerMairie.push({ dossier: d, jours, level, refus });
+    });
+    rappelsAEnvoyerMairie.sort((a, b) => b.jours - a.jours);
+
     // Rappels À envoyer Consuel — pose terminée mais Consuel pas encore envoyé
     const rappelsAEnvoyerConsuel = [];
     dossiersEnriched.forEach(d => {
@@ -2180,7 +2204,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsRecupTva.sort((a, b) => a.joursRestants - b.joursRestants); // les plus urgents en premier
 
-    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva };
+    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva };
   }, [dossiersEnriched, tarifsInternes]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -2411,6 +2435,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsAEnvoyerPose={dashboard.rappelsAEnvoyerPose || []}
             rappelsPoseurNonAssigne={dashboard.rappelsPoseurNonAssigne || []}
             rappelsPoseNonFinie={dashboard.rappelsPoseNonFinie || []}
+            rappelsAEnvoyerMairie={dashboard.rappelsAEnvoyerMairie || []}
             rappelsAEnvoyerConsuel={dashboard.rappelsAEnvoyerConsuel || []}
             rappelsOriginaux={dashboard.rappelsOriginaux || []}
             rappelsControleLivraison={dashboard.rappelsControleLivraison || []}
@@ -2843,6 +2868,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 aEnvoyerPose: 'pose',
                 poseurNonAssigne: 'poseurs',
                 poseNonFinie: 'pose',
+                aEnvoyerMairie: 'mairie',
                 aEnvoyerConsuel: 'consuel',
                 originaux: 'paiement',
                 controle: 'paiement',
@@ -7346,6 +7372,121 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               </div>
             </div>
 
+            {/* ============ ÉTAPE 1bis : MAIRIE (déclaration préalable) ============ */}
+            <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-3 mb-3">
+              <div className="text-[11px] font-bold text-indigo-700 uppercase mb-2 flex items-center justify-between flex-wrap gap-2">
+                <span>🏛️ Mairie (déclaration préalable / urbanisme)</span>
+                {(formData.statutMairie || formData.dateEnvoiMairie) && (
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                    formData.statutMairie === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
+                    formData.statutMairie === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                    'bg-amber-100 text-amber-700'
+                  }`}>
+                    {formData.statutMairie === 'accepté' ? '✓ Accepté' :
+                     formData.statutMairie === 'refusé' ? '✗ Refusé' : '⏳ Envoyé'}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Envoi mairie</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={formData.dateEnvoiMairie || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiMairie: e.target.value })} className={inputCls} />
+                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Accord reçu</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={formData.dateAccordMairie || ''} onChange={(e) => setFormData({ ...formData, dateAccordMairie: e.target.value })} className={inputCls} />
+                    <button type="button" onClick={() => setFormData({ ...formData, dateAccordMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
+                </div>
+              </div>
+
+              {formData.dateEnvoiMairie && (
+                <div className="mt-3">
+                  <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Décision mairie (clique pour changer)</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button type="button" onClick={() => setFormData({ ...formData, statutMairie: '' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${!formData.statutMairie ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ En attente</button>
+                    <button type="button" onClick={() => {
+                      const today = new Date().toISOString().split('T')[0];
+                      setFormData({ ...formData, statutMairie: 'accepté', dateAccordMairie: formData.dateAccordMairie || today });
+                    }} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutMairie === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, statutMairie: 'refusé' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutMairie === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
+                  </div>
+                </div>
+              )}
+
+              {formData.statutMairie === 'refusé' && (
+                <div className="mt-2 p-2 bg-rose-100 border border-rose-300 rounded-lg text-[11px] text-rose-800 font-bold">
+                  ✗ Refusé — modifie le projet puis renvoie la déclaration (le dossier reste en alerte 🏛️ jusqu'à acceptation).
+                </div>
+              )}
+              {formData.statutMairie === 'accepté' && (
+                <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded-lg text-[11px] text-emerald-800 font-bold">
+                  ✅ Mairie accordée — tu peux poser.
+                </div>
+              )}
+
+              {/* Historique des envois — utile si plusieurs aller-retours mairie */}
+              <div className="mt-3 p-2 bg-white border border-indigo-200 rounded-lg">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-[11px] font-bold text-indigo-700 uppercase">📋 Historique envois ({(formData.envoisMairie || []).length})</span>
+                  <button type="button" onClick={() => {
+                    setFormData({
+                      ...formData,
+                      envoisMairie: [...(formData.envoisMairie || []), { dateEnvoi: '', dateReponse: '', resultat: '', note: '' }]
+                    });
+                  }} className="px-2 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded text-[10px] font-bold flex items-center gap-1">
+                    <Plus className="w-3 h-3" />Ajouter un envoi
+                  </button>
+                </div>
+                {(!formData.envoisMairie || formData.envoisMairie.length === 0) && (
+                  <div className="text-[11px] text-slate-400 italic text-center py-2">
+                    Aucun envoi enregistré. Utilise les dates ci-dessus pour le 1er envoi, puis ajoute ici les renvois si refusé.
+                  </div>
+                )}
+                <div className="space-y-2">
+                  {(formData.envoisMairie || []).map((e, idx) => {
+                    const updE = (u) => {
+                      const list = [...formData.envoisMairie];
+                      list[idx] = { ...list[idx], ...u };
+                      setFormData({ ...formData, envoisMairie: list });
+                    };
+                    const rmE = () => setFormData({ ...formData, envoisMairie: formData.envoisMairie.filter((_, i) => i !== idx) });
+                    const bg = e.resultat === 'accepté' ? 'bg-emerald-50 border-emerald-300' : e.resultat === 'refusé' ? 'bg-rose-50 border-rose-300' : 'bg-indigo-50 border-indigo-200';
+                    return (
+                      <div key={idx} className={`p-2 rounded-lg border-2 ${bg}`}>
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-[11px] font-bold text-slate-700">Envoi n°{idx + 1}</span>
+                          <button type="button" onClick={rmE} className="px-2 py-1 bg-rose-100 hover:bg-rose-500 text-rose-600 hover:text-white rounded-lg text-[10px] font-bold flex items-center gap-1" title="Supprimer">
+                            <Trash2 className="w-3 h-3" /><span>Suppr.</span>
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
+                          <div>
+                            <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date envoi</label>
+                            <input type="date" value={e.dateEnvoi || ''} onChange={(ev) => updE({ dateEnvoi: ev.target.value })} className={inputCls} />
+                          </div>
+                          <div>
+                            <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date réponse</label>
+                            <input type="date" value={e.dateReponse || ''} onChange={(ev) => updE({ dateReponse: ev.target.value })} className={inputCls} />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-1 mb-2">
+                          <button type="button" onClick={() => updE({ resultat: 'accepté' })} className={`px-2 py-1 rounded text-[10px] font-bold border ${e.resultat === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-emerald-600 border-emerald-200'}`}>✓ Accepté</button>
+                          <button type="button" onClick={() => updE({ resultat: 'refusé' })} className={`px-2 py-1 rounded text-[10px] font-bold border ${e.resultat === 'refusé' ? 'bg-rose-500 text-white border-rose-600' : 'bg-white text-rose-600 border-rose-200'}`}>✗ Refusé</button>
+                        </div>
+                        <input type="text" value={e.note || ''} onChange={(ev) => updE({ note: ev.target.value })} placeholder="Note (motif refus, modif demandée…)" className={inputCls} />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
             {/* ============ ÉTAPE 2 : FINANCEMENT ============ */}
             <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-3 mb-3">
               <div className="text-[11px] font-bold text-blue-700 uppercase mb-2 flex items-center justify-between flex-wrap gap-2">
@@ -8614,13 +8755,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const refFinancement = useRef(null);
   const refPose = useRef(null);
   const refConsuel = useRef(null);
+  const refMairie = useRef(null);
 
   // Pliage des sections (étapes process + blocs métier). Tout plié par défaut
   // pour éviter d'avoir à scroller dans tout le panneau. Clic sur le titre =
   // ouvre/ferme. Si on arrive via une alerte (scrollTo), l'étape ciblée
   // s'ouvre automatiquement.
   const [foldedSteps, setFoldedSteps] = useState({
-    cq: true, fin: true, pose: true, consuel: true, paiement: true,
+    cq: true, mairie: true, fin: true, pose: true, consuel: true, paiement: true,
     produits: true, regies: true, poseurs: true, fournisseurs: true,
   });
   const toggleStep = (key) => setFoldedSteps(prev => ({ ...prev, [key]: !prev[key] }));
@@ -8635,6 +8777,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
     // 1) Déplie automatiquement l'étape concernée
     const stepKey = ({
       cq: 'cq', controleQualite: 'cq',
+      mairie: 'mairie', envoiMairie: 'mairie',
       financement: 'fin', envoiBanque: 'fin',
       pose: 'pose', envoiPose: 'pose', poseurs: null,
       consuel: 'consuel', envoiConsuel: 'consuel',
@@ -8649,6 +8792,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       else if (scrollTo === 'paiement' || scrollTo === 'controleLivraison' || scrollTo === 'originaux' || scrollTo === 'tva' || scrollTo === 'recupTva') target = refPaiement.current;
       else if (scrollTo === 'equipeInterne') target = refEquipeInterne.current;
       else if (scrollTo === 'cq' || scrollTo === 'controleQualite') target = refCQ.current;
+      else if (scrollTo === 'mairie' || scrollTo === 'envoiMairie') target = refMairie.current;
       else if (scrollTo === 'financement' || scrollTo === 'envoiBanque') target = refFinancement.current;
       else if (scrollTo === 'pose' || scrollTo === 'envoiPose') target = refPose.current;
       else if (scrollTo === 'consuel' || scrollTo === 'envoiConsuel') target = refConsuel.current;
@@ -8930,6 +9074,67 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 )}
               </div>
               </>)}
+            </div>
+
+            {/* ============ ÉTAPE 1bis : MAIRIE ============ */}
+            <div ref={refMairie} className="border-2 rounded-xl p-2 mb-2 bg-indigo-50 border-indigo-200">
+              <button onClick={() => toggleStep('mairie')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.mairie ? '' : 'mb-1.5'} hover:opacity-80`}>
+                <span className="flex items-center gap-1.5 text-indigo-700">
+                  <span className="text-indigo-600 text-[9px]">{foldedSteps.mairie ? '▶' : '▼'}</span>
+                  <span>🏛️ Mairie</span>
+                  {foldedSteps.mairie && d.dateEnvoiMairie && (
+                    <span className="text-indigo-500 font-normal normal-case ml-1">— envoi {new Date(d.dateEnvoiMairie).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
+                  )}
+                </span>
+                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
+                  d.statutMairie === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
+                  d.statutMairie === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                  d.dateEnvoiMairie ? 'bg-blue-100 text-blue-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {d.statutMairie === 'accepté' ? '✓ Accepté' : d.statutMairie === 'refusé' ? '✗ Refusé' : d.dateEnvoiMairie ? '📤 Envoyé' : '⏳ Pas envoyé'}
+                </span>
+              </button>
+              {!foldedSteps.mairie && (
+              <div className="space-y-1.5">
+                <div className="grid grid-cols-2 gap-1.5">
+                  <div>
+                    <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
+                    <div className="flex gap-1">
+                      <input type="date" value={d.dateEnvoiMairie || ''} onChange={(e) => onUpdate({ dateEnvoiMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
+                      <button onClick={() => onUpdate({ dateEnvoiMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Accord</label>
+                    <div className="flex gap-1">
+                      <input type="date" value={d.dateAccordMairie || ''} onChange={(e) => onUpdate({ dateAccordMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
+                      <button onClick={() => onUpdate({ dateAccordMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    </div>
+                  </div>
+                </div>
+                {d.dateEnvoiMairie && (
+                  <div className="mt-1.5 grid grid-cols-3 gap-1">
+                    <button onClick={() => onUpdate({ statutMairie: '' })} className={`px-1.5 py-1 rounded text-[10px] font-bold border ${!d.statutMairie ? 'bg-amber-500 text-white border-amber-600' : 'bg-white text-amber-600 border-amber-200'}`}>⏳ Attente</button>
+                    <button onClick={() => {
+                      const today = new Date().toISOString().split('T')[0];
+                      onUpdate({ statutMairie: 'accepté', dateAccordMairie: d.dateAccordMairie || today });
+                    }} className={`px-1.5 py-1 rounded text-[10px] font-bold border ${d.statutMairie === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-emerald-600 border-emerald-200'}`}>✓ Accepté</button>
+                    <button onClick={() => onUpdate({ statutMairie: 'refusé' })} className={`px-1.5 py-1 rounded text-[10px] font-bold border ${d.statutMairie === 'refusé' ? 'bg-rose-500 text-white border-rose-600' : 'bg-white text-rose-600 border-rose-200'}`}>✗ Refusé</button>
+                  </div>
+                )}
+                {d.statutMairie === 'refusé' && (
+                  <div className="mt-1 px-2 py-1 bg-rose-50 border border-rose-200 rounded text-[10px] text-rose-700 font-semibold">
+                    ✗ Refusé — renvoie la déclaration après modif. Reste en alerte 🏛️ jusqu'à acceptation.
+                  </div>
+                )}
+                {(d.envoisMairie || []).length > 0 && (
+                  <div className="mt-1.5 px-2 py-1 bg-white border border-indigo-200 rounded text-[10px] text-slate-600">
+                    📋 {(d.envoisMairie || []).length} envoi(s) — détail dans le formulaire complet
+                  </div>
+                )}
+              </div>
+              )}
             </div>
 
             {/* ============ ÉTAPE 2 : FINANCEMENT ============ */}
@@ -11231,7 +11436,7 @@ const ALERTES_PAR_ROLE = {
   regie: [],  // la régie ne voit aucune alerte
 };
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, isAdmin, currentUserRole, onClick }) {
   // Définition des badges
   const badges = [
     {
@@ -11245,6 +11450,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-purple-200',
       colorText: 'text-purple-700',
       tooltip: 'Dossiers à valider/refuser (appel client)',
+    },
+    {
+      type: 'aEnvoyerMairie',
+      label: 'Mairie',
+      emoji: '🏛️',
+      count: (rappelsAEnvoyerMairie || []).length,
+      adminOnly: false,
+      color: 'from-indigo-500 to-violet-500',
+      colorBg: 'bg-indigo-50',
+      colorBorder: 'border-indigo-200',
+      colorText: 'text-indigo-700',
+      tooltip: 'Déclaration mairie à envoyer (ou refusée → à renvoyer)',
     },
     {
       type: 'aEnvoyerBanque',
@@ -11496,6 +11713,16 @@ function AlertesModal({ type, dashboard, STATUTS, onClose, onSelect }) {
       borderColor: 'border-orange-200',
       lineLabel: (d) => `📅 Date prévue ${d.dateEnvoiPose && new Date(d.dateEnvoiPose).toLocaleDateString('fr-FR')} — pas encore posé`,
       suffixLabel: 'jours de retard',
+    },
+    aEnvoyerMairie: {
+      title: '🏛️ Déclaration mairie à envoyer (ou refusée)',
+      subtitle: 'Dossier créé — envoie la déclaration préalable / autorisation d\'urbanisme. Si refusée, renvoie après modif.',
+      items: dashboard.rappelsAEnvoyerMairie || [],
+      gradient: 'from-indigo-500 to-violet-500',
+      bgHeader: 'from-indigo-50 to-violet-50',
+      borderColor: 'border-indigo-200',
+      lineLabel: (d, r) => r?.refus ? '✗ Refusée — à renvoyer' : 'Pas encore envoyée',
+      suffixLabel: 'depuis création',
     },
     aEnvoyerConsuel: {
       title: '📨 Dossiers à envoyer en Consuel',
