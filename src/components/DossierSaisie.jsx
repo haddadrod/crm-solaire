@@ -7207,7 +7207,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       const res = await fetch('/api/extract-bon', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ storagePath: bucketPath, mediaType }),
+        body: JSON.stringify({
+          storagePath: bucketPath,
+          mediaType,
+          availableSocietes: (societes || []).map(s => ({ id: s.id, label: s.label })),
+        }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
@@ -7233,6 +7237,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (d.email) next.email = String(d.email);
         if (d.financement) next.financement = String(d.financement).toUpperCase();
         if (d.dateSignature) next.dateSignature = normalizeDateToIso(String(d.dateSignature));
+        if (d.societe && societes && societes.find(s => s.id === d.societe)) {
+          next.societe = String(d.societe);
+        }
         const ttc = parseFloat(d.montantTTC);
         if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
         const ht = parseFloat(d.montantHT);
@@ -7283,7 +7290,10 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       const res = await fetch('/api/classify-dossier', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ storagePath: bucketPath }),
+        body: JSON.stringify({
+          storagePath: bucketPath,
+          availableSocietes: (societes || []).map(s => ({ id: s.id, label: s.label })),
+        }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
@@ -7331,6 +7341,10 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (d.email) next.email = String(d.email);
         if (d.financement) next.financement = String(d.financement).toUpperCase();
         if (d.dateSignature) next.dateSignature = normalizeDateToIso(String(d.dateSignature));
+        // 🏢 Société auto-détectée par l'IA depuis le BC (logo, raison sociale, SIRET)
+        if (d.societe && societes && societes.find(s => s.id === d.societe)) {
+          next.societe = String(d.societe);
+        }
         const ttc = parseFloat(d.montantTTC);
         if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
         const ht = parseFloat(d.montantHT);
