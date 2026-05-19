@@ -2562,56 +2562,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   ))}
                 </>
               )}
-              {/* Badge utilisateur connecté (read-only — identité fournie par Supabase) */}
-              {currentUser && (() => {
-                const roleMeta = {
-                  admin: { emoji: '👑', label: 'Admin', bg: 'bg-violet-100', text: 'text-violet-700', border: 'border-violet-300' },
-                  commercial: { emoji: '💼', label: 'Commercial', bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
-                  envoi_finance: { emoji: '🏦', label: 'Envoi finance', bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-300' },
-                  poseur: { emoji: '🔧', label: 'Poseur', bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-300' },
-                  regie: { emoji: '🤝', label: 'Régie', bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
-                  compta: { emoji: '💰', label: 'Compta', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
-                };
-                const r = currentUserRole && roleMeta[currentUserRole];
-                return (
-                  <div
-                    className={`px-4 py-3 rounded-2xl font-semibold shadow-md border flex items-center gap-2 ${r ? `${r.bg} ${r.text} ${r.border}` : 'bg-slate-100 text-slate-700 border-slate-300'}`}
-                    title={r ? `Connecté(e) en tant que ${currentUser} — rôle ${r.label}` : `Connecté(e) en tant que ${currentUser}`}
-                  >
-                    <span className="text-base leading-none">{currentUserEmoji}</span>
-                    <span className="text-sm">{currentUserFirstName}</span>
-                  </div>
-                );
-              })()}
-              {canPreviewRole && (
-                <div className="relative">
-                  <select
-                    value={viewAsRole || ''}
-                    onChange={(e) => setViewAsRole(e.target.value || null)}
-                    className={`pl-8 pr-7 py-3 rounded-2xl font-semibold shadow-md border text-xs cursor-pointer appearance-none ${viewAsRole ? 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-300' : 'bg-white text-slate-600 border-slate-200'}`}
-                    title="DEV uniquement — prévisualiser un autre rôle"
-                  >
-                    <option value="">👁️ Voir comme…</option>
-                    <option value="admin">👑 Admin</option>
-                    <option value="commercial">💼 Commercial</option>
-                    <option value="envoi_finance">🏦 Envoi finance</option>
-                    <option value="poseur">🔧 Poseur</option>
-                    <option value="regie">🤝 Régie</option>
-                    <option value="compta">💰 Compta</option>
-                  </select>
-                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-sm">👁️</span>
-                  <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] opacity-60">▼</span>
-                </div>
-              )}
-              {onLogout && (
-                <button
-                  onClick={onLogout}
-                  className="bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-700 px-3 py-2 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200"
-                  title="Se déconnecter"
-                >
-                  <span className="text-2xl leading-none">🚪</span>
-                </button>
-              )}
+              {/* Boutons d'action — collés à droite du sélecteur société */}
               {isAdmin && dossiers.length > 0 && (
                 <button onClick={exportCSV} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200">
                   <Download className="w-4 h-4" />Export CSV
@@ -2625,6 +2576,59 @@ export default function DossierSaisie({ authUser, onLogout }) {
               <button onClick={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} className="bg-gradient-to-r from-violet-500 to-pink-500 text-white px-5 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center gap-2">
                 <Plus className="w-5 h-5" />Nouveau dossier
               </button>
+              {/* Groupe utilisateur poussé tout à droite (ml-auto) — séparé visuellement
+                  des boutons d'action. Plus propre. */}
+              <div className="flex gap-2 items-center ml-auto">
+                {currentUser && (() => {
+                  const roleMeta = {
+                    admin: { emoji: '👑', label: 'Admin', bg: 'bg-violet-100', text: 'text-violet-700', border: 'border-violet-300' },
+                    commercial: { emoji: '💼', label: 'Commercial', bg: 'bg-blue-100', text: 'text-blue-700', border: 'border-blue-300' },
+                    envoi_finance: { emoji: '🏦', label: 'Envoi finance', bg: 'bg-rose-100', text: 'text-rose-700', border: 'border-rose-300' },
+                    poseur: { emoji: '🔧', label: 'Poseur', bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-300' },
+                    regie: { emoji: '🤝', label: 'Régie', bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
+                    compta: { emoji: '💰', label: 'Compta', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
+                  };
+                  const r = currentUserRole && roleMeta[currentUserRole];
+                  return (
+                    <div
+                      className={`px-4 py-3 rounded-2xl font-semibold shadow-md border flex items-center gap-2 ${r ? `${r.bg} ${r.text} ${r.border}` : 'bg-slate-100 text-slate-700 border-slate-300'}`}
+                      title={r ? `Connecté(e) en tant que ${currentUser} — rôle ${r.label}` : `Connecté(e) en tant que ${currentUser}`}
+                    >
+                      <span className="text-base leading-none">{currentUserEmoji}</span>
+                      <span className="text-sm">{currentUserFirstName}</span>
+                    </div>
+                  );
+                })()}
+                {canPreviewRole && (
+                  <div className="relative">
+                    <select
+                      value={viewAsRole || ''}
+                      onChange={(e) => setViewAsRole(e.target.value || null)}
+                      className={`pl-8 pr-7 py-3 rounded-2xl font-semibold shadow-md border text-xs cursor-pointer appearance-none ${viewAsRole ? 'bg-fuchsia-100 text-fuchsia-700 border-fuchsia-300' : 'bg-white text-slate-600 border-slate-200'}`}
+                      title="DEV uniquement — prévisualiser un autre rôle"
+                    >
+                      <option value="">👁️ Voir comme…</option>
+                      <option value="admin">👑 Admin</option>
+                      <option value="commercial">💼 Commercial</option>
+                      <option value="envoi_finance">🏦 Envoi finance</option>
+                      <option value="poseur">🔧 Poseur</option>
+                      <option value="regie">🤝 Régie</option>
+                      <option value="compta">💰 Compta</option>
+                    </select>
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-sm">👁️</span>
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] opacity-60">▼</span>
+                  </div>
+                )}
+                {onLogout && (
+                  <button
+                    onClick={onLogout}
+                    className="bg-white hover:bg-rose-50 hover:border-rose-200 text-slate-700 px-3 py-2 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200"
+                    title="Se déconnecter"
+                  >
+                    <span className="text-2xl leading-none">🚪</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
