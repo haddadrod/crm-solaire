@@ -651,9 +651,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [listeFournisseurs, setListeFournisseurs] = useState(FOURNISSEURS_DEFAULT);
   // 🏢 Sociétés du groupe : permet de gérer plusieurs marques (Yolico + Elsun)
   // sur le même CRM. Chaque dossier appartient à une société. Filtre + badge.
+  // logoUrl = data URL d'une image (uploadée via SocietesManager). Si présente,
+  // s'affiche partout à la place de l'emoji.
   const [societes, setSocietes] = useState([
-    { id: 'yolico', label: 'Yolico', emoji: '🟢', color: 'emerald', signature: '' },
-    { id: 'elsun',  label: 'Elsun',  emoji: '🔵', color: 'blue',    signature: '' },
+    { id: 'yolico', label: 'Yolico', emoji: '🟢', color: 'emerald', signature: '', logoUrl: '' },
+    { id: 'elsun',  label: 'Elsun',  emoji: '🔵', color: 'blue',    signature: '', logoUrl: '' },
   ]);
   // Filtre société actif : '' = toutes, ou un id de société
   const initialSocieteFromHash = (typeof window !== 'undefined' && window.location.hash)
@@ -2624,26 +2626,15 @@ export default function DossierSaisie({ authUser, onLogout }) {
               >
                 👀 Toutes
               </button>
-              {societes.map(s => {
-                const isActive = activeSociete === s.id;
-                const colorMap = {
-                  emerald: { active: 'bg-emerald-500 text-white border-emerald-600 shadow-md', inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
-                  blue:    { active: 'bg-blue-500 text-white border-blue-600 shadow-md',       inactive: 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50' },
-                  violet:  { active: 'bg-violet-500 text-white border-violet-600 shadow-md',   inactive: 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50' },
-                  amber:   { active: 'bg-amber-500 text-white border-amber-600 shadow-md',     inactive: 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50' },
-                  rose:    { active: 'bg-rose-500 text-white border-rose-600 shadow-md',       inactive: 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50' },
-                };
-                const cls = (colorMap[s.color] || colorMap.violet)[isActive ? 'active' : 'inactive'];
-                return (
-                  <button
-                    key={s.id}
-                    onClick={() => setActiveSociete(s.id)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${cls}`}
-                  >
-                    {s.emoji} {s.label}
-                  </button>
-                );
-              })}
+              {societes.map(s => (
+                <SocieteBadge
+                  key={s.id}
+                  societe={s}
+                  variant="large"
+                  active={activeSociete === s.id}
+                  onClick={() => setActiveSociete(s.id)}
+                />
+              ))}
             </div>
           )}
 
@@ -3247,11 +3238,59 @@ const SOCIETE_BADGE_CLASSES = {
   slate:   'bg-slate-100 text-slate-700 border-slate-200',
 };
 
+// 🏢 Badge unifié pour les sociétés. Affiche le logo s'il est uploadé,
+// sinon retombe sur emoji + couleur.
+// Variants : 'inline' (petit, dans une carte), 'large' (boutons),
+// 'iconOnly' (uniquement logo/emoji sans label).
+function SocieteBadge({ societe, variant = 'inline', active = false, onClick = null }) {
+  if (!societe) return null;
+  const hasLogo = !!societe.logoUrl;
+  const cls = SOCIETE_BADGE_CLASSES[societe.color] || SOCIETE_BADGE_CLASSES.violet;
+  // Mode iconOnly : juste le logo ou l'emoji, pas de label/couleur
+  if (variant === 'iconOnly') {
+    return hasLogo
+      ? <img src={societe.logoUrl} alt={societe.label} title={societe.label} className="h-5 w-auto object-contain inline-block align-middle" />
+      : <span title={societe.label}>{societe.emoji}</span>;
+  }
+  // Mode large : bouton du sélecteur (header App, form)
+  if (variant === 'large') {
+    const colorMap = {
+      emerald: { active: 'bg-emerald-500 text-white border-emerald-600 shadow-md', inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
+      blue:    { active: 'bg-blue-500 text-white border-blue-600 shadow-md',       inactive: 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50' },
+      violet:  { active: 'bg-violet-500 text-white border-violet-600 shadow-md',   inactive: 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50' },
+      amber:   { active: 'bg-amber-500 text-white border-amber-600 shadow-md',     inactive: 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50' },
+      rose:    { active: 'bg-rose-500 text-white border-rose-600 shadow-md',       inactive: 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50' },
+      slate:   { active: 'bg-slate-700 text-white border-slate-800 shadow-md',     inactive: 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50' },
+    };
+    const c = (colorMap[societe.color] || colorMap.violet)[active ? 'active' : 'inactive'];
+    // Si logo : on garde un fond neutre pour ne pas le déformer visuellement
+    const finalCls = hasLogo
+      ? (active ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50')
+      : c;
+    return (
+      <button onClick={onClick} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all flex items-center gap-1.5 ${finalCls}`}>
+        {hasLogo
+          ? <img src={societe.logoUrl} alt={societe.label} className="h-5 w-auto object-contain" />
+          : <span>{societe.emoji}</span>}
+        <span>{societe.label}</span>
+      </button>
+    );
+  }
+  // Mode inline (défaut) : badge compact avec logo ou emoji + label
+  return (
+    <span title={`Société : ${societe.label}`} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${hasLogo ? 'bg-white text-slate-700 border-slate-300' : cls}`}>
+      {hasLogo
+        ? <img src={societe.logoUrl} alt={societe.label} className="h-3.5 w-auto object-contain" />
+        : <span>{societe.emoji}</span>}
+      <span>{societe.label}</span>
+    </span>
+  );
+}
+
 function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs, onShowHist, onShowQuick, viewMode, isAdmin, produits, readOnly, societes = [] }) {
   const docCount = (d.documents || []).length;
   // 🏢 Badge société (Yolico / Elsun) — visible si dossier rattaché à une société
   const societeMeta = d.societe ? societes.find(s => s.id === d.societe) : null;
-  const societeBadgeCls = societeMeta ? (SOCIETE_BADGE_CLASSES[societeMeta.color] || SOCIETE_BADGE_CLASSES.violet) : '';
   // Migration en lecture : si pas de produits[], reconstruit depuis l'ancien format
   const dossierProduits = (d.produits && d.produits.length > 0)
     ? d.produits
@@ -3303,11 +3342,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
     return (
       <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border-l-4 px-3 py-2 flex items-center gap-2 flex-wrap" style={{ borderLeftColor: '#a855f7' }}>
         {d.id && <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex-shrink-0">#{d.id}</span>}
-        {societeMeta && (
-          <span title={`Société : ${societeMeta.label}`} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] font-bold flex-shrink-0 border ${societeBadgeCls}`}>
-            {societeMeta.emoji} {societeMeta.label}
-          </span>
-        )}
+        {societeMeta && <SocieteBadge societe={societeMeta} variant="inline" />}
         {readOnly
           ? <span className="font-bold text-slate-800 text-sm">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</span>
           : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 text-sm hover:text-violet-600 hover:underline transition-colors text-left" title="Voir l'aperçu rapide">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>}
@@ -4516,8 +4551,7 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
     if (!societeId) return null;
     const s = societes.find(x => x.id === societeId);
     if (!s) return null;
-    const cls = SOCIETE_BADGE_CLASSES[s.color] || SOCIETE_BADGE_CLASSES.violet;
-    return <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold border ml-1.5 ${cls}`} title={`Société : ${s.label}`}>{s.emoji} {s.label}</span>;
+    return <span className="ml-1.5"><SocieteBadge societe={s} variant="inline" /></span>;
   };
   // Mappe le type de prestataire vers l'ancre de scroll dans le QuickViewPanel
   const scrollTargetFor = (type) => {
@@ -6152,6 +6186,31 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
 // Elsun, ou n'importe quelle autre marque). Chaque société = nom + emoji
 // + couleur (+ signature email, phase 2).
 function SocietesManager({ societes, setSocietes, dossiers }) {
+  // Handler upload logo : lit l'image en data URL (max ~200KB conseillé).
+  // On garde tout dans la row 'societes' du KV (pas de bucket séparé).
+  const handleLogoUpload = async (societeId, file) => {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) {
+      alert('❌ Choisis un fichier image (PNG, JPG, SVG, WebP).');
+      return;
+    }
+    if (file.size > 500 * 1024) {
+      alert(`❌ Logo trop lourd (${Math.round(file.size / 1024)} Ko). Max 500 Ko — réduis-le avec un outil en ligne (tinypng.com).`);
+      return;
+    }
+    try {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result;
+        if (typeof dataUrl === 'string') {
+          setSocietes(societes.map(s => s.id === societeId ? { ...s, logoUrl: dataUrl } : s));
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (e) {
+      alert('Erreur lecture image : ' + e.message);
+    }
+  };
   const [showAdd, setShowAdd] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [newEmoji, setNewEmoji] = useState('🏢');
@@ -6195,45 +6254,85 @@ function SocietesManager({ societes, setSocietes, dossiers }) {
         {societes.length === 0 ? (
           <div className="text-center py-8 text-slate-400 italic">Aucune société. Ajoute la première ci-dessous.</div>
         ) : (
-          <div className="space-y-2">
+          <div className="space-y-3">
             {societes.map(s => {
               const used = (dossiers || []).filter(d => d.societe === s.id).length;
-              const badgeCls = SOCIETE_BADGE_CLASSES[s.color] || SOCIETE_BADGE_CLASSES.violet;
               return (
-                <div key={s.id} className="flex items-center gap-2 p-3 bg-slate-50 border border-slate-200 rounded-xl flex-wrap">
-                  <input
-                    type="text"
-                    defaultValue={s.emoji}
-                    onBlur={(e) => { const v = e.target.value.trim() || '🏢'; if (v !== s.emoji) updateSociete(s.id, { emoji: v }); }}
-                    maxLength={16}
-                    className="w-14 px-1 py-1.5 bg-white border border-slate-300 rounded text-center text-xl"
-                    title="Emoji"
-                  />
-                  <input
-                    type="text"
-                    defaultValue={s.label}
-                    onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== s.label) updateSociete(s.id, { label: v }); }}
-                    className="flex-1 min-w-[150px] px-3 py-1.5 bg-white border border-slate-300 rounded text-sm font-bold"
-                    placeholder="Nom"
-                  />
-                  <div className="flex gap-1">
-                    {COLORS.map(c => (
-                      <button
-                        key={c.id}
-                        type="button"
-                        onClick={() => updateSociete(s.id, { color: c.id })}
-                        className={`w-7 h-7 rounded-full border-2 ${c.cls} ${s.color === c.id ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400' : 'border-white opacity-60 hover:opacity-100'}`}
-                        title={c.label}
-                      />
-                    ))}
+                <div key={s.id} className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
+                  {/* Ligne 1 : Logo + nom + actions */}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {/* Zone logo : preview + upload + remove */}
+                    <div className="flex items-center gap-1">
+                      <label className="w-20 h-12 bg-white border-2 border-dashed border-slate-300 rounded-lg flex items-center justify-center cursor-pointer hover:border-violet-400 overflow-hidden" title="Cliquer pour uploader un logo">
+                        {s.logoUrl ? (
+                          <img src={s.logoUrl} alt={s.label} className="max-h-full max-w-full object-contain" />
+                        ) : (
+                          <span className="text-2xl">{s.emoji || '🏢'}</span>
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const f = e.target.files?.[0];
+                            if (f) handleLogoUpload(s.id, f);
+                            e.target.value = '';
+                          }}
+                        />
+                      </label>
+                      {s.logoUrl && (
+                        <button
+                          onClick={() => updateSociete(s.id, { logoUrl: '' })}
+                          className="p-1 text-rose-500 hover:bg-rose-100 rounded"
+                          title="Retirer le logo (retombe sur l'emoji)"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
+                    </div>
+                    <input
+                      type="text"
+                      defaultValue={s.label}
+                      onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== s.label) updateSociete(s.id, { label: v }); }}
+                      className="flex-1 min-w-[150px] px-3 py-2 bg-white border border-slate-300 rounded text-sm font-bold"
+                      placeholder="Nom de la société"
+                    />
+                    <span className="text-[10px] text-slate-500">{used} dossier{used > 1 ? 's' : ''}</span>
+                    <button onClick={() => deleteSociete(s.id)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cette société">
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                  <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded text-xs font-bold border ${badgeCls}`}>
-                    {s.emoji} {s.label}
-                  </span>
-                  <span className="text-[10px] text-slate-500">{used} dossier{used > 1 ? 's' : ''}</span>
-                  <button onClick={() => deleteSociete(s.id)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cette société">
-                    <Trash2 className="w-4 h-4" />
-                  </button>
+                  {/* Ligne 2 : Emoji fallback + couleur (si pas de logo uploadé) */}
+                  {!s.logoUrl && (
+                    <div className="flex items-center gap-2 flex-wrap text-[10px] text-slate-500">
+                      <span className="font-semibold uppercase">Sans logo →</span>
+                      <input
+                        type="text"
+                        defaultValue={s.emoji}
+                        onBlur={(e) => { const v = e.target.value.trim() || '🏢'; if (v !== s.emoji) updateSociete(s.id, { emoji: v }); }}
+                        maxLength={16}
+                        className="w-12 px-1 py-1 bg-white border border-slate-300 rounded text-center text-base"
+                        title="Emoji utilisé si aucun logo"
+                      />
+                      <span>+</span>
+                      <div className="flex gap-1">
+                        {COLORS.map(c => (
+                          <button
+                            key={c.id}
+                            type="button"
+                            onClick={() => updateSociete(s.id, { color: c.id })}
+                            className={`w-6 h-6 rounded-full border-2 ${c.cls} ${s.color === c.id ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400' : 'border-white opacity-60 hover:opacity-100'}`}
+                            title={c.label}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Preview badge */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] text-slate-500 font-semibold uppercase">Aperçu :</span>
+                    <SocieteBadge societe={s} variant="inline" />
+                  </div>
                 </div>
               );
             })}
@@ -7484,27 +7583,15 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             <div className="mb-4 p-3 bg-gradient-to-r from-slate-50 to-slate-100 border-2 border-slate-200 rounded-2xl">
               <div className="text-xs font-bold text-slate-600 uppercase mb-2">🏢 Société émettrice du dossier</div>
               <div className="flex gap-2 flex-wrap">
-                {societes.map(s => {
-                  const isActive = formData.societe === s.id;
-                  const colorMap = {
-                    emerald: { active: 'bg-emerald-500 text-white border-emerald-600 shadow-md', inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
-                    blue:    { active: 'bg-blue-500 text-white border-blue-600 shadow-md',       inactive: 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50' },
-                    violet:  { active: 'bg-violet-500 text-white border-violet-600 shadow-md',   inactive: 'bg-white text-violet-700 border-violet-200 hover:bg-violet-50' },
-                    amber:   { active: 'bg-amber-500 text-white border-amber-600 shadow-md',     inactive: 'bg-white text-amber-700 border-amber-200 hover:bg-amber-50' },
-                    rose:    { active: 'bg-rose-500 text-white border-rose-600 shadow-md',       inactive: 'bg-white text-rose-700 border-rose-200 hover:bg-rose-50' },
-                  };
-                  const cls = (colorMap[s.color] || colorMap.violet)[isActive ? 'active' : 'inactive'];
-                  return (
-                    <button
-                      key={s.id}
-                      type="button"
-                      onClick={() => setFormData({ ...formData, societe: s.id })}
-                      className={`px-4 py-2 rounded-xl text-sm font-bold border-2 transition-all ${cls}`}
-                    >
-                      {s.emoji} {s.label}
-                    </button>
-                  );
-                })}
+                {societes.map(s => (
+                  <SocieteBadge
+                    key={s.id}
+                    societe={s}
+                    variant="large"
+                    active={formData.societe === s.id}
+                    onClick={() => setFormData({ ...formData, societe: s.id })}
+                  />
+                ))}
               </div>
               {!formData.societe && (
                 <div className="mt-2 text-[11px] text-rose-600 font-bold">⚠️ Choisis une société pour éviter d'envoyer les mauvais documents/emails au client.</div>
@@ -9856,9 +9943,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <button
                       key={s.id}
                       onClick={() => onUpdate({ societe: s.id })}
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold border ${isActive ? 'bg-white text-slate-800 border-white' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 ${isActive ? 'bg-white text-slate-800 border-white' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
                     >
-                      {s.emoji} {s.label}
+                      {s.logoUrl
+                        ? <img src={s.logoUrl} alt={s.label} className="h-4 w-auto object-contain" />
+                        : <span>{s.emoji}</span>}
+                      <span>{s.label}</span>
                     </button>
                   );
                 })}
