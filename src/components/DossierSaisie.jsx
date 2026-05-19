@@ -949,6 +949,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dateEnvoiFin: '', dateRetourFin: '',
     statutFin: '', // '' | 'envoyé' | 'accepté' | 'refusé' | 'manque_doc'
     motifManqueDoc: '', // texte libre : quels documents la banque réclame (ex : "Bulletin paie + RIB")
+    dateRenvoiDocs: '', // date à laquelle on a renvoyé les docs manquants à la banque
     envoisHistorique: [], // [{financeur, dateEnvoi, dateRetour, statut, note}]
     // Process pose
     dateEnvoiPose: '', dateVisitePose: '',
@@ -1799,6 +1800,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dateEnvoiFin: d.dateEnvoiFin || '', dateRetourFin: d.dateRetourFin || '',
       statutFin: d.statutFin || '',
       motifManqueDoc: d.motifManqueDoc || '',
+      dateRenvoiDocs: d.dateRenvoiDocs || '',
       envoisHistorique: d.envoisHistorique || [],
       dateEnvoiPose: d.dateEnvoiPose || '', dateVisitePose: d.dateVisitePose || '',
       statutPose: d.statutPose || '',
@@ -2306,7 +2308,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dossiersDash.forEach(d => {
       if (!d.dateEnvoiFin) return; // pas envoyé
       if (d.dateRetourFin) return; // déjà reçu retour
-      if (d.statutFin === 'accepté' || d.statutFin === 'refusé') return; // déjà répondu
+      if (d.statutFin === 'accepté' || d.statutFin === 'refusé' || d.statutFin === 'manque_doc') return; // déjà répondu
       const jours = Math.floor((today - new Date(d.dateEnvoiFin)) / 86400000);
       if (jours < 2) return; // encore dans les 2 jours acceptables
       let level = 'warn';
@@ -2315,6 +2317,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
       rappelsFinancement.push({ dossier: d, jours, level });
     });
     rappelsFinancement.sort((a, b) => b.jours - a.jours);
+
+    // Rappels Manque docs — la banque demande des pièces complémentaires.
+    // Tant que dateRenvoiDocs n'est pas remplie → urgent (les filles doivent
+    // récupérer les docs côté client puis renvoyer à la banque).
+    const rappelsManqueDoc = [];
+    dossiersDash.forEach(d => {
+      if (d.statutFin !== 'manque_doc') return;
+      if (d.dateRenvoiDocs) return; // déjà renvoyés (l'user oubliera juste de repasser à 'envoyé')
+      // Jours depuis le retour banque (ou envoi initial à défaut)
+      const ref = d.dateRetourFin || d.dateEnvoiFin;
+      const jours = ref ? Math.floor((today - new Date(ref)) / 86400000) : 0;
+      let level = 'warn';
+      if (jours >= 7) level = 'critical';
+      else if (jours >= 3) level = 'high';
+      rappelsManqueDoc.push({ dossier: d, jours, level });
+    });
+    rappelsManqueDoc.sort((a, b) => b.jours - a.jours);
 
     // Rappels Paiement — contrôle livraison fait sans paiement reçu depuis +2 jours
     const rappelsPaiement = [];
@@ -2577,7 +2596,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes };
+    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -2824,6 +2843,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsControleQualite={dashboard.rappelsControleQualite || []}
             rappelsAEnvoyerBanque={dashboard.rappelsAEnvoyerBanque || []}
             rappelsFinancement={dashboard.rappelsFinancement || []}
+            rappelsManqueDoc={dashboard.rappelsManqueDoc || []}
             rappelsAEnvoyerPose={dashboard.rappelsAEnvoyerPose || []}
             rappelsPoseurNonAssigne={dashboard.rappelsPoseurNonAssigne || []}
             rappelsPoseNonFinie={dashboard.rappelsPoseNonFinie || []}
@@ -9096,16 +9116,36 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
                 {formData.statutFin === 'manque_doc' && (
-                  <div className="mt-3 p-3 bg-orange-50 border-2 border-orange-300 rounded-xl">
-                    <div className="text-xs font-bold text-orange-700 mb-1.5">📄 Documents demandés par {formData.financement || 'la banque'} :</div>
-                    <textarea
-                      value={formData.motifManqueDoc || ''}
-                      onChange={(e) => setFormData({ ...formData, motifManqueDoc: e.target.value })}
-                      placeholder="Ex : Bulletin de paie de mars, RIB, justificatif domicile…"
-                      rows={2}
-                      className={inputCls + ' text-xs'}
-                    />
-                    <p className="text-[10px] text-orange-700/80 mt-1">Renvoie les docs manquants à la banque, puis repasse le statut à ⏳ Envoyé.</p>
+                  <div className="mt-3 p-3 bg-orange-50 border-2 border-orange-300 rounded-xl space-y-2">
+                    <div>
+                      <div className="text-xs font-bold text-orange-700 mb-1.5">📄 Documents demandés par {formData.financement || 'la banque'} :</div>
+                      <textarea
+                        value={formData.motifManqueDoc || ''}
+                        onChange={(e) => setFormData({ ...formData, motifManqueDoc: e.target.value })}
+                        placeholder="Ex : Bulletin de paie de mars, RIB, justificatif domicile…"
+                        rows={2}
+                        className={inputCls + ' text-xs'}
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-orange-700 mb-1">📤 Date de renvoi des docs à {formData.financement || 'la banque'}</label>
+                      <div className="flex gap-1">
+                        <input type="date" value={formData.dateRenvoiDocs || ''} onChange={(e) => setFormData({ ...formData, dateRenvoiDocs: e.target.value })} className={inputCls + ' text-xs'} />
+                        <button type="button" onClick={() => setFormData({ ...formData, dateRenvoiDocs: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+                    {formData.dateRenvoiDocs && (
+                      <div className="flex items-center justify-between gap-2 p-2 bg-amber-50 border border-amber-300 rounded-lg">
+                        <span className="text-[11px] text-amber-800">✅ Docs renvoyés le {new Date(formData.dateRenvoiDocs).toLocaleDateString('fr-FR')} — passe le statut à ⏳ Envoyé pour suivre le retour</span>
+                        <button type="button" onClick={() => {
+                          const today = new Date().toISOString().split('T')[0];
+                          setFormData({ ...formData, statutFin: 'envoyé', dateEnvoiFin: formData.dateRenvoiDocs, dateRetourFin: '', dateAccord: '' });
+                        }} className="flex-shrink-0 px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-bold whitespace-nowrap">⏳ Envoyé</button>
+                      </div>
+                    )}
+                    {!formData.dateRenvoiDocs && (
+                      <p className="text-[10px] text-orange-700/80">Renvoie les docs manquants à la banque puis remplis la date ci-dessus.</p>
+                    )}
                   </div>
                 )}
               </div>
@@ -11031,15 +11071,29 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
                 {d.statutFin === 'manque_doc' && (
-                  <div className="mt-1.5 p-2 bg-orange-50 border-2 border-orange-300 rounded-lg">
-                    <div className="text-[10px] font-bold text-orange-700 mb-1">📄 Docs demandés par {d.financement || 'la banque'} :</div>
-                    <textarea
-                      value={d.motifManqueDoc || ''}
-                      onChange={(e) => onUpdate({ motifManqueDoc: e.target.value })}
-                      placeholder="Ex : Bulletin de paie de mars, RIB, justif domicile…"
-                      rows={2}
-                      className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[10px]"
-                    />
+                  <div className="mt-1.5 p-2 bg-orange-50 border-2 border-orange-300 rounded-lg space-y-1.5">
+                    <div>
+                      <div className="text-[10px] font-bold text-orange-700 mb-1">📄 Docs demandés par {d.financement || 'la banque'} :</div>
+                      <textarea
+                        value={d.motifManqueDoc || ''}
+                        onChange={(e) => onUpdate({ motifManqueDoc: e.target.value })}
+                        placeholder="Ex : Bulletin de paie de mars, RIB, justif domicile…"
+                        rows={2}
+                        className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[10px]"
+                      />
+                    </div>
+                    <div>
+                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">📤 Date renvoi</div>
+                      <div className="flex gap-1">
+                        <input type="date" value={d.dateRenvoiDocs || ''} onChange={(e) => onUpdate({ dateRenvoiDocs: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                        <button onClick={() => onUpdate({ dateRenvoiDocs: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+                    {d.dateRenvoiDocs && (
+                      <button onClick={() => {
+                        onUpdate({ statutFin: 'envoyé', dateEnvoiFin: d.dateRenvoiDocs, dateRetourFin: '', dateAccord: '' });
+                      }} className="w-full px-2 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-bold">⏳ Repasser en "Envoyé" (suivi du retour)</button>
+                    )}
                   </div>
                 )}
               </div>
@@ -13577,7 +13631,7 @@ const ALERTES_PAR_ROLE = {
   regie: [],  // la régie ne voit aucune alerte
 };
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, isAdmin, currentUserRole, onClick }) {
   // Définition des badges
   const badges = [
     {
@@ -13627,6 +13681,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-blue-200',
       colorText: 'text-blue-700',
       tooltip: 'Banques sans retour +48h',
+    },
+    {
+      type: 'manqueDoc',
+      label: 'Manque docs',
+      emoji: '📄',
+      count: (rappelsManqueDoc || []).length,
+      adminOnly: false,
+      color: 'from-orange-500 to-amber-500',
+      colorBg: 'bg-orange-50',
+      colorBorder: 'border-orange-200',
+      colorText: 'text-orange-700',
+      tooltip: 'Banque demande des docs complémentaires — à récupérer + renvoyer',
     },
     {
       type: 'aEnvoyerPose',
@@ -13831,6 +13897,20 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
       borderColor: 'border-blue-200',
       lineLabel: (d) => `Envoyé à ${d.financement} le ${d.dateEnvoiFin && new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR')}`,
       suffixLabel: 'sans retour',
+    },
+    manqueDoc: {
+      title: '📄 Banque demande des docs complémentaires',
+      subtitle: 'La banque a renvoyé le dossier en demandant des pièces — à récupérer côté client puis renvoyer',
+      items: dashboard.rappelsManqueDoc || [],
+      gradient: 'from-orange-500 to-amber-500',
+      bgHeader: 'from-orange-50 to-amber-50',
+      borderColor: 'border-orange-200',
+      lineLabel: (d) => {
+        const banque = d.financement || 'la banque';
+        const motif = d.motifManqueDoc ? ` — ${d.motifManqueDoc}` : '';
+        return `${banque} demande${motif}`;
+      },
+      suffixLabel: 'depuis le retour banque',
     },
     aEnvoyerPose: {
       title: '📦 Dossiers à envoyer en pose',
