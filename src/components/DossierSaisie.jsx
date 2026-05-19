@@ -8620,80 +8620,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </div>
               </div>
 
-              {/* 📞 Appel ONOFF — 2 boutons selon le device :
-                  - "Appeler" = vrai <a href="tel:..."> → marche sur iPhone (iOS propose ONOFF)
-                    et sur Mac SI l'utilisateur a coupé macOS Continuity (extension Chrome reprend)
-                  - "Web App" = ouvre phone.onoffbusiness.com + copie le numéro dans le presse-papier
-                    → bypass total de tel:/Continuity, utile sur ordinateur
-                  Les deux enregistrent l'appel CQ en attente pour que /api/cq-recording
-                  puisse y rattacher l'audio reçu via webhook. */}
-              <div className="mt-2 space-y-2">
-                {formData.telephone && editingId ? (
-                  <>
-                    <a
-                      href={`tel:${normalizePhoneE164(formData.telephone)}`}
-                      onClick={() => {
-                        // Fire-and-forget : ne bloque pas la navigation tel:
-                        const phone = (formData.telephone || '').trim();
-                        recordPendingOnoffCall({
-                          dossierLocalId: editingId,
-                          telephone: phone,
-                          type: 'cq',
-                          createdBy: currentUser || '',
-                        });
-                        if (!formData.dateControleQualite) {
-                          setFormData({ ...formData, dateControleQualite: new Date().toISOString().split('T')[0] });
-                        }
-                      }}
-                      className="w-full px-3 py-2.5 rounded-xl text-xs font-bold border-2 transition-all bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm flex items-center justify-center gap-1.5 no-underline"
-                      title={`Appeler ${formData.telephone} via ONOFF (iPhone ou Chrome avec extension)`}
-                    >
-                      📞 Appeler avec ONOFF
-                      <span className="text-[10px] font-normal opacity-80">(iPhone / Chrome ext.)</span>
-                    </a>
-                    <button
-                      type="button"
-                      onClick={async () => {
-                        const phone = (formData.telephone || '').trim();
-                        const normalized = normalizePhoneE164(phone);
-                        await recordPendingOnoffCall({
-                          dossierLocalId: editingId,
-                          telephone: phone,
-                          type: 'cq',
-                          createdBy: currentUser || '',
-                        });
-                        if (!formData.dateControleQualite) {
-                          setFormData({ ...formData, dateControleQualite: new Date().toISOString().split('T')[0] });
-                        }
-                        // Copie le numéro dans le presse-papier puis ouvre ONOFF Web App.
-                        try {
-                          await navigator.clipboard.writeText(normalized);
-                        } catch (e) {
-                          // Pas grave si le presse-papier n'est pas accessible, on continue.
-                        }
-                        window.open('https://phone.onoffbusiness.com/', '_blank', 'noopener,noreferrer');
-                      }}
-                      className="w-full px-3 py-2 rounded-xl text-[11px] font-bold border-2 transition-all bg-white hover:bg-purple-50 text-purple-700 border-purple-300 shadow-sm flex items-center justify-center gap-1.5"
-                      title="Ouvre la Web App ONOFF dans un nouvel onglet + copie le numéro. Tu n'as plus qu'à coller (Cmd+V) puis appeler."
-                    >
-                      💻 Ouvrir ONOFF Web App
-                      <span className="text-[9px] font-normal opacity-70">(numéro copié, colle dans ONOFF)</span>
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    disabled
-                    className="w-full px-3 py-2.5 rounded-xl text-xs font-bold border-2 bg-gradient-to-r from-purple-500 to-violet-600 text-white border-purple-700 shadow-sm flex items-center justify-center gap-1.5 opacity-40 cursor-not-allowed"
-                    title={!editingId ? 'Sauvegarde d\'abord le dossier' : 'Renseigne le téléphone du client'}
-                  >
-                    📞 Appeler avec ONOFF
-                  </button>
-                )}
-                {!editingId && (
-                  <p className="text-[10px] text-slate-500">💡 Sauvegarde d'abord le dossier pour activer l'appel auto-enregistré.</p>
-                )}
-              </div>
+              {/* Les boutons d'appel ONOFF sont volontairement absents du formulaire
+                  d'édition : on passe les appels depuis la QuickView (panel latéral)
+                  pour ne pas alourdir cette modale. */}
 
               {/* 3 boutons toggleables — toujours visibles */}
               <div className="mt-3">
