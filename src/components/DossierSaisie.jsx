@@ -77,6 +77,56 @@ function applyAutoStatut(d) {
 const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM', 'FINANCO', 'FRANFINANCE'];
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
+// Formate des secondes en "M:SS" (ex : 145 → "2:25").
+function formatDurationMmSs(sec) {
+  const s = Math.max(0, parseInt(sec, 10) || 0);
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${m}:${r.toString().padStart(2, '0')}`;
+}
+
+// Normalise un téléphone FR en E.164 (+33...) pour le matcher avec le webhook ONOFF.
+// "06 12 34 56 78" → "+33612345678", "+33 6 12 34 56 78" → "+33612345678", etc.
+function normalizePhoneE164(raw) {
+  if (!raw) return '';
+  let s = String(raw).replace(/[^\d+]/g, '');
+  if (s.startsWith('00')) s = '+' + s.slice(2);
+  if (s.startsWith('+')) return s;
+  if (s.startsWith('33') && s.length >= 11) return '+' + s;
+  if (s.startsWith('0') && s.length === 10) return '+33' + s.slice(1);
+  return s;
+}
+
+// Enregistre un "appel ONOFF en attente" dans window.storage. Quand l'utilisateur
+// raccrochera, le webhook ONOFF (cf. /api/onoff-webhook.js) consultera cette liste
+// pour savoir à quel dossier rattacher l'enregistrement audio reçu.
+// Stocke 50 entrées max, purge auto les expirées (30 min de fenêtre).
+async function recordPendingOnoffCall({ dossierLocalId, telephone, type, createdBy }) {
+  try {
+    const existing = await window.storage.get('pending-onoff-calls');
+    let list = [];
+    try { list = JSON.parse(existing?.value || '[]'); } catch (e) {}
+    if (!Array.isArray(list)) list = [];
+    const now = Date.now();
+    list = list.filter(c => c && c.expiresAt > now && c.dossierLocalId !== dossierLocalId);
+    list.push({
+      dossierLocalId,
+      telephone: normalizePhoneE164(telephone),
+      telephoneRaw: telephone || '',
+      type: type || 'cq',
+      createdBy: createdBy || '',
+      createdAt: new Date().toISOString(),
+      expiresAt: now + 30 * 60 * 1000,
+    });
+    if (list.length > 50) list = list.slice(-50);
+    await window.storage.set('pending-onoff-calls', JSON.stringify(list));
+    return true;
+  } catch (e) {
+    console.warn('[onoff] pending call save failed', e);
+    return false;
+  }
+}
+
 // Rôles équipe interne (régie interne) — payés au dossier
 const ROLES_INTERNES = [
   { key: 'teleprospecteur', label: 'Téléprospecteur', emoji: '📞', defaultTarif: 50 },
@@ -1726,6 +1776,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dateAccord: d.dateAccord || '', dateConsuel: d.dateConsuel || '',
       dateControleQualite: d.dateControleQualite || '', statutControleQualite: d.statutControleQualite || '',
       vocalCQUrl: d.vocalCQUrl || '',
+      onoffCallMeta: d.onoffCallMeta || null,
       tentativesCQ: d.tentativesCQ || [],
       dateEnvoiFin: d.dateEnvoiFin || '', dateRetourFin: d.dateRetourFin || '',
       statutFin: d.statutFin || '',
@@ -8424,6 +8475,39 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </div>
               </div>
 
+              {/* 📞 Appel ONOFF — ouvre ONOFF avec le numéro, marque l'appel comme "à attacher
+                  au dossier" pour que le webhook /api/onoff-webhook puisse y déposer l'enregistrement. */}
+              <div className="mt-2">
+                <button
+                  type="button"
+                  disabled={!formData.telephone || !editingId}
+                  onClick={async () => {
+                    const phone = (formData.telephone || '').trim();
+                    if (!phone) return;
+                    await recordPendingOnoffCall({
+                      dossierLocalId: editingId,
+                      telephone: phone,
+                      type: 'cq',
+                      createdBy: currentUser || '',
+                    });
+                    // Pré-remplit la date du CQ (au cas où l'user ne le fait pas après)
+                    if (!formData.dateControleQualite) {
+                      setFormData({ ...formData, dateControleQualite: new Date().toISOString().split('T')[0] });
+                    }
+                    // Ouvre le composeur d'appel — sur iPhone, iOS proposera ONOFF si installé.
+                    window.location.href = `tel:${normalizePhoneE164(phone)}`;
+                  }}
+                  className="w-full px-3 py-2.5 rounded-xl text-xs font-bold border-2 transition-all bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                  title={!editingId ? 'Sauvegarde d\'abord le dossier' : !formData.telephone ? 'Renseigne le téléphone du client' : `Appeler ${formData.telephone} via ONOFF — l'enregistrement sera attaché auto au dossier`}
+                >
+                  📞 Appeler avec ONOFF
+                  <span className="text-[10px] font-normal opacity-80">(enregistrement auto)</span>
+                </button>
+                {!editingId && (
+                  <p className="text-[10px] text-slate-500 mt-1">💡 Sauvegarde d'abord le dossier pour activer l'appel auto-enregistré.</p>
+                )}
+              </div>
+
               {/* 3 boutons toggleables — toujours visibles */}
               <div className="mt-3">
                 <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Décision sur le dossier (clique pour changer)</div>
@@ -8451,21 +8535,49 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </div>
               )}
 
-              {/* 🎤 Vocal du contrôle qualité */}
+              {/* 🎤 Vocal du contrôle qualité — lecteur inline, prioritaire sur l'URL */}
               <div className="mt-3 p-2 bg-white border border-purple-200 rounded-lg">
-                <label className="block text-[11px] font-semibold text-purple-700 mb-1.5 flex items-center justify-between">
-                  <span>🎤 Vocal du contrôle qualité</span>
+                <label className="block text-[11px] font-semibold text-purple-700 mb-1.5 flex items-center justify-between flex-wrap gap-1">
+                  <span className="flex items-center gap-1">
+                    🎤 Vocal du contrôle qualité
+                    {formData.onoffCallMeta && (
+                      <span className="text-[9px] font-bold uppercase bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">📞 ONOFF</span>
+                    )}
+                  </span>
                   {formData.vocalCQUrl && (
-                    <a href={formData.vocalCQUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-purple-600 hover:underline">📂 Ouvrir</a>
+                    <a href={formData.vocalCQUrl} download className="text-[10px] font-bold text-purple-600 hover:underline">⬇️ Télécharger</a>
                   )}
                 </label>
-                <input type="url" value={formData.vocalCQUrl} onChange={(e) => setFormData({ ...formData, vocalCQUrl: e.target.value })} placeholder="https://drive.google.com/... ou https://wa.me/... — colle le lien du vocal" className={inputCls} />
-                {formData.vocalCQUrl && (
-                  <audio controls src={formData.vocalCQUrl} className="w-full mt-2" preload="none">
-                    Ton navigateur ne supporte pas la lecture audio.
-                  </audio>
+
+                {formData.vocalCQUrl ? (
+                  <>
+                    <audio controls src={formData.vocalCQUrl} className="w-full" preload="none">
+                      Ton navigateur ne supporte pas la lecture audio.
+                    </audio>
+                    {formData.onoffCallMeta && (
+                      <div className="text-[10px] text-slate-600 mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                        {formData.onoffCallMeta.callStarted && (
+                          <span>📅 {new Date(formData.onoffCallMeta.callStarted).toLocaleString('fr-FR')}</span>
+                        )}
+                        {formData.onoffCallMeta.callDuration > 0 && (
+                          <span>⏱ {formatDurationMmSs(formData.onoffCallMeta.callDuration)}</span>
+                        )}
+                        {formData.onoffCallMeta.onoffUserName && (
+                          <span>👤 {formData.onoffCallMeta.onoffUserName}</span>
+                        )}
+                      </div>
+                    )}
+                    <details className="mt-2">
+                      <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-purple-600">🔗 Modifier le lien du vocal</summary>
+                      <input type="url" value={formData.vocalCQUrl} onChange={(e) => setFormData({ ...formData, vocalCQUrl: e.target.value })} placeholder="https://..." className={inputCls + ' mt-1.5'} />
+                    </details>
+                  </>
+                ) : (
+                  <>
+                    <input type="url" value={formData.vocalCQUrl} onChange={(e) => setFormData({ ...formData, vocalCQUrl: e.target.value })} placeholder="Colle ici l'URL d'un enregistrement audio (mp3, m4a…)" className={inputCls} />
+                    <p className="text-[10px] text-slate-500 mt-1">💡 Quand l'appel passera par ONOFF, l'enregistrement viendra ici tout seul. Sinon : Drive/Dropbox direct link.</p>
+                  </>
                 )}
-                <p className="text-[10px] text-slate-500 mt-1">💡 Astuce : héberge ton vocal sur Google Drive, Dropbox ou WhatsApp puis colle l'URL ici.</p>
               </div>
             </div>
 
@@ -10299,19 +10411,37 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div className="mt-1.5 px-2 py-1 bg-rose-100 border border-rose-300 rounded text-[10px] text-rose-800 font-bold">✗ Refusé — ne pas envoyer</div>
               )}
 
-              {/* 🎤 Vocal du contrôle qualité */}
+              {/* 🎤 Vocal du contrôle qualité — lecteur inline prioritaire */}
               <div className="mt-2 p-1.5 bg-white border border-purple-200 rounded">
-                <label className="block text-[9px] font-bold text-purple-700 uppercase mb-1 flex items-center justify-between">
-                  <span>🎤 Vocal CQ</span>
+                <label className="block text-[9px] font-bold text-purple-700 uppercase mb-1 flex items-center justify-between flex-wrap gap-1">
+                  <span className="flex items-center gap-1">
+                    🎤 Vocal CQ
+                    {d.onoffCallMeta && (
+                      <span className="text-[8px] font-bold uppercase bg-purple-100 text-purple-700 px-1 py-0.5 rounded-full">ONOFF</span>
+                    )}
+                  </span>
                   {d.vocalCQUrl && (
-                    <a href={d.vocalCQUrl} target="_blank" rel="noopener noreferrer" className="text-[9px] font-bold text-purple-600 hover:underline">📂 Ouvrir</a>
+                    <a href={d.vocalCQUrl} download className="text-[9px] font-bold text-purple-600 hover:underline">⬇️</a>
                   )}
                 </label>
-                <input type="url" value={d.vocalCQUrl || ''} onChange={(e) => onUpdate({ vocalCQUrl: e.target.value })} placeholder="Coller le lien du vocal" className={inputCls + ' text-[10px]'} />
-                {d.vocalCQUrl && (
-                  <audio controls src={d.vocalCQUrl} className="w-full mt-1.5" preload="none" style={{ height: '32px' }}>
-                    Audio non supporté
-                  </audio>
+                {d.vocalCQUrl ? (
+                  <>
+                    <audio controls src={d.vocalCQUrl} className="w-full" preload="none" style={{ height: '32px' }}>
+                      Audio non supporté
+                    </audio>
+                    {d.onoffCallMeta && (
+                      <div className="text-[9px] text-slate-600 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                        {d.onoffCallMeta.callDuration > 0 && <span>⏱ {formatDurationMmSs(d.onoffCallMeta.callDuration)}</span>}
+                        {d.onoffCallMeta.callStarted && <span>📅 {new Date(d.onoffCallMeta.callStarted).toLocaleDateString('fr-FR')}</span>}
+                      </div>
+                    )}
+                    <details className="mt-1.5">
+                      <summary className="text-[9px] text-slate-500 cursor-pointer hover:text-purple-600">🔗 Modifier le lien</summary>
+                      <input type="url" value={d.vocalCQUrl || ''} onChange={(e) => onUpdate({ vocalCQUrl: e.target.value })} placeholder="Coller le lien" className={inputCls + ' text-[10px] mt-1'} />
+                    </details>
+                  </>
+                ) : (
+                  <input type="url" value={d.vocalCQUrl || ''} onChange={(e) => onUpdate({ vocalCQUrl: e.target.value })} placeholder="Coller le lien du vocal" className={inputCls + ' text-[10px]'} />
                 )}
               </div>
               </>)}
