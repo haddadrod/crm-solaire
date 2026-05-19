@@ -8063,7 +8063,22 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             </div>
           </Section>
 
-          <Section title="🏠 Produits installés" color="amber">
+          <Section
+            title="🏠 Produits installés"
+            color="amber"
+            collapsible={true}
+            defaultCollapsed={!editingId}
+            summary={(() => {
+              const items = (formData.produits || []).filter(p => p.type);
+              if (items.length === 0) return '▶️ Aucun produit — clique pour ajouter';
+              const totalPuissance = items.reduce((s, p) => s + (parseFloat(p.puissance) || 0), 0);
+              const label = items.map(p => {
+                const def = PRODUITS_DEFAULT.find(x => x.id === p.type);
+                return def?.label || p.type;
+              }).slice(0, 3).join(', ');
+              return `▶️ ${items.length} produit${items.length > 1 ? 's' : ''}${totalPuissance > 0 ? ` · ${totalPuissance} Wc` : ''} · ${label}${items.length > 3 ? '…' : ''}`;
+            })()}
+          >
             <div className="space-y-2 mb-3">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-600">Produits ({formData.produits.length}) — un client peut avoir plusieurs produits</label>
@@ -8143,7 +8158,19 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
           </Section>
 
-          <Section title="💰 Prix de vente & Financement" color="blue">
+          <Section
+            title="💰 Prix de vente & Financement"
+            color="blue"
+            collapsible={true}
+            defaultCollapsed={!editingId}
+            summary={(() => {
+              const ttc = parseFloat(formData.montantTotal) || 0;
+              if (!ttc) return '▶️ Pas de montant — clique pour saisir';
+              const fin = formData.financement || 'financement à choisir';
+              const paye = formData.payeClient ? ' · ✓ payé' : '';
+              return `▶️ ${formatEuro(ttc)} TTC · ${fin}${paye}`;
+            })()}
+          >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Prix de vente TTC (€) *"><input type="number" step="0.01" value={formData.montantTotal} onChange={(e) => setFormData({ ...formData, montantTotal: e.target.value })} placeholder="29900" className={inputCls + ' font-bold text-lg'} /></Field>
               <Field label="Mode de financement">
