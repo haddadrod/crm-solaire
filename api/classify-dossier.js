@@ -78,13 +78,13 @@ function buildClassifySchema(availableSocietes = []) {
     // peut avoir plusieurs produits (ex : panneaux solaires + pergola + ballon).
     produits: {
       type: 'array',
-      description: "Liste de TOUS les produits/équipements présents sur le bon de commande. Un dossier peut combiner plusieurs équipements (ex : panneaux solaires + pergola). Pour chaque ligne du tableau de prestations, ajoute une entrée.",
+      description: "Liste de TOUS les produits/équipements présents sur le bon de commande. RÈGLE CRITIQUE : 'panneaux solaires installés sur une pergola' = DEUX produits SÉPARÉS (1 ligne PANNEAU_SOLAIRE avec sa puissance Wc + 1 ligne PERGOLA quantité 1 puissance=0), pas un seul produit fusionné. Une pergola seule sans solaire = 1 ligne PERGOLA. Des panneaux seuls sur toiture = 1 ligne PANNEAU_SOLAIRE.",
       items: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: PRODUIT_IDS, description: `Type de produit parmi : ${PRODUIT_IDS.join(', ')}. Pour la pergola (avec ou sans solaire), utilise 'PERGOLA'.` },
+          type: { type: 'string', enum: PRODUIT_IDS, description: `Type de produit parmi : ${PRODUIT_IDS.join(', ')}. PERGOLA = la structure (puissance TOUJOURS 0 même si solaire — la puissance va sur la ligne PANNEAU_SOLAIRE séparée).` },
           label: { type: 'string', description: "Libellé tel que présent sur le BC (ex : 'Pergola bioclimatique 4x3m')." },
-          puissance: { type: 'number', description: "Puissance en Wc — UNIQUEMENT pour PANNEAU_SOLAIRE et PERGOLA solaire. Sinon 0." },
+          puissance: { type: 'number', description: "Puissance en Wc — UNIQUEMENT pour PANNEAU_SOLAIRE. Pour PERGOLA mettre TOUJOURS 0 (la puissance va sur la ligne PANNEAU_SOLAIRE séparée)." },
           quantite: { type: 'number', description: "Quantité (1 par défaut). 6 pour 6 climatisations." },
         },
         required: ['type', 'label', 'puissance', 'quantite'],
@@ -107,8 +107,10 @@ function buildClassifySchema(availableSocietes = []) {
     nbEcheances: { type: 'number', description: "Nombre d'échéances (ex 180). 0 si non renseigné." },
     montantEcheance: { type: 'number', description: "Montant d'une échéance en euros (ex 312). 0 si non renseigné." },
     periodicite: { type: 'string', enum: ['', 'Mensuelle', 'Bimestrielle', 'Trimestrielle', 'Semestrielle', 'Annuelle'], description: "Périodicité des échéances. Vide si non renseigné — souvent 'Mensuelle' par défaut sur les BC." },
+    typeToiture: { type: 'string', enum: ['', 'tuile', 'ardoise', 'tole', 'zinc', 'fibro', 'bac_acier', 'pergola', 'autre'], description: "Type de toiture / support, UNIQUEMENT si coché ou écrit sur le BC. Sinon ''. Si la pergola est sur la liste produits[], laisser '' (l'info est déjà dans le produit PERGOLA)." },
+    orientationPanneaux: { type: 'string', enum: ['', 'portrait', 'paysage', 'les_deux'], description: "Orientation des panneaux, UNIQUEMENT si coché sur le BC. Sinon ''." },
   };
-  const required = ['nom', 'prenom', 'adresse', 'codePostal', 'ville', 'telephone', 'email', 'produits', 'produit', 'puissance', 'montantTTC', 'montantHT', 'financement', 'dateSignature', 'montantPret', 'reportMois', 'tauxDebiteur', 'taeg', 'nbEcheances', 'montantEcheance', 'periodicite'];
+  const required = ['nom', 'prenom', 'adresse', 'codePostal', 'ville', 'telephone', 'email', 'produits', 'produit', 'puissance', 'montantTTC', 'montantHT', 'financement', 'dateSignature', 'montantPret', 'reportMois', 'tauxDebiteur', 'taeg', 'nbEcheances', 'montantEcheance', 'periodicite', 'typeToiture', 'orientationPanneaux'];
   if (socIds.length > 0) {
     bcProps.societe = {
       type: 'string',
@@ -453,6 +455,9 @@ export default async function handler(req, res) {
           nom: '', prenom: '', adresse: '', codePostal: '', ville: '',
           telephone: '', email: '', produit: '', puissance: '',
           montantTTC: 0, montantHT: 0, financement: '', dateSignature: '',
+          montantPret: 0, reportMois: 0, tauxDebiteur: 0, taeg: 0,
+          nbEcheances: 0, montantEcheance: 0, periodicite: '',
+          typeToiture: '', orientationPanneaux: '',
         },
       };
     }

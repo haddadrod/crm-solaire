@@ -59,19 +59,23 @@ function buildExtractionSchema(availableSocietes = []) {
     // plusieurs équipements : panneaux solaires + pergola + ballon thermo, etc.)
     produits: {
       type: 'array',
-      description: "Liste de TOUS les produits/équipements présents sur le bon de commande. Un dossier peut combiner plusieurs équipements (ex : panneaux solaires + pergola). Pour chaque ligne du tableau de prestations, ajoute une entrée.",
+      description: "Liste de TOUS les produits/équipements présents sur le bon de commande. RÈGLE CRITIQUE : 'panneaux solaires installés sur une pergola' = DEUX produits SÉPARÉS (1 ligne PANNEAU_SOLAIRE avec sa puissance Wc + 1 ligne PERGOLA quantité 1), pas un seul produit fusionné. Une pergola seule (sans solaire) = 1 ligne PERGOLA. Des panneaux seuls (sur toiture) = 1 ligne PANNEAU_SOLAIRE. Idem pour les combinaisons : panneaux + PAC + ballon thermo = 3 lignes distinctes.",
       items: {
         type: 'object',
         properties: {
-          type: { type: 'string', enum: PRODUIT_IDS, description: `Type parmi : ${PRODUIT_IDS.join(', ')}. Pour la pergola, utilise 'PERGOLA'.` },
-          label: { type: 'string', description: "Libellé tel que présent sur le BC." },
-          puissance: { type: 'number', description: "Puissance en Wc — UNIQUEMENT pour PANNEAU_SOLAIRE / PERGOLA solaire. Sinon 0." },
+          type: { type: 'string', enum: PRODUIT_IDS, description: `Type parmi : ${PRODUIT_IDS.join(', ')}. PERGOLA = la structure elle-même (jamais avec une puissance Wc, mettre puissance=0). Pour les panneaux POSÉS SUR la pergola, créer une ligne séparée PANNEAU_SOLAIRE avec la puissance.` },
+          label: { type: 'string', description: "Libellé tel que présent sur le BC (ex : 'Panneaux solaires 6000 Wc' ou 'Pergola bioclimatique 4x3m')." },
+          puissance: { type: 'number', description: "Puissance en Wc — UNIQUEMENT pour PANNEAU_SOLAIRE. Pour une PERGOLA mettre TOUJOURS 0 (même si la pergola est solaire — la puissance va sur la ligne PANNEAU_SOLAIRE séparée)." },
           quantite: { type: 'number', description: "Quantité (1 par défaut). 6 pour 6 climatisations." },
         },
         required: ['type', 'label', 'puissance', 'quantite'],
         additionalProperties: false,
       },
     },
+    // 🏠 Caractéristiques toiture / pose — n'extraire QUE si présent sur le BC.
+    // Sinon laisser '' (chaîne vide) ou null — ne pas inventer.
+    typeToiture: { type: 'string', enum: ['', 'tuile', 'ardoise', 'tole', 'zinc', 'fibro', 'bac_acier', 'pergola', 'autre'], description: "Type de toiture / support, UNIQUEMENT si coché ou écrit sur le BC. Sinon ''. Si pergola = laisser '' (l'info est déjà dans le produit PERGOLA)." },
+    orientationPanneaux: { type: 'string', enum: ['', 'portrait', 'paysage', 'les_deux'], description: "Orientation des panneaux, UNIQUEMENT si coché sur le BC. Sinon ''." },
     // [LEGACY] Conservés pour rétrocompat avec l'ancien front
     produit: { type: 'string', description: "[LEGACY] 1er produit en texte libre (ex: panneaux solaires)." },
     puissance: { type: 'string', description: '[LEGACY] Puissance en Wc du 1er produit solaire, sinon vide.' },
@@ -95,6 +99,7 @@ function buildExtractionSchema(availableSocietes = []) {
     'produits', 'produit', 'puissance', 'montantTTC', 'montantHT', 'financement',
     'dateSignature',
     'montantPret', 'reportMois', 'tauxDebiteur', 'taeg', 'nbEcheances', 'montantEcheance', 'periodicite',
+    'typeToiture', 'orientationPanneaux',
     'confiance', 'remarques',
   ];
   if (socIds.length > 0) {
@@ -115,6 +120,8 @@ Règles :
 - Les montants sont en euros : enlève les espaces, symboles et séparateurs de milliers, renvoie des nombres simples.
 - Si une info est absente ou illisible, mets une chaîne vide (ou 0 pour les montants) et signale-le brièvement dans "remarques".
 - "puissance" : uniquement le nombre en Wc si ce sont des panneaux solaires (ex: "6000" pour 6000 Wc).
+- 🚨 RÈGLE PRODUITS : si le BC contient des "panneaux solaires sur pergola" (la pergola sert de support aux panneaux), tu DOIS retourner DEUX produits séparés : 1) PANNEAU_SOLAIRE avec sa puissance Wc, 2) PERGOLA quantité 1 avec puissance=0. Ne fusionne JAMAIS en un seul produit "Pergola photovoltaïque". Idem pour toute combinaison de produits (panneaux + PAC + ballon thermo = 3 lignes distinctes). Une seule exception : pergola SEULE sans panneaux = 1 ligne PERGOLA.
+- 🏠 typeToiture / orientationPanneaux : ne remplis QUE si tu vois clairement la case cochée ou l'écriture sur le BC. Sinon laisse ''. N'invente JAMAIS. Si pergola dans les produits, laisse typeToiture='' (l'info est dans le produit PERGOLA).
 - "confiance" : "haute" si tout est net et lisible, "moyenne" si quelques doutes, "faible" si l'image est globalement difficile à lire.
 - N'invente jamais une valeur : en cas de doute, laisse vide et explique dans "remarques".`;
 
