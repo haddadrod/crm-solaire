@@ -40,6 +40,9 @@ async function getCaller(req) {
   }
 }
 
+// IDs de produits que le CRM connaît (synchro avec PRODUITS_DEFAULT du front)
+const PRODUIT_IDS = ['PANNEAU_SOLAIRE', 'PERGOLA', 'POMPE_A_CHALEUR', 'CLIMATISATION', 'BALLON_THERMO', 'BATTERIE', 'ISOLATION', 'VMC', 'AUTRE'];
+
 // Schéma de sortie structurée — l'IA est contrainte de renvoyer exactement ces champs.
 // Construit dynamiquement pour inclure 'societe' enum si availableSocietes fourni.
 function buildExtractionSchema(availableSocietes = []) {
@@ -52,8 +55,26 @@ function buildExtractionSchema(availableSocietes = []) {
     ville: { type: 'string', description: 'Ville' },
     telephone: { type: 'string', description: 'Numéro de téléphone' },
     email: { type: 'string', description: 'Adresse email si présente, sinon vide' },
-    produit: { type: 'string', description: 'Ce qui a été vendu (ex: panneaux solaires, ballon thermodynamique)' },
-    puissance: { type: 'string', description: 'Puissance en Wc si panneaux solaires, juste le nombre (ex: "6000")' },
+    // Liste des produits/équipements présents sur le BC (un dossier peut combiner
+    // plusieurs équipements : panneaux solaires + pergola + ballon thermo, etc.)
+    produits: {
+      type: 'array',
+      description: "Liste de TOUS les produits/équipements présents sur le bon de commande. Un dossier peut combiner plusieurs équipements (ex : panneaux solaires + pergola). Pour chaque ligne du tableau de prestations, ajoute une entrée.",
+      items: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: PRODUIT_IDS, description: `Type parmi : ${PRODUIT_IDS.join(', ')}. Pour la pergola, utilise 'PERGOLA'.` },
+          label: { type: 'string', description: "Libellé tel que présent sur le BC." },
+          puissance: { type: 'number', description: "Puissance en Wc — UNIQUEMENT pour PANNEAU_SOLAIRE / PERGOLA solaire. Sinon 0." },
+          quantite: { type: 'number', description: "Quantité (1 par défaut). 6 pour 6 climatisations." },
+        },
+        required: ['type', 'label', 'puissance', 'quantite'],
+        additionalProperties: false,
+      },
+    },
+    // [LEGACY] Conservés pour rétrocompat avec l'ancien front
+    produit: { type: 'string', description: "[LEGACY] 1er produit en texte libre (ex: panneaux solaires)." },
+    puissance: { type: 'string', description: '[LEGACY] Puissance en Wc du 1er produit solaire, sinon vide.' },
     montantTTC: { type: 'number', description: 'Montant total TTC en euros (nombre, sans symbole ni espace)' },
     montantHT: { type: 'number', description: 'Montant HT en euros si indiqué, sinon 0' },
     financement: { type: 'string', description: 'Organisme de financement / banque si indiqué, sinon vide' },
@@ -63,7 +84,7 @@ function buildExtractionSchema(availableSocietes = []) {
   };
   const required = [
     'nom', 'prenom', 'adresse', 'codePostal', 'ville', 'telephone', 'email',
-    'produit', 'puissance', 'montantTTC', 'montantHT', 'financement',
+    'produits', 'produit', 'puissance', 'montantTTC', 'montantHT', 'financement',
     'dateSignature', 'confiance', 'remarques',
   ];
   if (socIds.length > 0) {

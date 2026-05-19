@@ -94,6 +94,7 @@ const PUISSANCES_PRINCIPALES = [2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 
 // La liste est modifiable dans Réglages → Produits (ajouter/renommer/supprimer).
 const PRODUITS_DEFAULT = [
   { id: 'PANNEAU_SOLAIRE', label: 'Panneaux solaires',      emoji: '☀️', autoTarif: true },
+  { id: 'PERGOLA',         label: 'Pergola',                emoji: '🏡', autoTarif: false },
   { id: 'POMPE_A_CHALEUR', label: 'Pompe à chaleur',        emoji: '🌡️', autoTarif: false },
   { id: 'CLIMATISATION',   label: 'Climatisation',          emoji: '❄️', autoTarif: false },
   { id: 'BALLON_THERMO',   label: 'Ballon thermodynamique', emoji: '🚿', autoTarif: false },
@@ -7471,19 +7472,28 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
         const ht = parseFloat(d.montantHT);
         if (!isNaN(ht) && ht > 0) next.montantHtCustom = String(ht);
-        const p = parseInt(String(d.puissance || '').replace(/\D/g, ''), 10);
-        if (p > 0) {
-          const prods = (prev.produits && prev.produits.length > 0)
-            ? [...prev.produits]
-            : [{ type: 'PANNEAU_SOLAIRE', puissance: 0, description: '', quantite: 1 }];
-          // Si une puissance en Wc est détectée et qu'aucun type de produit
-          // n'a été choisi manuellement, on bascule sur PANNEAU_SOLAIRE.
-          prods[0] = {
-            ...prods[0],
-            type: prods[0].type || 'PANNEAU_SOLAIRE',
-            puissance: p,
-          };
-          next.produits = prods;
+        // 📦 Multi-produits : si l'IA renvoie un array 'produits', on l'utilise
+        // tel quel. Sinon fallback sur les champs legacy 'produit' + 'puissance'.
+        const VALID_TYPES = new Set(['PANNEAU_SOLAIRE', 'PERGOLA', 'POMPE_A_CHALEUR', 'CLIMATISATION', 'BALLON_THERMO', 'BATTERIE', 'ISOLATION', 'VMC', 'AUTRE']);
+        if (Array.isArray(d.produits) && d.produits.length > 0) {
+          next.produits = d.produits
+            .filter(p => p && VALID_TYPES.has(p.type))
+            .map(p => ({
+              type: p.type,
+              puissance: parseInt(p.puissance) || 0,
+              description: p.label || '',
+              quantite: parseInt(p.quantite) || 1,
+            }));
+        } else {
+          // Fallback legacy : 1 seul produit déduit de 'puissance'
+          const p = parseInt(String(d.puissance || '').replace(/\D/g, ''), 10);
+          if (p > 0) {
+            const prods = (prev.produits && prev.produits.length > 0)
+              ? [...prev.produits]
+              : [{ type: 'PANNEAU_SOLAIRE', puissance: 0, description: '', quantite: 1 }];
+            prods[0] = { ...prods[0], type: prods[0].type || 'PANNEAU_SOLAIRE', puissance: p };
+            next.produits = prods;
+          }
         }
         return next;
       });
@@ -7583,13 +7593,26 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
         const ht = parseFloat(d.montantHT);
         if (!isNaN(ht) && ht > 0) next.montantHtCustom = String(ht);
-        const p = parseInt(String(d.puissance || '').replace(/\D/g, ''), 10);
-        if (p > 0) {
-          const prods = (prev.produits && prev.produits.length > 0)
-            ? [...prev.produits]
-            : [{ type: 'PANNEAU_SOLAIRE', puissance: 0, description: '', quantite: 1 }];
-          prods[0] = { ...prods[0], type: prods[0].type || 'PANNEAU_SOLAIRE', puissance: p };
-          next.produits = prods;
+        // 📦 Multi-produits : utilise d.produits[] si présent
+        const VALID_TYPES = new Set(['PANNEAU_SOLAIRE', 'PERGOLA', 'POMPE_A_CHALEUR', 'CLIMATISATION', 'BALLON_THERMO', 'BATTERIE', 'ISOLATION', 'VMC', 'AUTRE']);
+        if (Array.isArray(d.produits) && d.produits.length > 0) {
+          next.produits = d.produits
+            .filter(p => p && VALID_TYPES.has(p.type))
+            .map(p => ({
+              type: p.type,
+              puissance: parseInt(p.puissance) || 0,
+              description: p.label || '',
+              quantite: parseInt(p.quantite) || 1,
+            }));
+        } else {
+          const p = parseInt(String(d.puissance || '').replace(/\D/g, ''), 10);
+          if (p > 0) {
+            const prods = (prev.produits && prev.produits.length > 0)
+              ? [...prev.produits]
+              : [{ type: 'PANNEAU_SOLAIRE', puissance: 0, description: '', quantite: 1 }];
+            prods[0] = { ...prods[0], type: prods[0].type || 'PANNEAU_SOLAIRE', puissance: p };
+            next.produits = prods;
+          }
         }
         return next;
       });
