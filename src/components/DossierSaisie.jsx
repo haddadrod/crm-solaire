@@ -947,7 +947,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     tentativesCQ: [], // [{datetime: ISO}] — historique des appels où le client n'a pas répondu
     dateAccord: '', dateConsuel: '',
     dateEnvoiFin: '', dateRetourFin: '',
-    statutFin: '', // '' | 'envoyé' | 'accepté' | 'refusé'
+    statutFin: '', // '' | 'envoyé' | 'accepté' | 'refusé' | 'manque_doc'
+    motifManqueDoc: '', // texte libre : quels documents la banque réclame (ex : "Bulletin paie + RIB")
     envoisHistorique: [], // [{financeur, dateEnvoi, dateRetour, statut, note}]
     // Process pose
     dateEnvoiPose: '', dateVisitePose: '',
@@ -1797,6 +1798,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       tentativesCQ: d.tentativesCQ || [],
       dateEnvoiFin: d.dateEnvoiFin || '', dateRetourFin: d.dateRetourFin || '',
       statutFin: d.statutFin || '',
+      motifManqueDoc: d.motifManqueDoc || '',
       envoisHistorique: d.envoisHistorique || [],
       dateEnvoiPose: d.dateEnvoiPose || '', dateVisitePose: d.dateVisitePose || '',
       statutPose: d.statutPose || '',
@@ -9019,10 +9021,12 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
                     formData.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
                     formData.statutFin === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                    formData.statutFin === 'manque_doc' ? 'bg-orange-100 text-orange-700' :
                     'bg-amber-100 text-amber-700'
                   }`}>
                     {formData.statutFin === 'accepté' ? '✓ Accepté' :
-                     formData.statutFin === 'refusé' ? '✗ Refusé' : '⏳ Envoyé'}
+                     formData.statutFin === 'refusé' ? '✗ Refusé' :
+                     formData.statutFin === 'manque_doc' ? '📄 Manque docs' : '⏳ Envoyé'}
                   </span>
                 )}
               </button>
@@ -9073,11 +9077,15 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   pour la même logique). */}
               <div className="mt-3">
                 <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Statut banque (clique pour changer)</div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   <button type="button" onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     setFormData({ ...formData, statutFin: 'envoyé', dateEnvoiFin: formData.dateEnvoiFin || today, dateRetourFin: '', dateAccord: '' });
                   }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'envoyé' || !formData.statutFin ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Envoyé</button>
+                  <button type="button" onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    setFormData({ ...formData, statutFin: 'manque_doc', dateEnvoiFin: formData.dateEnvoiFin || today, dateRetourFin: formData.dateRetourFin || today });
+                  }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'manque_doc' ? 'bg-orange-500 text-white border-orange-600 shadow-md' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}>📄 Manque docs</button>
                   <button type="button" onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     setFormData({ ...formData, statutFin: 'accepté', dateEnvoiFin: formData.dateEnvoiFin || today, dateRetourFin: formData.dateRetourFin || today, dateAccord: formData.dateAccord || today });
@@ -9087,6 +9095,19 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     setFormData({ ...formData, statutFin: 'refusé', dateEnvoiFin: formData.dateEnvoiFin || today, dateRetourFin: formData.dateRetourFin || today });
                   }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
+                {formData.statutFin === 'manque_doc' && (
+                  <div className="mt-3 p-3 bg-orange-50 border-2 border-orange-300 rounded-xl">
+                    <div className="text-xs font-bold text-orange-700 mb-1.5">📄 Documents demandés par {formData.financement || 'la banque'} :</div>
+                    <textarea
+                      value={formData.motifManqueDoc || ''}
+                      onChange={(e) => setFormData({ ...formData, motifManqueDoc: e.target.value })}
+                      placeholder="Ex : Bulletin de paie de mars, RIB, justificatif domicile…"
+                      rows={2}
+                      className={inputCls + ' text-xs'}
+                    />
+                    <p className="text-[10px] text-orange-700/80 mt-1">Renvoie les docs manquants à la banque, puis repasse le statut à ⏳ Envoyé.</p>
+                  </div>
+                )}
               </div>
 
               {/* Bloc retiré : ancien bouton "Annuler décision" remplacé par les 3 boutons toggleables ci-dessus */}
@@ -10922,10 +10943,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
                   d.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
                   d.statutFin === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                  d.statutFin === 'manque_doc' ? 'bg-orange-100 text-orange-700' :
                   d.statutFin === 'envoyé' ? 'bg-blue-100 text-blue-700' :
                   'bg-amber-100 text-amber-700'
                 }`}>
-                  {d.statutFin === 'accepté' ? '✓ Accepté' : d.statutFin === 'refusé' ? '✗ Refusé' : d.statutFin === 'envoyé' ? '📤 Envoyé' : '⏳ Pas envoyé'}
+                  {d.statutFin === 'accepté' ? '✓ Accepté' :
+                   d.statutFin === 'refusé' ? '✗ Refusé' :
+                   d.statutFin === 'manque_doc' ? '📄 Manque docs' :
+                   d.statutFin === 'envoyé' ? '📤 Envoyé' : '⏳ Pas envoyé'}
                 </span>
               </button>
 
@@ -10987,11 +11012,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   - ✗ Refusé : envoi+retour auto à today si vides */}
               <div className="mt-1.5">
                 <div className="text-[9px] font-semibold text-slate-500 uppercase mb-1">Statut banque (clique pour changer)</div>
-                <div className="grid grid-cols-3 gap-1">
+                <div className="grid grid-cols-2 gap-1">
                   <button onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     onUpdate({ statutFin: 'envoyé', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: '', dateAccord: '' });
                   }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'envoyé' || !d.statutFin ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Envoyé</button>
+                  <button onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    onUpdate({ statutFin: 'manque_doc', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: d.dateRetourFin || today });
+                  }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'manque_doc' ? 'bg-orange-500 text-white border-orange-600 shadow-md' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}>📄 Manque docs</button>
                   <button onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     onUpdate({ statutFin: 'accepté', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: d.dateRetourFin || today, dateAccord: d.dateAccord || today });
@@ -11001,6 +11030,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     onUpdate({ statutFin: 'refusé', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: d.dateRetourFin || today });
                   }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
+                {d.statutFin === 'manque_doc' && (
+                  <div className="mt-1.5 p-2 bg-orange-50 border-2 border-orange-300 rounded-lg">
+                    <div className="text-[10px] font-bold text-orange-700 mb-1">📄 Docs demandés par {d.financement || 'la banque'} :</div>
+                    <textarea
+                      value={d.motifManqueDoc || ''}
+                      onChange={(e) => onUpdate({ motifManqueDoc: e.target.value })}
+                      placeholder="Ex : Bulletin de paie de mars, RIB, justif domicile…"
+                      rows={2}
+                      className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[10px]"
+                    />
+                  </div>
+                )}
               </div>
 
               {d.statutFin === 'refusé' && (
