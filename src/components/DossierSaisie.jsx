@@ -1968,6 +1968,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     const encaissMap = {};
     dossiersFiltres.forEach(d => {
+      // Dossiers morts → on ne les attend plus chez le financeur.
+      // (Annulé / déposé / refus financement / client a refusé la pose.)
+      // Si déjà payé par le financeur on garde la ligne pour traçabilité du
+      // chiffre encaissé, mais on ne l'ajoute jamais au "à recevoir".
+      const isDead = d.statut === 'W2_ANNULER'
+        || d.statut === 'W1_DEPOSER'
+        || d.statut === 'B3_REFUS_FINANCEMENT'
+        || d.statutFin === 'refusé'
+        || d.statutPose === 'client_refuse';
+      if (isDead && !d.payeClient) return;
+
       const fin = d.financement || 'AUTRE';
       const soc = d.societe || '';
       // Banque × société = clé unique. Projexio peut nous devoir 30k sur Yolico
