@@ -7724,6 +7724,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         const nbe = pickNum(d.nbEcheances); if (nbe) next.nbEcheances = nbe;
         const me = pickNum(d.montantEcheance); if (me) next.montantEcheance = me;
         if (d.periodicite && typeof d.periodicite === 'string') next.periodicite = d.periodicite;
+        // 🏠 Toiture/orientation — uniquement si l'IA les a vus sur le BC, sinon vide.
+        if (d.typeToiture && typeof d.typeToiture === 'string') next.typeToiture = d.typeToiture;
+        if (d.orientationPanneaux && typeof d.orientationPanneaux === 'string') next.orientationPanneaux = d.orientationPanneaux;
         // 📦 Multi-produits : si l'IA renvoie un array 'produits', on l'utilise
         // tel quel. Sinon fallback sur les champs legacy 'produit' + 'puissance'.
         const VALID_TYPES = new Set(['PANNEAU_SOLAIRE', 'PERGOLA', 'POMPE_A_CHALEUR', 'CLIMATISATION', 'BALLON_THERMO', 'BATTERIE', 'ISOLATION', 'VMC', 'AUTRE']);
@@ -7857,6 +7860,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         const nbe = pickNum(d.nbEcheances); if (nbe) next.nbEcheances = nbe;
         const me = pickNum(d.montantEcheance); if (me) next.montantEcheance = me;
         if (d.periodicite && typeof d.periodicite === 'string') next.periodicite = d.periodicite;
+        if (d.typeToiture && typeof d.typeToiture === 'string') next.typeToiture = d.typeToiture;
+        if (d.orientationPanneaux && typeof d.orientationPanneaux === 'string') next.orientationPanneaux = d.orientationPanneaux;
         // 📦 Multi-produits : utilise d.produits[] si présent
         const VALID_TYPES = new Set(['PANNEAU_SOLAIRE', 'PERGOLA', 'POMPE_A_CHALEUR', 'CLIMATISATION', 'BALLON_THERMO', 'BATTERIE', 'ISOLATION', 'VMC', 'AUTRE']);
         if (Array.isArray(d.produits) && d.produits.length > 0) {
