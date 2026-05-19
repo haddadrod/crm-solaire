@@ -1677,7 +1677,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const resetForm = () => { setFormData(emptyForm); setEditingId(null); setShowForm(false); };
 
   const handleSubmit = () => {
-    if (!formData.nom.trim()) return;
+    if (!formData.nom.trim()) {
+      // Avant : return silencieux → l'user clique "Enregistrer" et ne sait
+      // pas pourquoi rien ne se passe. Maintenant on signale l'erreur.
+      alert("❌ Le nom du client est obligatoire pour créer ou modifier un dossier.");
+      // Tente de focuser le champ Nom pour aider l'user.
+      try {
+        const nomInput = document.querySelector('input[placeholder*="Nom" i], input[name="nom"]');
+        if (nomInput && typeof nomInput.focus === 'function') nomInput.focus();
+      } catch (e) {}
+      return;
+    }
     let dossier = { ...formData, ...calculs, savedAt: new Date().toISOString() };
     // Auto-statut : si le statut courant est dans le cycle workflow, on le
     // recalcule depuis l'état du dossier (CQ, envoi banque, retour, etc.).
@@ -8152,7 +8162,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <Field label="ID dossier"><input type="text" value={formData.id} onChange={(e) => setFormData({ ...formData, id: e.target.value })} placeholder="62007" className={inputCls} /></Field>
               <div></div>
               <div></div>
-              <Field label="Nom *"><input type="text" value={formData.nom} onChange={(e) => setFormData({ ...formData, nom: e.target.value })} placeholder="DUPONT" className={inputCls} autoFocus /></Field>
+              <Field label="Nom *"><input type="text" value={formData.nom} onChange={(e) => setFormData({ ...formData, nom: e.target.value })} placeholder="DUPONT" className={inputCls + (formData.nom.trim() ? '' : ' border-rose-400 focus:ring-rose-400')} autoFocus /></Field>
               <Field label="Prénom"><input type="text" value={formData.prenom} onChange={(e) => setFormData({ ...formData, prenom: e.target.value })} placeholder="JEAN" className={inputCls} /></Field>
               <div></div>
               <Field label="📞 Téléphone"><input type="tel" value={formData.telephone} onChange={(e) => setFormData({ ...formData, telephone: e.target.value })} placeholder="06 12 34 56 78" className={inputCls} /></Field>
