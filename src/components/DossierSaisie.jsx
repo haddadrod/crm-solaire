@@ -772,7 +772,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
         voirReglages: true,
         cocherPaiements: true,
         voirCA: true,
-        voirReglages: true,
         filtreDossiers: 'tous', // 'tous' | 'mes' | 'chantiers'
       };
     }
@@ -1821,11 +1820,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Rapport paiements
   const rapportPaiements = useMemo(() => {
     const ROLES_INTERNES_LABELS = ['Téléprospecteur', 'Confirmateur', 'Commercial', 'Coordinateur projet', 'Resp. envoi pose'];
+    // 🏢 Filtre société : si une société est sélectionnée, on ne compte que ses
+    // dossiers. Évite que Projexio (qui finance Yolico ET Elsun) apparaisse
+    // avec un total fusionné — la compta voit la vraie dette par marque.
+    const dossiersFiltres = activeSociete
+      ? dossiersEnriched.filter(d => d.societe === activeSociete)
+      : dossiersEnriched;
     const map = {};
+    // Clé inclut la société → 'IONERGIK chez Yolico' et 'IONERGIK chez Elsun'
+    // restent séparés même en vue 'Toutes'. C'est la réalité comptable.
     const addEntry = (nom, type, ttc, paye, datePaye, dossier) => {
       if (!nom || !ttc) return;
-      const key = `${type}::${nom}`;
-      if (!map[key]) map[key] = { nom, type, totalDu: 0, totalPaye: 0, totalRestant: 0, totalAPayerMaintenant: 0, totalEnAttenteFinanceur: 0, totalPayeAvance: 0, lignes: [] };
+      const soc = dossier.societe || '';
+      const key = `${type}::${nom}::${soc}`;
+      if (!map[key]) map[key] = { nom, type, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, totalAPayerMaintenant: 0, totalEnAttenteFinanceur: 0, totalPayeAvance: 0, lignes: [] };
       map[key].totalDu += ttc;
       const isInterne = ROLES_INTERNES_LABELS.includes(type);
       const payeAvance = paye && !dossier.payeClient && !isInterne;
@@ -1839,9 +1847,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (isInterne || dossier.payeClient) map[key].totalAPayerMaintenant += ttc;
         else map[key].totalEnAttenteFinanceur += ttc;
       }
-      map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne, prestataireType: type });
+      map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne, prestataireType: type, societe: soc });
     };
-    dossiersEnriched.forEach(d => {
+    dossiersFiltres.forEach(d => {
       (d.fournisseursDetail || []).forEach(f => addEntry(f.nom, 'Fournisseur', f.ttc, f.paye, f.datePaye, d));
       // Multi-régies : itère sur regiesDetail
       (d.regiesDetail || []).forEach(r => addEntry(r.nom, 'Régie', r.ttc, r.paye, r.datePaye, d));
@@ -1865,30 +1873,35 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const totalPayeAvance = list.reduce((s, p) => s + p.totalPayeAvance, 0);
 
     const encaissMap = {};
-    dossiersEnriched.forEach(d => {
+    dossiersFiltres.forEach(d => {
       const fin = d.financement || 'AUTRE';
+      const soc = d.societe || '';
+      // Banque × société = clé unique. Projexio peut nous devoir 30k sur Yolico
+      // ET 20k sur Elsun — deux dettes distinctes à recouvrer séparément.
+      const key = `${fin}::${soc}`;
       const m = d.montantTotal || 0;
-      // On garde TOUS les financeurs (même à 0€) pour que l'utilisateur voie toujours sa liste complète
-      if (!encaissMap[fin]) encaissMap[fin] = { nom: fin, totalAttendu: 0, totalRecu: 0, totalRestant: 0, lignes: [] };
-      encaissMap[fin].totalAttendu += m;
-      if (d.payeClient) encaissMap[fin].totalRecu += m;
-      else encaissMap[fin].totalRestant += m;
-      encaissMap[fin].lignes.push({ dossierId: d.id || '—', dossierLocalId: d.localId, client: `${d.nom} ${d.prenom || ''}`.trim(), date: d.dateInsta, ttc: m, paye: d.payeClient });
+      if (!encaissMap[key]) encaissMap[key] = { nom: fin, societe: soc, totalAttendu: 0, totalRecu: 0, totalRestant: 0, lignes: [] };
+      encaissMap[key].totalAttendu += m;
+      if (d.payeClient) encaissMap[key].totalRecu += m;
+      else encaissMap[key].totalRestant += m;
+      encaissMap[key].lignes.push({ dossierId: d.id || '—', dossierLocalId: d.localId, client: `${d.nom} ${d.prenom || ''}`.trim(), date: d.dateInsta, ttc: m, paye: d.payeClient, societe: soc });
     });
     const encaissList = Object.values(encaissMap).sort((a, b) => b.totalRestant - a.totalRestant);
     const totalEncaisseClient = encaissList.reduce((s, e) => s + e.totalRecu, 0);
     const totalAEncaisserClient = encaissList.reduce((s, e) => s + e.totalRestant, 0);
 
-    // Pénalités régies (poses ratées) — agrégées par régie
+    // Pénalités régies (poses ratées) — agrégées par régie × société
     const penaliteMap = {};
-    dossiersEnriched.forEach(d => {
+    dossiersFiltres.forEach(d => {
       (d.tentativesPose || []).forEach((t, idx) => {
         const regie = t.regie || '(régie non spécifiée)';
-        if (!penaliteMap[regie]) penaliteMap[regie] = { nom: regie, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
-        penaliteMap[regie].totalDu += t.penalite || 0;
-        if (t.regleAt) penaliteMap[regie].totalPaye += t.penalite || 0;
-        else penaliteMap[regie].totalRestant += t.penalite || 0;
-        penaliteMap[regie].lignes.push({
+        const soc = d.societe || '';
+        const key = `${regie}::${soc}`;
+        if (!penaliteMap[key]) penaliteMap[key] = { nom: regie, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
+        penaliteMap[key].totalDu += t.penalite || 0;
+        if (t.regleAt) penaliteMap[key].totalPaye += t.penalite || 0;
+        else penaliteMap[key].totalRestant += t.penalite || 0;
+        penaliteMap[key].lignes.push({
           dossierLocalId: d.localId,
           dossierId: d.id || '—',
           client: `${d.nom} ${d.prenom || ''}`.trim(),
@@ -1898,6 +1911,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           regleAt: t.regleAt || null,
           definitif: !!t.definitif,
           tentativeIdx: idx,
+          societe: soc,
         });
       });
     });
@@ -1910,15 +1924,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // que les pénalités, mais avec un PDF d'accord transactionnel et des
     // montants en général plus élevés).
     const litigeMap = {};
-    dossiersEnriched.forEach(d => {
+    dossiersFiltres.forEach(d => {
       const montant = parseFloat(d.litigeMontantRembourse);
       if (!montant || isNaN(montant) || montant <= 0) return;
       const regie = d.litigeRegieNom || '(régie non identifiée)';
-      if (!litigeMap[regie]) litigeMap[regie] = { nom: regie, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
-      litigeMap[regie].totalDu += montant;
-      if (d.litigeRegieRembourse) litigeMap[regie].totalPaye += montant;
-      else litigeMap[regie].totalRestant += montant;
-      litigeMap[regie].lignes.push({
+      const soc = d.societe || '';
+      const key = `${regie}::${soc}`;
+      if (!litigeMap[key]) litigeMap[key] = { nom: regie, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
+      litigeMap[key].totalDu += montant;
+      if (d.litigeRegieRembourse) litigeMap[key].totalPaye += montant;
+      else litigeMap[key].totalRestant += montant;
+      litigeMap[key].lignes.push({
         dossierLocalId: d.localId,
         dossierId: d.id || '—',
         client: `${d.nom} ${d.prenom || ''}`.trim(),
@@ -1928,6 +1944,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         factureNo: d.litigeFactureNo || '',
         accordPdfUrl: d.litigeAccordPdfUrl || '',
         note: d.litigeNote || '',
+        societe: soc,
       });
     });
     const litigesList = Object.values(litigeMap).sort((a, b) => b.totalRestant - a.totalRestant);
@@ -1935,13 +1952,19 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const totalLitigesPaye = litigesList.reduce((s, p) => s + p.totalPaye, 0);
     const totalLitigesRestant = litigesList.reduce((s, p) => s + p.totalRestant, 0);
 
-    return { list, totalGeneralPaye, totalGeneralRestant, totalAPayerMaintenant, totalEnAttenteFinanceur, totalPayeAvance, totalEncaisseClient, totalAEncaisserClient, encaissList, penalitesList, totalPenalitesDu, totalPenalitesPaye, totalPenalitesRestant, litigesList, totalLitigesDu, totalLitigesPaye, totalLitigesRestant };
-  }, [dossiersEnriched, tarifsInternes]);
+    return { list, totalGeneralPaye, totalGeneralRestant, totalAPayerMaintenant, totalEnAttenteFinanceur, totalPayeAvance, totalEncaisseClient, totalAEncaisserClient, encaissList, penalitesList, totalPenalitesDu, totalPenalitesPaye, totalPenalitesRestant, litigesList, totalLitigesDu, totalLitigesPaye, totalLitigesRestant, activeSociete };
+  }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Dashboard
   const dashboard = useMemo(() => {
+    // 🏢 Si une société est active dans le filtre, on restreint TOUS les calculs
+    // (stats, alertes, rappels) à cette société. Sinon vue consolidée.
+    // Renamed local en 'dossiersDash' pour éviter le shadowing du nom externe.
+    const dossiersDash = activeSociete
+      ? dossiersEnriched.filter(d => d.societe === activeSociete)
+      : dossiersEnriched;
     const moisMap = {};
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (!d.dateInsta) return;
       const k = d.dateInsta.substring(0, 7);
       if (!moisMap[k]) moisMap[k] = { mois: k, count: 0, ca: 0, margeTtc: 0 };
@@ -1957,7 +1980,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const moisPrecedent = statsMois.find(m => m.mois === lastStr) || { count: 0, ca: 0, margeTtc: 0 };
 
     const poseurMap = {};
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       (d.poseursDetail || []).forEach(p => {
         if (!poseurMap[p.nom]) poseurMap[p.nom] = { nom: p.nom, count: 0, ca: 0, coutTotal: 0, puissanceTotale: 0, margeApportee: 0 };
         poseurMap[p.nom].count += 1;
@@ -1970,7 +1993,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const statsPoseurs = Object.values(poseurMap).sort((a, b) => b.count - a.count);
 
     const regieMap = {};
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       const regiesArr = d.regiesDetail || [];
       if (regiesArr.length === 0) {
         // Pas de régie sur ce dossier
@@ -2002,7 +2025,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       .sort((a, b) => b.joursAttente - a.joursAttente);
 
     const rappelsPrestataires = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       // Prestataires externes (poseurs, fournisseurs, régie externe) : pose faite + client a payé
       if (d.dateInsta && d.payeClient) {
         const j = Math.floor((today - new Date(d.dateInsta)) / 86400000);
@@ -2065,7 +2088,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     };
 
     const rappelsStagnation = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       const seuil = SEUILS_STATUT[d.statut];
       if (seuil == null) return; // statut final ou non listé
 
@@ -2101,7 +2124,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels financement — envoyés sans retour depuis +2 jours
     const rappelsFinancement = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (!d.dateEnvoiFin) return; // pas envoyé
       if (d.dateRetourFin) return; // déjà reçu retour
       if (d.statutFin === 'accepté' || d.statutFin === 'refusé') return; // déjà répondu
@@ -2116,7 +2139,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels Paiement — contrôle livraison fait sans paiement reçu depuis +2 jours
     const rappelsPaiement = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (!d.dateControleLivraison) return; // pas de contrôle
       if (d.datePaiementBanque || d.payeClient) return; // déjà payé
       const jours = Math.floor((today - new Date(d.dateControleLivraison)) / 86400000);
@@ -2133,7 +2156,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels Contrôle livraison — Consuel accepté + originaux reçus banque mais contrôle pas encore fait
     const rappelsControleLivraison = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       // Consuel accepté ?
       const consuelAccepte = d.statutConsuel === 'accepté' || (d.dateConsuel && d.statutConsuel !== 'refusé');
       if (!consuelAccepte) return;
@@ -2153,7 +2176,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels Contrôle qualité — dossiers à valider/refuser (pas encore décidé)
     const rappelsControleQualite = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (d.statutControleQualite === 'ok' || d.statutControleQualite === 'pas_ok') return; // déjà décidé
       if (finalStatuses.includes(d.statut)) return;
       const ref = d.createdAt || d.savedAt || d.dateInsta;
@@ -2168,7 +2191,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels À envoyer en banque — CQ validé mais pas encore envoyé
     const rappelsAEnvoyerBanque = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (d.statutControleQualite !== 'ok') return; // pas validé OK
       if (d.dateEnvoiFin) return; // déjà envoyé
       if (finalStatuses.includes(d.statut)) return;
@@ -2185,7 +2208,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels À envoyer en pose — financement accordé mais pas encore envoyé en pose
     const rappelsAEnvoyerPose = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (d.statutFin !== 'accepté') return; // pas accordé par banque
       if (d.dateEnvoiPose) return; // déjà envoyé en pose
       if (finalStatuses.includes(d.statut)) return;
@@ -2206,7 +2229,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Skippé si le dossier est dans un statut final (annulé volontairement,
     // dossier payé, etc.) — l'utilisateur a déjà clôturé.
     const rappelsPoseurNonAssigne = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (finalStatuses.includes(d.statut)) return;
       // Une date de pose est-elle posée ? (envoi en pose, visite, ou pose)
       const aUneDate = !!(d.dateEnvoiPose || d.dateVisitePose || d.dateInsta);
@@ -2236,7 +2259,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Cas typique : on a planifié, le poseur y est allé, mais on a oublié
     // de cocher "posé". Ou la pose a été décalée sans mise à jour.
     const rappelsPoseNonFinie = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (!d.dateEnvoiPose) return; // pas de date de pose planifiée
       if (d.dateInsta) return; // déjà marquée posée
       if (d.statutPose === 'visite_ok') return; // déjà OK
@@ -2254,7 +2277,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels Mairie — dossier créé mais déclaration mairie pas envoyée (ou refusée et non renvoyée)
     const rappelsAEnvoyerMairie = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (d.statutMairie === 'accepté' || d.dateAccordMairie) return; // déjà accepté
       if (finalStatuses.includes(d.statut)) return;
       if (d.dateEnvoiMairie && d.statutMairie !== 'refusé') return; // envoyé, en attente de réponse (pas une alerte)
@@ -2271,7 +2294,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels À envoyer Consuel — pose terminée mais Consuel pas encore envoyé
     const rappelsAEnvoyerConsuel = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       // Pose terminée ? (statut visite_ok OU date de pose remplie)
       const poseFinie = d.statutPose === 'visite_ok' || !!d.dateInsta;
       if (!poseFinie) return;
@@ -2289,7 +2312,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels Originaux — pose terminée mais originaux pas reçus banque
     const rappelsOriginaux = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       if (d.pasOriginauxRequis) return; // pas concerné
       // Pose terminée ?
       const poseFinie = d.statutPose === 'visite_ok' || !!d.dateInsta;
@@ -2312,7 +2335,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // 💰 Récupération TVA — délai 6 mois (180 jours) à partir du paiement banque
     const rappelsRecupTva = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       // Seulement si client payé et démarche pas encore terminée
       if (!d.payeClient) return;
       if (d.tvaStatus === 'recuperee' || d.tvaStatus === 'non_concerne') return;
@@ -2347,7 +2370,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // un prestataire (poseur/régie/fournisseur) a un nom mais pas de facture
     // uploadée. Plus la pose est ancienne, plus c'est urgent.
     const rappelsFacturesManquantes = [];
-    dossiersEnriched.forEach(d => {
+    dossiersDash.forEach(d => {
       const posee = d.statutPose === 'visite_ok' || !!d.dateInsta;
       if (!posee) return;
       if (finalStatuses.includes(d.statut)) {
@@ -2376,7 +2399,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
     return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes };
-  }, [dossiersEnriched, tarifsInternes]);
+  }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
   // Si un dossier archivé passe en SAV, il est désarchivé automatiquement (voir onUpdate)
@@ -2841,6 +2864,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {/* PAIEMENTS */}
         {activeTab === 'paiements' && <PaiementsView
           rapportPaiements={rapportPaiements}
+          societes={societes}
           onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }}
           onTogglePenalite={(dossierLocalId, tentativeIdx) => {
             const now = new Date().toISOString();
@@ -3027,6 +3051,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             regiesContacts={effectiveRegiesContacts}
             emailConfig={emailConfig}
             gmailOAuth={gmailOAuth}
+            societes={societes}
           />
         )}
 
@@ -4485,7 +4510,15 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
 
 // ====================== AUTRES VUES (inchangées) ======================
 
-function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite, onToggleLitige }) {
+function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onTogglePenalite, onToggleLitige }) {
+  // Helper pour afficher le badge société à côté du nom prestataire/banque
+  const renderSocieteBadge = (societeId) => {
+    if (!societeId) return null;
+    const s = societes.find(x => x.id === societeId);
+    if (!s) return null;
+    const cls = SOCIETE_BADGE_CLASSES[s.color] || SOCIETE_BADGE_CLASSES.violet;
+    return <span className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-bold border ml-1.5 ${cls}`} title={`Société : ${s.label}`}>{s.emoji} {s.label}</span>;
+  };
   // Mappe le type de prestataire vers l'ancre de scroll dans le QuickViewPanel
   const scrollTargetFor = (type) => {
     if (type === 'Fournisseur') return 'fournisseurs';
@@ -4533,7 +4566,7 @@ function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite, onTogg
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div>
                         <div className="text-xs opacity-90 uppercase">💳 Financeur</div>
-                        <div className="text-xl font-bold">{e.nom}</div>
+                        <div className="text-xl font-bold flex items-center flex-wrap">{e.nom}{renderSocieteBadge(e.societe)}</div>
                       </div>
                       {restant ? (
                         <div className="text-right">
@@ -4648,7 +4681,7 @@ function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite, onTogg
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${colors}`}>{p.type}</span>
                       <div className="min-w-0">
-                        <div className="font-bold text-slate-800 truncate">{p.nom}</div>
+                        <div className="font-bold text-slate-800 truncate flex items-center flex-wrap">{p.nom}{renderSocieteBadge(p.societe)}</div>
                         <div className="text-xs text-slate-500">{p.lignes.length} dossier{p.lignes.length > 1 ? 's' : ''}</div>
                       </div>
                     </div>
@@ -4738,9 +4771,9 @@ function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite, onTogg
         ) : (
           <div className="p-4 space-y-3">
             {rapportPaiements.penalitesList.map((p) => (
-              <details key={p.nom} className="border border-rose-200 rounded-xl overflow-hidden">
+              <details key={`${p.nom}::${p.societe || ''}`} className="border border-rose-200 rounded-xl overflow-hidden">
                 <summary className="cursor-pointer px-4 py-3 bg-rose-50 hover:bg-rose-100 flex items-center gap-3 flex-wrap">
-                  <span className="font-bold text-slate-800">🤝 {p.nom}</span>
+                  <span className="font-bold text-slate-800 flex items-center flex-wrap">🤝 {p.nom}{renderSocieteBadge(p.societe)}</span>
                   <span className="text-xs text-slate-500">{p.lignes.length} pose{p.lignes.length > 1 ? 's' : ''} ratée{p.lignes.length > 1 ? 's' : ''}</span>
                   <span className="ml-auto flex items-center gap-2">
                     {p.totalRestant > 0 && (
@@ -4816,9 +4849,9 @@ function PaiementsView({ rapportPaiements, onShowQuick, onTogglePenalite, onTogg
         ) : (
           <div className="p-4 space-y-3">
             {rapportPaiements.litigesList.map((p) => (
-              <details key={p.nom} className="border border-purple-200 rounded-xl overflow-hidden">
+              <details key={`${p.nom}::${p.societe || ''}`} className="border border-purple-200 rounded-xl overflow-hidden">
                 <summary className="cursor-pointer px-4 py-3 bg-purple-50 hover:bg-purple-100 flex items-center gap-3 flex-wrap">
-                  <span className="font-bold text-slate-800">🤝 {p.nom}</span>
+                  <span className="font-bold text-slate-800 flex items-center flex-wrap">🤝 {p.nom}{renderSocieteBadge(p.societe)}</span>
                   <span className="text-xs text-slate-500">{p.lignes.length} litige{p.lignes.length > 1 ? 's' : ''}</span>
                   <span className="ml-auto flex items-center gap-2">
                     {p.totalRestant > 0 && (
@@ -7181,7 +7214,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       const res = await fetch('/api/extract-bon', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ storagePath: bucketPath, mediaType }),
+        body: JSON.stringify({
+          storagePath: bucketPath,
+          mediaType,
+          availableSocietes: (societes || []).map(s => ({ id: s.id, label: s.label })),
+        }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
@@ -7207,6 +7244,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (d.email) next.email = String(d.email);
         if (d.financement) next.financement = String(d.financement).toUpperCase();
         if (d.dateSignature) next.dateSignature = normalizeDateToIso(String(d.dateSignature));
+        if (d.societe && societes && societes.find(s => s.id === d.societe)) {
+          next.societe = String(d.societe);
+        }
         const ttc = parseFloat(d.montantTTC);
         if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
         const ht = parseFloat(d.montantHT);
@@ -7257,7 +7297,10 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       const res = await fetch('/api/classify-dossier', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ storagePath: bucketPath }),
+        body: JSON.stringify({
+          storagePath: bucketPath,
+          availableSocietes: (societes || []).map(s => ({ id: s.id, label: s.label })),
+        }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
@@ -7305,6 +7348,10 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (d.email) next.email = String(d.email);
         if (d.financement) next.financement = String(d.financement).toUpperCase();
         if (d.dateSignature) next.dateSignature = normalizeDateToIso(String(d.dateSignature));
+        // 🏢 Société auto-détectée par l'IA depuis le BC (logo, raison sociale, SIRET)
+        if (d.societe && societes && societes.find(s => s.id === d.societe)) {
+          next.societe = String(d.societe);
+        }
         const ttc = parseFloat(d.montantTTC);
         if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
         const ht = parseFloat(d.montantHT);
@@ -9612,7 +9659,7 @@ const buildWhatsAppLink = (phone, message) => {
   return `https://wa.me/${n}?text=${encodeURIComponent(message)}`;
 };
 
-function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth }) {
+function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth, societes = [] }) {
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
   const canSeeMarges = isAdmin || permissions?.voirMarges === true;
@@ -9798,6 +9845,26 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               <Edit3 className="w-3 h-3" />Tout éditer
             </button>
           </div>
+          {/* 🏢 Sélecteur société — clic pour assigner sans ouvrir le form complet */}
+          {societes.length > 1 && (
+            <div className="mt-2 px-2 py-1.5 bg-white/15 border border-white/30 rounded-lg backdrop-blur">
+              <div className="text-[9px] font-bold text-white/80 uppercase mb-1">🏢 Société</div>
+              <div className="flex gap-1 flex-wrap">
+                {societes.map(s => {
+                  const isActive = d.societe === s.id;
+                  return (
+                    <button
+                      key={s.id}
+                      onClick={() => onUpdate({ societe: s.id })}
+                      className={`px-2 py-0.5 rounded text-[10px] font-bold border ${isActive ? 'bg-white text-slate-800 border-white' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
+                    >
+                      {s.emoji} {s.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
           {/* Bouton archiver / désarchiver */}
           <button
             onClick={() => onUpdate({

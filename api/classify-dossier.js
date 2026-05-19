@@ -58,53 +58,65 @@ const CATEGORIES = [
   'autre',
 ];
 
-// Schéma de sortie : un tableau de sections, plus les champs extraits du
-// bon de commande si trouvé (pour pré-remplir le formulaire).
-const CLASSIFY_SCHEMA = {
-  type: 'object',
-  properties: {
-    totalPages: { type: 'integer', description: 'Nombre total de pages du PDF' },
-    sections: {
-      type: 'array',
-      description: 'Découpage du PDF en sections homogènes (pages consécutives appartenant au même document)',
-      items: {
-        type: 'object',
-        properties: {
-          category: { type: 'string', enum: CATEGORIES, description: 'Type du document' },
-          label: { type: 'string', description: "Nom court humain (ex: 'Taxe foncière 2025', 'Titre de séjour Yabie')" },
-          pageStart: { type: 'integer', description: 'Première page (1-indexée)' },
-          pageEnd:   { type: 'integer', description: 'Dernière page (1-indexée, incluse)' },
-          confiance: { type: 'string', enum: ['haute', 'moyenne', 'faible'], description: 'Niveau de certitude' },
+// Construit dynamiquement le schéma avec la liste des sociétés disponibles.
+// Si availableSocietes est vide, le champ 'societe' n'est pas demandé.
+function buildClassifySchema(availableSocietes = []) {
+  const socIds = availableSocietes.map(s => s.id).filter(Boolean);
+  const bcProps = {
+    nom: { type: 'string', description: 'Nom de famille du client' },
+    prenom: { type: 'string', description: 'Prénom du client' },
+    adresse: { type: 'string', description: 'Adresse (numéro et rue, sans code postal ni ville)' },
+    codePostal: { type: 'string', description: 'Code postal' },
+    ville: { type: 'string', description: 'Ville' },
+    telephone: { type: 'string', description: 'Téléphone' },
+    email: { type: 'string', description: 'Email si présent, sinon vide' },
+    produit: { type: 'string', description: 'Ce qui a été vendu (ex: panneaux solaires)' },
+    puissance: { type: 'string', description: 'Puissance en Wc si panneaux solaires, juste le nombre' },
+    montantTTC: { type: 'number', description: 'Montant total TTC en euros' },
+    montantHT: { type: 'number', description: 'Montant HT en euros' },
+    financement: { type: 'string', description: 'Organisme bancaire/financier (PROJEXIO, SOFINCO, DOMOFINANCE, COMPTANT, CETELEM, FINANCO, FRANFINANCE...). REGARDE le bloc "PAIEMENT AVEC FINANCEMENT" ou "ORGANISME BANCAIRE" sur le bon de commande. Si comptant, mets "COMPTANT".' },
+    dateSignature: { type: 'string', description: 'Date de signature AAAA-MM-JJ' },
+  };
+  const required = ['nom', 'prenom', 'adresse', 'codePostal', 'ville', 'telephone', 'email', 'produit', 'puissance', 'montantTTC', 'montantHT', 'financement', 'dateSignature'];
+  if (socIds.length > 0) {
+    bcProps.societe = {
+      type: 'string',
+      enum: ['', ...socIds],
+      description: `Identifiant de la société émettrice du bon de commande. Regarde le LOGO en haut, la RAISON SOCIALE, le SIRET, le PIED DE PAGE. Valeurs possibles : ${availableSocietes.map(s => `'${s.id}' (${s.label})`).join(', ')}. Si tu n'es pas sûr, mets ''.`,
+    };
+    required.push('societe');
+  }
+  return {
+    type: 'object',
+    properties: {
+      totalPages: { type: 'integer', description: 'Nombre total de pages du PDF' },
+      sections: {
+        type: 'array',
+        description: 'Découpage du PDF en sections homogènes (pages consécutives appartenant au même document)',
+        items: {
+          type: 'object',
+          properties: {
+            category: { type: 'string', enum: CATEGORIES, description: 'Type du document' },
+            label: { type: 'string', description: "Nom court humain (ex: 'Taxe foncière 2025', 'Titre de séjour Yabie')" },
+            pageStart: { type: 'integer', description: 'Première page (1-indexée)' },
+            pageEnd:   { type: 'integer', description: 'Dernière page (1-indexée, incluse)' },
+            confiance: { type: 'string', enum: ['haute', 'moyenne', 'faible'], description: 'Niveau de certitude' },
+          },
+          required: ['category', 'label', 'pageStart', 'pageEnd', 'confiance'],
+          additionalProperties: false,
         },
-        required: ['category', 'label', 'pageStart', 'pageEnd', 'confiance'],
+      },
+      bonCommande: {
+        type: 'object',
+        properties: bcProps,
+        required,
         additionalProperties: false,
       },
     },
-    // Champs extraits du bon de commande (s'il y en a un), pour pré-remplir le formulaire
-    bonCommande: {
-      type: 'object',
-      properties: {
-        nom: { type: 'string', description: 'Nom de famille du client' },
-        prenom: { type: 'string', description: 'Prénom du client' },
-        adresse: { type: 'string', description: 'Adresse (numéro et rue, sans code postal ni ville)' },
-        codePostal: { type: 'string', description: 'Code postal' },
-        ville: { type: 'string', description: 'Ville' },
-        telephone: { type: 'string', description: 'Téléphone' },
-        email: { type: 'string', description: 'Email si présent, sinon vide' },
-        produit: { type: 'string', description: 'Ce qui a été vendu (ex: panneaux solaires)' },
-        puissance: { type: 'string', description: 'Puissance en Wc si panneaux solaires, juste le nombre' },
-        montantTTC: { type: 'number', description: 'Montant total TTC en euros' },
-        montantHT: { type: 'number', description: 'Montant HT en euros' },
-        financement: { type: 'string', description: 'Organisme bancaire/financier (PROJEXIO, SOFINCO, DOMOFINANCE, COMPTANT, CETELEM, FINANCO, FRANFINANCE...). REGARDE le bloc "PAIEMENT AVEC FINANCEMENT" ou "ORGANISME BANCAIRE" sur le bon de commande. Si comptant, mets "COMPTANT".' },
-        dateSignature: { type: 'string', description: 'Date de signature AAAA-MM-JJ' },
-      },
-      required: ['nom', 'prenom', 'adresse', 'codePostal', 'ville', 'telephone', 'email', 'produit', 'puissance', 'montantTTC', 'montantHT', 'financement', 'dateSignature'],
-      additionalProperties: false,
-    },
-  },
-  required: ['totalPages', 'sections', 'bonCommande'],
-  additionalProperties: false,
-};
+    required: ['totalPages', 'sections', 'bonCommande'],
+    additionalProperties: false,
+  };
+}
 
 const INSTRUCTIONS = `Tu reçois un PDF qui contient un dossier client complet pour une vente de panneaux solaires en France.
 Il peut contenir plusieurs documents distincts (mandat administratif, bon de commande, dossier financement Cofidis/Sofinco/etc., pièce d'identité du client et co-emprunteur, taxe foncière, avis d'imposition, justificatif de domicile, bulletins de paie, RIB, etc.).
@@ -145,16 +157,21 @@ const MAX_CHUNK_BYTES = 18 * 1024 * 1024;
 
 // Appel Claude pour un buffer PDF donné. Renvoie l'objet `parsed` (sections +
 // bonCommande) ou throw en cas d'erreur (le caller gère le retry/chunk).
-async function classifyPdfBuffer(client, pdfBuffer, extraContext = '') {
+async function classifyPdfBuffer(client, pdfBuffer, extraContext = '', availableSocietes = []) {
   const base64 = pdfBuffer.toString('base64');
-  const fullInstructions = extraContext ? `${INSTRUCTIONS}\n\n${extraContext}` : INSTRUCTIONS;
+  // Ajoute les indices pour identifier la société du BC (logo, nom, SIRET).
+  const societeContext = availableSocietes.length > 0
+    ? `\n\nSOCIÉTÉS DISPONIBLES : ${availableSocietes.map(s => `${s.id} (${s.label})`).join(', ')}.\nPour le bon de commande, identifie la société émettrice en regardant le LOGO en haut, la raison sociale, le SIRET, et le pied de page. Renvoie l'identifiant exact dans 'societe'. Si tu n'es pas sûr, mets une chaîne vide.`
+    : '';
+  const fullInstructions = [INSTRUCTIONS, extraContext, societeContext].filter(Boolean).join('\n\n');
+  const schema = buildClassifySchema(availableSocietes);
   const message = await client.messages.create({
     model: 'claude-opus-4-7',
     max_tokens: 8000,
     thinking: { type: 'adaptive' },
     output_config: {
       effort: 'medium',
-      format: { type: 'json_schema', schema: CLASSIFY_SCHEMA },
+      format: { type: 'json_schema', schema },
     },
     messages: [
       {
@@ -213,8 +230,15 @@ export default async function handler(req, res) {
   if (!caller) return json(res, 401, { error: 'Connexion requise.' });
 
   const body = req.body || {};
-  const { storagePath } = body;
+  const { storagePath, availableSocietes } = body;
   if (!storagePath) return json(res, 400, { error: 'storagePath requis.' });
+  // Filtre + sanitize les sociétés reçues (max 10 pour éviter abus / coût)
+  const socList = Array.isArray(availableSocietes)
+    ? availableSocietes
+        .filter(s => s && typeof s.id === 'string' && typeof s.label === 'string' && s.id && s.label)
+        .map(s => ({ id: s.id, label: s.label }))
+        .slice(0, 10)
+    : [];
 
   // 1) Télécharge le PDF depuis le bucket avec la clé service_role
   let pdfBase64;
@@ -242,7 +266,7 @@ export default async function handler(req, res) {
 
     if (sourceBytes.length <= MAX_CHUNK_BYTES) {
       // PDF assez petit : un seul appel à Claude
-      parsed = await classifyPdfBuffer(client, sourceBytes);
+      parsed = await classifyPdfBuffer(client, sourceBytes, '', socList);
     } else {
       // PDF trop gros : on le scinde en plusieurs PDF de < 18 Mo, on classifie
       // chacun séparément, puis on fusionne les sections (en décalant les
@@ -263,7 +287,7 @@ export default async function handler(req, res) {
       for (let i = 0; i < chunks.length; i++) {
         const c = chunks[i];
         const ctx = `IMPORTANT : ce PDF est la portion ${i + 1}/${chunks.length} (pages ${c.pageOffset + 1} à ${c.pageOffset + c.pageCount}) d'un dossier plus grand. Les numéros pageStart/pageEnd que tu renvoies doivent être relatifs à ce sous-PDF (1 à ${c.pageCount}) — je les recalerai après.`;
-        const chunkResult = await classifyPdfBuffer(client, c.bytes, ctx);
+        const chunkResult = await classifyPdfBuffer(client, c.bytes, ctx, socList);
         const chunkSections = Array.isArray(chunkResult?.sections) ? chunkResult.sections : [];
         for (const s of chunkSections) {
           allSections.push({
