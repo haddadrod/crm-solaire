@@ -77,6 +77,18 @@ function applyAutoStatut(d) {
 const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM', 'FINANCO', 'FRANFINANCE'];
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
+// Détecte si l'utilisateur est sur mobile (iOS / Android). Sur mobile, un lien
+// `tel:` est sûr (iOS propose ONOFF dans le picker, Android idem). Sur Mac,
+// `tel:` est intercepté par Continuity → on doit utiliser la Web App.
+function isMobileDevice() {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  if (/iPhone|iPad|iPod|Android/i.test(ua)) return true;
+  // iPadOS récent se présente parfois en MacIntel — on regarde maxTouchPoints.
+  if (/Mac/i.test(navigator.platform || '') && (navigator.maxTouchPoints || 0) > 1) return true;
+  return false;
+}
+
 // Formate des secondes en "M:SS" (ex : 145 → "2:25").
 function formatDurationMmSs(sec) {
   const s = Math.max(0, parseInt(sec, 10) || 0);
@@ -10484,33 +10496,40 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutControleQualite === 'pas_ok' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
               </div>
 
-              {/* 📞 Appel ONOFF direct depuis la vue rapide (mêmes 2 boutons que le formulaire). */}
+              {/* 📞 Appel ONOFF — adapté à la plateforme :
+                  - Mobile : <a href="tel:"> car iOS/Android savent ouvrir ONOFF
+                  - Desktop : bouton Web App seul (évite macOS Continuity qui
+                    intercepte tel: et propose iPhone à la place d'ONOFF) */}
               {d.telephone && (
-                <div className="mt-1.5 grid grid-cols-2 gap-1">
-                  <a
-                    href={`tel:${normalizePhoneE164(d.telephone)}`}
-                    onClick={() => {
-                      recordPendingOnoffCall({ dossierLocalId: d.localId, telephone: d.telephone, type: 'cq' });
-                      if (!d.dateControleQualite) onUpdate({ dateControleQualite: new Date().toISOString().split('T')[0] });
-                    }}
-                    className="px-1.5 py-1.5 rounded text-[10px] font-bold border-2 bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm flex items-center justify-center gap-1 no-underline"
-                    title={`Appeler ${d.telephone} via ONOFF (iPhone / extension Chrome)`}
-                  >
-                    📞 Appeler
-                  </a>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      await recordPendingOnoffCall({ dossierLocalId: d.localId, telephone: d.telephone, type: 'cq' });
-                      if (!d.dateControleQualite) onUpdate({ dateControleQualite: new Date().toISOString().split('T')[0] });
-                      try { await navigator.clipboard.writeText(normalizePhoneE164(d.telephone)); } catch (e) {}
-                      window.open('https://phone.onoffbusiness.com/', '_blank', 'noopener,noreferrer');
-                    }}
-                    className="px-1.5 py-1.5 rounded text-[10px] font-bold border-2 bg-white hover:bg-purple-50 text-purple-700 border-purple-300 shadow-sm flex items-center justify-center gap-1"
-                    title="Ouvre ONOFF Web App + copie le numéro dans le presse-papier"
-                  >
-                    💻 Web App
-                  </button>
+                <div className="mt-1.5">
+                  {isMobileDevice() ? (
+                    <a
+                      href={`tel:${normalizePhoneE164(d.telephone)}`}
+                      onClick={() => {
+                        recordPendingOnoffCall({ dossierLocalId: d.localId, telephone: d.telephone, type: 'cq' });
+                        if (!d.dateControleQualite) onUpdate({ dateControleQualite: new Date().toISOString().split('T')[0] });
+                      }}
+                      className="w-full px-3 py-2 rounded-lg text-[11px] font-bold border-2 bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm flex items-center justify-center gap-1.5 no-underline"
+                      title={`Appeler ${d.telephone} via ONOFF`}
+                    >
+                      📞 Appeler avec ONOFF
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        await recordPendingOnoffCall({ dossierLocalId: d.localId, telephone: d.telephone, type: 'cq' });
+                        if (!d.dateControleQualite) onUpdate({ dateControleQualite: new Date().toISOString().split('T')[0] });
+                        try { await navigator.clipboard.writeText(normalizePhoneE164(d.telephone)); } catch (e) {}
+                        window.open('https://phone.onoffbusiness.com/', '_blank', 'noopener,noreferrer');
+                      }}
+                      className="w-full px-3 py-2 rounded-lg text-[11px] font-bold border-2 bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm flex items-center justify-center gap-1.5"
+                      title="Ouvre ONOFF Web App dans un nouvel onglet + copie le numéro dans le presse-papier. Tu n'as plus qu'à coller (Cmd+V) dans le composeur ONOFF."
+                    >
+                      📞 Appeler avec ONOFF
+                      <span className="text-[9px] font-normal opacity-80">(Web App)</span>
+                    </button>
+                  )}
                 </div>
               )}
 
