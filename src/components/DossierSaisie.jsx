@@ -2540,9 +2540,28 @@ export default function DossierSaisie({ authUser, onLogout }) {
               <p className="text-slate-500 mt-1">Créez vos dossiers d'installation en un clin d'œil</p>
             </div>
             <div className="flex gap-2 flex-wrap items-center">
-              {/* Bouton recherche supprimé — doublon avec la barre Rechercher
-                  ci-dessous. Le raccourci Ctrl+K reste fonctionnel via le
-                  handler keydown au niveau App. */}
+              {/* 🏢 Sélecteur société — placé avant le badge utilisateur pour
+                  qu'on choisisse SA marque avant de regarder qui on est */}
+              {societes.length > 1 && (
+                <>
+                  <button
+                    onClick={() => setActiveSociete('')}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${!activeSociete ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
+                    title="Voir tous les dossiers (toutes sociétés)"
+                  >
+                    👀 Toutes
+                  </button>
+                  {societes.map(s => (
+                    <SocieteBadge
+                      key={s.id}
+                      societe={s}
+                      variant="large"
+                      active={activeSociete === s.id}
+                      onClick={() => setActiveSociete(s.id)}
+                    />
+                  ))}
+                </>
+              )}
               {/* Badge utilisateur connecté (read-only — identité fournie par Supabase) */}
               {currentUser && (() => {
                 const roleMeta = {
@@ -2608,28 +2627,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
               </button>
             </div>
           </div>
-
-          {/* 🏢 Sélecteur société — visible si plusieurs sociétés sont configurées */}
-          {societes.length > 1 && (
-            <div className="flex items-center gap-2 mb-3 flex-wrap">
-              <span className="text-xs font-bold text-slate-500 uppercase">🏢 Société :</span>
-              <button
-                onClick={() => setActiveSociete('')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all ${!activeSociete ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'}`}
-              >
-                👀 Toutes
-              </button>
-              {societes.map(s => (
-                <SocieteBadge
-                  key={s.id}
-                  societe={s}
-                  variant="large"
-                  active={activeSociete === s.id}
-                  onClick={() => setActiveSociete(s.id)}
-                />
-              ))}
-            </div>
-          )}
 
           {/* Onglets — selon permissions du rôle actif */}
           <div className="flex gap-2 mb-3 bg-white rounded-2xl p-1.5 shadow-sm border border-violet-100 w-fit flex-wrap">
