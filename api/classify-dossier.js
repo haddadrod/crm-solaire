@@ -101,8 +101,14 @@ function buildClassifySchema(availableSocietes = []) {
             pageStart: { type: 'integer', description: 'Première page (1-indexée)' },
             pageEnd:   { type: 'integer', description: 'Dernière page (1-indexée, incluse)' },
             confiance: { type: 'string', enum: ['haute', 'moyenne', 'faible'], description: 'Niveau de certitude' },
+            fraudRisk: { type: 'string', enum: ['low', 'medium', 'high'], description: "Niveau de suspicion de fraude sur ce document. 'low' = rien d'anormal. 'medium' = quelques détails douteux à vérifier. 'high' = forte suspicion de falsification. Voir les fraudFlags pour le détail." },
+            fraudFlags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: "Liste des détails suspects relevés sur ce document, en français court (ex : 'Fonts différentes entre les colonnes salaire brut et net', 'SIRET semble inventé (ne respecte pas la clé Luhn)', 'Signature identique au bon de commande mais à la pixel près = copier-coller', 'Pas de QR code mon-bulletin-de-paie.fr alors que l'employeur est censé en mettre'). Vide si rien à signaler."
+            },
           },
-          required: ['category', 'label', 'pageStart', 'pageEnd', 'confiance'],
+          required: ['category', 'label', 'pageStart', 'pageEnd', 'confiance', 'fraudRisk', 'fraudFlags'],
           additionalProperties: false,
         },
       },
@@ -138,6 +144,21 @@ Ta mission :
    - autre           : tout autre document
 
 3. Donne un "label" court et humain pour chaque section (ex: "Taxe foncière 2025", "Titre de séjour Yabie Alexandre").
+3bis. 🚨 ANALYSE ANTI-FRAUDE — pour CHAQUE section, tu évalues fraudRisk (low/medium/high) et listes les fraudFlags concrets.
+
+Signaux à chercher selon le type de document :
+- **bulletin_paie** : fonts différentes entre les colonnes (montants vs labels) ; chiffres mal alignés ; SIRET avec format invalide (14 chiffres, clé Luhn) ; pas de logo employeur reconnaissable ; pas de QR code "mon-bulletin-de-paie.fr" alors que l'employeur est gros ; montants nets/bruts qui ne collent pas aux taux URSSAF/CSG-CRDS standards (~23% de charges sur le brut) ; date de paiement absente ou bizarre ; cumuls annuels incohérents
+- **piece_identite** : fond non conforme au template officiel CNI/titre de séjour français ; police de la zone MRZ (lecture machine en bas) non monospace ou avec espaces ; photo qui ne ressemble pas à du print officiel (artefacts de compression JPEG forts) ; signature pixelisée ou trop nette
+- **avis_imposition / taxe_fonciere** : pas de logo "République Française" / "DGFiP" ; pas de numéro fiscal à 13 chiffres ; police non conforme ; absence du référence d'avis / pas de date d'établissement
+- **bon_commande / mandat** : signature copier-collée identique entre 2 documents (pixel à pixel) ; date manuscrite qui ne correspond pas au reste du dossier
+- **Tous documents** : zones blanches qui ne respectent pas la grille du document (sign d'effacement) ; ombres incohérentes ; couleurs de fond légèrement différentes par zones (cache d'un copier-coller)
+
+Échelle :
+- fraudRisk='low' : rien à signaler, document standard
+- fraudRisk='medium' : quelques détails à vérifier (mentionner dans fraudFlags pour qu'un humain regarde)
+- fraudRisk='high' : forte suspicion de falsification (≥2 indices concrets ; ou 1 indice très flagrant comme une signature identique pixel à pixel entre 2 docs)
+
+⚠️ Sois HONNÊTE : si tu ne vois rien d'anormal, mets fraudRisk='low' et fraudFlags=[]. NE PAS inventer des indices pour faire bien. Un faux positif sur un client honnête est pire qu'un faux négatif.
 4. Si tu trouves un bon de commande, extrais aussi ses champs principaux pour pré-remplir le formulaire :
    - Identité client : nom, prénom, adresse, code postal, ville, téléphone, email
    - Vente : produit, puissance (Wc), montantTTC, montantHT
@@ -258,7 +279,45 @@ export default async function handler(req, res) {
     return json(res, 502, { error: `Téléchargement bucket échoué : ${e.message}` });
   }
 
-  // 2) Appel à Claude — découpe en chunks si le PDF dépasse la limite Anthropic
+  // 2) Analyse métadonnées PDF avant l'IA — détecte les fichiers édités
+  //    après création (Photoshop, Acrobat, etc.) qui sont souvent des fraudes.
+  //    On utilise pdf-lib pour lire les métadonnées (producer, dates, version).
+  let pdfMeta = null;
+  try {
+    const sourceBytes = Buffer.from(pdfBase64, 'base64');
+    const sourceDoc = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
+    const created = sourceDoc.getCreationDate();
+    const modified = sourceDoc.getModificationDate();
+    const producer = sourceDoc.getProducer() || '';
+    const creator = sourceDoc.getCreator() || '';
+    const title = sourceDoc.getTitle() || '';
+    const author = sourceDoc.getAuthor() || '';
+    const flags = [];
+    // Signal #1 : date de modification très postérieure à la création
+    if (created && modified) {
+      const deltaMs = modified.getTime() - created.getTime();
+      if (deltaMs > 24 * 60 * 60 * 1000) {
+        flags.push(`PDF modifié ${Math.round(deltaMs / (24 * 60 * 60 * 1000))} jour(s) après sa création`);
+      }
+    }
+    // Signal #2 : producteur connu pour l'édition (Photoshop, Acrobat Pro édit, Inkscape)
+    const editTools = /photoshop|illustrator|acrobat pro|gimp|inkscape|libreoffice|microsoft word|word/i;
+    if (editTools.test(producer) || editTools.test(creator)) {
+      flags.push(`Logiciel d'édition détecté dans les métadonnées : ${creator || producer}`);
+    }
+    pdfMeta = {
+      created: created?.toISOString() || null,
+      modified: modified?.toISOString() || null,
+      producer, creator, title, author,
+      flags,
+    };
+  } catch (e) {
+    // Si pdf-lib n'arrive pas à lire les métadonnées (PDF corrompu / chiffré),
+    // on n'échoue pas l'analyse globale, on note juste qu'il n'y a pas de méta.
+    pdfMeta = { error: e.message };
+  }
+
+  // 3) Appel à Claude — découpe en chunks si le PDF dépasse la limite Anthropic
   try {
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
     const sourceBytes = Buffer.from(pdfBase64, 'base64');
@@ -375,6 +434,9 @@ export default async function handler(req, res) {
       }
     }
 
+    // Ajoute les métadonnées PDF (lues côté serveur) au payload retourné.
+    // Le front les affichera comme un signal anti-fraude global du dossier.
+    if (pdfMeta) parsed.pdfMeta = pdfMeta;
     return json(res, 200, { data: parsed });
   } catch (e) {
     const msg = e?.message || 'Erreur IA';
