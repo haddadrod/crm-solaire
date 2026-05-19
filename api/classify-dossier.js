@@ -99,8 +99,16 @@ function buildClassifySchema(availableSocietes = []) {
     montantHT: { type: 'number', description: 'Montant HT en euros' },
     financement: { type: 'string', description: 'Organisme bancaire/financier (PROJEXIO, SOFINCO, DOMOFINANCE, COMPTANT, CETELEM, FINANCO, FRANFINANCE...). REGARDE le bloc "PAIEMENT AVEC FINANCEMENT" ou "ORGANISME BANCAIRE" sur le bon de commande. Si comptant, mets "COMPTANT".' },
     dateSignature: { type: 'string', description: 'Date de signature AAAA-MM-JJ' },
+    // 🏦 Détails du prêt (bloc "PAIEMENT AVEC FINANCEMENT" du BC). 0/vide si comptant.
+    montantPret: { type: 'number', description: 'Montant du prêt en euros (champ "Montant du prêt"). 0 si comptant ou non renseigné.' },
+    reportMois: { type: 'number', description: 'Report en mois (champ "Report : X mois"). 0 si non renseigné.' },
+    tauxDebiteur: { type: 'number', description: 'Taux débiteur fixe en % (ex 6.39). 0 si non renseigné.' },
+    taeg: { type: 'number', description: 'TAEG (Taux annuel effectif global) en % (ex 6.58). 0 si non renseigné.' },
+    nbEcheances: { type: 'number', description: "Nombre d'échéances (ex 180). 0 si non renseigné." },
+    montantEcheance: { type: 'number', description: "Montant d'une échéance en euros (ex 312). 0 si non renseigné." },
+    periodicite: { type: 'string', enum: ['', 'Mensuelle', 'Bimestrielle', 'Trimestrielle', 'Semestrielle', 'Annuelle'], description: "Périodicité des échéances. Vide si non renseigné — souvent 'Mensuelle' par défaut sur les BC." },
   };
-  const required = ['nom', 'prenom', 'adresse', 'codePostal', 'ville', 'telephone', 'email', 'produits', 'produit', 'puissance', 'montantTTC', 'montantHT', 'financement', 'dateSignature'];
+  const required = ['nom', 'prenom', 'adresse', 'codePostal', 'ville', 'telephone', 'email', 'produits', 'produit', 'puissance', 'montantTTC', 'montantHT', 'financement', 'dateSignature', 'montantPret', 'reportMois', 'tauxDebiteur', 'taeg', 'nbEcheances', 'montantEcheance', 'periodicite'];
   if (socIds.length > 0) {
     bcProps.societe = {
       type: 'string',
