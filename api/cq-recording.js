@@ -11,7 +11,7 @@
 //
 // Côté ONOFF (admin.onoffbusiness.com) :
 //   1. Activer "Enregistrement des appels" pour la ligne CQ
-//   2. Aller dans Webhooks → ajouter https://<vercel-domain>/api/onoff-webhook
+//   2. Aller dans Webhooks → ajouter https://<vercel-domain>/api/cq-recording
 //   3. Header : Authorization: Bearer <ONOFF_WEBHOOK_TOKEN>
 //
 // Payload attendu (cf. docs.onoffbusiness.com/webhook/reference/send-call-log) :
@@ -72,7 +72,7 @@ export default async function handler(req, res) {
   // vérifier que l'endpoint existe avant d'enregistrer le webhook. On répond
   // 200 OK sans auth — il n'y a aucun traitement, juste un "je suis là".
   if (req.method === 'GET' || req.method === 'HEAD') {
-    return json(res, 200, { ok: true, endpoint: 'onoff-webhook', accepts: 'POST' });
+    return json(res, 200, { ok: true, endpoint: 'cq-recording', accepts: 'POST' });
   }
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'GET, HEAD, POST, OPTIONS');
