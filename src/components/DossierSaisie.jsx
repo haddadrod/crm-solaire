@@ -1271,11 +1271,32 @@ export default function DossierSaisie({ authUser, onLogout }) {
           if (Array.isArray(arr)) tombstones = new Set(arr);
         } catch (e) {}
 
+        // Lecture des clés de backup déjà dismissées (pour ne plus alerter dessus)
+        let dismissedKeys = new Set();
+        try {
+          const dRow = await window.storage.get('dossiers-backup-dismissed');
+          const arr = JSON.parse(dRow?.value || '[]');
+          if (Array.isArray(arr)) dismissedKeys = new Set(arr);
+        } catch (e) {}
+
         const currentIds = new Set(dossiers.map(d => d.localId).filter(Boolean));
         const list = await window.storage.list('dossiers-data-bk-');
         const keys = (list?.keys || []).sort().reverse().slice(0, 20); // 20 plus récents
+        // ⏱️ Cap temporel : on n'alerte que sur les backups < 30 min.
+        // Au-delà, c'est de l'historique, pas un crash récent.
+        const now = Date.now();
+        const MAX_AGE_MS = 30 * 60 * 1000;
 
         for (const k of keys) {
+          // Skip si déjà dismissé
+          if (dismissedKeys.has(k)) continue;
+          // Skip si backup trop vieux
+          const ts = k.replace('dossiers-data-bk-', '');
+          if (ts.length >= 12) {
+            const dateStr = `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}T${ts.slice(8, 10)}:${ts.slice(10, 12)}:00Z`;
+            const backupTime = new Date(dateStr).getTime();
+            if (!isNaN(backupTime) && (now - backupTime) > MAX_AGE_MS) continue;
+          }
           const row = await window.storage.get(k);
           if (!row?.value) continue;
           let arr;
@@ -1309,9 +1330,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
               setDossiers(arr);
               lastWrittenDossiersJson.current = row.value;
             } else {
-              // L'user a refusé → il considère que ces dossiers sont
-              // intentionnellement absents. Tombstone-les pour ne plus
-              // re-prompter à chaque reload.
+              // L'user a refusé → 2 garde-fous pour ne plus l'embêter :
+              // 1) Tombstone les localIds manquants (suppressions assumées)
+              // 2) Marque CETTE clé de backup comme dismissée (au cas où elle
+              //    contient d'autres dossiers déjà supprimés/sans localId)
               try {
                 const newTombs = new Set([...tombstones]);
                 reallyMissing.forEach(d => { if (d.localId) newTombs.add(d.localId); });
@@ -1319,6 +1341,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 const capped = arrTombs.length > 1000 ? arrTombs.slice(-1000) : arrTombs;
                 await window.storage.set('dossiers-deleted-tombstones', JSON.stringify(capped));
               } catch (e) { console.warn('[tombstone] dismiss save failed', e); }
+              try {
+                const newDismissed = new Set([...dismissedKeys, k]);
+                const arrD = [...newDismissed];
+                const capped = arrD.length > 500 ? arrD.slice(-500) : arrD;
+                await window.storage.set('dossiers-backup-dismissed', JSON.stringify(capped));
+              } catch (e) { console.warn('[backup-dismiss] save failed', e); }
             }
             return; // on arrête après le 1er backup où on a un soupçon réel
           }
