@@ -60,6 +60,10 @@ const CATEGORIES = [
 
 // Construit dynamiquement le schéma avec la liste des sociétés disponibles.
 // Si availableSocietes est vide, le champ 'societe' n'est pas demandé.
+// IDs de produits que le CRM connaît (synchro avec PRODUITS_DEFAULT du front).
+// L'IA renvoie ses détections avec ces IDs exacts pour que le front les mappe.
+const PRODUIT_IDS = ['PANNEAU_SOLAIRE', 'PERGOLA', 'POMPE_A_CHALEUR', 'CLIMATISATION', 'BALLON_THERMO', 'BATTERIE', 'ISOLATION', 'VMC', 'AUTRE'];
+
 function buildClassifySchema(availableSocietes = []) {
   const socIds = availableSocietes.map(s => s.id).filter(Boolean);
   const bcProps = {
@@ -70,14 +74,33 @@ function buildClassifySchema(availableSocietes = []) {
     ville: { type: 'string', description: 'Ville' },
     telephone: { type: 'string', description: 'Téléphone' },
     email: { type: 'string', description: 'Email si présent, sinon vide' },
-    produit: { type: 'string', description: 'Ce qui a été vendu (ex: panneaux solaires)' },
-    puissance: { type: 'string', description: 'Puissance en Wc si panneaux solaires, juste le nombre' },
+    // Liste des produits/équipements présents sur le bon de commande. Un dossier
+    // peut avoir plusieurs produits (ex : panneaux solaires + pergola + ballon).
+    produits: {
+      type: 'array',
+      description: "Liste de TOUS les produits/équipements présents sur le bon de commande. Un dossier peut combiner plusieurs équipements (ex : panneaux solaires + pergola). Pour chaque ligne du tableau de prestations, ajoute une entrée.",
+      items: {
+        type: 'object',
+        properties: {
+          type: { type: 'string', enum: PRODUIT_IDS, description: `Type de produit parmi : ${PRODUIT_IDS.join(', ')}. Pour la pergola (avec ou sans solaire), utilise 'PERGOLA'.` },
+          label: { type: 'string', description: "Libellé tel que présent sur le BC (ex : 'Pergola bioclimatique 4x3m')." },
+          puissance: { type: 'number', description: "Puissance en Wc — UNIQUEMENT pour PANNEAU_SOLAIRE et PERGOLA solaire. Sinon 0." },
+          quantite: { type: 'number', description: "Quantité (1 par défaut). 6 pour 6 climatisations." },
+        },
+        required: ['type', 'label', 'puissance', 'quantite'],
+        additionalProperties: false,
+      },
+    },
+    // ⚠️ Champs legacy : conserve produit (string) + puissance (string) pour la
+    // compatibilité avec l'ancien front. Le front moderne utilise 'produits' (array).
+    produit: { type: 'string', description: '[LEGACY] Produit principal en texte libre. Mets le 1er produit de la liste produits[].' },
+    puissance: { type: 'string', description: '[LEGACY] Puissance en Wc du 1er produit solaire, juste le nombre. Sinon vide.' },
     montantTTC: { type: 'number', description: 'Montant total TTC en euros' },
     montantHT: { type: 'number', description: 'Montant HT en euros' },
     financement: { type: 'string', description: 'Organisme bancaire/financier (PROJEXIO, SOFINCO, DOMOFINANCE, COMPTANT, CETELEM, FINANCO, FRANFINANCE...). REGARDE le bloc "PAIEMENT AVEC FINANCEMENT" ou "ORGANISME BANCAIRE" sur le bon de commande. Si comptant, mets "COMPTANT".' },
     dateSignature: { type: 'string', description: 'Date de signature AAAA-MM-JJ' },
   };
-  const required = ['nom', 'prenom', 'adresse', 'codePostal', 'ville', 'telephone', 'email', 'produit', 'puissance', 'montantTTC', 'montantHT', 'financement', 'dateSignature'];
+  const required = ['nom', 'prenom', 'adresse', 'codePostal', 'ville', 'telephone', 'email', 'produits', 'produit', 'puissance', 'montantTTC', 'montantHT', 'financement', 'dateSignature'];
   if (socIds.length > 0) {
     bcProps.societe = {
       type: 'string',

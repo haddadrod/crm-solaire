@@ -94,6 +94,7 @@ const PUISSANCES_PRINCIPALES = [2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 
 // La liste est modifiable dans Réglages → Produits (ajouter/renommer/supprimer).
 const PRODUITS_DEFAULT = [
   { id: 'PANNEAU_SOLAIRE', label: 'Panneaux solaires',      emoji: '☀️', autoTarif: true },
+  { id: 'PERGOLA',         label: 'Pergola',                emoji: '🏡', autoTarif: false },
   { id: 'POMPE_A_CHALEUR', label: 'Pompe à chaleur',        emoji: '🌡️', autoTarif: false },
   { id: 'CLIMATISATION',   label: 'Climatisation',          emoji: '❄️', autoTarif: false },
   { id: 'BALLON_THERMO',   label: 'Ballon thermodynamique', emoji: '🚿', autoTarif: false },
@@ -1250,29 +1251,78 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
   // 🚨 Détection de perte de données : au chargement, on compare le nombre
   // de dossiers actuels avec les snapshots récents. Si un backup contient
-  // PLUS de dossiers que l'état actuel, c'est suspect (probable écrasement
-  // involontaire). On alerte et on propose la restauration en 1 clic.
+  // des dossiers qu'on n'a PLUS dans l'état actuel ET qui ne sont PAS dans
+  // la liste des suppressions volontaires (tombstones) → suspect, on alerte.
+  // Évite le faux positif quand l'admin a juste supprimé volontairement.
+  //
+  // ⚠️ ADMIN UNIQUEMENT : seul l'admin peut supprimer/restaurer des dossiers,
+  // donc seul lui doit être prompté. Les autres rôles ne voient même pas
+  // l'alerte (sinon ils risqueraient de tombstoner par erreur des dossiers
+  // qu'ils ne peuvent pas restaurer).
   useEffect(() => {
     if (loading) return;
+    if (!isAdmin) return;
     (async () => {
       try {
+        // Lecture des tombstones (localIds explicitement supprimés)
+        let tombstones = new Set();
+        try {
+          const tRow = await window.storage.get('dossiers-deleted-tombstones');
+          const arr = JSON.parse(tRow?.value || '[]');
+          if (Array.isArray(arr)) tombstones = new Set(arr);
+        } catch (e) {}
+
+        // Lecture des clés de backup déjà dismissées (pour ne plus alerter dessus)
+        let dismissedKeys = new Set();
+        try {
+          const dRow = await window.storage.get('dossiers-backup-dismissed');
+          const arr = JSON.parse(dRow?.value || '[]');
+          if (Array.isArray(arr)) dismissedKeys = new Set(arr);
+        } catch (e) {}
+
+        const currentIds = new Set(dossiers.map(d => d.localId).filter(Boolean));
         const list = await window.storage.list('dossiers-data-bk-');
         const keys = (list?.keys || []).sort().reverse().slice(0, 20); // 20 plus récents
+        // ⏱️ Cap temporel : on n'alerte que sur les backups < 30 min.
+        // Au-delà, c'est de l'historique, pas un crash récent.
+        const now = Date.now();
+        const MAX_AGE_MS = 30 * 60 * 1000;
+
         for (const k of keys) {
+          // Skip si déjà dismissé
+          if (dismissedKeys.has(k)) continue;
+          // Skip si backup trop vieux
+          const ts = k.replace('dossiers-data-bk-', '');
+          if (ts.length >= 12) {
+            const dateStr = `${ts.slice(0, 4)}-${ts.slice(4, 6)}-${ts.slice(6, 8)}T${ts.slice(8, 10)}:${ts.slice(10, 12)}:00Z`;
+            const backupTime = new Date(dateStr).getTime();
+            if (!isNaN(backupTime) && (now - backupTime) > MAX_AGE_MS) continue;
+          }
           const row = await window.storage.get(k);
           if (!row?.value) continue;
           let arr;
           try { arr = JSON.parse(row.value); } catch (e) { continue; }
           if (!Array.isArray(arr)) continue;
-          if (arr.length > dossiers.length) {
-            const diff = arr.length - dossiers.length;
+
+          // Cherche les dossiers présents dans le backup mais ABSENTS de l'état
+          // courant ET non tombstoneés (donc pas supprimés volontairement).
+          const reallyMissing = arr.filter(d => {
+            const lid = d?.localId;
+            if (!lid) return false; // sans localId, on ne peut rien tracer
+            if (currentIds.has(lid)) return false; // toujours là
+            if (tombstones.has(lid)) return false; // suppression volontaire
+            return true;
+          });
+
+          if (reallyMissing.length > 0) {
             const ts = k.replace('dossiers-data-bk-', '');
             const dt = `${ts.slice(6, 8)}/${ts.slice(4, 6)}/${ts.slice(0, 4)} à ${ts.slice(8, 10)}:${ts.slice(10, 12)} UTC`;
+            const noms = reallyMissing.slice(0, 3).map(d => `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)').join(', ');
+            const extra = reallyMissing.length > 3 ? ` +${reallyMissing.length - 3}` : '';
             const restore = window.confirm(
               `⚠️ ALERTE PERTE DE DONNÉES\n\n` +
-              `Un backup du ${dt} contient ${arr.length} dossiers, ` +
-              `mais ton CRM n'en affiche que ${dossiers.length} actuellement ` +
-              `(manque ${diff} dossier${diff > 1 ? 's' : ''}).\n\n` +
+              `Backup du ${dt} : ${reallyMissing.length} dossier${reallyMissing.length > 1 ? 's' : ''} manquant${reallyMissing.length > 1 ? 's' : ''} (${noms}${extra}).\n\n` +
+              `Ces dossiers n'ont PAS été supprimés volontairement (sinon ils seraient dans la liste des tombstones).\n\n` +
               `Veux-tu RESTAURER ce backup ?\n\n` +
               `(Tes données actuelles seront remplacées par celles du backup. ` +
               `Si tu refuses, le CRM continue avec ${dossiers.length} dossiers.)`
@@ -1280,13 +1330,31 @@ export default function DossierSaisie({ authUser, onLogout }) {
             if (restore) {
               setDossiers(arr);
               lastWrittenDossiersJson.current = row.value;
+            } else {
+              // L'user a refusé → 2 garde-fous pour ne plus l'embêter :
+              // 1) Tombstone les localIds manquants (suppressions assumées)
+              // 2) Marque CETTE clé de backup comme dismissée (au cas où elle
+              //    contient d'autres dossiers déjà supprimés/sans localId)
+              try {
+                const newTombs = new Set([...tombstones]);
+                reallyMissing.forEach(d => { if (d.localId) newTombs.add(d.localId); });
+                const arrTombs = [...newTombs];
+                const capped = arrTombs.length > 1000 ? arrTombs.slice(-1000) : arrTombs;
+                await window.storage.set('dossiers-deleted-tombstones', JSON.stringify(capped));
+              } catch (e) { console.warn('[tombstone] dismiss save failed', e); }
+              try {
+                const newDismissed = new Set([...dismissedKeys, k]);
+                const arrD = [...newDismissed];
+                const capped = arrD.length > 500 ? arrD.slice(-500) : arrD;
+                await window.storage.set('dossiers-backup-dismissed', JSON.stringify(capped));
+              } catch (e) { console.warn('[backup-dismiss] save failed', e); }
             }
-            return; // on arrête après le 1er backup avec plus de dossiers
+            return; // on arrête après le 1er backup où on a un soupçon réel
           }
         }
       } catch (e) { console.warn('[safety] backup check failed', e); }
     })();
-  }, [loading]);
+  }, [loading, isAdmin]);
 
   // 🔄 Synchronisation temps réel entre appareils — quand un autre device
   // écrit dans dossiers-data, on rafraîchit notre état local pour rester à
@@ -1775,6 +1843,21 @@ export default function DossierSaisie({ authUser, onLogout }) {
         try { await window.storage.delete(`file:${id}`); } catch (e) {}
       }
     }
+    // 🪦 Tombstone : on persiste le localId du dossier explicitement supprimé
+    // pour que la détection de perte de données ne le considère pas comme
+    // un dossier 'manquant' aux prochains démarrages. Sinon faux positif :
+    // 'tu as 10 dossiers mais le backup en a 11' alors que le user a juste
+    // supprimé volontairement.
+    try {
+      const existing = await window.storage.get('dossiers-deleted-tombstones');
+      let list = [];
+      try { list = JSON.parse(existing?.value || '[]'); } catch (e) {}
+      if (!Array.isArray(list)) list = [];
+      if (!list.includes(id)) list.push(id);
+      // Cap à 1000 pour pas que la liste grossisse à l'infini
+      if (list.length > 1000) list = list.slice(-1000);
+      await window.storage.set('dossiers-deleted-tombstones', JSON.stringify(list));
+    } catch (e) { console.warn('[tombstone] save failed', e); }
     setDossiers(dossiers.filter(x => x.localId !== id));
   };
 
@@ -7390,19 +7473,28 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
         const ht = parseFloat(d.montantHT);
         if (!isNaN(ht) && ht > 0) next.montantHtCustom = String(ht);
-        const p = parseInt(String(d.puissance || '').replace(/\D/g, ''), 10);
-        if (p > 0) {
-          const prods = (prev.produits && prev.produits.length > 0)
-            ? [...prev.produits]
-            : [{ type: 'PANNEAU_SOLAIRE', puissance: 0, description: '', quantite: 1 }];
-          // Si une puissance en Wc est détectée et qu'aucun type de produit
-          // n'a été choisi manuellement, on bascule sur PANNEAU_SOLAIRE.
-          prods[0] = {
-            ...prods[0],
-            type: prods[0].type || 'PANNEAU_SOLAIRE',
-            puissance: p,
-          };
-          next.produits = prods;
+        // 📦 Multi-produits : si l'IA renvoie un array 'produits', on l'utilise
+        // tel quel. Sinon fallback sur les champs legacy 'produit' + 'puissance'.
+        const VALID_TYPES = new Set(['PANNEAU_SOLAIRE', 'PERGOLA', 'POMPE_A_CHALEUR', 'CLIMATISATION', 'BALLON_THERMO', 'BATTERIE', 'ISOLATION', 'VMC', 'AUTRE']);
+        if (Array.isArray(d.produits) && d.produits.length > 0) {
+          next.produits = d.produits
+            .filter(p => p && VALID_TYPES.has(p.type))
+            .map(p => ({
+              type: p.type,
+              puissance: parseInt(p.puissance) || 0,
+              description: p.label || '',
+              quantite: parseInt(p.quantite) || 1,
+            }));
+        } else {
+          // Fallback legacy : 1 seul produit déduit de 'puissance'
+          const p = parseInt(String(d.puissance || '').replace(/\D/g, ''), 10);
+          if (p > 0) {
+            const prods = (prev.produits && prev.produits.length > 0)
+              ? [...prev.produits]
+              : [{ type: 'PANNEAU_SOLAIRE', puissance: 0, description: '', quantite: 1 }];
+            prods[0] = { ...prods[0], type: prods[0].type || 'PANNEAU_SOLAIRE', puissance: p };
+            next.produits = prods;
+          }
         }
         return next;
       });
@@ -7502,13 +7594,26 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
         const ht = parseFloat(d.montantHT);
         if (!isNaN(ht) && ht > 0) next.montantHtCustom = String(ht);
-        const p = parseInt(String(d.puissance || '').replace(/\D/g, ''), 10);
-        if (p > 0) {
-          const prods = (prev.produits && prev.produits.length > 0)
-            ? [...prev.produits]
-            : [{ type: 'PANNEAU_SOLAIRE', puissance: 0, description: '', quantite: 1 }];
-          prods[0] = { ...prods[0], type: prods[0].type || 'PANNEAU_SOLAIRE', puissance: p };
-          next.produits = prods;
+        // 📦 Multi-produits : utilise d.produits[] si présent
+        const VALID_TYPES = new Set(['PANNEAU_SOLAIRE', 'PERGOLA', 'POMPE_A_CHALEUR', 'CLIMATISATION', 'BALLON_THERMO', 'BATTERIE', 'ISOLATION', 'VMC', 'AUTRE']);
+        if (Array.isArray(d.produits) && d.produits.length > 0) {
+          next.produits = d.produits
+            .filter(p => p && VALID_TYPES.has(p.type))
+            .map(p => ({
+              type: p.type,
+              puissance: parseInt(p.puissance) || 0,
+              description: p.label || '',
+              quantite: parseInt(p.quantite) || 1,
+            }));
+        } else {
+          const p = parseInt(String(d.puissance || '').replace(/\D/g, ''), 10);
+          if (p > 0) {
+            const prods = (prev.produits && prev.produits.length > 0)
+              ? [...prev.produits]
+              : [{ type: 'PANNEAU_SOLAIRE', puissance: 0, description: '', quantite: 1 }];
+            prods[0] = { ...prods[0], type: prods[0].type || 'PANNEAU_SOLAIRE', puissance: p };
+            next.produits = prods;
+          }
         }
         return next;
       });
