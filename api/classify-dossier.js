@@ -101,8 +101,14 @@ function buildClassifySchema(availableSocietes = []) {
             pageStart: { type: 'integer', description: 'Première page (1-indexée)' },
             pageEnd:   { type: 'integer', description: 'Dernière page (1-indexée, incluse)' },
             confiance: { type: 'string', enum: ['haute', 'moyenne', 'faible'], description: 'Niveau de certitude' },
+            fraudRisk: { type: 'string', enum: ['low', 'medium', 'high'], description: "Niveau de suspicion de fraude sur ce document. 'low' = rien d'anormal. 'medium' = quelques détails douteux à vérifier. 'high' = forte suspicion de falsification. Voir les fraudFlags pour le détail." },
+            fraudFlags: {
+              type: 'array',
+              items: { type: 'string' },
+              description: "Liste des détails suspects relevés sur ce document, en français court (ex : 'Fonts différentes entre les colonnes salaire brut et net', 'SIRET semble inventé (ne respecte pas la clé Luhn)', 'Signature identique au bon de commande mais à la pixel près = copier-coller', 'Pas de QR code mon-bulletin-de-paie.fr alors que l'employeur est censé en mettre'). Vide si rien à signaler."
+            },
           },
-          required: ['category', 'label', 'pageStart', 'pageEnd', 'confiance'],
+          required: ['category', 'label', 'pageStart', 'pageEnd', 'confiance', 'fraudRisk', 'fraudFlags'],
           additionalProperties: false,
         },
       },
@@ -138,6 +144,58 @@ Ta mission :
    - autre           : tout autre document
 
 3. Donne un "label" court et humain pour chaque section (ex: "Taxe foncière 2025", "Titre de séjour Yabie Alexandre").
+3bis. 🚨 ANALYSE ANTI-FRAUDE — pour CHAQUE section, tu évalues fraudRisk (low/medium/high) et listes les fraudFlags concrets.
+
+🎯 OBJECTIF PRINCIPAL : détecter les MODIFICATIONS LOCALES de vrais documents (un bulletin de paie où on a juste retouché le montant net, un avis d'impôt où on a changé le revenu fiscal de référence, un justif de domicile où on a remplacé l'adresse, une signature copiée d'un doc vers un autre). On NE cherche PAS des faux complets (papier inventé) — ça arrive presque jamais.
+
+Indices CONCRETS de modification locale à chercher :
+
+- **bulletin_paie** (le plus modifié) :
+  • Le MONTANT NET en bas et le MONTANT BRUT en haut ne suivent pas les ratios standards français (charges salariales ~22-25% du brut) → flag si écart > 5%
+  • UN chiffre dans le tableau utilise une police différente du reste (signe qu'il a été retapé par-dessus)
+  • Alignement vertical d'un nombre cassé par rapport aux autres lignes
+  • Cumul annuel ≠ somme des bulletins précédents si on en voit plusieurs
+  • Espacement irrégulier autour d'une valeur (signe d'effacement + retape)
+  • Zone légèrement plus blanche/grise autour d'un montant (cache d'un effacement)
+  • Logo employeur pixelisé alors que le reste est net (signe d'un copier-coller depuis un faux template)
+  • Pas de QR mon-bulletin-de-paie.fr ALORS QUE l'employeur est gros (Carrefour, La Poste, etc.)
+
+- **avis_imposition / taxe_fonciere** (souvent modifié sur le revenu/nb parts) :
+  • Le revenu fiscal de référence a une police différente des autres montants
+  • Le nombre de parts modifié (un "1" qui devient "2" — regarder les pixels)
+  • Décalage vertical / horizontal sur UN chiffre par rapport aux autres
+  • Référence d'avis avec espacement bizarre (insertion de caractères)
+  • Logo DGFiP ou Marianne ABSENT ou pixelisé
+
+- **justif_domicile** (modification de l'adresse pour cacher où ils habitent) :
+  • L'ADRESSE imprimée a une police différente du reste de la facture (EDF, Veolia, Orange, SFR ont une typo cohérente partout)
+  • Zone autour de l'adresse plus claire/foncée que le reste
+  • Le NOM ne matche pas la facture (mais l'adresse oui) — signe qu'on a changé un nom
+  • Date d'émission qui ne suit pas le format habituel du fournisseur
+  • Logo du fournisseur pixelisé alors que le reste est net
+
+- **bon_commande / mandat** (signature rajoutée par quelqu'un d'autre que le signataire) :
+  • Signature en pixel-pour-pixel identique à celle d'un autre doc du dossier → copier-coller (ALERTE 🔴)
+  • Signature ENTOURÉE d'un halo / contour blanc (signe d'un découpage Photoshop maladroit)
+  • Signature de qualité pixel TRÈS différente du reste du doc (résolution, anti-aliasing) → ajoutée séparément
+  • Encre/couleur de signature qui ne matche pas la stylo utilisé pour les autres champs manuscrits du doc
+  • Position de signature pas alignée avec la ligne de signature imprimée
+
+- **TOUS documents** (signaux génériques d'édition) :
+  • Zone rectangulaire blanche/grise visible (cache d'un effacement)
+  • Ombres absentes ou incohérentes sur certains éléments
+  • Compression JPEG plus forte sur UN zone (signe de re-save après modif)
+  • Couleur de fond légèrement différente sur une zone
+
+Échelle :
+- fraudRisk='low' : rien d'anormal, document standard et cohérent
+- fraudRisk='medium' : 1 indice qui mérite vérif humaine (sans être flagrant)
+- fraudRisk='high' : ≥2 indices concrets OU 1 indice très flagrant (signature pixel-identique entre 2 docs, font mismatch évident sur un montant)
+
+⚠️ HONNÊTETÉ ABSOLUE :
+- Si rien d'anormal → fraudRisk='low', fraudFlags=[]. NE PAS inventer des indices pour paraître utile.
+- Un faux positif sur un client honnête est pire qu'un faux négatif (la confiance du commercial dans l'outil s'effrite).
+- Cite TOUJOURS un détail précis (pas "ça a l'air bizarre"). Exemple bon : "Le montant 2450€ utilise une police Arial alors que les autres montants sont en Verdana." Exemple mauvais : "Le bulletin semble suspect."
 4. Si tu trouves un bon de commande, extrais aussi ses champs principaux pour pré-remplir le formulaire :
    - Identité client : nom, prénom, adresse, code postal, ville, téléphone, email
    - Vente : produit, puissance (Wc), montantTTC, montantHT
@@ -258,7 +316,62 @@ export default async function handler(req, res) {
     return json(res, 502, { error: `Téléchargement bucket échoué : ${e.message}` });
   }
 
-  // 2) Appel à Claude — découpe en chunks si le PDF dépasse la limite Anthropic
+  // 2) Analyse métadonnées PDF avant l'IA — détecte les fichiers édités
+  //    après création (Photoshop, Acrobat, etc.) qui sont souvent des fraudes.
+  //    On utilise pdf-lib pour lire les métadonnées (producer, dates, version).
+  let pdfMeta = null;
+  try {
+    const sourceBytes = Buffer.from(pdfBase64, 'base64');
+    const sourceDoc = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
+    const created = sourceDoc.getCreationDate();
+    const modified = sourceDoc.getModificationDate();
+    const producer = sourceDoc.getProducer() || '';
+    const creator = sourceDoc.getCreator() || '';
+    const title = sourceDoc.getTitle() || '';
+    const author = sourceDoc.getAuthor() || '';
+    const flags = [];
+
+    // Whitelist d'éditeurs légitimes connus en France (pas exhaustif).
+    // Si le producteur est dans cette liste → on baisse l'alerte sur les
+    // logiciels d'édition (par exemple PayFit peut produire via une lib qui
+    // ressemble à du Word — c'est OK).
+    const LEGIT_PRODUCERS = /silae|payfit|sage paie|cegid|adp|primobox|nibelis|kelio|talentsoft|adp gsi|dgfip|impots\.gouv|république française|finances publiques|edf|engie|veolia|suez|orange|sfr|bouygues|free|la poste|caf|cnam|cpam|urssaf|pôle emploi|france travail|carsat|ircantec|agirc-arrco/i;
+    const isLegit = LEGIT_PRODUCERS.test(producer) || LEGIT_PRODUCERS.test(creator) || LEGIT_PRODUCERS.test(author);
+
+    // Signal #1 : date de modification très postérieure à la création (> 1 jour)
+    if (created && modified) {
+      const deltaMs = modified.getTime() - created.getTime();
+      if (deltaMs > 24 * 60 * 60 * 1000) {
+        flags.push(`PDF modifié ${Math.round(deltaMs / (24 * 60 * 60 * 1000))} jour(s) après sa création (signe possible d'édition tardive)`);
+      }
+    }
+    // Signal #2 : producteur connu pour l'édition d'images / docs
+    // Mais : on ne flag PAS si l'éditeur est dans la whitelist (faux positif)
+    const editTools = /photoshop|illustrator|acrobat pro|gimp|inkscape|paint\.net|pixelmator|affinity|canva|sumatra|foxit phantompdf|nitro|smallpdf|ilovepdf|pdfescape/i;
+    if ((editTools.test(producer) || editTools.test(creator)) && !isLegit) {
+      flags.push(`Logiciel d'édition détecté : ${creator || producer}. Un vrai bulletin/avis officiel n'est jamais re-sauvé via ces outils.`);
+    }
+    // Signal #3 : Word / LibreOffice → suspect pour des documents officiels
+    // (bulletins, avis, justifs proviennent toujours de logiciels métier)
+    const officeTools = /microsoft word|libreoffice|openoffice|google docs|pages|wps office/i;
+    if ((officeTools.test(producer) || officeTools.test(creator)) && !isLegit) {
+      flags.push(`PDF produit via Word/LibreOffice : ${creator || producer}. Suspect pour un document officiel (bulletin de paie, avis d'impôt, facture utilitaire).`);
+    }
+
+    pdfMeta = {
+      created: created?.toISOString() || null,
+      modified: modified?.toISOString() || null,
+      producer, creator, title, author,
+      isLegitProducer: isLegit,
+      flags,
+    };
+  } catch (e) {
+    // Si pdf-lib n'arrive pas à lire les métadonnées (PDF corrompu / chiffré),
+    // on n'échoue pas l'analyse globale, on note juste qu'il n'y a pas de méta.
+    pdfMeta = { error: e.message };
+  }
+
+  // 3) Appel à Claude — découpe en chunks si le PDF dépasse la limite Anthropic
   try {
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
     const sourceBytes = Buffer.from(pdfBase64, 'base64');
@@ -375,6 +488,9 @@ export default async function handler(req, res) {
       }
     }
 
+    // Ajoute les métadonnées PDF (lues côté serveur) au payload retourné.
+    // Le front les affichera comme un signal anti-fraude global du dossier.
+    if (pdfMeta) parsed.pdfMeta = pdfMeta;
     return json(res, 200, { data: parsed });
   } catch (e) {
     const msg = e?.message || 'Erreur IA';

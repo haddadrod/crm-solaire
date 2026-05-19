@@ -1629,11 +1629,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
           montant: null,
           datePiece: null,
           note: s.note || `📂 ${s.label || ''}`,
+          // 🚨 Verdict anti-fraude IA persisté sur le document
+          fraudRisk: s.fraudRisk || 'low',
+          fraudFlags: Array.isArray(s.fraudFlags) ? s.fraudFlags : [],
         });
       });
-      // On retire scannedBon/scannedSections du dossier persisté (transport seulement)
+      // Persiste les métadonnées PDF anti-fraude sur le dossier (utile pour
+      // afficher 'PDF édité après création' dans la modale Documents).
+      if (dossier.pdfMeta) {
+        dossier.scanPdfMeta = dossier.pdfMeta;
+      }
+      // On retire scannedBon/scannedSections/pdfMeta du dossier persisté (transport seulement)
       delete dossier.scannedBon;
       delete dossier.scannedSections;
+      delete dossier.pdfMeta;
       setDossiers([{ ...dossier, localId: newLocalId, documents: initialDocs }, ...dossiers]);
       setCelebrating(true);
       setTimeout(() => setCelebrating(false), 1500);
@@ -2532,14 +2541,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
-          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 bg-clip-text text-transparent">
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap lg:flex-nowrap">
+            <div className="flex-shrink-0">
+              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 bg-clip-text text-transparent">
                 Saisie de dossiers ⚡
               </h1>
-              <p className="text-slate-500 mt-1">Créez vos dossiers d'installation en un clin d'œil</p>
+              <p className="text-slate-500 text-sm mt-0.5">Créez vos dossiers d'installation en un clin d'œil</p>
             </div>
-            <div className="flex gap-2 flex-wrap items-center">
+            <div className="flex gap-2 items-center flex-wrap lg:flex-nowrap flex-1 lg:justify-end">
               {/* 🏢 Sélecteur société — placé avant le badge utilisateur pour
                   qu'on choisisse SA marque avant de regarder qui on est */}
               {societes.length > 1 && (
@@ -3247,6 +3256,8 @@ function SocieteBadge({ societe, variant = 'inline', active = false, onClick = n
       : <span title={societe.label}>{societe.emoji}</span>;
   }
   // Mode large : bouton du sélecteur (header App, form)
+  // Si logo uploadé → on n'affiche QUE le logo (sans label) pour gagner de la
+  // place dans le header. Le logo parle de lui-même. Sans logo → emoji + label.
   if (variant === 'large') {
     const colorMap = {
       emerald: { active: 'bg-emerald-500 text-white border-emerald-600 shadow-md', inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
@@ -3257,15 +3268,24 @@ function SocieteBadge({ societe, variant = 'inline', active = false, onClick = n
       slate:   { active: 'bg-slate-700 text-white border-slate-800 shadow-md',     inactive: 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50' },
     };
     const c = (colorMap[societe.color] || colorMap.violet)[active ? 'active' : 'inactive'];
-    // Si logo : on garde un fond neutre pour ne pas le déformer visuellement
-    const finalCls = hasLogo
-      ? (active ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50')
-      : c;
+    if (hasLogo) {
+      // Logo-only : carré compact, sans label
+      const cls = active
+        ? 'bg-slate-700 border-slate-800 shadow-md ring-2 ring-slate-400'
+        : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300';
+      return (
+        <button
+          onClick={onClick}
+          title={societe.label}
+          className={`px-2 py-1.5 rounded-lg border-2 transition-all flex items-center justify-center min-w-[44px] ${cls}`}
+        >
+          <img src={societe.logoUrl} alt={societe.label} className="h-6 w-auto object-contain" />
+        </button>
+      );
+    }
     return (
-      <button onClick={onClick} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all flex items-center gap-1.5 ${finalCls}`}>
-        {hasLogo
-          ? <img src={societe.logoUrl} alt={societe.label} className="h-5 w-auto object-contain" />
-          : <span>{societe.emoji}</span>}
+      <button onClick={onClick} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all flex items-center gap-1.5 ${c}`}>
+        <span>{societe.emoji}</span>
         <span>{societe.label}</span>
       </button>
     );
@@ -4451,13 +4471,20 @@ function DropZone({ onFile, uploading, accent }) {
 
 function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats, compact = false }) {
   const [expanded, setExpanded] = useState(false);
+  const [showFraud, setShowFraud] = useState(false);
   const isImage = (doc.type || '').startsWith('image/');
   const isPdf = (doc.type || '') === 'application/pdf';
   const Icon = isImage ? FileImage : isPdf ? FileText : File;
   const iconColor = isImage ? 'from-pink-500 to-rose-500' : isPdf ? 'from-red-500 to-orange-500' : 'from-slate-400 to-slate-500';
+  // 🚨 Anti-fraude : niveau de risque détecté par l'IA (low/medium/high)
+  const fraudRisk = doc.fraudRisk || 'low';
+  const fraudFlags = Array.isArray(doc.fraudFlags) ? doc.fraudFlags : [];
+  const hasFraudFlags = fraudFlags.length > 0;
+  const fraudColor = fraudRisk === 'high' ? 'bg-rose-50 border-rose-300 text-rose-700' : fraudRisk === 'medium' ? 'bg-amber-50 border-amber-300 text-amber-700' : '';
+  const fraudIcon = fraudRisk === 'high' ? '🚨' : fraudRisk === 'medium' ? '⚠️' : '';
 
   return (
-    <div className="bg-white border border-slate-200 rounded-xl overflow-hidden hover:border-violet-300 transition-colors">
+    <div className={`bg-white border rounded-xl overflow-hidden hover:border-violet-300 transition-colors ${fraudRisk === 'high' ? 'border-rose-300' : fraudRisk === 'medium' ? 'border-amber-300' : 'border-slate-200'}`}>
       <div className={`flex items-center gap-2 ${compact ? 'p-2' : 'p-3 gap-3'}`}>
         <div className={`${compact ? 'w-7 h-7' : 'w-10 h-10'} bg-gradient-to-br ${iconColor} rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm`}>
           <Icon className={`${compact ? 'w-3.5 h-3.5' : 'w-5 h-5'} text-white`} />
@@ -4478,12 +4505,31 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
           )}
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
+          {hasFraudFlags && (
+            <button
+              onClick={() => setShowFraud(!showFraud)}
+              title={`${fraudRisk === 'high' ? 'Forte' : 'Légère'} suspicion de fraude — clique pour les détails`}
+              className={`${compact ? 'p-1' : 'p-1.5'} rounded-lg ${fraudRisk === 'high' ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
+            >
+              <span className={compact ? 'text-xs' : 'text-sm'}>{fraudIcon}</span>
+            </button>
+          )}
           <button onClick={onOpen} title="Ouvrir / aperçu" className={`${compact ? 'p-1' : 'p-1.5'} text-slate-500 hover:text-violet-600 hover:bg-violet-50 rounded-lg`}><Eye className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} /></button>
           <button onClick={onDownload} title="Télécharger" className={`${compact ? 'p-1' : 'p-1.5'} text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg`}><Download className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} /></button>
           <button onClick={() => setExpanded(!expanded)} title="Détails" className={`${compact ? 'p-1' : 'p-1.5'} rounded-lg ${expanded ? 'text-violet-600 bg-violet-50' : 'text-slate-500 hover:text-violet-600 hover:bg-violet-50'}`}><Edit3 className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} /></button>
           <button onClick={onDelete} title="Supprimer" className={`${compact ? 'p-1' : 'p-1.5'} text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg`}><Trash2 className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} /></button>
         </div>
       </div>
+      {/* Panneau anti-fraude — visible au clic du badge */}
+      {showFraud && hasFraudFlags && (
+        <div className={`px-3 py-2 border-t ${fraudColor}`}>
+          <div className="text-xs font-bold mb-1">{fraudIcon} Suspicion de fraude — {fraudRisk === 'high' ? 'forte' : 'à vérifier'}</div>
+          <ul className="text-[11px] space-y-0.5">
+            {fraudFlags.map((flag, i) => <li key={i}>• {flag}</li>)}
+          </ul>
+          <div className="text-[10px] italic mt-1 opacity-70">⚠️ L'IA peut se tromper — vérifie manuellement avant toute conclusion.</div>
+        </div>
+      )}
       {expanded && (
         <div className="bg-slate-50 px-3 py-3 border-t border-slate-200 space-y-2">
           {/* Sélecteur de sous-catégorie (uniquement pour les docs Client) */}
@@ -7424,14 +7470,21 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
           pageStart: ownPath ? null : section.pageStart,
           pageEnd: ownPath ? null : section.pageEnd,
           note: `📂 ${section.label} — pages ${section.pageStart}${section.pageEnd > section.pageStart ? `-${section.pageEnd}` : ''} (confiance ${section.confiance})`,
+          // 🚨 Anti-fraude : on stocke le verdict IA sur le doc lui-même
+          fraudRisk: section.fraudRisk || 'low',
+          fraudFlags: Array.isArray(section.fraudFlags) ? section.fraudFlags : [],
         };
       });
+      // Stocke aussi les métadonnées PDF (auteur/producer/dates) qui s'appliquent
+      // au PDF global — utile pour signaler un fichier édité après création.
+      const pdfMeta = result.pdfMeta || null;
 
       // 5) Pré-remplit le formulaire avec les champs extraits du bon de commande
       const d = result.bonCommande || {};
       setFormData(prev => {
         const next = { ...prev };
         next.scannedSections = scannedSections;
+        next.pdfMeta = pdfMeta; // 🚨 Métadonnées PDF anti-fraude (créateur, dates)
         if (d.nom) next.nom = String(d.nom).toUpperCase();
         if (d.prenom) next.prenom = String(d.prenom);
         if (d.adresse) next.adresse = String(d.adresse);
