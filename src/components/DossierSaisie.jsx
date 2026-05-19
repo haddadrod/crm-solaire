@@ -7612,6 +7612,15 @@ function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
 function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], currentUser, onClose, onSubmit, isAdmin }) {
   const inputCls = "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400 text-sm";
 
+  // Sous-étapes du "Process du dossier" dépliables (comme dans la QuickView).
+  // Par défaut tout est replié quand on ouvre un dossier existant ; tout étendu
+  // pour une nouvelle saisie afin de guider le remplissage initial.
+  const [foldedSteps, setFoldedSteps] = useState(() => ({
+    cq: !!editingId, mairie: !!editingId, financement: !!editingId,
+    pose: !!editingId, consuel: !!editingId, paiement: !!editingId,
+  }));
+  const toggleStep = (k) => setFoldedSteps(prev => ({ ...prev, [k]: !prev[k] }));
+
   // Scan IA d'un bon de commande manuscrit → pré-remplissage du formulaire.
   const [scanState, setScanState] = useState({ status: 'idle', error: '', result: null });
   const scanBusy = scanState.status === 'compressing' || scanState.status === 'analyzing';
@@ -8712,8 +8721,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
           >
             {/* ============ ÉTAPE 1 : CONTRÔLE QUALITÉ ============ */}
             <div className={`border-2 rounded-xl p-3 mb-3 ${formData.statutControleQualite === 'ok' ? 'bg-emerald-50 border-emerald-200' : formData.statutControleQualite === 'pas_ok' ? 'bg-rose-50 border-rose-200' : 'bg-purple-50 border-purple-200'}`}>
-              <div className="text-[11px] font-bold text-purple-700 uppercase mb-2 flex items-center justify-between flex-wrap gap-2">
-                <span>1️⃣ 📋 Contrôle qualité (avant envoi banque)</span>
+              <button type="button" onClick={() => toggleStep('cq')} className={`w-full text-[11px] font-bold text-purple-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.cq ? '' : 'mb-2'}`}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-purple-600 text-[9px]">{foldedSteps.cq ? '▶' : '▼'}</span>
+                  <span>1️⃣ 📋 Contrôle qualité (avant envoi banque)</span>
+                </span>
                 {formData.statutControleQualite && (
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
                     formData.statutControleQualite === 'ok' ? 'bg-emerald-100 text-emerald-700' :
@@ -8723,8 +8735,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     {formData.statutControleQualite === 'ok' ? '✓ Validé' : '✗ Refusé'}
                   </span>
                 )}
-              </div>
+              </button>
 
+              {!foldedSteps.cq && (<>
               <div>
                 <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Date contrôle qualité (appel client)</label>
                 <div className="flex gap-1">
@@ -8808,12 +8821,16 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   </>
                 )}
               </div>
+              </>)}
             </div>
 
             {/* ============ ÉTAPE 1bis : MAIRIE (déclaration préalable) ============ */}
             <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-3 mb-3">
-              <div className="text-[11px] font-bold text-indigo-700 uppercase mb-2 flex items-center justify-between flex-wrap gap-2">
-                <span>🏛️ Mairie (déclaration préalable / urbanisme)</span>
+              <button type="button" onClick={() => toggleStep('mairie')} className={`w-full text-[11px] font-bold text-indigo-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.mairie ? '' : 'mb-2'}`}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-indigo-600 text-[9px]">{foldedSteps.mairie ? '▶' : '▼'}</span>
+                  <span>🏛️ Mairie (déclaration préalable / urbanisme)</span>
+                </span>
                 {(formData.statutMairie || formData.dateEnvoiMairie) && (
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
                     formData.statutMairie === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
@@ -8824,8 +8841,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                      formData.statutMairie === 'refusé' ? '✗ Refusé' : '⏳ Envoyé'}
                   </span>
                 )}
-              </div>
+              </button>
 
+              {!foldedSteps.mairie && (<>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Envoi mairie</label>
@@ -8954,12 +8972,16 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   })}
                 </div>
               </div>
+              </>)}
             </div>
 
             {/* ============ ÉTAPE 2 : FINANCEMENT ============ */}
             <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-3 mb-3">
-              <div className="text-[11px] font-bold text-blue-700 uppercase mb-2 flex items-center justify-between flex-wrap gap-2">
-                <span>2️⃣ 💳 Financement — {formData.financement || '(à choisir)'}</span>
+              <button type="button" onClick={() => toggleStep('financement')} className={`w-full text-[11px] font-bold text-blue-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.financement ? '' : 'mb-2'}`}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-blue-600 text-[9px]">{foldedSteps.financement ? '▶' : '▼'}</span>
+                  <span>2️⃣ 💳 Financement — {formData.financement || '(à choisir)'}</span>
+                </span>
                 {formData.statutFin && (
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
                     formData.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
@@ -8970,8 +8992,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                      formData.statutFin === 'refusé' ? '✗ Refusé' : '⏳ Envoyé'}
                   </span>
                 )}
-              </div>
+              </button>
 
+              {!foldedSteps.financement && (<>
               {formData.envoisHistorique && formData.envoisHistorique.length > 0 && (
                 <div className="mb-2 p-2 bg-white border border-rose-200 rounded-lg">
                   <div className="text-[10px] font-bold text-rose-700 uppercase mb-1">📜 Banques précédentes ({formData.envoisHistorique.length})</div>
@@ -9064,12 +9087,16 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 if (jours <= 2) return <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-700">⏳ Envoyé il y a {jours} jour{jours > 1 ? 's' : ''} — en attente</div>;
                 return <div className="mt-2 p-2 bg-rose-50 border border-rose-300 rounded-lg text-[11px] text-rose-700 font-bold">⚠️ Pas de retour depuis {jours} jours — relance la banque !</div>;
               })()}
+              </>)}
             </div>
 
             {/* ============ ÉTAPE 2 : POSE ============ */}
             <div className={`border-2 rounded-xl p-3 mb-3 ${formData.statutPose === 'client_refuse' ? 'bg-rose-50 border-rose-300' : 'bg-amber-50 border-amber-200'}`}>
-              <div className="text-[11px] font-bold text-amber-700 uppercase mb-2 flex items-center justify-between flex-wrap gap-2">
-                <span>3️⃣ 🔧 Pose chez le client</span>
+              <button type="button" onClick={() => toggleStep('pose')} className={`w-full text-[11px] font-bold text-amber-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.pose ? '' : 'mb-2'}`}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-amber-600 text-[9px]">{foldedSteps.pose ? '▶' : '▼'}</span>
+                  <span>3️⃣ 🔧 Pose chez le client</span>
+                </span>
                 {formData.statutPose && (
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
                     formData.statutPose === 'visite_ok' ? 'bg-emerald-100 text-emerald-700' :
@@ -9080,8 +9107,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                      formData.statutPose === 'client_refuse' ? '✗ Client refuse' : '⏳ Visite prévue'}
                   </span>
                 )}
-              </div>
+              </button>
 
+              {!foldedSteps.pose && (<>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📅 Date de pose</label>
@@ -9131,12 +9159,16 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   ⚠️ Client a refusé la pose — dossier marqué ANNULÉ. Tu peux toujours revenir en arrière en cliquant un autre bouton.
                 </div>
               )}
+              </>)}
             </div>
 
             {/* ============ ÉTAPE 3 : CONSUEL ============ */}
             <div className="bg-cyan-50 border-2 border-cyan-200 rounded-xl p-3 mb-3">
-              <div className="text-[11px] font-bold text-cyan-700 uppercase mb-2 flex items-center justify-between flex-wrap gap-2">
-                <span>4️⃣ ⚡ Consuel (certificat conformité)</span>
+              <button type="button" onClick={() => toggleStep('consuel')} className={`w-full text-[11px] font-bold text-cyan-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.consuel ? '' : 'mb-2'}`}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-cyan-600 text-[9px]">{foldedSteps.consuel ? '▶' : '▼'}</span>
+                  <span>4️⃣ ⚡ Consuel (certificat conformité)</span>
+                </span>
                 {formData.statutConsuel && (
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
                     formData.statutConsuel === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
@@ -9147,8 +9179,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                      formData.statutConsuel === 'refusé' ? '✗ Refusé' : '⏳ Envoyé'}
                   </span>
                 )}
-              </div>
+              </button>
 
+              {!foldedSteps.consuel && (<>
               {/* Envoi + Accord (= reçu) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
@@ -9262,12 +9295,22 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   })}
                 </div>
               </div>
+              </>)}
             </div>
 
             {/* ============ ÉTAPE 4 : SUIVI PAIEMENT ============ */}
             <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3">
-              <div className="text-[11px] font-bold text-emerald-700 uppercase mb-2">5️⃣ 💰 Contrôle &amp; paiement</div>
+              <button type="button" onClick={() => toggleStep('paiement')} className={`w-full text-[11px] font-bold text-emerald-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.paiement ? '' : 'mb-2'}`}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-emerald-600 text-[9px]">{foldedSteps.paiement ? '▶' : '▼'}</span>
+                  <span>5️⃣ 💰 Contrôle &amp; paiement</span>
+                </span>
+                {formData.payeClient && (
+                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">✓ Payé</span>
+                )}
+              </button>
 
+              {!foldedSteps.paiement && (<>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Contrôle livraison (toi → client)</label>
@@ -9300,6 +9343,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   </div>
                 </div>
               </div>
+              </>)}
             </div>
           </Section>
 
