@@ -10558,6 +10558,36 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutControleQualite === 'pas_ok' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
               </div>
 
+              {/* 📞 Appel ONOFF direct depuis la vue rapide (mêmes 2 boutons que le formulaire). */}
+              {d.telephone && (
+                <div className="mt-1.5 grid grid-cols-2 gap-1">
+                  <a
+                    href={`tel:${normalizePhoneE164(d.telephone)}`}
+                    onClick={() => {
+                      recordPendingOnoffCall({ dossierLocalId: d.localId, telephone: d.telephone, type: 'cq' });
+                      if (!d.dateControleQualite) onUpdate({ dateControleQualite: new Date().toISOString().split('T')[0] });
+                    }}
+                    className="px-1.5 py-1.5 rounded text-[10px] font-bold border-2 bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm flex items-center justify-center gap-1 no-underline"
+                    title={`Appeler ${d.telephone} via ONOFF (iPhone / extension Chrome)`}
+                  >
+                    📞 Appeler
+                  </a>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      await recordPendingOnoffCall({ dossierLocalId: d.localId, telephone: d.telephone, type: 'cq' });
+                      if (!d.dateControleQualite) onUpdate({ dateControleQualite: new Date().toISOString().split('T')[0] });
+                      try { await navigator.clipboard.writeText(normalizePhoneE164(d.telephone)); } catch (e) {}
+                      window.open('https://phone.onoffbusiness.com/', '_blank', 'noopener,noreferrer');
+                    }}
+                    className="px-1.5 py-1.5 rounded text-[10px] font-bold border-2 bg-white hover:bg-purple-50 text-purple-700 border-purple-300 shadow-sm flex items-center justify-center gap-1"
+                    title="Ouvre ONOFF Web App + copie le numéro dans le presse-papier"
+                  >
+                    💻 Web App
+                  </button>
+                </div>
+              )}
+
               {/* 📞 Tentatives d'appel — client ne répond pas, on garde la trace */}
               {!d.statutControleQualite && (
                 <div className="mt-1.5 p-1.5 bg-white border border-purple-200 rounded">
