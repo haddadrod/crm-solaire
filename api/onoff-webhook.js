@@ -55,6 +55,19 @@ async function writeJsonKey(admin, key, value) {
 }
 
 export default async function handler(req, res) {
+  // CORS — l'admin ONOFF (admin.onoffbusiness.com) lance peut-être une
+  // requête depuis le navigateur pour valider l'URL avant d'enregistrer le
+  // webhook. Sans réponse CORS appropriée le test échoue.
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, HEAD, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, X-API-Key, X-Onoff-Token');
+  res.setHeader('Access-Control-Max-Age', '86400');
+
+  // OPTIONS : preflight CORS — on répond 204 sans body.
+  if (req.method === 'OPTIONS') {
+    res.status(204).end();
+    return;
+  }
   // GET / HEAD : ping de validation utilisé par ONOFF (et navigateur) pour
   // vérifier que l'endpoint existe avant d'enregistrer le webhook. On répond
   // 200 OK sans auth — il n'y a aucun traitement, juste un "je suis là".
@@ -62,7 +75,7 @@ export default async function handler(req, res) {
     return json(res, 200, { ok: true, endpoint: 'onoff-webhook', accepts: 'POST' });
   }
   if (req.method !== 'POST') {
-    res.setHeader('Allow', 'GET, HEAD, POST');
+    res.setHeader('Allow', 'GET, HEAD, POST, OPTIONS');
     return json(res, 405, { error: 'Method Not Allowed' });
   }
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
