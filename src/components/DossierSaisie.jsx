@@ -98,7 +98,7 @@ function normalizePhoneE164(raw) {
 }
 
 // Enregistre un "appel ONOFF en attente" dans window.storage. Quand l'utilisateur
-// raccrochera, le webhook ONOFF (cf. /api/onoff-webhook.js) consultera cette liste
+// raccrochera, le webhook ONOFF (cf. /api/cq-recording.js) consultera cette liste
 // pour savoir à quel dossier rattacher l'enregistrement audio reçu.
 // Stocke 50 entrées max, purge auto les expirées (30 min de fenêtre).
 async function recordPendingOnoffCall({ dossierLocalId, telephone, type, createdBy }) {
@@ -5715,7 +5715,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
 function OnoffConfigManager() {
   const [token, setToken] = useState('');
   const [copied, setCopied] = useState('');
-  const webhookUrl = `${window.location.origin}/api/onoff-webhook`;
+  const webhookUrl = `${window.location.origin}/api/cq-recording`;
 
   useEffect(() => {
     (async () => {
@@ -8621,7 +8621,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               </div>
 
               {/* 📞 Appel ONOFF — ouvre ONOFF avec le numéro, marque l'appel comme "à attacher
-                  au dossier" pour que le webhook /api/onoff-webhook puisse y déposer l'enregistrement. */}
+                  au dossier" pour que le webhook /api/cq-recording puisse y déposer l'enregistrement. */}
               <div className="mt-2">
                 <button
                   type="button"
