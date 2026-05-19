@@ -223,7 +223,7 @@ export default async function handler(req, res) {
       return json(res, 502, { error: 'Crédits IA épuisés — recharge sur console.anthropic.com.' });
     }
     if (e?.status === 413) return json(res, 502, { error: 'Image trop lourde — reprends une photo plus petite.' });
-    console.error('extract-bon error:', msg);
-    return json(res, 502, { error: `Erreur IA : ${msg}` });
+    console.error('extract-bon error:', msg, e?.stack);
+    return json(res, 502, { error: "Échec de l'analyse IA. Réessaie dans un instant — si ça persiste, vérifie le format du PDF/image." });
   }
 }
