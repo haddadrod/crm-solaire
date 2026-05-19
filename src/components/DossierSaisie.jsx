@@ -8620,34 +8620,45 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </div>
               </div>
 
-              {/* 📞 Appel ONOFF — ouvre ONOFF avec le numéro, marque l'appel comme "à attacher
-                  au dossier" pour que le webhook /api/cq-recording puisse y déposer l'enregistrement. */}
+              {/* 📞 Appel ONOFF — vrai lien <a href="tel:..."> pour que l'extension Chrome
+                  ONOFF Click2Call puisse l'intercepter (elle ignore window.location.href).
+                  Le onClick enregistre l'appel comme "à attacher au dossier" en fire-and-forget
+                  pour que le webhook /api/cq-recording puisse y déposer l'audio reçu. */}
               <div className="mt-2">
-                <button
-                  type="button"
-                  disabled={!formData.telephone || !editingId}
-                  onClick={async () => {
-                    const phone = (formData.telephone || '').trim();
-                    if (!phone) return;
-                    await recordPendingOnoffCall({
-                      dossierLocalId: editingId,
-                      telephone: phone,
-                      type: 'cq',
-                      createdBy: currentUser || '',
-                    });
-                    // Pré-remplit la date du CQ (au cas où l'user ne le fait pas après)
-                    if (!formData.dateControleQualite) {
-                      setFormData({ ...formData, dateControleQualite: new Date().toISOString().split('T')[0] });
-                    }
-                    // Ouvre le composeur d'appel — sur iPhone, iOS proposera ONOFF si installé.
-                    window.location.href = `tel:${normalizePhoneE164(phone)}`;
-                  }}
-                  className="w-full px-3 py-2.5 rounded-xl text-xs font-bold border-2 transition-all bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
-                  title={!editingId ? 'Sauvegarde d\'abord le dossier' : !formData.telephone ? 'Renseigne le téléphone du client' : `Appeler ${formData.telephone} via ONOFF — l'enregistrement sera attaché auto au dossier`}
-                >
-                  📞 Appeler avec ONOFF
-                  <span className="text-[10px] font-normal opacity-80">(enregistrement auto)</span>
-                </button>
+                {formData.telephone && editingId ? (
+                  <a
+                    href={`tel:${normalizePhoneE164(formData.telephone)}`}
+                    onClick={() => {
+                      // Fire-and-forget : on ne bloque pas la navigation tel: pour que
+                      // l'extension Chrome (ou iOS) puisse l'attraper immédiatement.
+                      const phone = (formData.telephone || '').trim();
+                      recordPendingOnoffCall({
+                        dossierLocalId: editingId,
+                        telephone: phone,
+                        type: 'cq',
+                        createdBy: currentUser || '',
+                      });
+                      if (!formData.dateControleQualite) {
+                        setFormData({ ...formData, dateControleQualite: new Date().toISOString().split('T')[0] });
+                      }
+                    }}
+                    className="w-full px-3 py-2.5 rounded-xl text-xs font-bold border-2 transition-all bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm flex items-center justify-center gap-1.5 no-underline"
+                    title={`Appeler ${formData.telephone} via ONOFF — l'enregistrement sera attaché auto au dossier`}
+                  >
+                    📞 Appeler avec ONOFF
+                    <span className="text-[10px] font-normal opacity-80">(enregistrement auto)</span>
+                  </a>
+                ) : (
+                  <button
+                    type="button"
+                    disabled
+                    className="w-full px-3 py-2.5 rounded-xl text-xs font-bold border-2 bg-gradient-to-r from-purple-500 to-violet-600 text-white border-purple-700 shadow-sm flex items-center justify-center gap-1.5 opacity-40 cursor-not-allowed"
+                    title={!editingId ? 'Sauvegarde d\'abord le dossier' : 'Renseigne le téléphone du client'}
+                  >
+                    📞 Appeler avec ONOFF
+                    <span className="text-[10px] font-normal opacity-80">(enregistrement auto)</span>
+                  </button>
+                )}
                 {!editingId && (
                   <p className="text-[10px] text-slate-500 mt-1">💡 Sauvegarde d'abord le dossier pour activer l'appel auto-enregistré.</p>
                 )}
