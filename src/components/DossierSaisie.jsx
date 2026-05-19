@@ -7891,14 +7891,27 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
     }
   };
 
+  // Verrouille la fermeture pendant un scan en cours (clic backdrop, X, Annuler,
+  // touche Escape) — sinon le PDF en analyse continue côté serveur mais l'user
+  // perd l'UI et ne sait pas ce qui se passe.
+  const isScanBusy = scanBusy || dossierScanBusy;
+  const safeClose = () => {
+    if (isScanBusy) {
+      alert('⏳ Un scan IA est en cours. Patiente quelques secondes ou clique sur "Annuler" dans la zone de scan pour l\'interrompre avant de fermer.');
+      return;
+    }
+    onClose();
+  };
+
   return (
-    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={safeClose}>
       <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="sticky top-0 bg-white p-6 border-b border-slate-100 flex items-center justify-between rounded-t-3xl z-10">
           <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
             <Sparkles className="w-5 h-5 text-violet-500" />{editingId ? 'Modifier le dossier' : 'Nouveau dossier'}
+            {isScanBusy && <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full animate-pulse">🔒 Scan IA en cours</span>}
           </h2>
-          <button onClick={onClose} className="text-slate-400 p-1 rounded-lg hover:bg-slate-100"><X className="w-5 h-5" /></button>
+          <button onClick={safeClose} disabled={isScanBusy} className={`text-slate-400 p-1 rounded-lg ${isScanBusy ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100'}`} title={isScanBusy ? 'Scan en cours — attends la fin' : 'Fermer'}><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-6 space-y-5">
@@ -9602,7 +9615,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
           )}
 
           <div className="flex gap-2 pt-2 sticky bottom-0 bg-white pb-2">
-            <button onClick={onClose} className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-slate-600 bg-slate-100 hover:bg-slate-200">Annuler</button>
+            <button onClick={safeClose} disabled={isScanBusy} className={`flex-1 px-4 py-2.5 rounded-xl font-semibold text-slate-600 bg-slate-100 ${isScanBusy ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-200'}`} title={isScanBusy ? 'Scan IA en cours — attends la fin' : ''}>{isScanBusy ? '🔒 Scan en cours…' : 'Annuler'}</button>
             <button onClick={onSubmit} disabled={!formData.nom.trim()} className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-white bg-gradient-to-r from-violet-500 to-pink-500 disabled:opacity-50 shadow-md">
               {editingId ? 'Enregistrer' : 'Créer le dossier'}
             </button>
