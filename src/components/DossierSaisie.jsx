@@ -1250,29 +1250,51 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
   // 🚨 Détection de perte de données : au chargement, on compare le nombre
   // de dossiers actuels avec les snapshots récents. Si un backup contient
-  // PLUS de dossiers que l'état actuel, c'est suspect (probable écrasement
-  // involontaire). On alerte et on propose la restauration en 1 clic.
+  // des dossiers qu'on n'a PLUS dans l'état actuel ET qui ne sont PAS dans
+  // la liste des suppressions volontaires (tombstones) → suspect, on alerte.
+  // Évite le faux positif quand l'admin a juste supprimé volontairement.
   useEffect(() => {
     if (loading) return;
     (async () => {
       try {
+        // Lecture des tombstones (localIds explicitement supprimés)
+        let tombstones = new Set();
+        try {
+          const tRow = await window.storage.get('dossiers-deleted-tombstones');
+          const arr = JSON.parse(tRow?.value || '[]');
+          if (Array.isArray(arr)) tombstones = new Set(arr);
+        } catch (e) {}
+
+        const currentIds = new Set(dossiers.map(d => d.localId).filter(Boolean));
         const list = await window.storage.list('dossiers-data-bk-');
         const keys = (list?.keys || []).sort().reverse().slice(0, 20); // 20 plus récents
+
         for (const k of keys) {
           const row = await window.storage.get(k);
           if (!row?.value) continue;
           let arr;
           try { arr = JSON.parse(row.value); } catch (e) { continue; }
           if (!Array.isArray(arr)) continue;
-          if (arr.length > dossiers.length) {
-            const diff = arr.length - dossiers.length;
+
+          // Cherche les dossiers présents dans le backup mais ABSENTS de l'état
+          // courant ET non tombstoneés (donc pas supprimés volontairement).
+          const reallyMissing = arr.filter(d => {
+            const lid = d?.localId;
+            if (!lid) return false; // sans localId, on ne peut rien tracer
+            if (currentIds.has(lid)) return false; // toujours là
+            if (tombstones.has(lid)) return false; // suppression volontaire
+            return true;
+          });
+
+          if (reallyMissing.length > 0) {
             const ts = k.replace('dossiers-data-bk-', '');
             const dt = `${ts.slice(6, 8)}/${ts.slice(4, 6)}/${ts.slice(0, 4)} à ${ts.slice(8, 10)}:${ts.slice(10, 12)} UTC`;
+            const noms = reallyMissing.slice(0, 3).map(d => `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)').join(', ');
+            const extra = reallyMissing.length > 3 ? ` +${reallyMissing.length - 3}` : '';
             const restore = window.confirm(
               `⚠️ ALERTE PERTE DE DONNÉES\n\n` +
-              `Un backup du ${dt} contient ${arr.length} dossiers, ` +
-              `mais ton CRM n'en affiche que ${dossiers.length} actuellement ` +
-              `(manque ${diff} dossier${diff > 1 ? 's' : ''}).\n\n` +
+              `Backup du ${dt} : ${reallyMissing.length} dossier${reallyMissing.length > 1 ? 's' : ''} manquant${reallyMissing.length > 1 ? 's' : ''} (${noms}${extra}).\n\n` +
+              `Ces dossiers n'ont PAS été supprimés volontairement (sinon ils seraient dans la liste des tombstones).\n\n` +
               `Veux-tu RESTAURER ce backup ?\n\n` +
               `(Tes données actuelles seront remplacées par celles du backup. ` +
               `Si tu refuses, le CRM continue avec ${dossiers.length} dossiers.)`
@@ -1280,8 +1302,19 @@ export default function DossierSaisie({ authUser, onLogout }) {
             if (restore) {
               setDossiers(arr);
               lastWrittenDossiersJson.current = row.value;
+            } else {
+              // L'user a refusé → il considère que ces dossiers sont
+              // intentionnellement absents. Tombstone-les pour ne plus
+              // re-prompter à chaque reload.
+              try {
+                const newTombs = new Set([...tombstones]);
+                reallyMissing.forEach(d => { if (d.localId) newTombs.add(d.localId); });
+                const arrTombs = [...newTombs];
+                const capped = arrTombs.length > 1000 ? arrTombs.slice(-1000) : arrTombs;
+                await window.storage.set('dossiers-deleted-tombstones', JSON.stringify(capped));
+              } catch (e) { console.warn('[tombstone] dismiss save failed', e); }
             }
-            return; // on arrête après le 1er backup avec plus de dossiers
+            return; // on arrête après le 1er backup où on a un soupçon réel
           }
         }
       } catch (e) { console.warn('[safety] backup check failed', e); }
@@ -1775,6 +1808,21 @@ export default function DossierSaisie({ authUser, onLogout }) {
         try { await window.storage.delete(`file:${id}`); } catch (e) {}
       }
     }
+    // 🪦 Tombstone : on persiste le localId du dossier explicitement supprimé
+    // pour que la détection de perte de données ne le considère pas comme
+    // un dossier 'manquant' aux prochains démarrages. Sinon faux positif :
+    // 'tu as 10 dossiers mais le backup en a 11' alors que le user a juste
+    // supprimé volontairement.
+    try {
+      const existing = await window.storage.get('dossiers-deleted-tombstones');
+      let list = [];
+      try { list = JSON.parse(existing?.value || '[]'); } catch (e) {}
+      if (!Array.isArray(list)) list = [];
+      if (!list.includes(id)) list.push(id);
+      // Cap à 1000 pour pas que la liste grossisse à l'infini
+      if (list.length > 1000) list = list.slice(-1000);
+      await window.storage.set('dossiers-deleted-tombstones', JSON.stringify(list));
+    } catch (e) { console.warn('[tombstone] save failed', e); }
     setDossiers(dossiers.filter(x => x.localId !== id));
   };
 
