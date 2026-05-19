@@ -55,8 +55,14 @@ async function writeJsonKey(admin, key, value) {
 }
 
 export default async function handler(req, res) {
+  // GET / HEAD : ping de validation utilisé par ONOFF (et navigateur) pour
+  // vérifier que l'endpoint existe avant d'enregistrer le webhook. On répond
+  // 200 OK sans auth — il n'y a aucun traitement, juste un "je suis là".
+  if (req.method === 'GET' || req.method === 'HEAD') {
+    return json(res, 200, { ok: true, endpoint: 'onoff-webhook', accepts: 'POST' });
+  }
   if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
+    res.setHeader('Allow', 'GET, HEAD, POST');
     return json(res, 405, { error: 'Method Not Allowed' });
   }
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
