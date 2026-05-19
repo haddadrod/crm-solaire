@@ -1253,8 +1253,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // des dossiers qu'on n'a PLUS dans l'état actuel ET qui ne sont PAS dans
   // la liste des suppressions volontaires (tombstones) → suspect, on alerte.
   // Évite le faux positif quand l'admin a juste supprimé volontairement.
+  //
+  // ⚠️ ADMIN UNIQUEMENT : seul l'admin peut supprimer/restaurer des dossiers,
+  // donc seul lui doit être prompté. Les autres rôles ne voient même pas
+  // l'alerte (sinon ils risqueraient de tombstoner par erreur des dossiers
+  // qu'ils ne peuvent pas restaurer).
   useEffect(() => {
     if (loading) return;
+    if (!isAdmin) return;
     (async () => {
       try {
         // Lecture des tombstones (localIds explicitement supprimés)
@@ -1319,7 +1325,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         }
       } catch (e) { console.warn('[safety] backup check failed', e); }
     })();
-  }, [loading]);
+  }, [loading, isAdmin]);
 
   // 🔄 Synchronisation temps réel entre appareils — quand un autre device
   // écrit dans dossiers-data, on rafraîchit notre état local pour rester à
