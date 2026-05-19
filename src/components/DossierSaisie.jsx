@@ -5582,6 +5582,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
     { id: 'regies',       label: 'Régies',       emoji: '🤝', color: 'from-purple-500 to-violet-500' },
     { id: 'commissions',  label: 'Équipe interne', emoji: '👥', color: 'from-fuchsia-500 to-pink-500' },
     { id: 'email',        label: 'Email d\'envoi', emoji: '📧', color: 'from-blue-500 to-indigo-500' },
+    { id: 'onoff',        label: 'ONOFF (CQ)',   emoji: '📞', color: 'from-purple-500 to-violet-500' },
   ];
 
   return (
@@ -5701,6 +5702,151 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
 
       {section === 'email' && (
         <EmailConfigManager config={emailConfig} setConfig={setEmailConfig} gmailOAuth={gmailOAuth} setGmailOAuth={setGmailOAuth} />
+      )}
+
+      {section === 'onoff' && <OnoffConfigManager />}
+    </div>
+  );
+}
+
+// Petit panneau de config ONOFF Business. Génère un token aléatoire côté nav
+// (crypto.getRandomValues), le persiste dans window.storage pour que l'user
+// puisse revenir le récupérer plus tard, et fournit les boutons "Copier" pour
+// l'URL du webhook + le token. Aucune appel terminal nécessaire.
+function OnoffConfigManager() {
+  const [token, setToken] = useState('');
+  const [copied, setCopied] = useState('');
+  const webhookUrl = `${window.location.origin}/api/onoff-webhook`;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const row = await window.storage.get('onoff-webhook-token');
+        if (row?.value) setToken(row.value);
+      } catch (e) {
+        console.warn('[onoff] load token failed', e);
+      }
+    })();
+  }, []);
+
+  const generate = async () => {
+    // 32 octets aléatoires → 64 caractères hex (identique à `openssl rand -hex 32`).
+    const bytes = new Uint8Array(32);
+    crypto.getRandomValues(bytes);
+    const hex = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('');
+    setToken(hex);
+    try {
+      await window.storage.set('onoff-webhook-token', hex);
+    } catch (e) {
+      console.warn('[onoff] save token failed', e);
+    }
+  };
+
+  const regenerate = async () => {
+    if (!window.confirm('Générer un NOUVEAU token va invalider l\'actuel. Tu devras le remettre dans Vercel ET dans ONOFF. Confirmer ?')) return;
+    await generate();
+  };
+
+  const copy = async (label, text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(label);
+      setTimeout(() => setCopied(''), 1500);
+    } catch (e) {
+      alert('Impossible de copier — sélectionne et fais Cmd+C.');
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl p-5 shadow-md border border-slate-200 space-y-5">
+      <div>
+        <h3 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+          📞 ONOFF Business — Appel CQ auto-enregistré
+        </h3>
+        <p className="text-sm text-slate-500 mt-1">
+          Configure une seule fois. Ensuite, tes appels CQ depuis ONOFF s'attacheront automatiquement au bon dossier — l'enregistrement audio apparaît dans la fiche.
+        </p>
+      </div>
+
+      {/* 1. Token */}
+      <div className="p-4 rounded-xl border-2 border-purple-200 bg-purple-50/50">
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <h4 className="font-bold text-purple-700 text-sm">🔐 1. Token sécurisé</h4>
+          {token ? (
+            <button onClick={regenerate} className="text-[11px] font-bold text-rose-600 hover:underline">🔄 Regénérer</button>
+          ) : null}
+        </div>
+        {token ? (
+          <>
+            <div className="flex items-center gap-2 bg-white border border-purple-300 rounded-lg p-2 font-mono text-[11px] break-all">
+              <span className="flex-1 select-all">{token}</span>
+              <button
+                onClick={() => copy('token', token)}
+                className="flex-shrink-0 px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
+              >
+                {copied === 'token' ? '✓ Copié' : '📋 Copier'}
+              </button>
+            </div>
+            <p className="text-[11px] text-slate-500 mt-2">
+              Ce même token doit être collé dans <strong>Vercel</strong> (étape 2) ET dans <strong>ONOFF</strong> (étape 3). Les deux doivent matcher pour que ça fonctionne.
+            </p>
+          </>
+        ) : (
+          <button
+            onClick={generate}
+            className="w-full px-4 py-3 bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white font-bold rounded-xl shadow-md flex items-center justify-center gap-2"
+          >
+            🎲 Générer un token
+          </button>
+        )}
+      </div>
+
+      {/* 2. Vercel */}
+      <div className="p-4 rounded-xl border-2 border-blue-200 bg-blue-50/50">
+        <h4 className="font-bold text-blue-700 text-sm mb-2">⚙️ 2. Ajouter dans Vercel</h4>
+        <ol className="text-sm text-slate-700 space-y-1.5 list-decimal list-inside">
+          <li>
+            Va sur <a href="https://vercel.com/dashboard" target="_blank" rel="noopener noreferrer" className="text-blue-600 font-semibold hover:underline">vercel.com/dashboard</a> → projet <strong>crm-solaire</strong> → <strong>Settings</strong> → <strong>Environment Variables</strong>
+          </li>
+          <li>Clique <strong>Add Environment Variable</strong></li>
+          <li>
+            Key :{' '}
+            <button onClick={() => copy('varname', 'ONOFF_WEBHOOK_TOKEN')} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-blue-300 rounded text-[11px] font-mono font-bold hover:bg-blue-50">
+              ONOFF_WEBHOOK_TOKEN {copied === 'varname' ? '✓' : '📋'}
+            </button>
+          </li>
+          <li>Value : <strong>colle le token de l'étape 1</strong> (clique 📋 ci-dessus)</li>
+          <li>Coche les <strong>3 environnements</strong> (Production + Preview + Development) → <strong>Save</strong></li>
+          <li>Onglet <strong>Deployments</strong> → dernier déploiement → menu <strong>…</strong> → <strong>Redeploy</strong></li>
+        </ol>
+      </div>
+
+      {/* 3. ONOFF */}
+      <div className="p-4 rounded-xl border-2 border-purple-200 bg-purple-50/50">
+        <h4 className="font-bold text-purple-700 text-sm mb-2">📞 3. Configurer ONOFF Business</h4>
+        <ol className="text-sm text-slate-700 space-y-1.5 list-decimal list-inside">
+          <li>
+            Connecte-toi sur <a href="https://admin.onoffbusiness.com" target="_blank" rel="noopener noreferrer" className="text-purple-600 font-semibold hover:underline">admin.onoffbusiness.com</a>
+          </li>
+          <li>
+            Active l'enregistrement : bannière du haut → <strong>Call recording</strong> → <strong>Activate</strong> → <strong>I understand</strong>
+            <br/>
+            <span className="text-[11px] text-amber-700">⚠️ Légal : préviens le client en début d'appel que la conversation est enregistrée.</span>
+          </li>
+          <li>Va dans <strong>Integrations</strong> → choisis <strong>Call webhook</strong></li>
+          <li>
+            URL :{' '}
+            <button onClick={() => copy('url', webhookUrl)} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-purple-300 rounded text-[11px] font-mono font-bold hover:bg-purple-50">
+              {webhookUrl} {copied === 'url' ? '✓' : '📋'}
+            </button>
+          </li>
+          <li>API key : <strong>colle le token de l'étape 1</strong></li>
+          <li>Clique <strong>Integrate</strong> — ONOFF envoie un appel de test pour valider</li>
+        </ol>
+      </div>
+
+      {!token && (
+        <p className="text-xs text-slate-400 italic">💡 Commence par cliquer "Générer un token" en haut.</p>
       )}
     </div>
   );

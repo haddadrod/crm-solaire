@@ -66,10 +66,21 @@ export default async function handler(req, res) {
     return json(res, 503, { error: 'Webhook non configuré (ONOFF_WEBHOOK_TOKEN manquant).' });
   }
 
-  // Authentification du webhook : Bearer ou X-Onoff-Token.
+  // Authentification du webhook : on accepte le token dans
+  //   - Authorization: Bearer <token>
+  //   - X-API-Key: <token>
+  //   - X-Onoff-Token: <token>
+  //   - ?key=<token> en query string
+  // ONOFF ne documente pas publiquement comment leur champ "API key" est
+  // transmis ; cette tolérance évite d'avoir à deviner.
   const auth = req.headers['authorization'] || '';
-  const xtoken = req.headers['x-onoff-token'] || '';
-  const provided = auth.startsWith('Bearer ') ? auth.slice('Bearer '.length).trim() : String(xtoken).trim();
+  const xApi = req.headers['x-api-key'] || '';
+  const xOnoff = req.headers['x-onoff-token'] || '';
+  const qkey = (req.query && req.query.key) || '';
+  const provided = (
+    auth.startsWith('Bearer ') ? auth.slice('Bearer '.length).trim() :
+    String(xApi || xOnoff || qkey || '').trim()
+  );
   if (!provided || provided !== ONOFF_WEBHOOK_TOKEN) {
     return json(res, 401, { error: 'Webhook non autorisé.' });
   }
