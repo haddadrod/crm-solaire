@@ -949,7 +949,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dateEnvoiFin: '', dateRetourFin: '',
     statutFin: '', // '' | 'envoyé' | 'accepté' | 'refusé' | 'manque_doc'
     motifManqueDoc: '', // texte libre : quels documents la banque réclame (ex : "Bulletin paie + RIB")
-    dateRenvoiDocs: '', // date à laquelle on a renvoyé les docs manquants à la banque
+    // Workflow Manque docs : banque → régie → client → régie → nous → banque
+    dateNotifRegie: '', // date à laquelle on a prévenu la régie (qu'elle réclame au client)
+    dateRecuRegie: '',  // date à laquelle la régie nous a renvoyé le doc du client
+    dateRenvoiDocs: '', // date à laquelle on a renvoyé les docs à la banque
     envoisHistorique: [], // [{financeur, dateEnvoi, dateRetour, statut, note}]
     // Process pose
     dateEnvoiPose: '', dateVisitePose: '',
@@ -1800,6 +1803,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dateEnvoiFin: d.dateEnvoiFin || '', dateRetourFin: d.dateRetourFin || '',
       statutFin: d.statutFin || '',
       motifManqueDoc: d.motifManqueDoc || '',
+      dateNotifRegie: d.dateNotifRegie || '',
+      dateRecuRegie: d.dateRecuRegie || '',
       dateRenvoiDocs: d.dateRenvoiDocs || '',
       envoisHistorique: d.envoisHistorique || [],
       dateEnvoiPose: d.dateEnvoiPose || '', dateVisitePose: d.dateVisitePose || '',
@@ -9116,9 +9121,10 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
                 {formData.statutFin === 'manque_doc' && (
-                  <div className="mt-3 p-3 bg-orange-50 border-2 border-orange-300 rounded-xl space-y-2">
+                  <div className="mt-3 p-3 bg-orange-50 border-2 border-orange-300 rounded-xl space-y-3">
+                    {/* Étape 1 : ce que la banque demande */}
                     <div>
-                      <div className="text-xs font-bold text-orange-700 mb-1.5">📄 Documents demandés par {formData.financement || 'la banque'} :</div>
+                      <div className="text-xs font-bold text-orange-700 mb-1.5">1️⃣ 📄 {formData.financement || 'La banque'} demande :</div>
                       <textarea
                         value={formData.motifManqueDoc || ''}
                         onChange={(e) => setFormData({ ...formData, motifManqueDoc: e.target.value })}
@@ -9127,24 +9133,43 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         className={inputCls + ' text-xs'}
                       />
                     </div>
+
+                    {/* Étape 2 : régie prévenue */}
                     <div>
-                      <label className="block text-[11px] font-bold text-orange-700 mb-1">📤 Date de renvoi des docs à {formData.financement || 'la banque'}</label>
+                      <label className="block text-[11px] font-bold text-orange-700 mb-1">2️⃣ 🤝 Régie prévenue le</label>
+                      <div className="flex gap-1">
+                        <input type="date" value={formData.dateNotifRegie || ''} onChange={(e) => setFormData({ ...formData, dateNotifRegie: e.target.value })} className={inputCls + ' text-xs'} />
+                        <button type="button" onClick={() => setFormData({ ...formData, dateNotifRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                      <p className="text-[10px] text-orange-700/80 mt-1">→ La régie doit ensuite récupérer le(s) doc(s) auprès du client.</p>
+                    </div>
+
+                    {/* Étape 3 : docs reçus de la régie */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-orange-700 mb-1">3️⃣ 📥 Docs reçus de la régie le</label>
+                      <div className="flex gap-1">
+                        <input type="date" value={formData.dateRecuRegie || ''} onChange={(e) => setFormData({ ...formData, dateRecuRegie: e.target.value })} className={inputCls + ' text-xs'} />
+                        <button type="button" onClick={() => setFormData({ ...formData, dateRecuRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+
+                    {/* Étape 4 : renvoi à la banque */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-orange-700 mb-1">4️⃣ 📤 Docs renvoyés à {formData.financement || 'la banque'} le</label>
                       <div className="flex gap-1">
                         <input type="date" value={formData.dateRenvoiDocs || ''} onChange={(e) => setFormData({ ...formData, dateRenvoiDocs: e.target.value })} className={inputCls + ' text-xs'} />
                         <button type="button" onClick={() => setFormData({ ...formData, dateRenvoiDocs: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
+
+                    {/* CTA final : repasser en Envoyé */}
                     {formData.dateRenvoiDocs && (
                       <div className="flex items-center justify-between gap-2 p-2 bg-amber-50 border border-amber-300 rounded-lg">
-                        <span className="text-[11px] text-amber-800">✅ Docs renvoyés le {new Date(formData.dateRenvoiDocs).toLocaleDateString('fr-FR')} — passe le statut à ⏳ Envoyé pour suivre le retour</span>
+                        <span className="text-[11px] text-amber-800">✅ Renvoyé le {new Date(formData.dateRenvoiDocs).toLocaleDateString('fr-FR')} — passe le statut à ⏳ Envoyé</span>
                         <button type="button" onClick={() => {
-                          const today = new Date().toISOString().split('T')[0];
                           setFormData({ ...formData, statutFin: 'envoyé', dateEnvoiFin: formData.dateRenvoiDocs, dateRetourFin: '', dateAccord: '' });
                         }} className="flex-shrink-0 px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-bold whitespace-nowrap">⏳ Envoyé</button>
                       </div>
-                    )}
-                    {!formData.dateRenvoiDocs && (
-                      <p className="text-[10px] text-orange-700/80">Renvoie les docs manquants à la banque puis remplis la date ci-dessus.</p>
                     )}
                   </div>
                 )}
@@ -11071,9 +11096,10 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
                 {d.statutFin === 'manque_doc' && (
-                  <div className="mt-1.5 p-2 bg-orange-50 border-2 border-orange-300 rounded-lg space-y-1.5">
+                  <div className="mt-1.5 p-2 bg-orange-50 border-2 border-orange-300 rounded-lg space-y-2">
+                    {/* 1. Demande banque */}
                     <div>
-                      <div className="text-[10px] font-bold text-orange-700 mb-1">📄 Docs demandés par {d.financement || 'la banque'} :</div>
+                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">1️⃣ 📄 {d.financement || 'Banque'} demande :</div>
                       <textarea
                         value={d.motifManqueDoc || ''}
                         onChange={(e) => onUpdate({ motifManqueDoc: e.target.value })}
@@ -11082,8 +11108,25 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[10px]"
                       />
                     </div>
+                    {/* 2. Régie prévenue */}
                     <div>
-                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">📤 Date renvoi</div>
+                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">2️⃣ 🤝 Régie prévenue le</div>
+                      <div className="flex gap-1">
+                        <input type="date" value={d.dateNotifRegie || ''} onChange={(e) => onUpdate({ dateNotifRegie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                        <button onClick={() => onUpdate({ dateNotifRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+                    {/* 3. Reçu de la régie */}
+                    <div>
+                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">3️⃣ 📥 Docs reçus de la régie le</div>
+                      <div className="flex gap-1">
+                        <input type="date" value={d.dateRecuRegie || ''} onChange={(e) => onUpdate({ dateRecuRegie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                        <button onClick={() => onUpdate({ dateRecuRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+                    {/* 4. Renvoi banque */}
+                    <div>
+                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">4️⃣ 📤 Renvoi à {d.financement || 'la banque'} le</div>
                       <div className="flex gap-1">
                         <input type="date" value={d.dateRenvoiDocs || ''} onChange={(e) => onUpdate({ dateRenvoiDocs: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
                         <button onClick={() => onUpdate({ dateRenvoiDocs: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
@@ -11092,7 +11135,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     {d.dateRenvoiDocs && (
                       <button onClick={() => {
                         onUpdate({ statutFin: 'envoyé', dateEnvoiFin: d.dateRenvoiDocs, dateRetourFin: '', dateAccord: '' });
-                      }} className="w-full px-2 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-bold">⏳ Repasser en "Envoyé" (suivi du retour)</button>
+                      }} className="w-full px-2 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-bold">⏳ Repasser en "Envoyé"</button>
                     )}
                   </div>
                 )}
