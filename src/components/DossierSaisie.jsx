@@ -2540,16 +2540,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
               <p className="text-slate-500 mt-1">Créez vos dossiers d'installation en un clin d'œil</p>
             </div>
             <div className="flex gap-2 flex-wrap items-center">
-              {/* Bouton recherche globale */}
-              <button
-                onClick={() => setShowSearch(true)}
-                className="px-4 py-3 rounded-2xl font-semibold shadow-md border bg-white hover:bg-slate-50 text-slate-700 border-slate-200 flex items-center gap-2"
-                title="Recherche globale (Ctrl+K)"
-              >
-                <Search className="w-4 h-4" />
-                <span className="hidden sm:inline">Rechercher</span>
-                <kbd className="hidden sm:inline-block text-[10px] font-mono bg-slate-100 px-1.5 py-0.5 rounded ml-1">Ctrl+K</kbd>
-              </button>
+              {/* Bouton recherche supprimé — doublon avec la barre Rechercher
+                  ci-dessous. Le raccourci Ctrl+K reste fonctionnel via le
+                  handler keydown au niveau App. */}
               {/* Badge utilisateur connecté (read-only — identité fournie par Supabase) */}
               {currentUser && (() => {
                 const roleMeta = {
