@@ -21,7 +21,23 @@ async function loadTemplateBytes(societe, name) {
   return r.arrayBuffer();
 }
 
-// Déclenche le téléchargement d'un Blob côté navigateur.
+// Ouvre le PDF dans un nouvel onglet (preview natif navigateur).
+// L'user peut ensuite télécharger depuis l'onglet s'il le veut.
+export function openBlobInTab(blob, filename) {
+  const url = URL.createObjectURL(blob);
+  // On crée un <a> avec target=_blank pour respecter les bloqueurs de popup.
+  const a = document.createElement('a');
+  a.href = url;
+  a.target = '_blank';
+  a.rel = 'noopener,noreferrer';
+  if (filename) a.download = filename; // hint pour le nom si l'user fait DL depuis l'onglet
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 5 * 60 * 1000); // libère après 5 min
+}
+
+// Téléchargement direct (gardé pour rétrocompat si jamais utile).
 export function downloadBlob(blob, filename) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -107,7 +123,7 @@ export async function generateRenonciation(dossier) {
     fields,
     values: renonciationValues(dossier),
   });
-  downloadBlob(blob, safeFilename(dossier, 'renonciation'));
+  openBlobInTab(blob, safeFilename(dossier, 'renonciation'));
   return blob;
 }
 
@@ -151,7 +167,7 @@ export async function generateFicheRenseignement(dossier) {
     fields: FICHE_RENSEIGNEMENT_FIELDS,
     values: ficheRenseignementValues(dossier),
   });
-  downloadBlob(blob, safeFilename(dossier, 'fiche-renseignement'));
+  openBlobInTab(blob, safeFilename(dossier, 'fiche-renseignement'));
   return blob;
 }
 
@@ -186,7 +202,42 @@ export async function generatePvReception(dossier) {
     fields: PV_RECEPTION_FIELDS,
     values: pvReceptionValues(dossier),
   });
-  downloadBlob(blob, safeFilename(dossier, 'pv-reception'));
+  openBlobInTab(blob, safeFilename(dossier, 'pv-reception'));
+  return blob;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// PV DE LIVRAISON / FIN DE TRAVAUX (Elsun uniquement, document custom)
+// ════════════════════════════════════════════════════════════════════════
+
+// Labels visibles dans le template :
+//   "NOM ET PRENOM CLIENT :" se termine à x=185.8, y=650.1
+//   "ADRESSE :"              se termine à x=101.7, y=620.8
+//   "DATE LIVRAISON/INSTALLATION :" se termine à x=203.6, y=354.3
+const ELSUN_PV_LIVRAISON_FIELDS = {
+  nomPrenom: { x: 195, y: 650.1 },
+  adresse:   { x: 108, y: 620.8 },
+  dateInsta: { x: 210, y: 354.3 },
+};
+
+function pvLivraisonValues(dossier) {
+  const fullName = `${dossier.nom || ''} ${dossier.prenom || ''}`.trim();
+  const fullAddress = [dossier.adresse, dossier.codePostal, dossier.ville].filter(Boolean).join(', ');
+  return {
+    nomPrenom: fullName,
+    adresse: fullAddress,
+    dateInsta: frDate(dossier.dateInsta),
+  };
+}
+
+export async function generatePvLivraisonElsun(dossier) {
+  const blob = await fillTemplate({
+    societe: 'elsun',
+    templateName: 'pv-livraison',
+    fields: ELSUN_PV_LIVRAISON_FIELDS,
+    values: pvLivraisonValues(dossier),
+  });
+  openBlobInTab(blob, safeFilename(dossier, 'pv-livraison'));
   return blob;
 }
 
@@ -201,6 +252,9 @@ const SHARED_TEMPLATES = [
 ];
 
 export const TEMPLATES_CATALOG = {
-  elsun: SHARED_TEMPLATES,
+  elsun: [
+    ...SHARED_TEMPLATES,
+    { id: 'pv-livraison', label: 'PV de livraison / fin de travaux', emoji: '🚚', generate: generatePvLivraisonElsun },
+  ],
   yolico: SHARED_TEMPLATES,
 };
