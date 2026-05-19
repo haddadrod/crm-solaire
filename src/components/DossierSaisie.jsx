@@ -77,6 +77,48 @@ function applyAutoStatut(d) {
 const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM', 'FINANCO', 'FRANFINANCE'];
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
+// Normalise un téléphone FR en E.164 (+33...) pour le matcher avec le webhook ONOFF.
+// "06 12 34 56 78" → "+33612345678", "+33 6 12 34 56 78" → "+33612345678", etc.
+function normalizePhoneE164(raw) {
+  if (!raw) return '';
+  let s = String(raw).replace(/[^\d+]/g, '');
+  if (s.startsWith('00')) s = '+' + s.slice(2);
+  if (s.startsWith('+')) return s;
+  if (s.startsWith('33') && s.length >= 11) return '+' + s;
+  if (s.startsWith('0') && s.length === 10) return '+33' + s.slice(1);
+  return s;
+}
+
+// Enregistre un "appel ONOFF en attente" dans window.storage. Quand l'utilisateur
+// raccrochera, le webhook ONOFF (cf. /api/onoff-webhook.js) consultera cette liste
+// pour savoir à quel dossier rattacher l'enregistrement audio reçu.
+// Stocke 50 entrées max, purge auto les expirées (30 min de fenêtre).
+async function recordPendingOnoffCall({ dossierLocalId, telephone, type, createdBy }) {
+  try {
+    const existing = await window.storage.get('pending-onoff-calls');
+    let list = [];
+    try { list = JSON.parse(existing?.value || '[]'); } catch (e) {}
+    if (!Array.isArray(list)) list = [];
+    const now = Date.now();
+    list = list.filter(c => c && c.expiresAt > now && c.dossierLocalId !== dossierLocalId);
+    list.push({
+      dossierLocalId,
+      telephone: normalizePhoneE164(telephone),
+      telephoneRaw: telephone || '',
+      type: type || 'cq',
+      createdBy: createdBy || '',
+      createdAt: new Date().toISOString(),
+      expiresAt: now + 30 * 60 * 1000,
+    });
+    if (list.length > 50) list = list.slice(-50);
+    await window.storage.set('pending-onoff-calls', JSON.stringify(list));
+    return true;
+  } catch (e) {
+    console.warn('[onoff] pending call save failed', e);
+    return false;
+  }
+}
+
 // Rôles équipe interne (régie interne) — payés au dossier
 const ROLES_INTERNES = [
   { key: 'teleprospecteur', label: 'Téléprospecteur', emoji: '📞', defaultTarif: 50 },
@@ -8421,6 +8463,39 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   <input type="date" value={formData.dateControleQualite || ''} onChange={(e) => setFormData({ ...formData, dateControleQualite: e.target.value })} className={inputCls} />
                   <button type="button" onClick={() => setFormData({ ...formData, dateControleQualite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                 </div>
+              </div>
+
+              {/* 📞 Appel ONOFF — ouvre ONOFF avec le numéro, marque l'appel comme "à attacher
+                  au dossier" pour que le webhook /api/onoff-webhook puisse y déposer l'enregistrement. */}
+              <div className="mt-2">
+                <button
+                  type="button"
+                  disabled={!formData.telephone || !editingId}
+                  onClick={async () => {
+                    const phone = (formData.telephone || '').trim();
+                    if (!phone) return;
+                    await recordPendingOnoffCall({
+                      dossierLocalId: editingId,
+                      telephone: phone,
+                      type: 'cq',
+                      createdBy: currentUser || '',
+                    });
+                    // Pré-remplit la date du CQ (au cas où l'user ne le fait pas après)
+                    if (!formData.dateControleQualite) {
+                      setFormData({ ...formData, dateControleQualite: new Date().toISOString().split('T')[0] });
+                    }
+                    // Ouvre le composeur d'appel — sur iPhone, iOS proposera ONOFF si installé.
+                    window.location.href = `tel:${normalizePhoneE164(phone)}`;
+                  }}
+                  className="w-full px-3 py-2.5 rounded-xl text-xs font-bold border-2 transition-all bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-1.5"
+                  title={!editingId ? 'Sauvegarde d\'abord le dossier' : !formData.telephone ? 'Renseigne le téléphone du client' : `Appeler ${formData.telephone} via ONOFF — l'enregistrement sera attaché auto au dossier`}
+                >
+                  📞 Appeler avec ONOFF
+                  <span className="text-[10px] font-normal opacity-80">(enregistrement auto)</span>
+                </button>
+                {!editingId && (
+                  <p className="text-[10px] text-slate-500 mt-1">💡 Sauvegarde d'abord le dossier pour activer l'appel auto-enregistré.</p>
+                )}
               </div>
 
               {/* 3 boutons toggleables — toujours visibles */}
