@@ -79,13 +79,23 @@ function buildExtractionSchema(availableSocietes = []) {
     montantHT: { type: 'number', description: 'Montant HT en euros si indiqué, sinon 0' },
     financement: { type: 'string', description: 'Organisme de financement / banque si indiqué, sinon vide' },
     dateSignature: { type: 'string', description: 'Date de signature au format AAAA-MM-JJ si présente, sinon vide' },
+    // 🏦 Détails du prêt (bloc "PAIEMENT AVEC FINANCEMENT" du BC). Tous à 0/vide si comptant.
+    montantPret: { type: 'number', description: 'Montant du prêt en euros (champ "Montant du prêt"). 0 si comptant.' },
+    reportMois: { type: 'number', description: 'Report en mois (champ "Report : X mois"). 0 si non indiqué.' },
+    tauxDebiteur: { type: 'number', description: 'Taux débiteur fixe en % (ex 6.39). 0 si non indiqué.' },
+    taeg: { type: 'number', description: 'TAEG (Taux annuel effectif global) en % (ex 6.58). 0 si non indiqué.' },
+    nbEcheances: { type: 'number', description: "Nombre d'échéances (ex 180). 0 si non indiqué." },
+    montantEcheance: { type: 'number', description: "Montant d'une échéance en euros (ex 312). 0 si non indiqué." },
+    periodicite: { type: 'string', enum: ['', 'Mensuelle', 'Bimestrielle', 'Trimestrielle', 'Semestrielle', 'Annuelle'], description: "Périodicité des échéances. Vide si non indiqué — souvent 'Mensuelle' par défaut sur les BC." },
     confiance: { type: 'string', enum: ['haute', 'moyenne', 'faible'], description: 'Niveau de confiance global de la lecture' },
     remarques: { type: 'string', description: 'Champs illisibles ou incertains à vérifier (court), sinon vide' },
   };
   const required = [
     'nom', 'prenom', 'adresse', 'codePostal', 'ville', 'telephone', 'email',
     'produits', 'produit', 'puissance', 'montantTTC', 'montantHT', 'financement',
-    'dateSignature', 'confiance', 'remarques',
+    'dateSignature',
+    'montantPret', 'reportMois', 'tauxDebiteur', 'taeg', 'nbEcheances', 'montantEcheance', 'periodicite',
+    'confiance', 'remarques',
   ];
   if (socIds.length > 0) {
     props.societe = {

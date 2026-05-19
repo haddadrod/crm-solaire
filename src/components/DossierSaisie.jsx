@@ -977,6 +977,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     adresse: '', codePostal: '', ville: '',
     statut: 'A_EN_COURS', financement: '',
     montantTotal: '', montantHtCustom: '', tauxTvaVente: 20, payeClient: false, payeClientDate: '',
+    // Détails du financement (si financement bancaire — sinon ignoré). Récupérables
+    // par scan IA du BC ou saisis à la main.
+    montantPret: '', reportMois: '', tauxDebiteur: '', taeg: '',
+    nbEcheances: '', montantEcheance: '', periodicite: 'Mensuelle',
     produits: [{ type: '', puissance: 0, description: '', quantite: 1 }],
     puissance: 0, // Puissance totale (somme des puissances solaires) — calculée auto
 
@@ -1820,6 +1824,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
       statut: d.statut || 'M_ATT_DOSSIER', financement: d.financement || 'PROJEXIO',
       montantTotal: d.montantTotal?.toString() || '', montantHtCustom: d.montantHtCustom || '', tauxTvaVente: d.tauxTvaVente || 20,
       payeClient: d.payeClient || false, payeClientDate: d.payeClientDate || '',
+      montantPret: d.montantPret || '', reportMois: d.reportMois || '',
+      tauxDebiteur: d.tauxDebiteur || '', taeg: d.taeg || '',
+      nbEcheances: d.nbEcheances || '', montantEcheance: d.montantEcheance || '',
+      periodicite: d.periodicite || 'Mensuelle',
       produits: d.produits?.length > 0
         ? d.produits.map(p => ({ type: p.type, puissance: p.puissance || 0, description: p.description || '', quantite: p.quantite || 1 }))
         : [{ type: d.produit || 'PANNEAU_SOLAIRE', puissance: d.puissance || 6000, description: '', quantite: 1 }],
@@ -7694,6 +7702,20 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
         const ht = parseFloat(d.montantHT);
         if (!isNaN(ht) && ht > 0) next.montantHtCustom = String(ht);
+        // 🏦 Détails du prêt — l'IA extrait ces champs depuis le bloc
+        // "PAIEMENT AVEC FINANCEMENT" du BC. On les pousse dans formData
+        // pour pré-remplir la sous-section "Détails du prêt".
+        const pickNum = (v) => {
+          const n = parseFloat(v);
+          return !isNaN(n) && n > 0 ? String(n) : '';
+        };
+        const pret = pickNum(d.montantPret); if (pret) next.montantPret = pret;
+        const rep = pickNum(d.reportMois); if (rep) next.reportMois = rep;
+        const td = pickNum(d.tauxDebiteur); if (td) next.tauxDebiteur = td;
+        const tg = pickNum(d.taeg); if (tg) next.taeg = tg;
+        const nbe = pickNum(d.nbEcheances); if (nbe) next.nbEcheances = nbe;
+        const me = pickNum(d.montantEcheance); if (me) next.montantEcheance = me;
+        if (d.periodicite && typeof d.periodicite === 'string') next.periodicite = d.periodicite;
         // 📦 Multi-produits : si l'IA renvoie un array 'produits', on l'utilise
         // tel quel. Sinon fallback sur les champs legacy 'produit' + 'puissance'.
         const VALID_TYPES = new Set(['PANNEAU_SOLAIRE', 'PERGOLA', 'POMPE_A_CHALEUR', 'CLIMATISATION', 'BALLON_THERMO', 'BATTERIE', 'ISOLATION', 'VMC', 'AUTRE']);
@@ -7815,6 +7837,18 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         if (!isNaN(ttc) && ttc > 0) next.montantTotal = String(ttc);
         const ht = parseFloat(d.montantHT);
         if (!isNaN(ht) && ht > 0) next.montantHtCustom = String(ht);
+        // 🏦 Détails du prêt (idem flow plus haut)
+        const pickNum = (v) => {
+          const n = parseFloat(v);
+          return !isNaN(n) && n > 0 ? String(n) : '';
+        };
+        const pret = pickNum(d.montantPret); if (pret) next.montantPret = pret;
+        const rep = pickNum(d.reportMois); if (rep) next.reportMois = rep;
+        const td = pickNum(d.tauxDebiteur); if (td) next.tauxDebiteur = td;
+        const tg = pickNum(d.taeg); if (tg) next.taeg = tg;
+        const nbe = pickNum(d.nbEcheances); if (nbe) next.nbEcheances = nbe;
+        const me = pickNum(d.montantEcheance); if (me) next.montantEcheance = me;
+        if (d.periodicite && typeof d.periodicite === 'string') next.periodicite = d.periodicite;
         // 📦 Multi-produits : utilise d.produits[] si présent
         const VALID_TYPES = new Set(['PANNEAU_SOLAIRE', 'PERGOLA', 'POMPE_A_CHALEUR', 'CLIMATISATION', 'BALLON_THERMO', 'BATTERIE', 'ISOLATION', 'VMC', 'AUTRE']);
         if (Array.isArray(d.produits) && d.produits.length > 0) {
@@ -8169,6 +8203,45 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     setFormData({ ...formData, payeClient: false, payeClientDate: '' });
                   }
                 }} />
+              </div>
+            )}
+
+            {/* 🏦 Détails du financement bancaire — visible seulement si une banque
+                est choisie (pas COMPTANT). Récupérable via scan IA du BC ou saisie
+                manuelle. Sert à pré-remplir la zone "PAIEMENT AVEC FINANCEMENT" du BC PDF. */}
+            {formData.financement && formData.financement !== 'COMPTANT' && (
+              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                <div className="text-[11px] font-bold text-blue-700 uppercase mb-2">🏦 Détails du prêt — {formData.financement}</div>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <Field label="Montant du prêt (€)">
+                    <input type="number" step="0.01" value={formData.montantPret} onChange={(e) => setFormData({ ...formData, montantPret: e.target.value })} placeholder="35900" className={inputCls} />
+                  </Field>
+                  <Field label="Report (mois)">
+                    <input type="number" step="1" value={formData.reportMois} onChange={(e) => setFormData({ ...formData, reportMois: e.target.value })} placeholder="6" className={inputCls} />
+                  </Field>
+                  <Field label="Taux débiteur fixe (%)">
+                    <input type="number" step="0.01" value={formData.tauxDebiteur} onChange={(e) => setFormData({ ...formData, tauxDebiteur: e.target.value })} placeholder="6.39" className={inputCls} />
+                  </Field>
+                  <Field label="TAEG (%)">
+                    <input type="number" step="0.01" value={formData.taeg} onChange={(e) => setFormData({ ...formData, taeg: e.target.value })} placeholder="6.58" className={inputCls} />
+                  </Field>
+                  <Field label="Nombre d'échéances">
+                    <input type="number" step="1" value={formData.nbEcheances} onChange={(e) => setFormData({ ...formData, nbEcheances: e.target.value })} placeholder="180" className={inputCls} />
+                  </Field>
+                  <Field label="Montant échéance (€)">
+                    <input type="number" step="0.01" value={formData.montantEcheance} onChange={(e) => setFormData({ ...formData, montantEcheance: e.target.value })} placeholder="312" className={inputCls} />
+                  </Field>
+                  <Field label="Périodicité">
+                    <select value={formData.periodicite} onChange={(e) => setFormData({ ...formData, periodicite: e.target.value })} className={inputCls}>
+                      <option value="Mensuelle">Mensuelle</option>
+                      <option value="Bimestrielle">Bimestrielle</option>
+                      <option value="Trimestrielle">Trimestrielle</option>
+                      <option value="Semestrielle">Semestrielle</option>
+                      <option value="Annuelle">Annuelle</option>
+                    </select>
+                  </Field>
+                </div>
+                <p className="text-[10px] text-slate-500 mt-2">💡 Ces infos sont extraites automatiquement quand tu scannes un BC avec l'IA. Tu peux aussi les saisir à la main ici.</p>
               </div>
             )}
           </Section>
