@@ -2532,14 +2532,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
-          <div className="flex items-center justify-between flex-wrap gap-3 mb-4">
-            <div>
-              <h1 className="text-3xl md:text-4xl font-bold bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 bg-clip-text text-transparent">
+          <div className="flex items-center justify-between gap-3 mb-4 flex-wrap lg:flex-nowrap">
+            <div className="flex-shrink-0">
+              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 bg-clip-text text-transparent">
                 Saisie de dossiers ⚡
               </h1>
-              <p className="text-slate-500 mt-1">Créez vos dossiers d'installation en un clin d'œil</p>
+              <p className="text-slate-500 text-sm mt-0.5">Créez vos dossiers d'installation en un clin d'œil</p>
             </div>
-            <div className="flex gap-2 flex-wrap items-center">
+            <div className="flex gap-2 items-center flex-wrap lg:flex-nowrap flex-1 lg:justify-end">
               {/* 🏢 Sélecteur société — placé avant le badge utilisateur pour
                   qu'on choisisse SA marque avant de regarder qui on est */}
               {societes.length > 1 && (
@@ -3247,6 +3247,8 @@ function SocieteBadge({ societe, variant = 'inline', active = false, onClick = n
       : <span title={societe.label}>{societe.emoji}</span>;
   }
   // Mode large : bouton du sélecteur (header App, form)
+  // Si logo uploadé → on n'affiche QUE le logo (sans label) pour gagner de la
+  // place dans le header. Le logo parle de lui-même. Sans logo → emoji + label.
   if (variant === 'large') {
     const colorMap = {
       emerald: { active: 'bg-emerald-500 text-white border-emerald-600 shadow-md', inactive: 'bg-white text-emerald-700 border-emerald-200 hover:bg-emerald-50' },
@@ -3257,15 +3259,24 @@ function SocieteBadge({ societe, variant = 'inline', active = false, onClick = n
       slate:   { active: 'bg-slate-700 text-white border-slate-800 shadow-md',     inactive: 'bg-white text-slate-700 border-slate-200 hover:bg-slate-50' },
     };
     const c = (colorMap[societe.color] || colorMap.violet)[active ? 'active' : 'inactive'];
-    // Si logo : on garde un fond neutre pour ne pas le déformer visuellement
-    const finalCls = hasLogo
-      ? (active ? 'bg-slate-700 text-white border-slate-800 shadow-md' : 'bg-white text-slate-700 border-slate-300 hover:bg-slate-50')
-      : c;
+    if (hasLogo) {
+      // Logo-only : carré compact, sans label
+      const cls = active
+        ? 'bg-slate-700 border-slate-800 shadow-md ring-2 ring-slate-400'
+        : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300';
+      return (
+        <button
+          onClick={onClick}
+          title={societe.label}
+          className={`px-2 py-1.5 rounded-lg border-2 transition-all flex items-center justify-center min-w-[44px] ${cls}`}
+        >
+          <img src={societe.logoUrl} alt={societe.label} className="h-6 w-auto object-contain" />
+        </button>
+      );
+    }
     return (
-      <button onClick={onClick} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all flex items-center gap-1.5 ${finalCls}`}>
-        {hasLogo
-          ? <img src={societe.logoUrl} alt={societe.label} className="h-5 w-auto object-contain" />
-          : <span>{societe.emoji}</span>}
+      <button onClick={onClick} className={`px-3 py-1.5 rounded-lg text-xs font-bold border-2 transition-all flex items-center gap-1.5 ${c}`}>
+        <span>{societe.emoji}</span>
         <span>{societe.label}</span>
       </button>
     );
