@@ -140,6 +140,19 @@ async function recordPendingOnoffCall({ dossierLocalId, telephone, type, created
   }
 }
 
+// Garde XSS pour les URLs collées par l'utilisateur (vocalCQUrl notamment).
+// Refuse javascript:, data:, vbscript:, blob:, etc. — seuls HTTPS et HTTP
+// sont autorisés pour les <audio src>, <a href>, etc.
+function isSafeMediaUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' || u.protocol === 'http:';
+  } catch (e) {
+    return false;
+  }
+}
+
 // Rôles équipe interne (régie interne) — payés au dossier
 const ROLES_INTERNES = [
   { key: 'teleprospecteur', label: 'Téléprospecteur', emoji: '📞', defaultTarif: 50 },
@@ -8885,16 +8898,22 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       <span className="text-[9px] font-bold uppercase bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">📞 ONOFF</span>
                     )}
                   </span>
-                  {formData.vocalCQUrl && (
+                  {formData.vocalCQUrl && isSafeMediaUrl(formData.vocalCQUrl) && (
                     <a href={formData.vocalCQUrl} download className="text-[10px] font-bold text-purple-600 hover:underline">⬇️ Télécharger</a>
                   )}
                 </label>
 
                 {formData.vocalCQUrl ? (
                   <>
-                    <audio controls src={formData.vocalCQUrl} className="w-full" preload="none">
-                      Ton navigateur ne supporte pas la lecture audio.
-                    </audio>
+                    {isSafeMediaUrl(formData.vocalCQUrl) ? (
+                      <audio controls src={formData.vocalCQUrl} className="w-full" preload="none">
+                        Ton navigateur ne supporte pas la lecture audio.
+                      </audio>
+                    ) : (
+                      <div className="p-2 bg-rose-50 border border-rose-300 rounded text-[11px] text-rose-700">
+                        ⚠️ Lien audio invalide ou potentiellement dangereux — seuls les liens HTTPS sont acceptés. Recolle un lien direct vers le fichier audio.
+                      </div>
+                    )}
                     {formData.onoffCallMeta && (
                       <div className="text-[10px] text-slate-600 mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
                         {formData.onoffCallMeta.callStarted && (
@@ -10993,15 +11012,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <span className="text-[8px] font-bold uppercase bg-purple-100 text-purple-700 px-1 py-0.5 rounded-full">ONOFF</span>
                     )}
                   </span>
-                  {d.vocalCQUrl && (
+                  {d.vocalCQUrl && isSafeMediaUrl(d.vocalCQUrl) && (
                     <a href={d.vocalCQUrl} download className="text-[9px] font-bold text-purple-600 hover:underline">⬇️</a>
                   )}
                 </label>
                 {d.vocalCQUrl ? (
                   <>
-                    <audio controls src={d.vocalCQUrl} className="w-full" preload="none" style={{ height: '32px' }}>
-                      Audio non supporté
-                    </audio>
+                    {isSafeMediaUrl(d.vocalCQUrl) ? (
+                      <audio controls src={d.vocalCQUrl} className="w-full" preload="none" style={{ height: '32px' }}>
+                        Audio non supporté
+                      </audio>
+                    ) : (
+                      <div className="p-1.5 bg-rose-50 border border-rose-300 rounded text-[9px] text-rose-700">⚠️ Lien invalide</div>
+                    )}
                     {d.onoffCallMeta && (
                       <div className="text-[9px] text-slate-600 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
                         {d.onoffCallMeta.callDuration > 0 && <span>⏱ {formatDurationMmSs(d.onoffCallMeta.callDuration)}</span>}
