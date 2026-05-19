@@ -7598,30 +7598,67 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   ⚠️ {dossierScanState.error}
                 </div>
               )}
-              {dossierScanState.status === 'done' && dossierScanState.sections && (
-                <div className="mt-2 text-xs bg-white border border-cyan-200 rounded-lg px-3 py-2">
-                  <div className="font-semibold text-slate-700 mb-1.5">
-                    ✅ {dossierScanState.sections.length} document{dossierScanState.sections.length > 1 ? 's' : ''} identifié{dossierScanState.sections.length > 1 ? 's' : ''} et rangé{dossierScanState.sections.length > 1 ? 's' : ''} dans le dossier :
+              {dossierScanState.status === 'done' && dossierScanState.sections && (() => {
+                // 🚨 Agrège les sections par niveau de risque pour résumé en tête
+                const sections = dossierScanState.sections;
+                const nHigh = sections.filter(s => s.fraudRisk === 'high').length;
+                const nMedium = sections.filter(s => s.fraudRisk === 'medium').length;
+                const hasAnyFraud = nHigh > 0 || nMedium > 0;
+                return (
+                  <div className="mt-2 text-xs bg-white border border-cyan-200 rounded-lg px-3 py-2">
+                    <div className="font-semibold text-slate-700 mb-1.5">
+                      ✅ {sections.length} document{sections.length > 1 ? 's' : ''} identifié{sections.length > 1 ? 's' : ''} et rangé{sections.length > 1 ? 's' : ''} dans le dossier :
+                    </div>
+                    {/* Bandeau anti-fraude global si quelque chose est suspect */}
+                    {hasAnyFraud && (
+                      <div className={`mb-2 px-2 py-1.5 rounded-lg border-2 ${nHigh > 0 ? 'bg-rose-50 border-rose-300 text-rose-800' : 'bg-amber-50 border-amber-300 text-amber-800'}`}>
+                        <div className="font-bold text-[11px]">
+                          {nHigh > 0 ? '🚨' : '⚠️'} Anti-fraude :{' '}
+                          {nHigh > 0 && <span>{nHigh} doc{nHigh > 1 ? 's' : ''} très suspect{nHigh > 1 ? 's' : ''}</span>}
+                          {nHigh > 0 && nMedium > 0 && <span> · </span>}
+                          {nMedium > 0 && <span>{nMedium} à vérifier</span>}
+                        </div>
+                        <div className="text-[10px] italic opacity-80 mt-0.5">Voir les détails ligne par ligne ci-dessous, ou dans la modale Documents après sauvegarde.</div>
+                      </div>
+                    )}
+                    <ul className="space-y-1.5">
+                      {sections.map((s, i) => {
+                        const cat = CLIENT_DOC_SUBCATS.find(c => c.id === s.category);
+                        const emoji = cat?.emoji || '📑';
+                        const confiCol = s.confiance === 'haute' ? 'text-emerald-700'
+                          : s.confiance === 'moyenne' ? 'text-amber-700'
+                          : 'text-rose-700';
+                        const fraudRisk = s.fraudRisk || 'low';
+                        const fraudFlags = Array.isArray(s.fraudFlags) ? s.fraudFlags : [];
+                        const fraudBgCls = fraudRisk === 'high' ? 'bg-rose-50 border-l-2 border-rose-400 pl-2 py-1 rounded'
+                          : fraudRisk === 'medium' ? 'bg-amber-50 border-l-2 border-amber-400 pl-2 py-1 rounded'
+                          : '';
+                        const fraudIcon = fraudRisk === 'high' ? '🚨' : fraudRisk === 'medium' ? '⚠️' : '';
+                        return (
+                          <li key={i} className={fraudBgCls}>
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span>{emoji}</span>
+                              <span className="font-semibold text-slate-700">{s.label}</span>
+                              <span className="text-slate-400">— p. {s.pageStart}{s.pageEnd > s.pageStart ? `-${s.pageEnd}` : ''}</span>
+                              <span className={`text-[10px] font-bold uppercase ${confiCol}`}>{s.confiance}</span>
+                              {fraudIcon && (
+                                <span className={`text-[10px] font-bold ${fraudRisk === 'high' ? 'text-rose-700' : 'text-amber-700'}`}>
+                                  {fraudIcon} {fraudRisk === 'high' ? 'SUSPICION FORTE' : 'À VÉRIFIER'}
+                                </span>
+                              )}
+                            </div>
+                            {fraudFlags.length > 0 && (
+                              <ul className={`mt-0.5 ml-6 text-[10px] space-y-0.5 ${fraudRisk === 'high' ? 'text-rose-700' : 'text-amber-700'}`}>
+                                {fraudFlags.map((flag, j) => <li key={j}>• {flag}</li>)}
+                              </ul>
+                            )}
+                          </li>
+                        );
+                      })}
+                    </ul>
                   </div>
-                  <ul className="space-y-0.5">
-                    {dossierScanState.sections.map((s, i) => {
-                      const cat = CLIENT_DOC_SUBCATS.find(c => c.id === s.category);
-                      const emoji = cat?.emoji || '📑';
-                      const confiCol = s.confiance === 'haute' ? 'text-emerald-700'
-                        : s.confiance === 'moyenne' ? 'text-amber-700'
-                        : 'text-rose-700';
-                      return (
-                        <li key={i} className="flex items-center gap-2 flex-wrap">
-                          <span>{emoji}</span>
-                          <span className="font-semibold text-slate-700">{s.label}</span>
-                          <span className="text-slate-400">— p. {s.pageStart}{s.pageEnd > s.pageStart ? `-${s.pageEnd}` : ''}</span>
-                          <span className={`text-[10px] font-bold uppercase ${confiCol}`}>{s.confiance}</span>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
           {/* 🏢 Société émettrice — choix obligatoire visible en haut du form
