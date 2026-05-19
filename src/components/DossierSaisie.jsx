@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, Lock, Unlock, Shield, KeyRound } from 'lucide-react';
 import { supabase, uploadFileToBucket, getSignedUrl, deleteFileFromBucket, downloadFileFromBucket } from '../supabase.js';
+import { TEMPLATES_CATALOG } from '../pdfTemplates.js';
 
 // Listes par défaut — modifiables dans Réglages
 const POSEURS_DEFAULT = ['IONERGIK 2', 'IONERGIK', 'TEK', 'RV SERVICE', 'ECO ENERGY', 'MAFATEC', 'RBM', 'RL CONSEILS', 'MASTEROVIT', 'SKY', 'INTERNE', 'LEH', 'CAP SOLEIL', 'INNOVA', 'DDI', 'ALLAN', 'AUTRE'];
@@ -10187,6 +10188,46 @@ const buildWhatsAppLink = (phone, message) => {
   return `https://wa.me/${n}?text=${encodeURIComponent(message)}`;
 };
 
+// Panneau "Documents à générer" — affiche les templates PDF disponibles pour
+// la société du dossier (cf. TEMPLATES_CATALOG dans pdfTemplates.js). Le clic
+// déclenche la génération + téléchargement directs.
+function PdfGeneratorPanel({ dossier }) {
+  const [busy, setBusy] = useState('');
+  const templates = TEMPLATES_CATALOG[dossier.societe] || [];
+  if (templates.length === 0) return null;
+
+  const handleGenerate = async (tpl) => {
+    setBusy(tpl.id);
+    try {
+      await tpl.generate(dossier);
+    } catch (e) {
+      console.error('[pdf]', e);
+      alert(`Erreur génération PDF : ${e.message}`);
+    } finally {
+      setBusy('');
+    }
+  };
+
+  return (
+    <div className="mb-3 p-2 bg-purple-50 border border-purple-200 rounded-lg">
+      <div className="text-[10px] font-bold text-purple-700 uppercase mb-1.5">📄 Documents à générer</div>
+      <div className="grid grid-cols-1 gap-1">
+        {templates.map(tpl => (
+          <button
+            key={tpl.id}
+            onClick={() => handleGenerate(tpl)}
+            disabled={busy === tpl.id}
+            className="px-2 py-1.5 rounded text-[11px] font-bold border-2 bg-white hover:bg-purple-100 text-purple-700 border-purple-300 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1"
+            title={`Générer "${tpl.label}" pré-rempli avec les infos du dossier`}
+          >
+            {busy === tpl.id ? '⏳ Génération…' : `${tpl.emoji} ${tpl.label}`}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth, societes = [] }) {
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
@@ -10455,6 +10496,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               )}
             </div>
           </div>
+
+          {/* 📄 Documents à générer (pré-remplis depuis les infos du dossier) */}
+          <PdfGeneratorPanel dossier={d} />
 
           {/* DATES — éditables */}
           <div>
