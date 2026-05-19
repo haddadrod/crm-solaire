@@ -8295,7 +8295,22 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             )}
           </Section>
 
-          <Section title="🤝 Régie" color="purple">
+          <Section
+            title="🤝 Régie"
+            color="purple"
+            collapsible={true}
+            defaultCollapsed={!editingId}
+            summary={(() => {
+              if (formData.typeRegie === 'interne') {
+                const noms = ROLES_INTERNES.map(r => formData[r.key]).filter(Boolean);
+                if (noms.length === 0) return '▶️ Régie interne — aucun rôle assigné';
+                return `▶️ Régie interne · ${noms.length} rôle${noms.length > 1 ? 's' : ''} (${noms.slice(0,2).join(', ')}${noms.length > 2 ? '…' : ''})`;
+              }
+              const regies = (formData.regies || []).filter(r => r.nom);
+              if (regies.length === 0) return '▶️ Aucune régie — clique pour ajouter';
+              return `▶️ ${regies.length} régie${regies.length > 1 ? 's' : ''} · ${regies.slice(0,2).map(r => r.nom).join(', ')}${regies.length > 2 ? '…' : ''}`;
+            })()}
+          >
             {/* Toggle Interne / Externe */}
             <div className="mb-4">
               <label className="block text-xs font-semibold text-slate-600 mb-2">Type de régie</label>
