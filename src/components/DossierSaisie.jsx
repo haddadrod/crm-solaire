@@ -1688,10 +1688,35 @@ export default function DossierSaisie({ authUser, onLogout }) {
     if (editingId) {
       const old = dossiers.find(d => d.localId === editingId);
       const oldHist = old?.historique || [];
+      // 📜 Diff de tous les champs modifiés (hors métadonnées et hors statut).
+      // Une entrée d'historique unique par save, regroupant tous les changements.
+      const SKIP_FIELDS = new Set([
+        'statut', 'historique', 'savedAt', 'modifiedBy', 'modifiedAt',
+        'createdBy', 'createdAt', 'documents',
+        // Calculs dérivés (recalculés à chaque save, pas des choix user)
+        'montantTotal', 'montantHt', 'tvaVente', 'tauxTva', 'fournisseursDetail',
+        'fournisseurHt', 'fournisseurTtc', 'regiesDetail', 'regieHt', 'regieAutoHt',
+        'regieTtc', 'poseursDetail', 'poseurHt', 'poseurTtc', 'margeTtc', 'margeHt',
+        'tva', 'puissance', 'useAutoTarif', 'computeAutoTarif',
+      ]);
+      const fieldChanges = [];
+      if (old) {
+        for (const key of Object.keys(dossier)) {
+          if (SKIP_FIELDS.has(key)) continue;
+          const before = old[key];
+          const after = dossier[key];
+          if (JSON.stringify(before) === JSON.stringify(after)) continue;
+          fieldChanges.push({ field: key, from: before, to: after });
+        }
+      }
+      let newHist = oldHist;
+      if (fieldChanges.length > 0) {
+        newHist = [...newHist, { date: now, action: 'modification', user: userTag, changes: fieldChanges }];
+      }
       // Ajoute une entrée si le statut a changé
-      const newHist = (old && old.statut !== dossier.statut)
-        ? [...oldHist, { date: now, from: old.statut, to: dossier.statut, action: 'changement_statut', user: userTag }]
-        : oldHist;
+      if (old && old.statut !== dossier.statut) {
+        newHist = [...newHist, { date: now, from: old.statut, to: dossier.statut, action: 'changement_statut', user: userTag }];
+      }
       dossier.historique = newHist;
       dossier.modifiedBy = userTag;
       dossier.modifiedAt = now;
@@ -3159,9 +3184,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
               setDossiers(dossiers.map(d => {
                 if (d.localId !== currentQuickDossier.localId) return d;
                 let merged = { ...d, ...updates, savedAt: now, modifiedBy: userTag, modifiedAt: now };
+                // 📜 Trace tous les changements de champs (hors statut, qui a son
+                // entrée dédiée juste après). Une entrée d'historique par appel
+                // onUpdate, regroupant toutes les modifs faites simultanément.
+                const fieldChanges = [];
+                for (const key of Object.keys(updates)) {
+                  if (key === 'statut' || key === 'historique') continue;
+                  const before = d[key];
+                  const after = updates[key];
+                  if (JSON.stringify(before) === JSON.stringify(after)) continue;
+                  fieldChanges.push({ field: key, from: before, to: after });
+                }
+                if (fieldChanges.length > 0) {
+                  merged.historique = [...(merged.historique || []), { date: now, action: 'modification', user: userTag, changes: fieldChanges }];
+                }
                 // Trace le changement de statut manuel s'il y en a un
                 if (updates.statut && updates.statut !== d.statut) {
-                  merged.historique = [...(d.historique || []), { date: now, from: d.statut, to: updates.statut, action: 'changement_statut', user: userTag }];
+                  merged.historique = [...(merged.historique || []), { date: now, from: d.statut, to: updates.statut, action: 'changement_statut', user: userTag }];
                   // Désarchivage automatique si statut → SAV (ou Litige/Problème)
                   if (d.archived && ['D_SAV', 'C_LITIGE', 'M_NRP_CQ_LIVRAISON', 'F1_CONTROLE_LIV_BANQUE', 'CONFORMITE_CONTRAT'].includes(updates.statut)) {
                     merged.archived = false;
@@ -10381,6 +10420,70 @@ function HistoriqueModal({ dossier, onClose }) {
                       </div>
                     );
                   }
+                  // 📜 Modification d'un ou plusieurs champs du dossier (hors statut)
+                  if (h.action === 'modification' && Array.isArray(h.changes) && h.changes.length > 0) {
+                    // Libellés humains pour les champs les plus courants (sinon on
+                    // affiche le nom technique du champ entre backticks).
+                    const FIELD_LABELS = {
+                      nom: 'Nom', prenom: 'Prénom', adresse: 'Adresse', codePostal: 'Code postal', ville: 'Ville',
+                      telephone: 'Téléphone', email: 'Email', dateSignature: 'Date BC', dateInsta: 'Date pose',
+                      financement: 'Financement', payeClient: 'Payé par financeur',
+                      dateEnvoiFin: 'Envoi banque', dateRetourFin: 'Retour banque', dateAccord: 'Accord banque',
+                      statutFin: 'Statut banque', motifManqueDoc: 'Docs demandés banque',
+                      dateNotifRegie: 'Date régie prévenue', dateRecuRegie: 'Date docs reçus régie',
+                      dateRenvoiDocs: 'Date renvoi banque',
+                      dateControleQualite: 'Date CQ', statutControleQualite: 'Statut CQ', vocalCQUrl: 'Vocal CQ',
+                      dateEnvoiPose: 'Date pose', statutPose: 'Statut pose',
+                      dateEnvoiMairie: 'Envoi mairie', dateAccordMairie: 'Accord mairie', statutMairie: 'Statut mairie',
+                      dateEnvoiConsuel: 'Envoi Consuel', dateAccordConsuel: 'Accord Consuel', statutConsuel: 'Statut Consuel',
+                      societe: 'Société', id: 'N° BC', notes: 'Notes',
+                      montantPret: 'Montant prêt', reportMois: 'Report mois', tauxDebiteur: 'Taux débiteur',
+                      taeg: 'TAEG', nbEcheances: 'Nb échéances', montantEcheance: 'Mensualité', periodicite: 'Périodicité',
+                      typeToiture: 'Type toiture', orientationPanneaux: 'Orientation panneaux',
+                    };
+                    const fmtVal = (v) => {
+                      if (v === '' || v == null) return <em className="text-slate-400">vide</em>;
+                      if (v === true) return '✓';
+                      if (v === false) return '✗';
+                      if (Array.isArray(v)) return `${v.length} élément${v.length > 1 ? 's' : ''}`;
+                      if (typeof v === 'object') return JSON.stringify(v).slice(0, 60);
+                      const s = String(v);
+                      // Date ISO → format français
+                      if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+                        try { return new Date(s).toLocaleDateString('fr-FR'); } catch (e) {}
+                      }
+                      return s.length > 60 ? s.slice(0, 60) + '…' : s;
+                    };
+                    return (
+                      <div key={`m-${i}`} className="relative pl-10">
+                        <div className="absolute left-0 top-0.5 w-8 h-8 rounded-full flex items-center justify-center text-base shadow-md text-white bg-gradient-to-br from-blue-400 to-indigo-500">
+                          ✏️
+                        </div>
+                        <div className="rounded-xl p-3 border bg-blue-50 border-blue-200">
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                            📅 {formatDateTime(h.date)}
+                          </div>
+                          <div className="text-sm font-bold text-blue-700 mb-1.5">
+                            ✏️ Modification ({h.changes.length} champ{h.changes.length > 1 ? 's' : ''})
+                          </div>
+                          <ul className="space-y-1">
+                            {h.changes.map((c, j) => {
+                              const label = FIELD_LABELS[c.field] || c.field;
+                              return (
+                                <li key={j} className="text-[11px] flex items-center gap-1.5 flex-wrap">
+                                  <strong className="text-slate-700">{label} :</strong>
+                                  <span className="text-rose-600 line-through">{fmtVal(c.from)}</span>
+                                  <span className="text-slate-400">→</span>
+                                  <span className="text-emerald-700 font-semibold">{fmtVal(c.to)}</span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                          {h.user && <div className="text-[10px] text-slate-500 mt-1.5">👤 par {h.user}</div>}
+                        </div>
+                      </div>
+                    );
+                  }
                   // Évènement classique de l'historique (création ou changement de statut)
                   const fromInfo = h.from ? findStatutInfo(h.from) : null;
                   const toInfo = findStatutInfo(h.to);
@@ -11035,14 +11138,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   {d.envoisHistorique.map((env, i) => {
                     const fmtD = (iso) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '?';
                     return (
-                      <div key={i} className="text-[9px] flex items-center gap-1 flex-wrap bg-rose-50 rounded px-1 py-0.5">
+                      <div key={i} className="text-[9px] flex items-baseline gap-1 flex-wrap bg-rose-50 rounded px-1.5 py-0.5">
                         <span className="font-bold text-slate-700">{i + 1}.</span>
                         <span className="font-bold text-rose-700">{env.financeur}</span>
-                        <span className="text-slate-500">{fmtD(env.dateEnvoi)}→{fmtD(env.dateRetour)}</span>
+                        <span className="text-slate-500">📤 envoi <strong className="text-slate-700">{fmtD(env.dateEnvoi)}</strong></span>
+                        {env.dateRetour && <span className="text-slate-500">→ 📥 refus <strong className="text-slate-700">{fmtD(env.dateRetour)}</strong></span>}
                         <span className="ml-auto text-rose-600 font-bold">✗</span>
                       </div>
                     );
                   })}
+                  <div className="mt-1 text-[9px] text-slate-500 italic">
+                    Actuel : <strong className="text-blue-700">{d.financement || 'à choisir'}</strong> {d.dateEnvoiFin && `(renvoyé ${new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })})`}
+                  </div>
                 </div>
               )}
 
