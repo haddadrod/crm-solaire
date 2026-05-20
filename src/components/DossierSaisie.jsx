@@ -19,7 +19,7 @@ const STATUTS = [
   { id: 'B4_EN_COURS_POSE',     label: 'EN COURS DE POSE',     color: 'from-orange-500 to-red-500',    bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🔧' },
   { id: 'B3_REFUS_FINANCEMENT', label: 'REFUS DE FINANCEMENT', color: 'from-red-500 to-rose-600',      bg: 'bg-red-100',     text: 'text-red-700',     emoji: '🚫' },
   { id: 'G_ATTENTE_ACCORD_DEF', label: 'ATTENTE ACCORD DEF',   color: 'from-teal-400 to-emerald-500',  bg: 'bg-teal-100',    text: 'text-teal-700',    emoji: '📋' },
-  { id: 'F_ATTENTE_DEBLOCAGE',  label: 'ATTENTE DE DEBLOCAGE', color: 'from-yellow-400 to-lime-500',   bg: 'bg-yellow-100',  text: 'text-yellow-700',  emoji: '⏳' },
+  { id: 'F_ATTENTE_DEBLOCAGE',  label: 'ATTENTE DE DEBLOCAGE', color: 'from-amber-400 to-orange-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '⏳' },
   { id: 'F1_CONTROLE_LIV_BANQUE', label: 'CONTROLE DE LIV BANQUE', color: 'from-sky-400 to-blue-500', bg: 'bg-sky-100',     text: 'text-sky-700',     emoji: '🏦' },
   { id: 'F2_PREFINANCEMENT',    label: 'PRÉFINANCEMENT',       color: 'from-emerald-300 to-green-400', bg: 'bg-emerald-50',  text: 'text-emerald-700', emoji: '💳' },
   { id: 'F1_ACCEPTE',           label: 'ACCEPTÉ',              color: 'from-rose-300 to-pink-300',     bg: 'bg-rose-50',     text: 'text-rose-700',    emoji: '👍' },
