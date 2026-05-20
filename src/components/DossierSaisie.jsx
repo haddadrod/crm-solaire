@@ -8298,7 +8298,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       // Le PDF d'origine reste dans le bucket : toutes les sections pointent
       // vers ce même fichier physique avec des bookmarks pageStart/pageEnd.
 
-      setDossierScanState({ status: 'done', error: '', sections });
+      const incoherences = Array.isArray(result.incoherences) ? result.incoherences : [];
+      setDossierScanState({ status: 'done', error: '', sections, incoherences });
     } catch (e) {
       setDossierScanState({ status: 'error', error: e.message || 'Erreur inconnue', sections: null });
     }
@@ -8432,6 +8433,17 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <div className="font-semibold text-slate-700 mb-1.5">
                       ✅ {sections.length} document{sections.length > 1 ? 's' : ''} identifié{sections.length > 1 ? 's' : ''} et rangé{sections.length > 1 ? 's' : ''} dans le dossier :
                     </div>
+                    {/* Incohérences détectées en recoupant les documents entre eux
+                        (ex : nom du BC ≠ nom de la carte d'identité). */}
+                    {Array.isArray(dossierScanState.incoherences) && dossierScanState.incoherences.length > 0 && (
+                      <div className="mb-2 px-2 py-1.5 rounded-lg border-2 bg-orange-50 border-orange-300 text-orange-800">
+                        <div className="font-bold text-[11px]">🔎 {dossierScanState.incoherences.length} incohérence{dossierScanState.incoherences.length > 1 ? 's' : ''} entre documents — à vérifier</div>
+                        <ul className="mt-1 ml-1 text-[10px] space-y-0.5">
+                          {dossierScanState.incoherences.map((inc, j) => <li key={j}>• {inc}</li>)}
+                        </ul>
+                        <div className="text-[10px] italic opacity-80 mt-0.5">L'IA a recoupé les documents : le formulaire a été pré-rempli avec la valeur la plus fiable (pièce d'identité). Vérifie quand même.</div>
+                      </div>
+                    )}
                     {/* Bandeau anti-fraude global si quelque chose est suspect */}
                     {hasAnyFraud && (
                       <div className={`mb-2 px-2 py-1.5 rounded-lg border-2 ${nHigh > 0 ? 'bg-rose-50 border-rose-300 text-rose-800' : 'bg-amber-50 border-amber-300 text-amber-800'}`}>
