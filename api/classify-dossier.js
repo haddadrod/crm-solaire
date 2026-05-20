@@ -271,7 +271,10 @@ async function classifyPdfBuffer(client, pdfBuffer, extraContext = '', available
   const schema = buildClassifySchema(availableSocietes);
   const message = await client.messages.create({
     model: 'claude-opus-4-7',
-    max_tokens: 8000,
+    // max_tokens couvre le raisonnement adaptatif ET le JSON de sortie.
+    // 8000 était trop juste pour un dossier riche (20+ pages, 14 sections,
+    // analyse anti-fraude) → le JSON était tronqué → parsing en échec.
+    max_tokens: 32000,
     thinking: { type: 'adaptive' },
     output_config: {
       effort: 'medium',
@@ -557,9 +560,19 @@ export default async function handler(req, res) {
     if (e?.status === 400 && /credit|balance|insufficient/i.test(msg)) {
       return json(res, 502, { error: 'Crédits IA épuisés — recharge sur console.anthropic.com.' });
     }
-    // Log complet côté serveur, message générique côté client pour ne pas
-    // leak la structure interne / les détails du PDF dans la UI.
-    console.error('classify-dossier error:', msg, e?.stack);
-    return json(res, 502, { error: "Échec de l'analyse IA. Réessaie dans un instant — si ça persiste, vérifie le format du PDF." });
+    // Service IA momentanément indisponible / surchargé.
+    if (e?.status === 529 || e?.status === 503 || e?.status === 500 || /overloaded/i.test(msg)) {
+      return json(res, 502, { error: 'Service IA momentanément surchargé. Réessaie dans 1 à 2 minutes.' });
+    }
+    // Réponse IA mal formée (JSON tronqué / non parsable).
+    if (e instanceof SyntaxError || /JSON|Unexpected token|Réponse IA vide/i.test(msg)) {
+      return json(res, 502, { error: "L'IA a renvoyé une réponse incomplète (PDF probablement trop long). Réessaie, ou découpe le PDF en deux." });
+    }
+    // Log complet côté serveur. Côté client : on donne la VRAIE cause de façon
+    // diagnostiquable (statut HTTP + message Anthropic abrégé) — ce ne sont pas
+    // des secrets, et sans ça l'admin ne peut rien dépanner.
+    console.error('classify-dossier error:', e?.status, msg, e?.stack);
+    const reason = `${e?.status ? `HTTP ${e.status} — ` : ''}${String(msg).slice(0, 200)}`;
+    return json(res, 502, { error: `Échec de l'analyse IA : ${reason}` });
   }
 }
