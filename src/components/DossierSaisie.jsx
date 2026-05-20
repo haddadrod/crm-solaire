@@ -3673,12 +3673,12 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           )}
           {!readOnly && (
             <>
-              <button onClick={() => onCopy(d)} className={`p-1 rounded ${isCopied ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50'}`}>
+              <button onClick={() => onCopy(d)} aria-label={isCopied ? 'Copié' : 'Copier infos client'} title={isCopied ? 'Copié' : 'Copier les coordonnées'} className={`p-1 rounded ${isCopied ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50'}`}>
                 {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
               <DocsBtn size="small" /><HistBtn size="small" />
-              <button onClick={() => onEdit(d)} className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded"><Edit3 className="w-3.5 h-3.5" /></button>
-              {isAdmin && <button onClick={() => onDelete(d.localId)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>}
+              <button onClick={() => onEdit(d)} aria-label="Modifier le dossier" title="Modifier le dossier" className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded"><Edit3 className="w-3.5 h-3.5" /></button>
+              {isAdmin && <button onClick={() => onDelete(d.localId)} aria-label="Supprimer le dossier" title="Supprimer le dossier" className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>}
             </>
           )}
         </span>
@@ -3796,14 +3796,14 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           <div className="flex items-center gap-0.5">
             {!readOnly && (
               <>
-                <button onClick={() => onCopy(d)} className={`p-1.5 rounded-lg ${isCopied ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50'}`}>
+                <button onClick={() => onCopy(d)} aria-label={isCopied ? 'Copié' : 'Copier infos client'} title={isCopied ? 'Copié' : 'Copier les coordonnées'} className={`p-1.5 rounded-lg ${isCopied ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50'}`}>
                   {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
                 <DocsBtn /><HistBtn />
-                <button onClick={() => onEdit(d)} className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
+                <button onClick={() => onEdit(d)} aria-label="Modifier le dossier" title="Modifier le dossier" className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
               </>
             )}
-            {isAdmin && <button onClick={() => onDelete(d.localId)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>}
+            {isAdmin && <button onClick={() => onDelete(d.localId)} aria-label="Supprimer le dossier" title="Supprimer le dossier" className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>}
           </div>
         </div>
         {/* Grille chiffres — masquée en lecture seule (poseur / régie) */}
@@ -8029,7 +8029,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             <Sparkles className="w-5 h-5 text-violet-500" />{editingId ? 'Modifier le dossier' : 'Nouveau dossier'}
             {isScanBusy && <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full animate-pulse">🔒 Scan IA en cours</span>}
           </h2>
-          <button onClick={safeClose} disabled={isScanBusy} className={`text-slate-400 p-1 rounded-lg ${isScanBusy ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100'}`} title={isScanBusy ? 'Scan en cours — attends la fin' : 'Fermer'}><X className="w-5 h-5" /></button>
+          <button onClick={safeClose} disabled={isScanBusy} aria-label="Fermer le formulaire" className={`text-slate-400 p-1 rounded-lg ${isScanBusy ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100'}`} title={isScanBusy ? 'Scan en cours — attends la fin' : 'Fermer'}><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-6 space-y-5">
@@ -10194,7 +10194,7 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Upload className="w-5 h-5 text-violet-500" /> Importer des dossiers</h2>
             <p className="text-xs text-slate-500 mt-0.5">Étape {step} / 3 — {step === 1 ? 'Coller tes données' : step === 2 ? 'Mapper les colonnes' : 'Vérifier et confirmer'}</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white rounded-xl"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Fermer" title="Fermer" className="p-2 hover:bg-white rounded-xl"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
@@ -10400,7 +10400,7 @@ function HistoriqueModal({ dossier, onClose }) {
               {dossier.nom} {dossier.prenom} · {allEvents.length} évènement{allEvents.length > 1 ? 's' : ''}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white rounded-xl"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Fermer" title="Fermer" className="p-2 hover:bg-white rounded-xl"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
@@ -13149,7 +13149,7 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
             </h2>
             <p className="text-xs text-slate-600 mt-0.5">Donne un ordre, l'IA identifie le client et rédige le mail. Tu valides avant l'envoi.</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/60 rounded-lg" title="Fermer"><X className="w-5 h-5 text-slate-600" /></button>
+          <button onClick={onClose} aria-label="Fermer" className="p-2 hover:bg-white/60 rounded-lg" title="Fermer"><X className="w-5 h-5 text-slate-600" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
