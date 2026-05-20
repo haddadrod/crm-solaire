@@ -183,6 +183,13 @@ describe('computeWorkflowStatut', () => {
       .toBe('B1_MANQUE_DOC');
   });
 
+  it("B1_MANQUE_DOC prime sur une date de pose saisie (financement non sécurisé)", () => {
+    expect(computeWorkflowStatut({ statutFin: 'manque_doc', dateInsta: '2026-05-20' }))
+      .toBe('B1_MANQUE_DOC');
+    expect(computeWorkflowStatut({ statutFin: 'manque_doc', statutPose: 'visite_ok' }))
+      .toBe('B1_MANQUE_DOC');
+  });
+
   it("repasse en B1_EN_COURS_FINANCEMENT une fois les docs renvoyés (statutFin → envoyé)", () => {
     expect(computeWorkflowStatut({ statutFin: 'envoyé', dateEnvoiFin: '2026-05-15' }))
       .toBe('B1_EN_COURS_FINANCEMENT');

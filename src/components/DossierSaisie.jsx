@@ -43,8 +43,15 @@ const AUTO_STATUTS = ['A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEME
 // retour banque, date pose, poseur assigné). Retourne null si on est sorti
 // du cycle (pose effectivement réalisée → l'utilisateur gère le reste).
 function computeWorkflowStatut(d) {
-  // Refusé par la banque (sans rebascule) → REFUS DE FINANCEMENT
+  // ── Verdicts banque négatifs ── priment sur tout le reste, même sur une
+  // date de pose saisie : tant que la banque n'a pas validé, le financement
+  // n'est PAS sécurisé, le dossier est bloqué et doit le rester visuellement.
+  // Refusé → REFUS DE FINANCEMENT
   if (d.statutFin === 'refusé') return 'B3_REFUS_FINANCEMENT';
+  // Banque réclame des docs complémentaires → MANQUE DOCS BANQUE.
+  // Distinct de B1 : demande une action (relancer la régie/client). Repasse
+  // en B1 dès que statutFin redevient 'envoyé' (docs renvoyés à la banque).
+  if (d.statutFin === 'manque_doc') return 'B1_MANQUE_DOC';
   // Pose réalisée (dateInsta remplie ou statutPose='visite_ok') → sortie du cycle
   if (d.dateInsta || d.statutPose === 'visite_ok') return null;
   // Date de pose remplie : selon qu'on a un poseur ou pas
@@ -57,11 +64,6 @@ function computeWorkflowStatut(d) {
   }
   // Accord financement reçu, pas encore date de pose → À ENVOYER EN POSE
   if (d.statutFin === 'accepté') return 'B2_A_ENVOYER_POSE';
-  // La banque réclame des docs complémentaires → MANQUE DOCS BANQUE.
-  // Distinct de B1 : ce statut demande une action (relancer la régie/client),
-  // pas juste attendre la banque. Repasse en B1 dès que statutFin redevient
-  // 'envoyé' (docs renvoyés via le CTA du workflow manque_doc).
-  if (d.statutFin === 'manque_doc') return 'B1_MANQUE_DOC';
   // Envoyé banque, en attente de retour → EN COURS DE FINANCEMENT
   if (d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
   // CQ validé OK, pas encore envoyé banque → À ENVOYER EN BANQUE
@@ -9459,6 +9461,28 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 const jours = Math.floor((new Date() - new Date(formData.dateEnvoiFin)) / 86400000);
                 if (jours <= 2) return <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-700">⏳ Envoyé il y a {jours} jour{jours > 1 ? 's' : ''} — en attente</div>;
                 return <div className="mt-2 p-2 bg-rose-50 border border-rose-300 rounded-lg text-[11px] text-rose-700 font-bold">⚠️ Pas de retour depuis {jours} jours — relance la banque !</div>;
+              })()}
+
+              {/* État d'avancement du dossier — recalculé en direct depuis les
+                  infos saisies. Quand on change le statut banque (ex : "Manque
+                  docs"), on voit tout de suite vers quel statut workflow le
+                  dossier va basculer. Il n'est figé qu'à l'enregistrement. */}
+              {(() => {
+                const effectif = applyAutoStatut(formData).statut || formData.statut || 'A_EN_COURS';
+                const st = STATUTS.find(s => s.id === effectif);
+                if (!st) return null;
+                const changed = effectif !== (formData.statut || 'A_EN_COURS');
+                return (
+                  <div className="mt-3 p-2.5 bg-white border-2 border-blue-200 rounded-xl flex items-center gap-2 flex-wrap">
+                    <span className="text-[10px] font-bold text-slate-500 uppercase">État d'avancement</span>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-gradient-to-r ${st.color} text-white shadow-sm`}>
+                      <span>{st.emoji}</span>{st.label}
+                    </span>
+                    {formData.statutLocked
+                      ? <span className="text-[10px] text-amber-600 font-semibold">🔒 verrouillé — pas de recalcul auto</span>
+                      : changed && <span className="text-[10px] text-blue-600 font-semibold">↻ sera appliqué à l'enregistrement</span>}
+                  </div>
+                );
               })()}
               </>)}
             </div>
