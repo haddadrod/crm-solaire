@@ -1485,10 +1485,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
             // On marque ce JSON comme 'déjà écrit' pour pas le réécrire en boucle.
             lastWrittenDossiersJson.current = newValue;
             setDossiers(parsed);
-          } catch (e) {}
+          } catch (e) {
+            console.warn('[realtime dossiers] parse failed', e);
+          }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        // Logge l'état de la connexion realtime — utile pour diagnostic
+        // quand la sync multi-device casse silencieusement.
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn(`[realtime dossiers] ${status}`, err || '');
+        }
+      });
     return () => { try { supabase.removeChannel(channel); } catch (e) {} };
   }, [loading]);
 
@@ -1572,10 +1580,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
             const parsed = JSON.parse(newValue);
             lastWrittenSettings.current[key] = newValue;
             setter(parsed);
-          } catch (e) {}
+          } catch (e) {
+            console.warn(`[realtime settings] parse failed for ${key}`, e);
+          }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn(`[realtime settings] ${status}`, err || '');
+        }
+      });
     return () => { try { supabase.removeChannel(channel); } catch (e) {} };
   }, [loading]);
 
