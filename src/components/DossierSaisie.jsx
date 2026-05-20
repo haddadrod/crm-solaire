@@ -346,6 +346,10 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
   // Indique que le fileId est défini mais que le fichier est introuvable
   // dans le storage (rare — ex : ligne supprimée à la main, race condition).
   const [missingFile, setMissingFile] = useState(false);
+  // Ref pour éviter les setState après unmount (modale fermée pendant un
+  // appel IA en cours, par ex.). React warn dans la console sinon.
+  const isMountedRef = useRef(true);
+  useEffect(() => () => { isMountedRef.current = false; }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -385,11 +389,14 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
-      onExtract(payload.data || {});
+      // Si le composant a été unmount entre temps (modale fermée par l'user),
+      // on n'invoque pas onExtract (qui tenterait de mettre à jour des states
+      // d'un parent peut-être démonté aussi).
+      if (isMountedRef.current) onExtract(payload.data || {});
     } catch (e) {
-      alert(`Lecture IA de la facture : ${e.message}`);
+      if (isMountedRef.current) alert(`Lecture IA de la facture : ${e.message}`);
     } finally {
-      setExtracting(false);
+      if (isMountedRef.current) setExtracting(false);
     }
   };
 
@@ -404,8 +411,9 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       const dataUrl = await readFileAsDataURL(file);
       const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const ok = await window.storage.set(`file:${id}`, JSON.stringify({ dataUrl, name: file.name, type: file.type }));
-      if (!ok) { alert('❌ Échec du stockage du fichier.'); return; }
+      if (!ok) { if (isMountedRef.current) alert('❌ Échec du stockage du fichier.'); return; }
       if (fileId) { try { await window.storage.delete(`file:${fileId}`); } catch (e) {} }
+      if (!isMountedRef.current) return; // composant démonté pendant l'upload
       onChange(id);
       setMeta({ name: file.name, type: file.type });
       // Auto-extraction si activée (ex : Lire la facture dès qu'on l'upload)
@@ -413,9 +421,9 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
         runExtraction(dataUrl, file.type);
       }
     } catch (e) {
-      alert('Erreur : ' + e.message);
+      if (isMountedRef.current) alert('Erreur : ' + e.message);
     } finally {
-      setUploading(false);
+      if (isMountedRef.current) setUploading(false);
     }
   };
 
