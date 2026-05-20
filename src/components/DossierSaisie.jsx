@@ -2097,10 +2097,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     URL.revokeObjectURL(url);
   };
 
-  // 📊 Export comptable multi-sheet : génère 3 CSV séparés, téléchargés en
-  // séquence — un pour les dossiers, un pour les paiements détaillés (qui doit
-  // quoi à qui), un pour les marges (marge HT/TTC par dossier + cuts).
-  // Le comptable importe chaque CSV dans une feuille séparée d'Excel/Calc.
+  // 📊 Export comptable : génère le grand livre — UN seul fichier CSV par
+  // société (jamais de mélange Yolico/Elsun). Chaque fichier liste toutes
+  // les écritures : ventes (installations) et achats (prestataires payés),
+  // une ligne par écriture, avec un récapitulatif des totaux en bas.
   const exportComptable = () => {
     if (!isAdmin && currentUserRole !== 'compta') {
       alert('🔒 Export comptable réservé à l\'admin et à la compta.');
@@ -2133,124 +2133,92 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (orphelins.length > 0) groupes.push({ id: 'sans-societe', label: 'Sans société', dossiers: orphelins });
     }
 
-    // Construit les 3 jeux de lignes (dossiers / paiements / marges) pour un
-    // sous-ensemble de dossiers. Renvoie un tableau de { name, csv }.
-    const buildGroupFiles = (dossiersSub, sufx) => {
-      // Sheet 1 : DOSSIERS (vue d'ensemble)
-      const dossiersRows = [['N° BC', 'Société', 'Date signature', 'Date pose',
-        'Nom', 'Prénom', 'Ville', 'Code postal',
-        'Statut', 'Financement', 'Payé financeur',
-        'Prix TTC', 'Prix HT', 'TVA %', 'Marge TTC', 'Marge HT',
-        'Puissance Wc', 'Archivé']];
+    // Construit LE grand livre comptable d'une société : un seul fichier,
+    // une ligne par écriture. Pour chaque dossier : 1 ligne "Vente"
+    // (l'installation vendue) puis 1 ligne "Achat" par prestataire payé
+    // (fournisseur / régie / poseur / commission interne). Se termine par
+    // un récapitulatif (totaux ventes, achats, marge).
+    const buildGrandLivre = (dossiersSub, sufx, socLabel) => {
+      const rows = [['N° BC', 'Date pose', 'Statut dossier', 'Client', 'Ville',
+        'Sens', 'Catégorie', 'Tiers', 'N° facture',
+        'Montant HT', 'Montant TTC', 'TVA', 'Réglé', 'Date règlement', 'Financement']];
+      let totVenteHt = 0, totVenteTtc = 0, totAchatHt = 0, totAchatTtc = 0, totAchatRegleTtc = 0;
       dossiersSub.forEach(d => {
         const statutLabel = STATUTS.find(s => s.id === d.statut)?.label || d.statut || '';
-        dossiersRows.push([
-          d.id || '', d.societe || '',
-          formatDateForSheet(d.dateSignature), formatDateForSheet(d.dateInsta),
-          d.nom || '', d.prenom || '', d.ville || '', d.codePostal || '',
-          statutLabel, d.financement || '', d.payeClient ? 'OUI' : 'NON',
-          fmt(d.montantTotal), fmt(d.montantHt), fmt(d.tauxTva), fmt(d.margeTtc), fmt(d.margeHt),
-          d.puissance || 0, d.archived ? 'OUI' : 'NON',
+        const client = `${d.nom || ''} ${d.prenom || ''}`.trim();
+        const datePose = formatDateForSheet(d.dateInsta);
+        // Ligne VENTE (recette).
+        totVenteHt += d.montantHt || 0;
+        totVenteTtc += d.montantTotal || 0;
+        rows.push([
+          d.id || '', datePose, statutLabel, client, d.ville || '',
+          'Vente', 'Vente installation', client, d.factureNo || '',
+          fmt(d.montantHt), fmt(d.montantTotal), fmt(d.tva),
+          d.payeClient ? 'OUI' : 'NON', '', d.financement || '',
         ]);
-      });
-
-      // Sheet 2 : PAIEMENTS (qui doit quoi à qui).
-      // Une ligne par bénéficiaire (poseur/régie/fournisseur/équipe interne)
-      // par dossier — avec le N° de facture du prestataire quand il existe.
-      const paiementsRows = [['Dossier N°', 'Client', 'Société', 'Date pose',
-        'Type bénéficiaire', 'Nom bénéficiaire', 'N° facture',
-        'Montant HT', 'Montant TTC', 'Payé', 'Date paiement',
-        'Banque a payé ?', 'Financement']];
-      dossiersSub.forEach(d => {
-        const ctx = [d.id || '', `${d.nom || ''} ${d.prenom || ''}`.trim(), d.societe || '', formatDateForSheet(d.dateInsta)];
-        (d.fournisseursDetail || []).forEach(f => {
-          paiementsRows.push([...ctx, 'Fournisseur', f.nom || '', f.factureNo || '',
-            fmt(f.ht), fmt(f.ttc), f.paye ? 'OUI' : 'NON', formatDateForSheet(f.datePaye),
-            d.payeClient ? 'OUI' : 'NON', d.financement || '']);
-        });
-        (d.regiesDetail || []).forEach(r => {
-          paiementsRows.push([...ctx, 'Régie', r.nom || '', r.factureNo || '',
-            fmt(r.ht), fmt(r.ttc), r.paye ? 'OUI' : 'NON', formatDateForSheet(r.datePaye),
-            d.payeClient ? 'OUI' : 'NON', d.financement || '']);
-        });
-        (d.poseursDetail || []).forEach(p => {
-          paiementsRows.push([...ctx, 'Poseur', p.nom || '', p.factureNo || '',
-            fmt(p.ht), fmt(p.ttc), p.paye ? 'OUI' : 'NON', formatDateForSheet(p.datePaye),
-            d.payeClient ? 'OUI' : 'NON', d.financement || '']);
-        });
+        // Lignes ACHAT (charges : prestataires).
+        const pushAchat = (categorie, nom, factureNo, ht, ttc, paye, datePaye) => {
+          totAchatHt += ht || 0;
+          totAchatTtc += ttc || 0;
+          if (paye) totAchatRegleTtc += ttc || 0;
+          rows.push([
+            d.id || '', datePose, statutLabel, client, d.ville || '',
+            'Achat', categorie, nom || '', factureNo || '',
+            fmt(ht), fmt(ttc), '', paye ? 'OUI' : 'NON', formatDateForSheet(datePaye), '',
+          ]);
+        };
+        (d.fournisseursDetail || []).forEach(f => pushAchat('Fournisseur', f.nom, f.factureNo, f.ht, f.ttc, f.paye, f.datePaye));
+        (d.regiesDetail || []).forEach(r => pushAchat('Régie', r.nom, r.factureNo, r.ht, r.ttc, r.paye, r.datePaye));
+        (d.poseursDetail || []).forEach(p => pushAchat('Poseur', p.nom, p.factureNo, p.ht, p.ttc, p.paye, p.datePaye));
         ROLES_INTERNES.forEach(role => {
           const nom = d[role.key];
           if (!nom) return;
           const m = d[role.key + 'Montant'];
           const tarif = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
           if (tarif <= 0) return;
-          // Pas de N° facture pour l'équipe interne (pas de facturation).
-          paiementsRows.push([...ctx, role.label, nom, '',
-            fmt(tarif), fmt(tarif), d[role.key + 'Paye'] ? 'OUI' : 'NON',
-            formatDateForSheet(d[role.key + 'DatePaye']),
-            d.payeClient ? 'OUI' : 'NON', d.financement || '']);
+          // Équipe interne : pas de N° facture (pas de facturation).
+          pushAchat(role.label, nom, '', tarif, tarif, !!d[role.key + 'Paye'], d[role.key + 'DatePaye']);
         });
       });
-
-      // Sheet 3 : MARGES (analyse de marge par dossier)
-      const margesRows = [['Dossier N°', 'Client', 'Société', 'Date pose',
-        'Prix TTC', 'Prix HT', 'TVA',
-        'Cut fournisseurs HT', 'Cut régie HT', 'Cut poseurs HT',
-        'Cut équipe interne (€)',
-        'Marge HT', 'Marge TTC', 'Marge HT / Prix HT (%)']];
-      dossiersSub.forEach(d => {
-        const cutInterne = ROLES_INTERNES.reduce((sum, role) => {
-          const nom = d[role.key];
-          if (!nom) return sum;
-          const m = d[role.key + 'Montant'];
-          const tarif = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
-          return sum + (tarif > 0 ? tarif : 0);
-        }, 0);
-        const tauxMarge = d.montantHt > 0 ? (d.margeHt / d.montantHt) * 100 : 0;
-        margesRows.push([
-          d.id || '', `${d.nom || ''} ${d.prenom || ''}`.trim(), d.societe || '', formatDateForSheet(d.dateInsta),
-          fmt(d.montantTotal), fmt(d.montantHt), fmt(d.tva),
-          fmt(d.fournisseurHt), fmt(d.regieHt), fmt(d.poseurHt),
-          fmt(cutInterne),
-          fmt(d.margeHt), fmt(d.margeTtc), fmt(tauxMarge),
-        ]);
-      });
-
-      return [
-        { name: `comptable_${sufx}_1-dossiers_${stamp}.csv`, csv: toCsv(dossiersRows) },
-        { name: `comptable_${sufx}_2-paiements_${stamp}.csv`, csv: toCsv(paiementsRows) },
-        { name: `comptable_${sufx}_3-marges_${stamp}.csv`, csv: toCsv(margesRows) },
-      ];
+      // Récapitulatif en bas du grand livre (ligne vide puis totaux).
+      const ligne = (label, ht, ttc) => ['', '', '', '', '', '', '', '', label, ht, ttc, '', '', '', ''];
+      rows.push([]);
+      rows.push(ligne(`RÉCAPITULATIF — ${socLabel}`, 'Total HT', 'Total TTC'));
+      rows.push(ligne('Total ventes', fmt(totVenteHt), fmt(totVenteTtc)));
+      rows.push(ligne('Total achats / charges', fmt(totAchatHt), fmt(totAchatTtc)));
+      rows.push(ligne('Achats déjà réglés', '', fmt(totAchatRegleTtc)));
+      rows.push(ligne('Reste à payer aux prestataires', '', fmt(totAchatTtc - totAchatRegleTtc)));
+      rows.push(ligne('Marge brute (ventes - achats)', fmt(totVenteHt - totAchatHt), fmt(totVenteTtc - totAchatTtc)));
+      return { name: `grand-livre_${sufx}_${stamp}.csv`, csv: toCsv(rows) };
     };
 
-    // Rassemble tous les fichiers à télécharger, société par société.
+    // Un seul fichier par société.
     const allFiles = [];
     const groupesNonVides = groupes.filter(g => g.dossiers.length > 0);
-    groupesNonVides.forEach(g => { allFiles.push(...buildGroupFiles(g.dossiers, g.id)); });
+    groupesNonVides.forEach(g => { allFiles.push(buildGrandLivre(g.dossiers, g.id, g.label)); });
     if (allFiles.length === 0) {
       alert('Aucun dossier à exporter pour cette sélection.');
       return;
     }
 
-    // Téléchargements échelonnés : un toutes les 350 ms pour éviter que le
-    // navigateur ne bloque les fichiers multiples (jusqu'à 3 CSV × N sociétés).
-    allFiles.forEach((f, i) => {
-      setTimeout(() => {
-        const blob = new Blob([f.csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = f.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
-      }, i * 350);
+    // Téléchargements : déclenchés en synchrone dans le handler du clic.
+    // C'est obligatoire — un a.click() différé (setTimeout) perd le "user
+    // gesture" et le navigateur bloque alors les téléchargements.
+    allFiles.forEach((f) => {
+      const blob = new Blob([f.csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = f.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
     });
 
     const nbSoc = groupesNonVides.length;
     const nomsSoc = groupesNonVides.map(g => g.label).join(', ');
-    showToast(`📊 ${allFiles.length} CSV exportés — ${nbSoc} société${nbSoc > 1 ? 's' : ''} (${nomsSoc})`, 'success', 4000);
+    showToast(`📊 Grand livre exporté — ${nbSoc} fichier${nbSoc > 1 ? 's' : ''} (${nomsSoc})`, 'success', 4000);
   };
 
   // Dossiers enrichis : calcule à la volée HT, marges, totaux poseurs/régie/fournisseur, etc.
@@ -3052,25 +3020,25 @@ export default function DossierSaisie({ authUser, onLogout }) {
               )}
               {/* Boutons d'action — collés à droite du sélecteur société */}
               {isAdmin && dossiers.length > 0 && (
-                <button onClick={exportCSV} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200">
+                <button onClick={exportCSV} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200 whitespace-nowrap flex-shrink-0">
                   <Download className="w-4 h-4" />Export CSV
                 </button>
               )}
               {(isAdmin || currentUserRole === 'compta') && dossiers.length > 0 && (
                 <button
                   onClick={exportComptable}
-                  title="Télécharge 3 CSV pour le comptable : 1) dossiers, 2) paiements détaillés (qui doit quoi à qui), 3) marges par dossier"
-                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-emerald-200"
+                  title="Télécharge le grand livre comptable — un fichier CSV par société (ventes + achats prestataires + totaux)"
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-emerald-200 whitespace-nowrap flex-shrink-0"
                 >
                   📊 Export comptable
                 </button>
               )}
               {isAdmin && (
-                <button onClick={() => setShowImport(true)} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200">
+                <button onClick={() => setShowImport(true)} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200 whitespace-nowrap flex-shrink-0">
                   <Upload className="w-4 h-4" />Importer
                 </button>
               )}
-              <button onClick={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} className="bg-gradient-to-r from-violet-500 to-pink-500 text-white px-5 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center gap-2">
+              <button onClick={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} className="bg-gradient-to-r from-violet-500 to-pink-500 text-white px-5 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center gap-2 whitespace-nowrap flex-shrink-0">
                 <Plus className="w-5 h-5" />Nouveau dossier
               </button>
               {/* Groupe utilisateur poussé tout à droite (ml-auto) — séparé visuellement
