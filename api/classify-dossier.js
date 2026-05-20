@@ -271,7 +271,10 @@ async function classifyPdfBuffer(client, pdfBuffer, extraContext = '', available
   const schema = buildClassifySchema(availableSocietes);
   const message = await client.messages.create({
     model: 'claude-opus-4-7',
-    max_tokens: 8000,
+    // max_tokens couvre le raisonnement adaptatif ET le JSON de sortie.
+    // 8000 était trop juste pour un dossier riche (20+ pages, 14 sections,
+    // analyse anti-fraude) → le JSON était tronqué → parsing en échec.
+    max_tokens: 32000,
     thinking: { type: 'adaptive' },
     output_config: {
       effort: 'medium',
