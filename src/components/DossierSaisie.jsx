@@ -2459,9 +2459,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const statsRegies = Object.values(regieMap).sort((a, b) => b.count - a.count);
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
+    // Nombre de jours pleins écoulés depuis une date passée. On normalise la
+    // référence à minuit AVANT de comparer : sans ça, un dossier créé
+    // aujourd'hui à 16h donnait floor((minuit - 16h) / 24h) = -1 jour.
+    // Clamp à 0 : "il y a -1 jour" n'a aucun sens.
+    const joursEcoules = (ref) => {
+      if (!ref) return 0;
+      const r = new Date(ref);
+      if (isNaN(r.getTime())) return 0;
+      r.setHours(0, 0, 0, 0);
+      return Math.max(0, Math.round((today - r) / 86400000));
+    };
     const rappelsClient = dossiers
       .filter(d => !d.payeClient && d.dateInsta && d.montantTotal)
-      .map(d => ({ ...d, joursAttente: Math.floor((today - new Date(d.dateInsta)) / 86400000) }))
+      .map(d => ({ ...d, joursAttente: joursEcoules(d.dateInsta) }))
       .filter(d => d.joursAttente >= 30)
       .sort((a, b) => b.joursAttente - a.joursAttente);
 
@@ -2469,7 +2480,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dossiersDash.forEach(d => {
       // Prestataires externes (poseurs, fournisseurs, régie externe) : pose faite + client a payé
       if (d.dateInsta && d.payeClient) {
-        const j = Math.floor((today - new Date(d.dateInsta)) / 86400000);
+        const j = joursEcoules(d.dateInsta);
         (d.fournisseursDetail || []).forEach(f => {
           if (!f.paye && f.ttc > 0) rappelsPrestataires.push({ type: 'Fournisseur', nom: f.nom, ttc: f.ttc, dossier: d, joursAttente: j });
         });
@@ -2485,7 +2496,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // Commissions équipe interne : dès qu'un nom est rempli (peu importe pose / paiement client)
       // Si pas de date de pose, on calcule l'attente depuis la création du dossier
       const refDate = d.dateInsta || d.createdAt || d.modifiedAt;
-      const j = refDate ? Math.floor((today - new Date(refDate)) / 86400000) : 0;
+      const j = refDate ? joursEcoules(refDate) : 0;
       const ROLES_KEYS_LOCAL = [
         { key: 'teleprospecteur', label: 'Téléprospecteur' },
         { key: 'confirmateur', label: 'Confirmateur' },
@@ -2543,7 +2554,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (!dateEntreeStatut) dateEntreeStatut = d.createdAt || d.savedAt || d.dateInsta;
       if (!dateEntreeStatut) return;
 
-      const jours = Math.floor((today - new Date(dateEntreeStatut)) / 86400000);
+      const jours = joursEcoules(dateEntreeStatut);
       if (jours < seuil) return;
 
       // Niveau d'alerte selon dépassement
@@ -2569,7 +2580,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (!d.dateEnvoiFin) return; // pas envoyé
       if (d.dateRetourFin) return; // déjà reçu retour
       if (d.statutFin === 'accepté' || d.statutFin === 'refusé' || d.statutFin === 'manque_doc') return; // déjà répondu
-      const jours = Math.floor((today - new Date(d.dateEnvoiFin)) / 86400000);
+      const jours = joursEcoules(d.dateEnvoiFin);
       if (jours < 2) return; // encore dans les 2 jours acceptables
       let level = 'warn';
       if (jours >= 7) level = 'critical';
@@ -2587,7 +2598,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (d.dateRenvoiDocs) return; // déjà renvoyés (l'user oubliera juste de repasser à 'envoyé')
       // Jours depuis le retour banque (ou envoi initial à défaut)
       const ref = d.dateRetourFin || d.dateEnvoiFin;
-      const jours = ref ? Math.floor((today - new Date(ref)) / 86400000) : 0;
+      const jours = ref ? joursEcoules(ref) : 0;
       let level = 'warn';
       if (jours >= 7) level = 'critical';
       else if (jours >= 3) level = 'high';
@@ -2600,7 +2611,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dossiersDash.forEach(d => {
       if (!d.dateControleLivraison) return; // pas de contrôle
       if (d.datePaiementBanque || d.payeClient) return; // déjà payé
-      const jours = Math.floor((today - new Date(d.dateControleLivraison)) / 86400000);
+      const jours = joursEcoules(d.dateControleLivraison);
       if (jours < 2) return;
       let level = 'warn';
       if (jours >= 7) level = 'critical';
@@ -2624,7 +2635,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (d.dateControleLivraison) return; // déjà fait
       if (finalStatuses.includes(d.statut)) return;
       const ref = d.dateRecusOriginauxBanque || d.dateConsuel || d.savedAt;
-      const jours = ref ? Math.floor((today - new Date(ref)) / 86400000) : 0;
+      const jours = ref ? joursEcoules(ref) : 0;
       let level = 'warn';
       if (jours >= 5) level = 'critical';
       else if (jours >= 3) level = 'high';
@@ -2639,7 +2650,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (finalStatuses.includes(d.statut)) return;
       const ref = d.createdAt || d.savedAt || d.dateInsta;
       if (!ref) return;
-      const jours = Math.floor((today - new Date(ref)) / 86400000);
+      const jours = joursEcoules(ref);
       let level = 'warn';
       if (jours >= 5) level = 'critical';
       else if (jours >= 2) level = 'high';
@@ -2656,7 +2667,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // Calcul depuis la date de validation CQ (ou createdAt fallback)
       const ref = d.dateControleQualite || d.createdAt || d.savedAt;
       if (!ref) return;
-      const jours = Math.floor((today - new Date(ref)) / 86400000);
+      const jours = joursEcoules(ref);
       let level = 'warn';
       if (jours >= 3) level = 'critical';
       else if (jours >= 1) level = 'high';
@@ -2673,7 +2684,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // Calcul depuis la date d'accord (ou date retour fin fallback)
       const ref = d.dateAccord || d.dateRetourFin || d.savedAt;
       if (!ref) return;
-      const jours = Math.floor((today - new Date(ref)) / 86400000);
+      const jours = joursEcoules(ref);
       let level = 'warn';
       if (jours >= 5) level = 'critical';
       else if (jours >= 2) level = 'high';
@@ -2689,6 +2700,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsPoseurNonAssigne = [];
     dossiersDash.forEach(d => {
       if (finalStatuses.includes(d.statut)) return;
+      // Ne concerne que les dossiers dont le financement est bouclé (accord
+      // banque, ou comptant). Avant ça, "poseur à assigner" n'a aucun sens,
+      // même si une date de pose traîne — typiquement extraite par le scan IA
+      // d'un dossier encore au stade contrôle qualité.
+      const financementBoucle = d.statutFin === 'accepté' || d.financement === 'COMPTANT';
+      if (!financementBoucle) return;
       // Une date de pose est-elle posée ? (envoi en pose, visite, ou pose)
       const aUneDate = !!(d.dateEnvoiPose || d.dateVisitePose || d.dateInsta);
       if (!aUneDate) return;
@@ -2698,7 +2715,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (poseurAssigne) return;
       // Référence pour les jours : la date la plus proche (dateInsta > dateVisitePose > dateEnvoiPose)
       const refDate = d.dateInsta || d.dateVisitePose || d.dateEnvoiPose;
-      const jours = refDate ? Math.floor((today - new Date(refDate)) / 86400000) : 0;
+      const jours = refDate ? joursEcoules(refDate) : 0;
       // Niveau : critique si la date de pose est proche ou passée
       let level = 'warn';
       if (d.dateInsta) {
@@ -2724,7 +2741,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (d.statutPose === 'client_refuse') return; // client a refusé
       if (finalStatuses.includes(d.statut)) return;
       // Jours depuis la date prévue (peut être négatif si la date est future)
-      const jours = Math.floor((today - new Date(d.dateEnvoiPose)) / 86400000);
+      const jours = joursEcoules(d.dateEnvoiPose);
       if (jours < 3) return; // moins de 3 jours après la date prévue → pas encore d'alerte
       let level = 'warn';
       if (jours >= 7) level = 'critical';
@@ -2741,7 +2758,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (d.dateEnvoiMairie && d.statutMairie !== 'refusé') return; // envoyé, en attente de réponse (pas une alerte)
       // Si refusé : il faut renvoyer → reste en alerte
       const ref = d.savedAt || d.createdAt;
-      const jours = ref ? Math.floor((today - new Date(ref)) / 86400000) : 0;
+      const jours = ref ? joursEcoules(ref) : 0;
       let level = 'warn';
       if (jours >= 10) level = 'critical';
       else if (jours >= 5) level = 'high';
@@ -2760,7 +2777,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (finalStatuses.includes(d.statut)) return;
       // Calcul depuis la date de pose (ou aujourd'hui si pas de date)
       const ref = d.dateInsta || d.savedAt || d.createdAt;
-      const jours = ref ? Math.floor((today - new Date(ref)) / 86400000) : 0;
+      const jours = ref ? joursEcoules(ref) : 0;
       let level = 'warn';
       if (jours >= 5) level = 'critical';
       else if (jours >= 2) level = 'high';
@@ -2779,7 +2796,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (finalStatuses.includes(d.statut)) return;
       // Calcul depuis la date de pose
       const ref = d.dateInsta || d.savedAt;
-      const jours = ref ? Math.floor((today - new Date(ref)) / 86400000) : 0;
+      const jours = ref ? joursEcoules(ref) : 0;
       let level = 'warn';
       if (jours >= 7) level = 'critical';
       else if (jours >= 3) level = 'high';
@@ -2842,7 +2859,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const total = poseursManquants.length + regiesManquantes.length + fournisseursManquants.length;
       if (total === 0) return;
       const ref = d.dateInsta || d.savedAt;
-      const jours = ref ? Math.floor((today - new Date(ref)) / 86400000) : 0;
+      const jours = ref ? joursEcoules(ref) : 0;
       let level = 'warn';
       if (jours >= 30) level = 'critical';
       else if (jours >= 14) level = 'high';
