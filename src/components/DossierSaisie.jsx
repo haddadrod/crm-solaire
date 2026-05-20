@@ -703,6 +703,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [showStatutFilter, setShowStatutFilter] = useState(false); // 🔻 replier/déplier le filtre par statut
   const [copiedId, setCopiedId] = useState(null);
   const [celebrating, setCelebrating] = useState(false);
+  // Toast léger pour feedback (succès save, action effectuée, etc.).
+  // { message: string, type: 'success' | 'error' | 'info' } | null
+  const [toast, setToast] = useState(null);
+  const showToast = (message, type = 'success', duration = 2500) => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), duration);
+  };
   // Init depuis le hash URL pour qu'un refresh F5 garde l'onglet courant.
   // Format : #onglet ou #onglet/sous-section (ex : #reglages/utilisateurs)
   const initialTabFromHash = (typeof window !== 'undefined' && window.location.hash)
@@ -1747,6 +1754,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dossier.createdBy = old?.createdBy || userTag;
       dossier.createdAt = old?.createdAt || now;
       setDossiers(dossiers.map(d => d.localId === editingId ? { ...d, ...dossier, documents: d.documents || [] } : d));
+      showToast(`✓ Dossier ${dossier.nom || ''} ${dossier.prenom || ''} sauvegardé`, 'success');
     } else {
       // Nouveau dossier — première entrée d'historique = création
       dossier.historique = [{ date: now, from: null, to: dossier.statut, action: 'création', user: userTag }];
@@ -1834,6 +1842,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       setDossiers([{ ...dossier, localId: newLocalId, documents: initialDocs }, ...dossiers]);
       setCelebrating(true);
       setTimeout(() => setCelebrating(false), 1500);
+      showToast(`✨ Dossier ${dossier.nom || ''} ${dossier.prenom || ''} créé`, 'success');
     }
     resetForm();
   };
@@ -2774,6 +2783,19 @@ export default function DossierSaisie({ authUser, onLogout }) {
           <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 animate-bounce">
             <div className="text-4xl text-center mb-1">🎉</div>
             <div className="font-bold text-purple-600">Dossier enregistré !</div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast léger pour feedback succès/info/erreur (auto-disparait en 2,5s) */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[60] pointer-events-none">
+          <div className={`px-4 py-3 rounded-xl shadow-2xl border-2 font-semibold text-sm max-w-md animate-in fade-in slide-in-from-bottom ${
+            toast.type === 'error' ? 'bg-rose-50 border-rose-300 text-rose-800' :
+            toast.type === 'info' ? 'bg-blue-50 border-blue-300 text-blue-800' :
+            'bg-emerald-50 border-emerald-300 text-emerald-800'
+          }`}>
+            {toast.message}
           </div>
         </div>
       )}
