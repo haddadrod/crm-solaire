@@ -58,7 +58,13 @@ export function formatDurationMmSs(sec) {
 // retour, date pose, poseur assigné). Renvoie null si on est sorti du cycle
 // (pose réalisée → l'utilisateur gère le reste manuellement).
 export function computeWorkflowStatut(d) {
+  // Verdicts banque négatifs (refusé / manque_doc) : priment sur tout, même
+  // sur une date de pose — tant que la banque bloque, le financement n'est
+  // pas sécurisé et le dossier doit le rester visuellement.
   if (d.statutFin === 'refusé') return 'B3_REFUS_FINANCEMENT';
+  // MANQUE DOCS BANQUE : demande une action (relancer la régie/client).
+  // Repasse en B1 dès que statutFin redevient 'envoyé' (docs renvoyés).
+  if (d.statutFin === 'manque_doc') return 'B1_MANQUE_DOC';
   if (d.dateInsta || d.statutPose === 'visite_ok') return null;
   if (d.dateEnvoiPose) {
     const poseurAssigne = (d.poseurs || []).some(p => p && p.nom && p.nom.trim());
@@ -73,7 +79,7 @@ export function computeWorkflowStatut(d) {
 
 // Liste des statuts auto-calculables (le reste est verrouillé manuel).
 export const AUTO_STATUTS = [
-  'A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT',
+  'A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC',
   'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT',
 ];
 
