@@ -19,7 +19,7 @@ const STATUTS = [
   { id: 'B4_EN_COURS_POSE',     label: 'EN COURS DE POSE',     color: 'from-orange-500 to-red-500',    bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🔧' },
   { id: 'B3_REFUS_FINANCEMENT', label: 'REFUS DE FINANCEMENT', color: 'from-red-500 to-rose-600',      bg: 'bg-red-100',     text: 'text-red-700',     emoji: '🚫' },
   { id: 'G_ATTENTE_ACCORD_DEF', label: 'ATTENTE ACCORD DEF',   color: 'from-teal-400 to-emerald-500',  bg: 'bg-teal-100',    text: 'text-teal-700',    emoji: '📋' },
-  { id: 'F_ATTENTE_DEBLOCAGE',  label: 'ATTENTE DE DEBLOCAGE', color: 'from-yellow-400 to-lime-500',   bg: 'bg-yellow-100',  text: 'text-yellow-700',  emoji: '⏳' },
+  { id: 'F_ATTENTE_DEBLOCAGE',  label: 'ATTENTE DE DEBLOCAGE', color: 'from-amber-400 to-orange-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '⏳' },
   { id: 'F1_CONTROLE_LIV_BANQUE', label: 'CONTROLE DE LIV BANQUE', color: 'from-sky-400 to-blue-500', bg: 'bg-sky-100',     text: 'text-sky-700',     emoji: '🏦' },
   { id: 'F2_PREFINANCEMENT',    label: 'PRÉFINANCEMENT',       color: 'from-emerald-300 to-green-400', bg: 'bg-emerald-50',  text: 'text-emerald-700', emoji: '💳' },
   { id: 'F1_ACCEPTE',           label: 'ACCEPTÉ',              color: 'from-rose-300 to-pink-300',     bg: 'bg-rose-50',     text: 'text-rose-700',    emoji: '👍' },
@@ -66,8 +66,10 @@ function computeWorkflowStatut(d) {
 
 // Applique l'auto-statut à un dossier si son statut courant est dans le cycle.
 // Si l'utilisateur a manuellement choisi un statut hors cycle (SAV, LITIGE,
-// ANNULER, etc.), on respecte sa décision et on ne touche à rien.
+// ANNULER, etc.) OU s'il a verrouillé le statut (d.statutLocked === true),
+// on respecte sa décision et on ne touche à rien.
 function applyAutoStatut(d) {
+  if (d.statutLocked) return d; // verrouillage manuel — auto-statut désactivé
   const current = d.statut || 'A_EN_COURS';
   if (current && !AUTO_STATUTS.includes(current)) return d;
   const auto = computeWorkflowStatut(d);
@@ -346,6 +348,10 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
   // Indique que le fileId est défini mais que le fichier est introuvable
   // dans le storage (rare — ex : ligne supprimée à la main, race condition).
   const [missingFile, setMissingFile] = useState(false);
+  // Ref pour éviter les setState après unmount (modale fermée pendant un
+  // appel IA en cours, par ex.). React warn dans la console sinon.
+  const isMountedRef = useRef(true);
+  useEffect(() => () => { isMountedRef.current = false; }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -385,11 +391,14 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
-      onExtract(payload.data || {});
+      // Si le composant a été unmount entre temps (modale fermée par l'user),
+      // on n'invoque pas onExtract (qui tenterait de mettre à jour des states
+      // d'un parent peut-être démonté aussi).
+      if (isMountedRef.current) onExtract(payload.data || {});
     } catch (e) {
-      alert(`Lecture IA de la facture : ${e.message}`);
+      if (isMountedRef.current) alert(`Lecture IA de la facture : ${e.message}`);
     } finally {
-      setExtracting(false);
+      if (isMountedRef.current) setExtracting(false);
     }
   };
 
@@ -404,8 +413,9 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       const dataUrl = await readFileAsDataURL(file);
       const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const ok = await window.storage.set(`file:${id}`, JSON.stringify({ dataUrl, name: file.name, type: file.type }));
-      if (!ok) { alert('❌ Échec du stockage du fichier.'); return; }
+      if (!ok) { if (isMountedRef.current) alert('❌ Échec du stockage du fichier.'); return; }
       if (fileId) { try { await window.storage.delete(`file:${fileId}`); } catch (e) {} }
+      if (!isMountedRef.current) return; // composant démonté pendant l'upload
       onChange(id);
       setMeta({ name: file.name, type: file.type });
       // Auto-extraction si activée (ex : Lire la facture dès qu'on l'upload)
@@ -413,9 +423,9 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
         runExtraction(dataUrl, file.type);
       }
     } catch (e) {
-      alert('Erreur : ' + e.message);
+      if (isMountedRef.current) alert('Erreur : ' + e.message);
     } finally {
-      setUploading(false);
+      if (isMountedRef.current) setUploading(false);
     }
   };
 
@@ -703,6 +713,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [showStatutFilter, setShowStatutFilter] = useState(false); // 🔻 replier/déplier le filtre par statut
   const [copiedId, setCopiedId] = useState(null);
   const [celebrating, setCelebrating] = useState(false);
+  // Toast léger pour feedback (succès save, action effectuée, etc.).
+  // { message: string, type: 'success' | 'error' | 'info' } | null
+  const [toast, setToast] = useState(null);
+  const showToast = (message, type = 'success', duration = 2500) => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), duration);
+  };
   // Init depuis le hash URL pour qu'un refresh F5 garde l'onglet courant.
   // Format : #onglet ou #onglet/sous-section (ex : #reglages/utilisateurs)
   const initialTabFromHash = (typeof window !== 'undefined' && window.location.hash)
@@ -993,7 +1010,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     tvaNotes: '', // notes libres sur la démarche
     nom: '', prenom: '', telephone: '', email: '',
     adresse: '', codePostal: '', ville: '',
-    statut: 'A_EN_COURS', financement: '',
+    statut: 'A_EN_COURS', statutLocked: false, financement: '',
     montantTotal: '', montantHtCustom: '', tauxTvaVente: 20, payeClient: false, payeClientDate: '',
     // Détails du financement (si financement bancaire — sinon ignoré). Récupérables
     // par scan IA du BC ou saisis à la main.
@@ -1470,10 +1487,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
             // On marque ce JSON comme 'déjà écrit' pour pas le réécrire en boucle.
             lastWrittenDossiersJson.current = newValue;
             setDossiers(parsed);
-          } catch (e) {}
+          } catch (e) {
+            console.warn('[realtime dossiers] parse failed', e);
+          }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        // Logge l'état de la connexion realtime — utile pour diagnostic
+        // quand la sync multi-device casse silencieusement.
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn(`[realtime dossiers] ${status}`, err || '');
+        }
+      });
     return () => { try { supabase.removeChannel(channel); } catch (e) {} };
   }, [loading]);
 
@@ -1557,10 +1582,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
             const parsed = JSON.parse(newValue);
             lastWrittenSettings.current[key] = newValue;
             setter(parsed);
-          } catch (e) {}
+          } catch (e) {
+            console.warn(`[realtime settings] parse failed for ${key}`, e);
+          }
         }
       )
-      .subscribe();
+      .subscribe((status, err) => {
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          console.warn(`[realtime settings] ${status}`, err || '');
+        }
+      });
     return () => { try { supabase.removeChannel(channel); } catch (e) {} };
   }, [loading]);
 
@@ -1747,6 +1778,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dossier.createdBy = old?.createdBy || userTag;
       dossier.createdAt = old?.createdAt || now;
       setDossiers(dossiers.map(d => d.localId === editingId ? { ...d, ...dossier, documents: d.documents || [] } : d));
+      showToast(`✓ Dossier ${dossier.nom || ''} ${dossier.prenom || ''} sauvegardé`, 'success');
     } else {
       // Nouveau dossier — première entrée d'historique = création
       dossier.historique = [{ date: now, from: null, to: dossier.statut, action: 'création', user: userTag }];
@@ -1834,6 +1866,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       setDossiers([{ ...dossier, localId: newLocalId, documents: initialDocs }, ...dossiers]);
       setCelebrating(true);
       setTimeout(() => setCelebrating(false), 1500);
+      showToast(`✨ Dossier ${dossier.nom || ''} ${dossier.prenom || ''} créé`, 'success');
     }
     resetForm();
   };
@@ -1878,7 +1911,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       nom: d.nom || '', prenom: d.prenom || '',
       telephone: d.telephone || '', email: d.email || '',
       adresse: d.adresse || '', codePostal: d.codePostal || '', ville: d.ville || '',
-      statut: d.statut || 'M_ATT_DOSSIER', financement: d.financement || 'PROJEXIO',
+      statut: d.statut || 'M_ATT_DOSSIER', statutLocked: !!d.statutLocked, financement: d.financement || 'PROJEXIO',
       montantTotal: d.montantTotal?.toString() || '', montantHtCustom: d.montantHtCustom || '', tauxTvaVente: d.tauxTvaVente || 20,
       payeClient: d.payeClient || false, payeClientDate: d.payeClientDate || '',
       montantPret: d.montantPret || '', reportMois: d.reportMois || '',
@@ -2025,6 +2058,119 @@ export default function DossierSaisie({ authUser, onLogout }) {
     a.download = `dossiers_${new Date().toISOString().split('T')[0]}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  };
+
+  // 📊 Export comptable multi-sheet : génère 3 CSV séparés, téléchargés en
+  // séquence — un pour les dossiers, un pour les paiements détaillés (qui doit
+  // quoi à qui), un pour les marges (marge HT/TTC par dossier + cuts).
+  // Le comptable importe chaque CSV dans une feuille séparée d'Excel/Calc.
+  const exportComptable = () => {
+    if (!isAdmin) {
+      alert('🔒 Export comptable réservé à l\'admin.');
+      return;
+    }
+    if (dossiersEnriched.length === 0) {
+      alert('Aucun dossier à exporter.');
+      return;
+    }
+    const stamp = new Date().toISOString().split('T')[0];
+    const fmt = (n) => (typeof n === 'number' && !isNaN(n)) ? n.toFixed(2).replace('.', ',') : '';
+    const escapeCsv = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const toCsv = (rows) => '﻿' + rows.map(r => r.map(escapeCsv).join(';')).join('\n');
+    const triggerDownload = (filename, csvText) => {
+      const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    };
+
+    // ─── Sheet 1 : DOSSIERS (vue d'ensemble) ─────────────────────────────
+    const dossiersRows = [['N° BC', 'Société', 'Date signature', 'Date pose',
+      'Nom', 'Prénom', 'Ville', 'Code postal',
+      'Statut', 'Financement', 'Payé financeur',
+      'Prix TTC', 'Prix HT', 'TVA %', 'Marge TTC', 'Marge HT',
+      'Puissance Wc', 'Archivé']];
+    dossiersEnriched.forEach(d => {
+      const statutLabel = STATUTS.find(s => s.id === d.statut)?.label || d.statut || '';
+      dossiersRows.push([
+        d.id || '', d.societe || '',
+        formatDateForSheet(d.dateSignature), formatDateForSheet(d.dateInsta),
+        d.nom || '', d.prenom || '', d.ville || '', d.codePostal || '',
+        statutLabel, d.financement || '', d.payeClient ? 'OUI' : 'NON',
+        fmt(d.montantTotal), fmt(d.montantHt), fmt(d.tauxTva), fmt(d.margeTtc), fmt(d.margeHt),
+        d.puissance || 0, d.archived ? 'OUI' : 'NON',
+      ]);
+    });
+    triggerDownload(`comptable_1-dossiers_${stamp}.csv`, toCsv(dossiersRows));
+
+    // ─── Sheet 2 : PAIEMENTS (qui doit quoi à qui) ───────────────────────
+    // Une ligne par bénéficiaire (poseur/régie/fournisseur/équipe interne) par dossier.
+    const paiementsRows = [['Dossier N°', 'Client', 'Société', 'Date pose',
+      'Type bénéficiaire', 'Nom bénéficiaire',
+      'Montant HT', 'Montant TTC', 'Payé', 'Date paiement',
+      'Banque a payé ?', 'Financement']];
+    dossiersEnriched.forEach(d => {
+      const ctx = [d.id || '', `${d.nom || ''} ${d.prenom || ''}`.trim(), d.societe || '', formatDateForSheet(d.dateInsta)];
+      (d.fournisseursDetail || []).forEach(f => {
+        paiementsRows.push([...ctx, 'Fournisseur', f.nom || '',
+          fmt(f.ht), fmt(f.ttc), f.paye ? 'OUI' : 'NON', formatDateForSheet(f.datePaye),
+          d.payeClient ? 'OUI' : 'NON', d.financement || '']);
+      });
+      (d.regiesDetail || []).forEach(r => {
+        paiementsRows.push([...ctx, 'Régie', r.nom || '',
+          fmt(r.ht), fmt(r.ttc), r.paye ? 'OUI' : 'NON', formatDateForSheet(r.datePaye),
+          d.payeClient ? 'OUI' : 'NON', d.financement || '']);
+      });
+      (d.poseursDetail || []).forEach(p => {
+        paiementsRows.push([...ctx, 'Poseur', p.nom || '',
+          fmt(p.ht), fmt(p.ttc), p.paye ? 'OUI' : 'NON', formatDateForSheet(p.datePaye),
+          d.payeClient ? 'OUI' : 'NON', d.financement || '']);
+      });
+      ROLES_INTERNES.forEach(role => {
+        const nom = d[role.key];
+        if (!nom) return;
+        const m = d[role.key + 'Montant'];
+        const tarif = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
+        if (tarif <= 0) return;
+        paiementsRows.push([...ctx, role.label, nom,
+          fmt(tarif), fmt(tarif), d[role.key + 'Paye'] ? 'OUI' : 'NON',
+          formatDateForSheet(d[role.key + 'DatePaye']),
+          d.payeClient ? 'OUI' : 'NON', d.financement || '']);
+      });
+    });
+    triggerDownload(`comptable_2-paiements_${stamp}.csv`, toCsv(paiementsRows));
+
+    // ─── Sheet 3 : MARGES (analyse de marge par dossier) ─────────────────
+    const margesRows = [['Dossier N°', 'Client', 'Société', 'Date pose',
+      'Prix TTC', 'Prix HT', 'TVA',
+      'Cut fournisseurs HT', 'Cut régie HT', 'Cut poseurs HT',
+      'Cut équipe interne (€)',
+      'Marge HT', 'Marge TTC', 'Marge HT / Prix HT (%)']];
+    dossiersEnriched.forEach(d => {
+      const cutInterne = ROLES_INTERNES.reduce((sum, role) => {
+        const nom = d[role.key];
+        if (!nom) return sum;
+        const m = d[role.key + 'Montant'];
+        const tarif = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
+        return sum + (tarif > 0 ? tarif : 0);
+      }, 0);
+      const tauxMarge = d.montantHt > 0 ? (d.margeHt / d.montantHt) * 100 : 0;
+      margesRows.push([
+        d.id || '', `${d.nom || ''} ${d.prenom || ''}`.trim(), d.societe || '', formatDateForSheet(d.dateInsta),
+        fmt(d.montantTotal), fmt(d.montantHt), fmt(d.tva),
+        fmt(d.fournisseurHt), fmt(d.regieHt), fmt(d.poseurHt),
+        fmt(cutInterne),
+        fmt(d.margeHt), fmt(d.margeTtc), fmt(tauxMarge),
+      ]);
+    });
+    triggerDownload(`comptable_3-marges_${stamp}.csv`, toCsv(margesRows));
+
+    showToast('📊 3 CSV exportés (dossiers + paiements + marges)', 'success', 3500);
   };
 
   // Dossiers enrichis : calcule à la volée HT, marges, totaux poseurs/régie/fournisseur, etc.
@@ -2778,6 +2924,19 @@ export default function DossierSaisie({ authUser, onLogout }) {
         </div>
       )}
 
+      {/* Toast léger pour feedback succès/info/erreur (auto-disparait en 2,5s) */}
+      {toast && (
+        <div className="fixed bottom-6 right-6 z-[60] pointer-events-none">
+          <div className={`px-4 py-3 rounded-xl shadow-2xl border-2 font-semibold text-sm max-w-md animate-in fade-in slide-in-from-bottom ${
+            toast.type === 'error' ? 'bg-rose-50 border-rose-300 text-rose-800' :
+            toast.type === 'info' ? 'bg-blue-50 border-blue-300 text-blue-800' :
+            'bg-emerald-50 border-emerald-300 text-emerald-800'
+          }`}>
+            {toast.message}
+          </div>
+        </div>
+      )}
+
       <div className="max-w-7xl mx-auto">
         {/* Header */}
         <div className="mb-6">
@@ -2815,6 +2974,15 @@ export default function DossierSaisie({ authUser, onLogout }) {
               {isAdmin && dossiers.length > 0 && (
                 <button onClick={exportCSV} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200">
                   <Download className="w-4 h-4" />Export CSV
+                </button>
+              )}
+              {isAdmin && dossiers.length > 0 && (
+                <button
+                  onClick={exportComptable}
+                  title="Télécharge 3 CSV pour le comptable : 1) dossiers, 2) paiements détaillés (qui doit quoi à qui), 3) marges par dossier"
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-emerald-200"
+                >
+                  📊 Export comptable
                 </button>
               )}
               {isAdmin && (
@@ -3651,12 +3819,12 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           )}
           {!readOnly && (
             <>
-              <button onClick={() => onCopy(d)} className={`p-1 rounded ${isCopied ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50'}`}>
+              <button onClick={() => onCopy(d)} aria-label={isCopied ? 'Copié' : 'Copier infos client'} title={isCopied ? 'Copié' : 'Copier les coordonnées'} className={`p-1 rounded ${isCopied ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50'}`}>
                 {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
               <DocsBtn size="small" /><HistBtn size="small" />
-              <button onClick={() => onEdit(d)} className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded"><Edit3 className="w-3.5 h-3.5" /></button>
-              {isAdmin && <button onClick={() => onDelete(d.localId)} className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>}
+              <button onClick={() => onEdit(d)} aria-label="Modifier le dossier" title="Modifier le dossier" className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded"><Edit3 className="w-3.5 h-3.5" /></button>
+              {isAdmin && <button onClick={() => onDelete(d.localId)} aria-label="Supprimer le dossier" title="Supprimer le dossier" className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>}
             </>
           )}
         </span>
@@ -3775,14 +3943,14 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           <div className="flex items-center gap-0.5">
             {!readOnly && (
               <>
-                <button onClick={() => onCopy(d)} className={`p-1.5 rounded-lg ${isCopied ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50'}`}>
+                <button onClick={() => onCopy(d)} aria-label={isCopied ? 'Copié' : 'Copier infos client'} title={isCopied ? 'Copié' : 'Copier les coordonnées'} className={`p-1.5 rounded-lg ${isCopied ? 'text-emerald-600 bg-emerald-50' : 'text-slate-400 hover:text-violet-600 hover:bg-violet-50'}`}>
                   {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
                 <DocsBtn /><HistBtn />
-                <button onClick={() => onEdit(d)} className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
+                <button onClick={() => onEdit(d)} aria-label="Modifier le dossier" title="Modifier le dossier" className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
               </>
             )}
-            {isAdmin && <button onClick={() => onDelete(d.localId)} className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>}
+            {isAdmin && <button onClick={() => onDelete(d.localId)} aria-label="Supprimer le dossier" title="Supprimer le dossier" className="p-1.5 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg"><Trash2 className="w-3.5 h-3.5" /></button>}
           </div>
         </div>
         {/* Grille chiffres — masquée en lecture seule (poseur / régie) */}
@@ -4814,12 +4982,15 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">📅 Date pièce</label>
-              <input
-                type="date"
-                defaultValue={doc.datePiece || ''}
-                onBlur={(e) => onUpdateMeta({ datePiece: e.target.value || null })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
-              />
+              <div className="flex gap-1">
+                <input
+                  type="date"
+                  value={doc.datePiece || ''}
+                  onChange={(e) => onUpdateMeta({ datePiece: e.target.value || null })}
+                  className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+                />
+                <button type="button" onClick={() => onUpdateMeta({ datePiece: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold whitespace-nowrap">Auj.</button>
+              </div>
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">📝 Note</label>
@@ -8005,7 +8176,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             <Sparkles className="w-5 h-5 text-violet-500" />{editingId ? 'Modifier le dossier' : 'Nouveau dossier'}
             {isScanBusy && <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full animate-pulse">🔒 Scan IA en cours</span>}
           </h2>
-          <button onClick={safeClose} disabled={isScanBusy} className={`text-slate-400 p-1 rounded-lg ${isScanBusy ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100'}`} title={isScanBusy ? 'Scan en cours — attends la fin' : 'Fermer'}><X className="w-5 h-5" /></button>
+          <button onClick={safeClose} disabled={isScanBusy} aria-label="Fermer le formulaire" className={`text-slate-400 p-1 rounded-lg ${isScanBusy ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100'}`} title={isScanBusy ? 'Scan en cours — attends la fin' : 'Fermer'}><X className="w-5 h-5" /></button>
         </div>
 
         <div className="p-6 space-y-5">
@@ -9071,15 +9242,24 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date envoi</label>
-                            <input type="date" value={e.dateEnvoi || ''} onChange={(ev) => updE({ dateEnvoi: ev.target.value })} className={inputCls} />
+                            <div className="flex gap-1">
+                              <input type="date" value={e.dateEnvoi || ''} onChange={(ev) => updE({ dateEnvoi: ev.target.value })} className={inputCls} />
+                              <button type="button" onClick={() => updE({ dateEnvoi: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                            </div>
                           </div>
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date récépissé</label>
-                            <input type="date" value={e.dateRecepisse || ''} onChange={(ev) => updE({ dateRecepisse: ev.target.value })} className={inputCls} />
+                            <div className="flex gap-1">
+                              <input type="date" value={e.dateRecepisse || ''} onChange={(ev) => updE({ dateRecepisse: ev.target.value })} className={inputCls} />
+                              <button type="button" onClick={() => updE({ dateRecepisse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                            </div>
                           </div>
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date réponse</label>
-                            <input type="date" value={e.dateReponse || ''} onChange={(ev) => updE({ dateReponse: ev.target.value })} className={inputCls} />
+                            <div className="flex gap-1">
+                              <input type="date" value={e.dateReponse || ''} onChange={(ev) => updE({ dateReponse: ev.target.value })} className={inputCls} />
+                              <button type="button" onClick={() => updE({ dateReponse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                            </div>
                           </div>
                         </div>
                         <div className="mb-2">
@@ -9720,12 +9900,15 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                       <div>
                         <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Date du remboursement</label>
-                        <input
-                          type="date"
-                          value={formData.litigeDateRembourse}
-                          onChange={(e) => setFormData({ ...formData, litigeDateRembourse: e.target.value })}
-                          className={inputCls}
-                        />
+                        <div className="flex gap-1">
+                          <input
+                            type="date"
+                            value={formData.litigeDateRembourse}
+                            onChange={(e) => setFormData({ ...formData, litigeDateRembourse: e.target.value })}
+                            className={inputCls}
+                          />
+                          <button type="button" onClick={() => setFormData({ ...formData, litigeDateRembourse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                        </div>
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">N° facture émise à la régie</label>
@@ -10159,7 +10342,7 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><Upload className="w-5 h-5 text-violet-500" /> Importer des dossiers</h2>
             <p className="text-xs text-slate-500 mt-0.5">Étape {step} / 3 — {step === 1 ? 'Coller tes données' : step === 2 ? 'Mapper les colonnes' : 'Vérifier et confirmer'}</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white rounded-xl"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Fermer" title="Fermer" className="p-2 hover:bg-white rounded-xl"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
@@ -10365,7 +10548,7 @@ function HistoriqueModal({ dossier, onClose }) {
               {dossier.nom} {dossier.prenom} · {allEvents.length} évènement{allEvents.length > 1 ? 's' : ''}
             </p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white rounded-xl"><X className="w-5 h-5" /></button>
+          <button onClick={onClose} aria-label="Fermer" title="Fermer" className="p-2 hover:bg-white rounded-xl"><X className="w-5 h-5" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
@@ -10790,9 +10973,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {d.id && <div className="text-[10px] opacity-90 mt-0.5 font-mono">#{d.id}</div>}
             </div>
           </div>
-          {/* Sélecteur de statut */}
+          {/* Sélecteur de statut + verrou anti auto-statut */}
           <div className="mt-3">
-            <label className="text-[10px] font-bold uppercase opacity-80 mb-1 block">Statut</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-bold uppercase opacity-80">Statut</label>
+              <button
+                onClick={() => onUpdate({ statutLocked: !d.statutLocked })}
+                title={d.statutLocked
+                  ? "Statut verrouillé — l'auto-statut n'écrasera plus ton choix. Clique pour déverrouiller."
+                  : "Verrouiller le statut — empêche l'auto-statut de l'écraser. Utile si tu choisis un statut manuel hors cycle."}
+                aria-label={d.statutLocked ? 'Statut verrouillé' : 'Verrouiller le statut'}
+                className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded transition ${d.statutLocked ? 'bg-amber-300 text-amber-900 hover:bg-amber-200' : 'bg-white/20 text-white/80 hover:bg-white/30'}`}
+              >
+                {d.statutLocked ? '🔒 Verrouillé' : '🔓 Auto'}
+              </button>
+            </div>
             <select value={d.statut} onChange={(e) => onUpdate({ statut: e.target.value })} className="w-full px-3 py-2 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white font-bold text-sm appearance-none cursor-pointer">
               {STATUTS_ORDERED.map(s => <option key={s.id} value={s.id} className="text-slate-800">{s.emoji}  {s.label}</option>)}
             </select>
@@ -12285,12 +12480,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </label>
                 {d.litigeRegieRembourse && (
                   <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="date"
-                      value={d.litigeDateRembourse || ''}
-                      onChange={(e) => onUpdate({ litigeDateRembourse: e.target.value })}
-                      className={inputCls}
-                    />
+                    <div className="flex gap-1">
+                      <input
+                        type="date"
+                        value={d.litigeDateRembourse || ''}
+                        onChange={(e) => onUpdate({ litigeDateRembourse: e.target.value })}
+                        className={inputCls + ' flex-1 min-w-0'}
+                      />
+                      <button type="button" onClick={() => onUpdate({ litigeDateRembourse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    </div>
                     <input
                       type="text"
                       value={d.litigeFactureNo || ''}
@@ -13112,7 +13310,7 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
             </h2>
             <p className="text-xs text-slate-600 mt-0.5">Donne un ordre, l'IA identifie le client et rédige le mail. Tu valides avant l'envoi.</p>
           </div>
-          <button onClick={onClose} className="p-2 hover:bg-white/60 rounded-lg" title="Fermer"><X className="w-5 h-5 text-slate-600" /></button>
+          <button onClick={onClose} aria-label="Fermer" className="p-2 hover:bg-white/60 rounded-lg" title="Fermer"><X className="w-5 h-5 text-slate-600" /></button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
