@@ -269,14 +269,11 @@ async function classifyPdfBuffer(client, pdfBuffer, extraContext = '', available
     : '';
   const fullInstructions = [INSTRUCTIONS, extraContext, societeContext].filter(Boolean).join('\n\n');
   const schema = buildClassifySchema(availableSocietes);
-  // Streaming OBLIGATOIRE : avec un max_tokens élevé (32000), le SDK Anthropic
-  // refuse un appel bloquant (.create) car l'opération POURRAIT dépasser 10 min.
-  // .stream() + .finalMessage() fait le même boulot et renvoie le message
-  // complet une fois assemblé. max_tokens couvre raisonnement + JSON de sortie ;
-  // 8000 était trop juste sur un gros dossier → JSON tronqué.
-  const stream = client.messages.stream({
+  // Configuration éprouvée : appel bloquant simple, max_tokens 8000.
+  // (8000 reste sous le seuil qui force le streaming côté SDK Anthropic.)
+  const message = await client.messages.create({
     model: 'claude-opus-4-7',
-    max_tokens: 32000,
+    max_tokens: 8000,
     thinking: { type: 'adaptive' },
     output_config: {
       effort: 'medium',
@@ -292,7 +289,6 @@ async function classifyPdfBuffer(client, pdfBuffer, extraContext = '', available
       },
     ],
   });
-  const message = await stream.finalMessage();
   const textBlock = message.content.find((b) => b.type === 'text');
   if (!textBlock || !textBlock.text) throw new Error('Réponse IA vide.');
   return JSON.parse(textBlock.text);
