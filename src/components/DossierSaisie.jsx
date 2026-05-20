@@ -85,6 +85,35 @@ function applyAutoStatut(d) {
   return { ...d, statut: auto };
 }
 
+// Date métier rattachée à un changement de statut workflow, pour l'afficher
+// directement dans la timeline de l'historique ("Refusé le 19/05/2026").
+// Snapshotée au moment du changement (les dates du dossier évoluent ensuite,
+// notamment au reset lors d'une rebascule banque). '' si pas pertinent.
+function statutMilestoneDate(d, fromStatut, toStatut) {
+  switch (toStatut) {
+    case 'B3_REFUS_FINANCEMENT': return d.dateRetourFin || '';
+    case 'B1_MANQUE_DOC':        return d.dateRetourFin || '';
+    case 'B2_A_ENVOYER_POSE':    return d.statutFin === 'accepté' ? (d.dateAccord || '') : '';
+    case 'B1_EN_COURS_FINANCEMENT':
+      // Retour depuis "manque docs" → date de renvoi des docs à la banque
+      if (fromStatut === 'B1_MANQUE_DOC') return d.dateRenvoiDocs || d.dateEnvoiFin || '';
+      return d.dateEnvoiFin || '';
+    default: return '';
+  }
+}
+
+// Libellé humain de la date métier ci-dessus, dérivé du couple from→to.
+function statutMilestoneLabel(fromStatut, toStatut) {
+  switch (toStatut) {
+    case 'B3_REFUS_FINANCEMENT': return '🚫 Refusé le';
+    case 'B1_MANQUE_DOC':        return '📄 Docs réclamés par la banque le';
+    case 'B2_A_ENVOYER_POSE':    return '✅ Accord banque le';
+    case 'B1_EN_COURS_FINANCEMENT':
+      return fromStatut === 'B1_MANQUE_DOC' ? '↩️ Docs renvoyés à la banque le' : '📤 Envoyé en banque le';
+    default: return '';
+  }
+}
+
 const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM', 'FINANCO', 'FRANFINANCE'];
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
@@ -1777,7 +1806,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       }
       // Ajoute une entrée si le statut a changé
       if (old && old.statut !== dossier.statut) {
-        newHist = [...newHist, { date: now, from: old.statut, to: dossier.statut, action: 'changement_statut', user: userTag }];
+        newHist = [...newHist, { date: now, from: old.statut, to: dossier.statut, action: 'changement_statut', user: userTag, bizDate: statutMilestoneDate(dossier, old.statut, dossier.statut) }];
       }
       dossier.historique = newHist;
       dossier.modifiedBy = userTag;
@@ -3399,7 +3428,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 }
                 // Trace le changement de statut manuel s'il y en a un
                 if (updates.statut && updates.statut !== d.statut) {
-                  merged.historique = [...(merged.historique || []), { date: now, from: d.statut, to: updates.statut, action: 'changement_statut', user: userTag }];
+                  merged.historique = [...(merged.historique || []), { date: now, from: d.statut, to: updates.statut, action: 'changement_statut', user: userTag, bizDate: statutMilestoneDate(merged, d.statut, updates.statut) }];
                   // Désarchivage automatique si statut → SAV (ou Litige/Problème)
                   if (d.archived && ['D_SAV', 'C_LITIGE', 'M_NRP_CQ_LIVRAISON', 'F1_CONTROLE_LIV_BANQUE', 'CONFORMITE_CONTRAT'].includes(updates.statut)) {
                     merged.archived = false;
@@ -3413,7 +3442,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 const beforeAuto = merged.statut;
                 merged = applyAutoStatut(merged);
                 if (merged.statut !== beforeAuto) {
-                  merged.historique = [...(merged.historique || []), { date: now, from: beforeAuto, to: merged.statut, action: 'auto_statut', user: userTag }];
+                  merged.historique = [...(merged.historique || []), { date: now, from: beforeAuto, to: merged.statut, action: 'auto_statut', user: userTag, bizDate: statutMilestoneDate(merged, beforeAuto, merged.statut) }];
                 }
 
                 // Auto-archivage sur ANNULER : on n'a plus besoin du dossier
@@ -10791,6 +10820,14 @@ function HistoriqueModal({ dossier, onClose }) {
                                 </span>
                               )}
                             </div>
+                            {/* Date métier du jalon (refus, accord, manque docs…)
+                                snapshotée au moment du changement de statut. */}
+                            {h.bizDate && statutMilestoneLabel(h.from, h.to) && (
+                              <div className="mt-1.5 inline-block text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1">
+                                {statutMilestoneLabel(h.from, h.to)}{' '}
+                                {(() => { try { return new Date(h.bizDate).toLocaleDateString('fr-FR'); } catch (e) { return h.bizDate; } })()}
+                              </div>
+                            )}
                           </div>
                         )}
                         {h.user && <div className="text-[10px] text-slate-500 mt-1">👤 par {h.user}</div>}
