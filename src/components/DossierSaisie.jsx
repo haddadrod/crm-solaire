@@ -2232,20 +2232,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
       return;
     }
 
-    // Téléchargements échelonnés : un toutes les 350 ms pour éviter que le
-    // navigateur ne bloque les fichiers multiples (jusqu'à 3 CSV × N sociétés).
-    allFiles.forEach((f, i) => {
-      setTimeout(() => {
-        const blob = new Blob([f.csv], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = f.name;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 10000);
-      }, i * 350);
+    // Téléchargements : déclenchés en synchrone dans le handler du clic.
+    // C'est obligatoire — un a.click() différé (setTimeout) perd le "user
+    // gesture" et le navigateur bloque alors les téléchargements. Chrome
+    // affiche une seule autorisation "télécharger plusieurs fichiers", OK.
+    allFiles.forEach((f) => {
+      const blob = new Blob([f.csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = f.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
     });
 
     const nbSoc = groupesNonVides.length;
@@ -3052,7 +3052,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
               )}
               {/* Boutons d'action — collés à droite du sélecteur société */}
               {isAdmin && dossiers.length > 0 && (
-                <button onClick={exportCSV} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200">
+                <button onClick={exportCSV} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200 whitespace-nowrap flex-shrink-0">
                   <Download className="w-4 h-4" />Export CSV
                 </button>
               )}
@@ -3060,17 +3060,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 <button
                   onClick={exportComptable}
                   title="Télécharge 3 CSV pour le comptable : 1) dossiers, 2) paiements détaillés (qui doit quoi à qui), 3) marges par dossier"
-                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-emerald-200"
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-emerald-200 whitespace-nowrap flex-shrink-0"
                 >
                   📊 Export comptable
                 </button>
               )}
               {isAdmin && (
-                <button onClick={() => setShowImport(true)} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200">
+                <button onClick={() => setShowImport(true)} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200 whitespace-nowrap flex-shrink-0">
                   <Upload className="w-4 h-4" />Importer
                 </button>
               )}
-              <button onClick={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} className="bg-gradient-to-r from-violet-500 to-pink-500 text-white px-5 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center gap-2">
+              <button onClick={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} className="bg-gradient-to-r from-violet-500 to-pink-500 text-white px-5 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center gap-2 whitespace-nowrap flex-shrink-0">
                 <Plus className="w-5 h-5" />Nouveau dossier
               </button>
               {/* Groupe utilisateur poussé tout à droite (ml-auto) — séparé visuellement
