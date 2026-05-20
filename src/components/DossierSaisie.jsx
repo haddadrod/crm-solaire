@@ -52,6 +52,11 @@ function computeWorkflowStatut(d) {
   // Distinct de B1 : demande une action (relancer la régie/client). Repasse
   // en B1 dès que statutFin redevient 'envoyé' (docs renvoyés à la banque).
   if (d.statutFin === 'manque_doc') return 'B1_MANQUE_DOC';
+  // Dossier envoyé en banque, en attente de réponse → EN COURS DE FINANCEMENT.
+  // Prime sur une date de pose : tant que la banque n'a pas accepté, le
+  // dossier est en financement (sinon il restait bloqué en sortant de
+  // "manque docs" si une date de pose traînait).
+  if (d.statutFin === 'envoyé' && d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
   // Pose réalisée (dateInsta remplie ou statutPose='visite_ok') → sortie du cycle
   if (d.dateInsta || d.statutPose === 'visite_ok') return null;
   // Date de pose remplie : selon qu'on a un poseur ou pas

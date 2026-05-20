@@ -65,6 +65,10 @@ export function computeWorkflowStatut(d) {
   // MANQUE DOCS BANQUE : demande une action (relancer la régie/client).
   // Repasse en B1 dès que statutFin redevient 'envoyé' (docs renvoyés).
   if (d.statutFin === 'manque_doc') return 'B1_MANQUE_DOC';
+  // Envoyé en banque, en attente de réponse → EN COURS DE FINANCEMENT.
+  // Prime sur une date de pose (évite que le dossier reste bloqué en
+  // sortant de "manque docs" si une date de pose traîne).
+  if (d.statutFin === 'envoyé' && d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
   if (d.dateInsta || d.statutPose === 'visite_ok') return null;
   if (d.dateEnvoiPose) {
     const poseurAssigne = (d.poseurs || []).some(p => p && p.nom && p.nom.trim());
