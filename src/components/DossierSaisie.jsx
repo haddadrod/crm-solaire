@@ -1899,6 +1899,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // On retire scannedBon/scannedSections/pdfMeta du dossier persisté (transport seulement)
       delete dossier.scannedBon;
       delete dossier.scannedSections;
+      delete dossier.scannedDossierPdf;
       delete dossier.pdfMeta;
       setDossiers([{ ...dossier, localId: newLocalId, documents: initialDocs }, ...dossiers]);
       setCelebrating(true);
@@ -7974,6 +7975,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
   // (bon de commande ou dossier complet), sinon un PDF client déjà attaché.
   const scannedSource = useMemo(() => {
     const fd = formData || {};
+    // PDF complet d'un scan "dossier complet" — prioritaire : on veut voir
+    // TOUT le dossier (toutes les pages), pas seulement la 1re section.
+    if (fd.scannedDossierPdf && fd.scannedDossierPdf.bucketPath) {
+      return { storage: 'bucket', path: fd.scannedDossierPdf.bucketPath, name: fd.scannedDossierPdf.name || 'Dossier complet', type: 'application/pdf' };
+    }
     const bon = fd.scannedBon;
     if (bon && bon.bucketPath) return { storage: 'bucket', path: bon.bucketPath, name: bon.name, type: bon.type };
     if (bon && bon.dataUrl) return { storage: 'inline', dataUrl: bon.dataUrl, name: bon.name, type: bon.type };
@@ -8230,6 +8236,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       setFormData(prev => {
         const next = { ...prev };
         next.scannedSections = scannedSections;
+        // PDF complet d'origine (toutes les pages) — gardé pour pouvoir le
+        // visionner côte à côte et comparer avec ce que l'IA a rempli.
+        next.scannedDossierPdf = { bucketPath, name: file.name || 'dossier-complet.pdf' };
         next.pdfMeta = pdfMeta; // 🚨 Métadonnées PDF anti-fraude (créateur, dates)
         if (d.nom) next.nom = String(d.nom).toUpperCase();
         if (d.prenom) next.prenom = String(d.prenom);
