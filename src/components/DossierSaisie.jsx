@@ -2102,8 +2102,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // quoi à qui), un pour les marges (marge HT/TTC par dossier + cuts).
   // Le comptable importe chaque CSV dans une feuille séparée d'Excel/Calc.
   const exportComptable = () => {
-    if (!isAdmin) {
-      alert('🔒 Export comptable réservé à l\'admin.');
+    if (!isAdmin && currentUserRole !== 'compta') {
+      alert('🔒 Export comptable réservé à l\'admin et à la compta.');
       return;
     }
     if (dossiersEnriched.length === 0) {
@@ -3013,7 +3013,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <Download className="w-4 h-4" />Export CSV
                 </button>
               )}
-              {isAdmin && dossiers.length > 0 && (
+              {(isAdmin || currentUserRole === 'compta') && dossiers.length > 0 && (
                 <button
                   onClick={exportComptable}
                   title="Télécharge 3 CSV pour le comptable : 1) dossiers, 2) paiements détaillés (qui doit quoi à qui), 3) marges par dossier"
