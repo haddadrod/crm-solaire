@@ -4835,12 +4835,15 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">📅 Date pièce</label>
-              <input
-                type="date"
-                defaultValue={doc.datePiece || ''}
-                onBlur={(e) => onUpdateMeta({ datePiece: e.target.value || null })}
-                className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
-              />
+              <div className="flex gap-1">
+                <input
+                  type="date"
+                  value={doc.datePiece || ''}
+                  onChange={(e) => onUpdateMeta({ datePiece: e.target.value || null })}
+                  className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+                />
+                <button type="button" onClick={() => onUpdateMeta({ datePiece: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold whitespace-nowrap">Auj.</button>
+              </div>
             </div>
             <div>
               <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">📝 Note</label>
@@ -9092,15 +9095,24 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date envoi</label>
-                            <input type="date" value={e.dateEnvoi || ''} onChange={(ev) => updE({ dateEnvoi: ev.target.value })} className={inputCls} />
+                            <div className="flex gap-1">
+                              <input type="date" value={e.dateEnvoi || ''} onChange={(ev) => updE({ dateEnvoi: ev.target.value })} className={inputCls} />
+                              <button type="button" onClick={() => updE({ dateEnvoi: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                            </div>
                           </div>
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date récépissé</label>
-                            <input type="date" value={e.dateRecepisse || ''} onChange={(ev) => updE({ dateRecepisse: ev.target.value })} className={inputCls} />
+                            <div className="flex gap-1">
+                              <input type="date" value={e.dateRecepisse || ''} onChange={(ev) => updE({ dateRecepisse: ev.target.value })} className={inputCls} />
+                              <button type="button" onClick={() => updE({ dateRecepisse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                            </div>
                           </div>
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date réponse</label>
-                            <input type="date" value={e.dateReponse || ''} onChange={(ev) => updE({ dateReponse: ev.target.value })} className={inputCls} />
+                            <div className="flex gap-1">
+                              <input type="date" value={e.dateReponse || ''} onChange={(ev) => updE({ dateReponse: ev.target.value })} className={inputCls} />
+                              <button type="button" onClick={() => updE({ dateReponse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                            </div>
                           </div>
                         </div>
                         <div className="mb-2">
@@ -9740,12 +9752,15 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                       <div>
                         <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Date du remboursement</label>
-                        <input
-                          type="date"
-                          value={formData.litigeDateRembourse}
-                          onChange={(e) => setFormData({ ...formData, litigeDateRembourse: e.target.value })}
-                          className={inputCls}
-                        />
+                        <div className="flex gap-1">
+                          <input
+                            type="date"
+                            value={formData.litigeDateRembourse}
+                            onChange={(e) => setFormData({ ...formData, litigeDateRembourse: e.target.value })}
+                            className={inputCls}
+                          />
+                          <button type="button" onClick={() => setFormData({ ...formData, litigeDateRembourse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                        </div>
                       </div>
                       <div>
                         <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">N° facture émise à la régie</label>
@@ -12304,12 +12319,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </label>
                 {d.litigeRegieRembourse && (
                   <div className="grid grid-cols-2 gap-2">
-                    <input
-                      type="date"
-                      value={d.litigeDateRembourse || ''}
-                      onChange={(e) => onUpdate({ litigeDateRembourse: e.target.value })}
-                      className={inputCls}
-                    />
+                    <div className="flex gap-1">
+                      <input
+                        type="date"
+                        value={d.litigeDateRembourse || ''}
+                        onChange={(e) => onUpdate({ litigeDateRembourse: e.target.value })}
+                        className={inputCls + ' flex-1 min-w-0'}
+                      />
+                      <button type="button" onClick={() => onUpdate({ litigeDateRembourse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    </div>
                     <input
                       type="text"
                       value={d.litigeFactureNo || ''}
