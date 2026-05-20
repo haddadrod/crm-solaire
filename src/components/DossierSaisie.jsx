@@ -15,6 +15,7 @@ const STATUTS = [
   { id: 'A_EN_COURS',           label: 'EN COURS',             color: 'from-slate-400 to-slate-500',   bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '🔄' },
   { id: 'B_A_ENVOYER_BANQUE',   label: 'À ENVOYER EN BANQUE',  color: 'from-violet-400 to-purple-500', bg: 'bg-violet-100',  text: 'text-violet-700',  emoji: '🏦' },
   { id: 'B1_EN_COURS_FINANCEMENT', label: 'EN COURS DE FINANCEMENT', color: 'from-blue-400 to-indigo-500', bg: 'bg-blue-100',   text: 'text-blue-700',    emoji: '⏳' },
+  { id: 'B1_MANQUE_DOC',        label: 'MANQUE DOCS BANQUE',   color: 'from-orange-400 to-amber-500',  bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '📄' },
   { id: 'B2_A_ENVOYER_POSE',    label: 'À ENVOYER EN POSE',    color: 'from-amber-400 to-orange-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '📤' },
   { id: 'B4_EN_COURS_POSE',     label: 'EN COURS DE POSE',     color: 'from-orange-500 to-red-500',    bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🔧' },
   { id: 'B3_REFUS_FINANCEMENT', label: 'REFUS DE FINANCEMENT', color: 'from-red-500 to-rose-600',      bg: 'bg-red-100',     text: 'text-red-700',     emoji: '🚫' },
@@ -36,7 +37,7 @@ const STATUTS = [
 // Statuts gérés par l'auto-statut (cycle workflow CQ → banque → pose).
 // Si le statut courant est dans cette liste, il sera mis à jour automatiquement
 // selon l'état du dossier. Sinon (SAV, LITIGE, ANNULER, etc.), on ne touche pas.
-const AUTO_STATUTS = ['A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT'];
+const AUTO_STATUTS = ['A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC', 'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT'];
 
 // Calcule le statut workflow à partir de l'état du dossier (CQ, envoi banque,
 // retour banque, date pose, poseur assigné). Retourne null si on est sorti
@@ -56,6 +57,11 @@ function computeWorkflowStatut(d) {
   }
   // Accord financement reçu, pas encore date de pose → À ENVOYER EN POSE
   if (d.statutFin === 'accepté') return 'B2_A_ENVOYER_POSE';
+  // La banque réclame des docs complémentaires → MANQUE DOCS BANQUE.
+  // Distinct de B1 : ce statut demande une action (relancer la régie/client),
+  // pas juste attendre la banque. Repasse en B1 dès que statutFin redevient
+  // 'envoyé' (docs renvoyés via le CTA du workflow manque_doc).
+  if (d.statutFin === 'manque_doc') return 'B1_MANQUE_DOC';
   // Envoyé banque, en attente de retour → EN COURS DE FINANCEMENT
   if (d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
   // CQ validé OK, pas encore envoyé banque → À ENVOYER EN BANQUE

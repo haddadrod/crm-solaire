@@ -66,6 +66,10 @@ export function computeWorkflowStatut(d) {
     return 'B2_A_ENVOYER_POSE';
   }
   if (d.statutFin === 'accepté') return 'B2_A_ENVOYER_POSE';
+  // La banque réclame des docs complémentaires → MANQUE DOCS BANQUE.
+  // Distinct de B1 : demande une action (relancer la régie/client). Repasse
+  // en B1 dès que statutFin redevient 'envoyé' (docs renvoyés à la banque).
+  if (d.statutFin === 'manque_doc') return 'B1_MANQUE_DOC';
   if (d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
   if (d.statutControleQualite === 'ok') return 'B_A_ENVOYER_BANQUE';
   return 'A_EN_COURS';
@@ -73,7 +77,7 @@ export function computeWorkflowStatut(d) {
 
 // Liste des statuts auto-calculables (le reste est verrouillé manuel).
 export const AUTO_STATUTS = [
-  'A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT',
+  'A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC',
   'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT',
 ];
 

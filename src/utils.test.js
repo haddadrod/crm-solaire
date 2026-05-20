@@ -178,6 +178,16 @@ describe('computeWorkflowStatut', () => {
     expect(computeWorkflowStatut({ dateEnvoiFin: '2026-05-10' })).toBe('B1_EN_COURS_FINANCEMENT');
   });
 
+  it("retourne B1_MANQUE_DOC quand la banque réclame des docs complémentaires", () => {
+    expect(computeWorkflowStatut({ statutFin: 'manque_doc', dateEnvoiFin: '2026-05-10' }))
+      .toBe('B1_MANQUE_DOC');
+  });
+
+  it("repasse en B1_EN_COURS_FINANCEMENT une fois les docs renvoyés (statutFin → envoyé)", () => {
+    expect(computeWorkflowStatut({ statutFin: 'envoyé', dateEnvoiFin: '2026-05-15' }))
+      .toBe('B1_EN_COURS_FINANCEMENT');
+  });
+
   it("retourne B_A_ENVOYER_BANQUE quand CQ validé sans envoi banque", () => {
     expect(computeWorkflowStatut({ statutControleQualite: 'ok' })).toBe('B_A_ENVOYER_BANQUE');
   });
