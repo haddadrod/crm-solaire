@@ -1891,6 +1891,30 @@ export default function DossierSaisie({ authUser, onLogout }) {
           fraudFlags: Array.isArray(s.fraudFlags) ? s.fraudFlags : [],
         });
       });
+      // PDF d'origine du scan dossier complet : conservé comme document
+      // "Dossier complet" pour pouvoir le revoir en entier (panneau côte à
+      // côte) et être nettoyé avec le dossier. scanDossierPdfId mémorise son
+      // id pour que le panneau le retrouve en priorité.
+      const dossierPdf = dossier.scannedDossierPdf;
+      if (dossierPdf && dossierPdf.bucketPath && sections.length > 0) {
+        const origPdfId = `${Date.now()}_origpdf`;
+        initialDocs.push({
+          id: origPdfId,
+          name: dossierPdf.name || 'dossier-complet.pdf',
+          size: 0,
+          type: 'application/pdf',
+          storage: 'bucket',
+          storagePath: dossierPdf.bucketPath,
+          category: 'client',
+          subCategory: null,
+          uploadedAt: now,
+          montant: null,
+          datePiece: null,
+          note: '📄 Dossier complet scanné (PDF original)',
+          isScanSourcePdf: true,
+        });
+        dossier.scanDossierPdfId = origPdfId;
+      }
       // Persiste les métadonnées PDF anti-fraude sur le dossier (utile pour
       // afficher 'PDF édité après création' dans la modale Documents).
       if (dossier.pdfMeta) {
@@ -7986,8 +8010,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
     const sec = Array.isArray(fd.scannedSections) ? fd.scannedSections.find(s => s && s.bucketPath) : null;
     if (sec) return { storage: 'bucket', path: sec.bucketPath, name: sec.name, type: sec.type };
     const docs = Array.isArray(fd.documents) ? fd.documents : [];
-    const scanDoc = docs.find(d => d && d.category === 'client'
-      && (d.type === 'application/pdf' || /\.pdf$/i.test(d.name || '')));
+    // Dossier déjà enregistré : on privilégie le PDF complet d'origine
+    // (marqué isScanSourcePdf), sinon le 1er PDF client.
+    const scanDoc = docs.find(d => d && d.isScanSourcePdf)
+      || docs.find(d => d && d.category === 'client'
+        && (d.type === 'application/pdf' || /\.pdf$/i.test(d.name || '')));
     if (scanDoc) {
       return scanDoc.storage === 'bucket' && scanDoc.storagePath
         ? { storage: 'bucket', path: scanDoc.storagePath, name: scanDoc.name, type: scanDoc.type }

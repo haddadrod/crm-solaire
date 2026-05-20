@@ -524,17 +524,10 @@ export default async function handler(req, res) {
             console.warn(`split section ${i} failed:`, secErr.message);
           }
         }
-        // Si toutes les sections ont été découpées, on supprime le PDF original
-        // (sinon il reste orphelin dans le bucket — le front n'a plus de
-        // référence vers lui).
-        const allSplit = sections.every((s) => !!s.storagePath);
-        if (allSplit) {
-          try {
-            await admin.storage.from('dossier-documents').remove([storagePath]);
-          } catch (rmErr) {
-            console.warn('cleanup original PDF failed:', rmErr.message);
-          }
-        }
+        // NB : on NE supprime PLUS le PDF d'origine après découpage. Le front
+        // le garde comme document "Dossier complet" pour pouvoir l'afficher en
+        // entier (panneau "PDF scanné" côte à côte). Il est rattaché au dossier
+        // et donc nettoyé normalement à la suppression du dossier.
       } catch (splitErr) {
         // Échec global du chargement pdf-lib : on renvoie sans storagePath par
         // section, le front utilisera les bookmarks sur le PDF complet.
