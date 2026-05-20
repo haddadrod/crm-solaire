@@ -2060,6 +2060,119 @@ export default function DossierSaisie({ authUser, onLogout }) {
     URL.revokeObjectURL(url);
   };
 
+  // 📊 Export comptable multi-sheet : génère 3 CSV séparés, téléchargés en
+  // séquence — un pour les dossiers, un pour les paiements détaillés (qui doit
+  // quoi à qui), un pour les marges (marge HT/TTC par dossier + cuts).
+  // Le comptable importe chaque CSV dans une feuille séparée d'Excel/Calc.
+  const exportComptable = () => {
+    if (!isAdmin) {
+      alert('🔒 Export comptable réservé à l\'admin.');
+      return;
+    }
+    if (dossiersEnriched.length === 0) {
+      alert('Aucun dossier à exporter.');
+      return;
+    }
+    const stamp = new Date().toISOString().split('T')[0];
+    const fmt = (n) => (typeof n === 'number' && !isNaN(n)) ? n.toFixed(2).replace('.', ',') : '';
+    const escapeCsv = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
+    const toCsv = (rows) => '﻿' + rows.map(r => r.map(escapeCsv).join(';')).join('\n');
+    const triggerDownload = (filename, csvText) => {
+      const blob = new Blob([csvText], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+    };
+
+    // ─── Sheet 1 : DOSSIERS (vue d'ensemble) ─────────────────────────────
+    const dossiersRows = [['N° BC', 'Société', 'Date signature', 'Date pose',
+      'Nom', 'Prénom', 'Ville', 'Code postal',
+      'Statut', 'Financement', 'Payé financeur',
+      'Prix TTC', 'Prix HT', 'TVA %', 'Marge TTC', 'Marge HT',
+      'Puissance Wc', 'Archivé']];
+    dossiersEnriched.forEach(d => {
+      const statutLabel = STATUTS.find(s => s.id === d.statut)?.label || d.statut || '';
+      dossiersRows.push([
+        d.id || '', d.societe || '',
+        formatDateForSheet(d.dateSignature), formatDateForSheet(d.dateInsta),
+        d.nom || '', d.prenom || '', d.ville || '', d.codePostal || '',
+        statutLabel, d.financement || '', d.payeClient ? 'OUI' : 'NON',
+        fmt(d.montantTotal), fmt(d.montantHt), fmt(d.tauxTva), fmt(d.margeTtc), fmt(d.margeHt),
+        d.puissance || 0, d.archived ? 'OUI' : 'NON',
+      ]);
+    });
+    triggerDownload(`comptable_1-dossiers_${stamp}.csv`, toCsv(dossiersRows));
+
+    // ─── Sheet 2 : PAIEMENTS (qui doit quoi à qui) ───────────────────────
+    // Une ligne par bénéficiaire (poseur/régie/fournisseur/équipe interne) par dossier.
+    const paiementsRows = [['Dossier N°', 'Client', 'Société', 'Date pose',
+      'Type bénéficiaire', 'Nom bénéficiaire',
+      'Montant HT', 'Montant TTC', 'Payé', 'Date paiement',
+      'Banque a payé ?', 'Financement']];
+    dossiersEnriched.forEach(d => {
+      const ctx = [d.id || '', `${d.nom || ''} ${d.prenom || ''}`.trim(), d.societe || '', formatDateForSheet(d.dateInsta)];
+      (d.fournisseursDetail || []).forEach(f => {
+        paiementsRows.push([...ctx, 'Fournisseur', f.nom || '',
+          fmt(f.ht), fmt(f.ttc), f.paye ? 'OUI' : 'NON', formatDateForSheet(f.datePaye),
+          d.payeClient ? 'OUI' : 'NON', d.financement || '']);
+      });
+      (d.regiesDetail || []).forEach(r => {
+        paiementsRows.push([...ctx, 'Régie', r.nom || '',
+          fmt(r.ht), fmt(r.ttc), r.paye ? 'OUI' : 'NON', formatDateForSheet(r.datePaye),
+          d.payeClient ? 'OUI' : 'NON', d.financement || '']);
+      });
+      (d.poseursDetail || []).forEach(p => {
+        paiementsRows.push([...ctx, 'Poseur', p.nom || '',
+          fmt(p.ht), fmt(p.ttc), p.paye ? 'OUI' : 'NON', formatDateForSheet(p.datePaye),
+          d.payeClient ? 'OUI' : 'NON', d.financement || '']);
+      });
+      ROLES_INTERNES.forEach(role => {
+        const nom = d[role.key];
+        if (!nom) return;
+        const m = d[role.key + 'Montant'];
+        const tarif = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
+        if (tarif <= 0) return;
+        paiementsRows.push([...ctx, role.label, nom,
+          fmt(tarif), fmt(tarif), d[role.key + 'Paye'] ? 'OUI' : 'NON',
+          formatDateForSheet(d[role.key + 'DatePaye']),
+          d.payeClient ? 'OUI' : 'NON', d.financement || '']);
+      });
+    });
+    triggerDownload(`comptable_2-paiements_${stamp}.csv`, toCsv(paiementsRows));
+
+    // ─── Sheet 3 : MARGES (analyse de marge par dossier) ─────────────────
+    const margesRows = [['Dossier N°', 'Client', 'Société', 'Date pose',
+      'Prix TTC', 'Prix HT', 'TVA',
+      'Cut fournisseurs HT', 'Cut régie HT', 'Cut poseurs HT',
+      'Cut équipe interne (€)',
+      'Marge HT', 'Marge TTC', 'Marge HT / Prix HT (%)']];
+    dossiersEnriched.forEach(d => {
+      const cutInterne = ROLES_INTERNES.reduce((sum, role) => {
+        const nom = d[role.key];
+        if (!nom) return sum;
+        const m = d[role.key + 'Montant'];
+        const tarif = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
+        return sum + (tarif > 0 ? tarif : 0);
+      }, 0);
+      const tauxMarge = d.montantHt > 0 ? (d.margeHt / d.montantHt) * 100 : 0;
+      margesRows.push([
+        d.id || '', `${d.nom || ''} ${d.prenom || ''}`.trim(), d.societe || '', formatDateForSheet(d.dateInsta),
+        fmt(d.montantTotal), fmt(d.montantHt), fmt(d.tva),
+        fmt(d.fournisseurHt), fmt(d.regieHt), fmt(d.poseurHt),
+        fmt(cutInterne),
+        fmt(d.margeHt), fmt(d.margeTtc), fmt(tauxMarge),
+      ]);
+    });
+    triggerDownload(`comptable_3-marges_${stamp}.csv`, toCsv(margesRows));
+
+    showToast('📊 3 CSV exportés (dossiers + paiements + marges)', 'success', 3500);
+  };
+
   // Dossiers enrichis : calcule à la volée HT, marges, totaux poseurs/régie/fournisseur, etc.
   // Permet d'afficher correctement les anciens dossiers qui n'ont pas ces champs stockés.
   const dossiersEnriched = useMemo(() => {
@@ -2861,6 +2974,15 @@ export default function DossierSaisie({ authUser, onLogout }) {
               {isAdmin && dossiers.length > 0 && (
                 <button onClick={exportCSV} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200">
                   <Download className="w-4 h-4" />Export CSV
+                </button>
+              )}
+              {isAdmin && dossiers.length > 0 && (
+                <button
+                  onClick={exportComptable}
+                  title="Télécharge 3 CSV pour le comptable : 1) dossiers, 2) paiements détaillés (qui doit quoi à qui), 3) marges par dossier"
+                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-emerald-200"
+                >
+                  📊 Export comptable
                 </button>
               )}
               {isAdmin && (
