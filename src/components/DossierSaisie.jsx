@@ -8523,7 +8523,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <Field label="ID dossier"><input type="text" value={formData.id} onChange={(e) => setFormData({ ...formData, id: e.target.value })} placeholder="62007" className={inputCls} /></Field>
               <div></div>
               <div></div>
-              <Field label="Nom *"><input type="text" value={formData.nom} onChange={(e) => setFormData({ ...formData, nom: e.target.value })} placeholder="DUPONT" className={inputCls + (formData.nom.trim() ? '' : ' border-rose-400 focus:ring-rose-400')} autoFocus /></Field>
+              <Field label="Nom *"><input type="text" value={formData.nom} onChange={(e) => setFormData({ ...formData, nom: e.target.value })} placeholder="DUPONT" className={inputCls + (formData.nom.trim() ? '' : ' border-rose-400 focus:ring-rose-400')} /></Field>
               <Field label="Prénom"><input type="text" value={formData.prenom} onChange={(e) => setFormData({ ...formData, prenom: e.target.value })} placeholder="JEAN" className={inputCls} /></Field>
               <div></div>
               <Field label="📞 Téléphone"><input type="tel" value={formData.telephone} onChange={(e) => setFormData({ ...formData, telephone: e.target.value })} placeholder="06 12 34 56 78" className={inputCls} /></Field>
