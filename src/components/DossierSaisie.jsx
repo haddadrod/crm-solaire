@@ -14105,6 +14105,7 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
 // non adminOnly (comportement par défaut).
 const ALERTES_PAR_ROLE = {
   envoi_finance: ['aEnvoyerBanque', 'financement', 'originaux'],
+  compta: ['facturesManquantes'], // la compta ne suit que les factures manquantes
   poseur: [], // le poseur ne voit aucune alerte
   regie: [],  // la régie ne voit aucune alerte
 };
