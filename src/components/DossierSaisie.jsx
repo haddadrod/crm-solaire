@@ -1899,6 +1899,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // On retire scannedBon/scannedSections/pdfMeta du dossier persisté (transport seulement)
       delete dossier.scannedBon;
       delete dossier.scannedSections;
+      delete dossier.scannedDossierPdf;
       delete dossier.pdfMeta;
       setDossiers([{ ...dossier, localId: newLocalId, documents: initialDocs }, ...dossiers]);
       setCelebrating(true);
@@ -7975,6 +7976,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
   // (bon de commande ou dossier complet), sinon un PDF client déjà attaché.
   const scannedSource = useMemo(() => {
     const fd = formData || {};
+    // PDF complet d'un scan "dossier complet" — prioritaire : on veut voir
+    // TOUT le dossier (toutes les pages), pas seulement la 1re section.
+    if (fd.scannedDossierPdf && fd.scannedDossierPdf.bucketPath) {
+      return { storage: 'bucket', path: fd.scannedDossierPdf.bucketPath, name: fd.scannedDossierPdf.name || 'Dossier complet', type: 'application/pdf' };
+    }
     const bon = fd.scannedBon;
     if (bon && bon.bucketPath) return { storage: 'bucket', path: bon.bucketPath, name: bon.name, type: bon.type };
     if (bon && bon.dataUrl) return { storage: 'inline', dataUrl: bon.dataUrl, name: bon.name, type: bon.type };
@@ -8231,6 +8237,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       setFormData(prev => {
         const next = { ...prev };
         next.scannedSections = scannedSections;
+        // PDF complet d'origine (toutes les pages) — gardé pour pouvoir le
+        // visionner côte à côte et comparer avec ce que l'IA a rempli.
+        next.scannedDossierPdf = { bucketPath, name: file.name || 'dossier-complet.pdf' };
         next.pdfMeta = pdfMeta; // 🚨 Métadonnées PDF anti-fraude (créateur, dates)
         if (d.nom) next.nom = String(d.nom).toUpperCase();
         if (d.prenom) next.prenom = String(d.prenom);
@@ -8290,7 +8299,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       // Le PDF d'origine reste dans le bucket : toutes les sections pointent
       // vers ce même fichier physique avec des bookmarks pageStart/pageEnd.
 
-      setDossierScanState({ status: 'done', error: '', sections });
+      const incoherences = Array.isArray(result.incoherences) ? result.incoherences : [];
+      setDossierScanState({ status: 'done', error: '', sections, incoherences });
     } catch (e) {
       setDossierScanState({ status: 'error', error: e.message || 'Erreur inconnue', sections: null });
     }
@@ -8424,6 +8434,17 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <div className="font-semibold text-slate-700 mb-1.5">
                       ✅ {sections.length} document{sections.length > 1 ? 's' : ''} identifié{sections.length > 1 ? 's' : ''} et rangé{sections.length > 1 ? 's' : ''} dans le dossier :
                     </div>
+                    {/* Incohérences détectées en recoupant les documents entre eux
+                        (ex : nom du BC ≠ nom de la carte d'identité). */}
+                    {Array.isArray(dossierScanState.incoherences) && dossierScanState.incoherences.length > 0 && (
+                      <div className="mb-2 px-2 py-1.5 rounded-lg border-2 bg-orange-50 border-orange-300 text-orange-800">
+                        <div className="font-bold text-[11px]">🔎 {dossierScanState.incoherences.length} incohérence{dossierScanState.incoherences.length > 1 ? 's' : ''} entre documents — à vérifier</div>
+                        <ul className="mt-1 ml-1 text-[10px] space-y-0.5">
+                          {dossierScanState.incoherences.map((inc, j) => <li key={j}>• {inc}</li>)}
+                        </ul>
+                        <div className="text-[10px] italic opacity-80 mt-0.5">L'IA a recoupé les documents : le formulaire a été pré-rempli avec la valeur la plus fiable (pièce d'identité). Vérifie quand même.</div>
+                      </div>
+                    )}
                     {/* Bandeau anti-fraude global si quelque chose est suspect */}
                     {hasAnyFraud && (
                       <div className={`mb-2 px-2 py-1.5 rounded-lg border-2 ${nHigh > 0 ? 'bg-rose-50 border-rose-300 text-rose-800' : 'bg-amber-50 border-amber-300 text-amber-800'}`}>

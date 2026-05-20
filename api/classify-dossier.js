@@ -151,8 +151,13 @@ function buildClassifySchema(availableSocietes = []) {
         required,
         additionalProperties: false,
       },
+      incoherences: {
+        type: 'array',
+        items: { type: 'string' },
+        description: "Liste des INCOHÉRENCES constatées en recoupant les documents du dossier entre eux : nom/prénom/adresse/code postal/ville qui diffèrent entre le bon de commande et la pièce d'identité ou le justificatif de domicile, dates de naissance contradictoires, etc. Chaque ligne en français court et précise, en indiquant la valeur retenue et sa source (ex : \"Bon de commande : nom 'BOZEAU' — Carte d'identité : 'BOILEAU'. Retenu : BOILEAU (pièce d'identité fait foi).\"). Tableau vide [] si tous les documents concordent.",
+      },
     },
-    required: ['totalPages', 'sections', 'bonCommande'],
+    required: ['totalPages', 'sections', 'bonCommande', 'incoherences'],
     additionalProperties: false,
   };
 }
@@ -234,6 +239,13 @@ Indices CONCRETS de modification locale à chercher :
    - Vente : produit, puissance (Wc), montantTTC, montantHT
    - **Financement : nom de l'organisme bancaire — IMPORTANT. Regarde le bloc "PAIEMENT AVEC FINANCEMENT" / "ORGANISME BANCAIRE" / "Établissement financier". Valeurs typiques : PROJEXIO, SOFINCO, DOMOFINANCE, COMPTANT, CETELEM, FINANCO, FRANFINANCE. Si le client paie comptant (case "PAIEMENT COMPTANT" cochée), mets "COMPTANT".**
    - Date de signature (AAAA-MM-JJ)
+4bis. 🔎 RECOUPEMENT ENTRE DOCUMENTS — TRÈS IMPORTANT.
+Le bon de commande est souvent rempli À LA MAIN : il peut être mal écrit, mal orthographié ou erroné. Tu as TOUS les documents du dossier sous les yeux EN MÊME TEMPS — sers-t'en pour VÉRIFIER et CORRIGER les champs du bon de commande, ne te contente pas de recopier ce qui est écrit sur le BC.
+- nom / prénom : la PIÈCE D'IDENTITÉ (CNI, titre de séjour, passeport) FAIT FOI. Si le nom/prénom du bon de commande diffère de la pièce d'identité, mets dans bonCommande.nom et bonCommande.prenom l'ORTHOGRAPHE EXACTE DE LA PIÈCE D'IDENTITÉ (ex : le BC manuscrit dit "Bozeau" mais la CNI dit "BOILEAU" → tu mets "BOILEAU").
+- adresse / code postal / ville : recoupe avec le justificatif de domicile, la taxe foncière et la pièce d'identité. En cas de divergence, privilégie le justificatif de domicile le plus récent.
+- Pour CHAQUE écart réel constaté entre deux documents, ajoute une ligne claire et précise dans le tableau "incoherences" (valeur de chaque doc + valeur retenue + source). Si tout concorde parfaitement, "incoherences" = [].
+- Ne signale PAS une simple différence de casse (majuscules/minuscules) ou d'accents comme une incohérence — seulement les vraies divergences d'orthographe, de chiffres ou d'adresse.
+
 5. confiance="haute" si le document est clairement identifiable, "moyenne" si tu hésites, "faible" si très incertain.
 
 Règles :
@@ -429,6 +441,7 @@ export default async function handler(req, res) {
         });
       }
       const allSections = [];
+      const allIncoherences = [];
       let bonCommande = null;
       for (let i = 0; i < chunks.length; i++) {
         const c = chunks[i];
@@ -442,6 +455,7 @@ export default async function handler(req, res) {
             pageEnd: (parseInt(s.pageEnd, 10) || 1) + c.pageOffset,
           });
         }
+        if (Array.isArray(chunkResult?.incoherences)) allIncoherences.push(...chunkResult.incoherences);
         if (!bonCommande || !bonCommandeIsFilled(bonCommande)) {
           if (bonCommandeIsFilled(chunkResult?.bonCommande)) {
             bonCommande = chunkResult.bonCommande;
@@ -450,6 +464,7 @@ export default async function handler(req, res) {
       }
       parsed = {
         totalPages,
+        incoherences: allIncoherences,
         sections: allSections,
         bonCommande: bonCommande || {
           nom: '', prenom: '', adresse: '', codePostal: '', ville: '',
