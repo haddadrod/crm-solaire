@@ -26,7 +26,10 @@ const ONOFF_WEBHOOK_TOKEN = process.env.ONOFF_WEBHOOK_TOKEN;
 
 const BUCKET = 'dossier-documents';
 const RECORDING_FOLDER = 'onoff-recordings';
-const SIGNED_URL_DURATION_SEC = 60 * 60 * 24 * 365; // 1 an
+// 1 heure suffit pour la première lecture immédiate. Le front régénère
+// une URL signée à chaque ouverture du dossier — pas besoin d'1 an,
+// qui crée un risque si l'URL est interceptée (logs, partage maladroit).
+const SIGNED_URL_DURATION_SEC = 60 * 60;
 
 function json(res, status, body) {
   res.status(status).setHeader('Content-Type', 'application/json');

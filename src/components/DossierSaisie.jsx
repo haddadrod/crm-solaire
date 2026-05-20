@@ -140,6 +140,19 @@ async function recordPendingOnoffCall({ dossierLocalId, telephone, type, created
   }
 }
 
+// Garde XSS pour les URLs collées par l'utilisateur (vocalCQUrl notamment).
+// Refuse javascript:, data:, vbscript:, blob:, etc. — seuls HTTPS et HTTP
+// sont autorisés pour les <audio src>, <a href>, etc.
+function isSafeMediaUrl(url) {
+  if (!url || typeof url !== 'string') return false;
+  try {
+    const u = new URL(url);
+    return u.protocol === 'https:' || u.protocol === 'http:';
+  } catch (e) {
+    return false;
+  }
+}
+
 // Rôles équipe interne (régie interne) — payés au dossier
 const ROLES_INTERNES = [
   { key: 'teleprospecteur', label: 'Téléprospecteur', emoji: '📞', defaultTarif: 50 },
@@ -947,7 +960,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
     tentativesCQ: [], // [{datetime: ISO}] — historique des appels où le client n'a pas répondu
     dateAccord: '', dateConsuel: '',
     dateEnvoiFin: '', dateRetourFin: '',
-    statutFin: '', // '' | 'envoyé' | 'accepté' | 'refusé'
+    statutFin: '', // '' | 'envoyé' | 'accepté' | 'refusé' | 'manque_doc'
+    motifManqueDoc: '', // texte libre : quels documents la banque réclame (ex : "Bulletin paie + RIB")
+    // Workflow Manque docs : banque → régie → client → régie → nous → banque
+    dateNotifRegie: '', // date à laquelle on a prévenu la régie (qu'elle réclame au client)
+    dateRecuRegie: '',  // date à laquelle la régie nous a renvoyé le doc du client
+    dateRenvoiDocs: '', // date à laquelle on a renvoyé les docs à la banque
     envoisHistorique: [], // [{financeur, dateEnvoi, dateRetour, statut, note}]
     // Process pose
     dateEnvoiPose: '', dateVisitePose: '',
@@ -1659,7 +1677,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const resetForm = () => { setFormData(emptyForm); setEditingId(null); setShowForm(false); };
 
   const handleSubmit = () => {
-    if (!formData.nom.trim()) return;
+    if (!formData.nom.trim()) {
+      // Avant : return silencieux → l'user clique "Enregistrer" et ne sait
+      // pas pourquoi rien ne se passe. Maintenant on signale l'erreur.
+      alert("❌ Le nom du client est obligatoire pour créer ou modifier un dossier.");
+      // Tente de focuser le champ Nom pour aider l'user.
+      try {
+        const nomInput = document.querySelector('input[placeholder*="Nom" i], input[name="nom"]');
+        if (nomInput && typeof nomInput.focus === 'function') nomInput.focus();
+      } catch (e) {}
+      return;
+    }
     let dossier = { ...formData, ...calculs, savedAt: new Date().toISOString() };
     // Auto-statut : si le statut courant est dans le cycle workflow, on le
     // recalcule depuis l'état du dossier (CQ, envoi banque, retour, etc.).
@@ -1683,10 +1711,35 @@ export default function DossierSaisie({ authUser, onLogout }) {
     if (editingId) {
       const old = dossiers.find(d => d.localId === editingId);
       const oldHist = old?.historique || [];
+      // 📜 Diff de tous les champs modifiés (hors métadonnées et hors statut).
+      // Une entrée d'historique unique par save, regroupant tous les changements.
+      const SKIP_FIELDS = new Set([
+        'statut', 'historique', 'savedAt', 'modifiedBy', 'modifiedAt',
+        'createdBy', 'createdAt', 'documents',
+        // Calculs dérivés (recalculés à chaque save, pas des choix user)
+        'montantTotal', 'montantHt', 'tvaVente', 'tauxTva', 'fournisseursDetail',
+        'fournisseurHt', 'fournisseurTtc', 'regiesDetail', 'regieHt', 'regieAutoHt',
+        'regieTtc', 'poseursDetail', 'poseurHt', 'poseurTtc', 'margeTtc', 'margeHt',
+        'tva', 'puissance', 'useAutoTarif', 'computeAutoTarif',
+      ]);
+      const fieldChanges = [];
+      if (old) {
+        for (const key of Object.keys(dossier)) {
+          if (SKIP_FIELDS.has(key)) continue;
+          const before = old[key];
+          const after = dossier[key];
+          if (JSON.stringify(before) === JSON.stringify(after)) continue;
+          fieldChanges.push({ field: key, from: before, to: after });
+        }
+      }
+      let newHist = oldHist;
+      if (fieldChanges.length > 0) {
+        newHist = [...newHist, { date: now, action: 'modification', user: userTag, changes: fieldChanges }];
+      }
       // Ajoute une entrée si le statut a changé
-      const newHist = (old && old.statut !== dossier.statut)
-        ? [...oldHist, { date: now, from: old.statut, to: dossier.statut, action: 'changement_statut', user: userTag }]
-        : oldHist;
+      if (old && old.statut !== dossier.statut) {
+        newHist = [...newHist, { date: now, from: old.statut, to: dossier.statut, action: 'changement_statut', user: userTag }];
+      }
       dossier.historique = newHist;
       dossier.modifiedBy = userTag;
       dossier.modifiedAt = now;
@@ -1797,6 +1850,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
       tentativesCQ: d.tentativesCQ || [],
       dateEnvoiFin: d.dateEnvoiFin || '', dateRetourFin: d.dateRetourFin || '',
       statutFin: d.statutFin || '',
+      motifManqueDoc: d.motifManqueDoc || '',
+      dateNotifRegie: d.dateNotifRegie || '',
+      dateRecuRegie: d.dateRecuRegie || '',
+      dateRenvoiDocs: d.dateRenvoiDocs || '',
       envoisHistorique: d.envoisHistorique || [],
       dateEnvoiPose: d.dateEnvoiPose || '', dateVisitePose: d.dateVisitePose || '',
       statutPose: d.statutPose || '',
@@ -2304,7 +2361,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dossiersDash.forEach(d => {
       if (!d.dateEnvoiFin) return; // pas envoyé
       if (d.dateRetourFin) return; // déjà reçu retour
-      if (d.statutFin === 'accepté' || d.statutFin === 'refusé') return; // déjà répondu
+      if (d.statutFin === 'accepté' || d.statutFin === 'refusé' || d.statutFin === 'manque_doc') return; // déjà répondu
       const jours = Math.floor((today - new Date(d.dateEnvoiFin)) / 86400000);
       if (jours < 2) return; // encore dans les 2 jours acceptables
       let level = 'warn';
@@ -2313,6 +2370,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
       rappelsFinancement.push({ dossier: d, jours, level });
     });
     rappelsFinancement.sort((a, b) => b.jours - a.jours);
+
+    // Rappels Manque docs — la banque demande des pièces complémentaires.
+    // Tant que dateRenvoiDocs n'est pas remplie → urgent (les filles doivent
+    // récupérer les docs côté client puis renvoyer à la banque).
+    const rappelsManqueDoc = [];
+    dossiersDash.forEach(d => {
+      if (d.statutFin !== 'manque_doc') return;
+      if (d.dateRenvoiDocs) return; // déjà renvoyés (l'user oubliera juste de repasser à 'envoyé')
+      // Jours depuis le retour banque (ou envoi initial à défaut)
+      const ref = d.dateRetourFin || d.dateEnvoiFin;
+      const jours = ref ? Math.floor((today - new Date(ref)) / 86400000) : 0;
+      let level = 'warn';
+      if (jours >= 7) level = 'critical';
+      else if (jours >= 3) level = 'high';
+      rappelsManqueDoc.push({ dossier: d, jours, level });
+    });
+    rappelsManqueDoc.sort((a, b) => b.jours - a.jours);
 
     // Rappels Paiement — contrôle livraison fait sans paiement reçu depuis +2 jours
     const rappelsPaiement = [];
@@ -2575,7 +2649,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes };
+    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -2822,6 +2896,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsControleQualite={dashboard.rappelsControleQualite || []}
             rappelsAEnvoyerBanque={dashboard.rappelsAEnvoyerBanque || []}
             rappelsFinancement={dashboard.rappelsFinancement || []}
+            rappelsManqueDoc={dashboard.rappelsManqueDoc || []}
             rappelsAEnvoyerPose={dashboard.rappelsAEnvoyerPose || []}
             rappelsPoseurNonAssigne={dashboard.rappelsPoseurNonAssigne || []}
             rappelsPoseNonFinie={dashboard.rappelsPoseNonFinie || []}
@@ -3132,9 +3207,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
               setDossiers(dossiers.map(d => {
                 if (d.localId !== currentQuickDossier.localId) return d;
                 let merged = { ...d, ...updates, savedAt: now, modifiedBy: userTag, modifiedAt: now };
+                // 📜 Trace tous les changements de champs (hors statut, qui a son
+                // entrée dédiée juste après). Une entrée d'historique par appel
+                // onUpdate, regroupant toutes les modifs faites simultanément.
+                const fieldChanges = [];
+                for (const key of Object.keys(updates)) {
+                  if (key === 'statut' || key === 'historique') continue;
+                  const before = d[key];
+                  const after = updates[key];
+                  if (JSON.stringify(before) === JSON.stringify(after)) continue;
+                  fieldChanges.push({ field: key, from: before, to: after });
+                }
+                if (fieldChanges.length > 0) {
+                  merged.historique = [...(merged.historique || []), { date: now, action: 'modification', user: userTag, changes: fieldChanges }];
+                }
                 // Trace le changement de statut manuel s'il y en a un
                 if (updates.statut && updates.statut !== d.statut) {
-                  merged.historique = [...(d.historique || []), { date: now, from: d.statut, to: updates.statut, action: 'changement_statut', user: userTag }];
+                  merged.historique = [...(merged.historique || []), { date: now, from: d.statut, to: updates.statut, action: 'changement_statut', user: userTag }];
                   // Désarchivage automatique si statut → SAV (ou Litige/Problème)
                   if (d.archived && ['D_SAV', 'C_LITIGE', 'M_NRP_CQ_LIVRAISON', 'F1_CONTROLE_LIV_BANQUE', 'CONFORMITE_CONTRAT'].includes(updates.statut)) {
                     merged.archived = false;
@@ -8074,7 +8163,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <Field label="ID dossier"><input type="text" value={formData.id} onChange={(e) => setFormData({ ...formData, id: e.target.value })} placeholder="62007" className={inputCls} /></Field>
               <div></div>
               <div></div>
-              <Field label="Nom *"><input type="text" value={formData.nom} onChange={(e) => setFormData({ ...formData, nom: e.target.value })} placeholder="DUPONT" className={inputCls} autoFocus /></Field>
+              <Field label="Nom *"><input type="text" value={formData.nom} onChange={(e) => setFormData({ ...formData, nom: e.target.value })} placeholder="DUPONT" className={inputCls + (formData.nom.trim() ? '' : ' border-rose-400 focus:ring-rose-400')} autoFocus /></Field>
               <Field label="Prénom"><input type="text" value={formData.prenom} onChange={(e) => setFormData({ ...formData, prenom: e.target.value })} placeholder="JEAN" className={inputCls} /></Field>
               <div></div>
               <Field label="📞 Téléphone"><input type="tel" value={formData.telephone} onChange={(e) => setFormData({ ...formData, telephone: e.target.value })} placeholder="06 12 34 56 78" className={inputCls} /></Field>
@@ -8820,16 +8909,22 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       <span className="text-[9px] font-bold uppercase bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">📞 ONOFF</span>
                     )}
                   </span>
-                  {formData.vocalCQUrl && (
+                  {formData.vocalCQUrl && isSafeMediaUrl(formData.vocalCQUrl) && (
                     <a href={formData.vocalCQUrl} download className="text-[10px] font-bold text-purple-600 hover:underline">⬇️ Télécharger</a>
                   )}
                 </label>
 
                 {formData.vocalCQUrl ? (
                   <>
-                    <audio controls src={formData.vocalCQUrl} className="w-full" preload="none">
-                      Ton navigateur ne supporte pas la lecture audio.
-                    </audio>
+                    {isSafeMediaUrl(formData.vocalCQUrl) ? (
+                      <audio controls src={formData.vocalCQUrl} className="w-full" preload="none">
+                        Ton navigateur ne supporte pas la lecture audio.
+                      </audio>
+                    ) : (
+                      <div className="p-2 bg-rose-50 border border-rose-300 rounded text-[11px] text-rose-700">
+                        ⚠️ Lien audio invalide ou potentiellement dangereux — seuls les liens HTTPS sont acceptés. Recolle un lien direct vers le fichier audio.
+                      </div>
+                    )}
                     {formData.onoffCallMeta && (
                       <div className="text-[10px] text-slate-600 mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
                         {formData.onoffCallMeta.callStarted && (
@@ -9020,10 +9115,12 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
                     formData.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
                     formData.statutFin === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                    formData.statutFin === 'manque_doc' ? 'bg-orange-100 text-orange-700' :
                     'bg-amber-100 text-amber-700'
                   }`}>
                     {formData.statutFin === 'accepté' ? '✓ Accepté' :
-                     formData.statutFin === 'refusé' ? '✗ Refusé' : '⏳ Envoyé'}
+                     formData.statutFin === 'refusé' ? '✗ Refusé' :
+                     formData.statutFin === 'manque_doc' ? '📄 Manque docs' : '⏳ Envoyé'}
                   </span>
                 )}
               </button>
@@ -9074,11 +9171,15 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   pour la même logique). */}
               <div className="mt-3">
                 <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Statut banque (clique pour changer)</div>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   <button type="button" onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     setFormData({ ...formData, statutFin: 'envoyé', dateEnvoiFin: formData.dateEnvoiFin || today, dateRetourFin: '', dateAccord: '' });
                   }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'envoyé' || !formData.statutFin ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Envoyé</button>
+                  <button type="button" onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    setFormData({ ...formData, statutFin: 'manque_doc', dateEnvoiFin: formData.dateEnvoiFin || today, dateRetourFin: formData.dateRetourFin || today });
+                  }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'manque_doc' ? 'bg-orange-500 text-white border-orange-600 shadow-md' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}>📄 Manque docs</button>
                   <button type="button" onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     setFormData({ ...formData, statutFin: 'accepté', dateEnvoiFin: formData.dateEnvoiFin || today, dateRetourFin: formData.dateRetourFin || today, dateAccord: formData.dateAccord || today });
@@ -9088,6 +9189,59 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     setFormData({ ...formData, statutFin: 'refusé', dateEnvoiFin: formData.dateEnvoiFin || today, dateRetourFin: formData.dateRetourFin || today });
                   }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
+                {formData.statutFin === 'manque_doc' && (
+                  <div className="mt-3 p-3 bg-orange-50 border-2 border-orange-300 rounded-xl space-y-3">
+                    {/* Étape 1 : ce que la banque demande */}
+                    <div>
+                      <div className="text-xs font-bold text-orange-700 mb-1.5">1️⃣ 📄 {formData.financement || 'La banque'} demande :</div>
+                      <textarea
+                        value={formData.motifManqueDoc || ''}
+                        onChange={(e) => setFormData({ ...formData, motifManqueDoc: e.target.value })}
+                        placeholder="Ex : Bulletin de paie de mars, RIB, justificatif domicile…"
+                        rows={2}
+                        className={inputCls + ' text-xs'}
+                      />
+                    </div>
+
+                    {/* Étape 2 : régie prévenue */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-orange-700 mb-1">2️⃣ 🤝 Régie prévenue le</label>
+                      <div className="flex gap-1">
+                        <input type="date" value={formData.dateNotifRegie || ''} onChange={(e) => setFormData({ ...formData, dateNotifRegie: e.target.value })} className={inputCls + ' text-xs'} />
+                        <button type="button" onClick={() => setFormData({ ...formData, dateNotifRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                      <p className="text-[10px] text-orange-700/80 mt-1">→ La régie doit ensuite récupérer le(s) doc(s) auprès du client.</p>
+                    </div>
+
+                    {/* Étape 3 : docs reçus de la régie */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-orange-700 mb-1">3️⃣ 📥 Docs reçus de la régie le</label>
+                      <div className="flex gap-1">
+                        <input type="date" value={formData.dateRecuRegie || ''} onChange={(e) => setFormData({ ...formData, dateRecuRegie: e.target.value })} className={inputCls + ' text-xs'} />
+                        <button type="button" onClick={() => setFormData({ ...formData, dateRecuRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+
+                    {/* Étape 4 : renvoi à la banque */}
+                    <div>
+                      <label className="block text-[11px] font-bold text-orange-700 mb-1">4️⃣ 📤 Docs renvoyés à {formData.financement || 'la banque'} le</label>
+                      <div className="flex gap-1">
+                        <input type="date" value={formData.dateRenvoiDocs || ''} onChange={(e) => setFormData({ ...formData, dateRenvoiDocs: e.target.value })} className={inputCls + ' text-xs'} />
+                        <button type="button" onClick={() => setFormData({ ...formData, dateRenvoiDocs: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+
+                    {/* CTA final : repasser en Envoyé */}
+                    {formData.dateRenvoiDocs && (
+                      <div className="flex items-center justify-between gap-2 p-2 bg-amber-50 border border-amber-300 rounded-lg">
+                        <span className="text-[11px] text-amber-800">✅ Renvoyé le {new Date(formData.dateRenvoiDocs).toLocaleDateString('fr-FR')} — passe le statut à ⏳ Envoyé</span>
+                        <button type="button" onClick={() => {
+                          setFormData({ ...formData, statutFin: 'envoyé', dateEnvoiFin: formData.dateRenvoiDocs, dateRetourFin: '', dateAccord: '' });
+                        }} className="flex-shrink-0 px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-bold whitespace-nowrap">⏳ Envoyé</button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Bloc retiré : ancien bouton "Annuler décision" remplacé par les 3 boutons toggleables ci-dessus */}
@@ -10297,6 +10451,70 @@ function HistoriqueModal({ dossier, onClose }) {
                       </div>
                     );
                   }
+                  // 📜 Modification d'un ou plusieurs champs du dossier (hors statut)
+                  if (h.action === 'modification' && Array.isArray(h.changes) && h.changes.length > 0) {
+                    // Libellés humains pour les champs les plus courants (sinon on
+                    // affiche le nom technique du champ entre backticks).
+                    const FIELD_LABELS = {
+                      nom: 'Nom', prenom: 'Prénom', adresse: 'Adresse', codePostal: 'Code postal', ville: 'Ville',
+                      telephone: 'Téléphone', email: 'Email', dateSignature: 'Date BC', dateInsta: 'Date pose',
+                      financement: 'Financement', payeClient: 'Payé par financeur',
+                      dateEnvoiFin: 'Envoi banque', dateRetourFin: 'Retour banque', dateAccord: 'Accord banque',
+                      statutFin: 'Statut banque', motifManqueDoc: 'Docs demandés banque',
+                      dateNotifRegie: 'Date régie prévenue', dateRecuRegie: 'Date docs reçus régie',
+                      dateRenvoiDocs: 'Date renvoi banque',
+                      dateControleQualite: 'Date CQ', statutControleQualite: 'Statut CQ', vocalCQUrl: 'Vocal CQ',
+                      dateEnvoiPose: 'Date pose', statutPose: 'Statut pose',
+                      dateEnvoiMairie: 'Envoi mairie', dateAccordMairie: 'Accord mairie', statutMairie: 'Statut mairie',
+                      dateEnvoiConsuel: 'Envoi Consuel', dateAccordConsuel: 'Accord Consuel', statutConsuel: 'Statut Consuel',
+                      societe: 'Société', id: 'N° BC', notes: 'Notes',
+                      montantPret: 'Montant prêt', reportMois: 'Report mois', tauxDebiteur: 'Taux débiteur',
+                      taeg: 'TAEG', nbEcheances: 'Nb échéances', montantEcheance: 'Mensualité', periodicite: 'Périodicité',
+                      typeToiture: 'Type toiture', orientationPanneaux: 'Orientation panneaux',
+                    };
+                    const fmtVal = (v) => {
+                      if (v === '' || v == null) return <em className="text-slate-400">vide</em>;
+                      if (v === true) return '✓';
+                      if (v === false) return '✗';
+                      if (Array.isArray(v)) return `${v.length} élément${v.length > 1 ? 's' : ''}`;
+                      if (typeof v === 'object') return JSON.stringify(v).slice(0, 60);
+                      const s = String(v);
+                      // Date ISO → format français
+                      if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+                        try { return new Date(s).toLocaleDateString('fr-FR'); } catch (e) {}
+                      }
+                      return s.length > 60 ? s.slice(0, 60) + '…' : s;
+                    };
+                    return (
+                      <div key={`m-${i}`} className="relative pl-10">
+                        <div className="absolute left-0 top-0.5 w-8 h-8 rounded-full flex items-center justify-center text-base shadow-md text-white bg-gradient-to-br from-blue-400 to-indigo-500">
+                          ✏️
+                        </div>
+                        <div className="rounded-xl p-3 border bg-blue-50 border-blue-200">
+                          <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                            📅 {formatDateTime(h.date)}
+                          </div>
+                          <div className="text-sm font-bold text-blue-700 mb-1.5">
+                            ✏️ Modification ({h.changes.length} champ{h.changes.length > 1 ? 's' : ''})
+                          </div>
+                          <ul className="space-y-1">
+                            {h.changes.map((c, j) => {
+                              const label = FIELD_LABELS[c.field] || c.field;
+                              return (
+                                <li key={j} className="text-[11px] flex items-center gap-1.5 flex-wrap">
+                                  <strong className="text-slate-700">{label} :</strong>
+                                  <span className="text-rose-600 line-through">{fmtVal(c.from)}</span>
+                                  <span className="text-slate-400">→</span>
+                                  <span className="text-emerald-700 font-semibold">{fmtVal(c.to)}</span>
+                                </li>
+                              );
+                            })}
+                          </ul>
+                          {h.user && <div className="text-[10px] text-slate-500 mt-1.5">👤 par {h.user}</div>}
+                        </div>
+                      </div>
+                    );
+                  }
                   // Évènement classique de l'historique (création ou changement de statut)
                   const fromInfo = h.from ? findStatutInfo(h.from) : null;
                   const toInfo = findStatutInfo(h.to);
@@ -10807,15 +11025,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <span className="text-[8px] font-bold uppercase bg-purple-100 text-purple-700 px-1 py-0.5 rounded-full">ONOFF</span>
                     )}
                   </span>
-                  {d.vocalCQUrl && (
+                  {d.vocalCQUrl && isSafeMediaUrl(d.vocalCQUrl) && (
                     <a href={d.vocalCQUrl} download className="text-[9px] font-bold text-purple-600 hover:underline">⬇️</a>
                   )}
                 </label>
                 {d.vocalCQUrl ? (
                   <>
-                    <audio controls src={d.vocalCQUrl} className="w-full" preload="none" style={{ height: '32px' }}>
-                      Audio non supporté
-                    </audio>
+                    {isSafeMediaUrl(d.vocalCQUrl) ? (
+                      <audio controls src={d.vocalCQUrl} className="w-full" preload="none" style={{ height: '32px' }}>
+                        Audio non supporté
+                      </audio>
+                    ) : (
+                      <div className="p-1.5 bg-rose-50 border border-rose-300 rounded text-[9px] text-rose-700">⚠️ Lien invalide</div>
+                    )}
                     {d.onoffCallMeta && (
                       <div className="text-[9px] text-slate-600 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
                         {d.onoffCallMeta.callDuration > 0 && <span>⏱ {formatDurationMmSs(d.onoffCallMeta.callDuration)}</span>}
@@ -10925,10 +11147,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
                   d.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
                   d.statutFin === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                  d.statutFin === 'manque_doc' ? 'bg-orange-100 text-orange-700' :
                   d.statutFin === 'envoyé' ? 'bg-blue-100 text-blue-700' :
                   'bg-amber-100 text-amber-700'
                 }`}>
-                  {d.statutFin === 'accepté' ? '✓ Accepté' : d.statutFin === 'refusé' ? '✗ Refusé' : d.statutFin === 'envoyé' ? '📤 Envoyé' : '⏳ Pas envoyé'}
+                  {d.statutFin === 'accepté' ? '✓ Accepté' :
+                   d.statutFin === 'refusé' ? '✗ Refusé' :
+                   d.statutFin === 'manque_doc' ? '📄 Manque docs' :
+                   d.statutFin === 'envoyé' ? '📤 Envoyé' : '⏳ Pas envoyé'}
                 </span>
               </button>
 
@@ -10948,14 +11174,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   {d.envoisHistorique.map((env, i) => {
                     const fmtD = (iso) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '?';
                     return (
-                      <div key={i} className="text-[9px] flex items-center gap-1 flex-wrap bg-rose-50 rounded px-1 py-0.5">
+                      <div key={i} className="text-[9px] flex items-baseline gap-1 flex-wrap bg-rose-50 rounded px-1.5 py-0.5">
                         <span className="font-bold text-slate-700">{i + 1}.</span>
                         <span className="font-bold text-rose-700">{env.financeur}</span>
-                        <span className="text-slate-500">{fmtD(env.dateEnvoi)}→{fmtD(env.dateRetour)}</span>
+                        <span className="text-slate-500">📤 envoi <strong className="text-slate-700">{fmtD(env.dateEnvoi)}</strong></span>
+                        {env.dateRetour && <span className="text-slate-500">→ 📥 refus <strong className="text-slate-700">{fmtD(env.dateRetour)}</strong></span>}
                         <span className="ml-auto text-rose-600 font-bold">✗</span>
                       </div>
                     );
                   })}
+                  <div className="mt-1 text-[9px] text-slate-500 italic">
+                    Actuel : <strong className="text-blue-700">{d.financement || 'à choisir'}</strong> {d.dateEnvoiFin && `(renvoyé ${new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })})`}
+                  </div>
                 </div>
               )}
 
@@ -10990,11 +11220,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   - ✗ Refusé : envoi+retour auto à today si vides */}
               <div className="mt-1.5">
                 <div className="text-[9px] font-semibold text-slate-500 uppercase mb-1">Statut banque (clique pour changer)</div>
-                <div className="grid grid-cols-3 gap-1">
+                <div className="grid grid-cols-2 gap-1">
                   <button onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     onUpdate({ statutFin: 'envoyé', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: '', dateAccord: '' });
                   }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'envoyé' || !d.statutFin ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Envoyé</button>
+                  <button onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    onUpdate({ statutFin: 'manque_doc', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: d.dateRetourFin || today });
+                  }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'manque_doc' ? 'bg-orange-500 text-white border-orange-600 shadow-md' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}>📄 Manque docs</button>
                   <button onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     onUpdate({ statutFin: 'accepté', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: d.dateRetourFin || today, dateAccord: d.dateAccord || today });
@@ -11004,6 +11238,50 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     onUpdate({ statutFin: 'refusé', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: d.dateRetourFin || today });
                   }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
+                {d.statutFin === 'manque_doc' && (
+                  <div className="mt-1.5 p-2 bg-orange-50 border-2 border-orange-300 rounded-lg space-y-2">
+                    {/* 1. Demande banque */}
+                    <div>
+                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">1️⃣ 📄 {d.financement || 'Banque'} demande :</div>
+                      <textarea
+                        value={d.motifManqueDoc || ''}
+                        onChange={(e) => onUpdate({ motifManqueDoc: e.target.value })}
+                        placeholder="Ex : Bulletin de paie de mars, RIB, justif domicile…"
+                        rows={2}
+                        className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[10px]"
+                      />
+                    </div>
+                    {/* 2. Régie prévenue */}
+                    <div>
+                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">2️⃣ 🤝 Régie prévenue le</div>
+                      <div className="flex gap-1">
+                        <input type="date" value={d.dateNotifRegie || ''} onChange={(e) => onUpdate({ dateNotifRegie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                        <button onClick={() => onUpdate({ dateNotifRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+                    {/* 3. Reçu de la régie */}
+                    <div>
+                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">3️⃣ 📥 Docs reçus de la régie le</div>
+                      <div className="flex gap-1">
+                        <input type="date" value={d.dateRecuRegie || ''} onChange={(e) => onUpdate({ dateRecuRegie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                        <button onClick={() => onUpdate({ dateRecuRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+                    {/* 4. Renvoi banque */}
+                    <div>
+                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">4️⃣ 📤 Renvoi à {d.financement || 'la banque'} le</div>
+                      <div className="flex gap-1">
+                        <input type="date" value={d.dateRenvoiDocs || ''} onChange={(e) => onUpdate({ dateRenvoiDocs: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                        <button onClick={() => onUpdate({ dateRenvoiDocs: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+                    {d.dateRenvoiDocs && (
+                      <button onClick={() => {
+                        onUpdate({ statutFin: 'envoyé', dateEnvoiFin: d.dateRenvoiDocs, dateRetourFin: '', dateAccord: '' });
+                      }} className="w-full px-2 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-bold">⏳ Repasser en "Envoyé"</button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {d.statutFin === 'refusé' && (
@@ -13539,7 +13817,7 @@ const ALERTES_PAR_ROLE = {
   regie: [],  // la régie ne voit aucune alerte
 };
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, isAdmin, currentUserRole, onClick }) {
   // Définition des badges
   const badges = [
     {
@@ -13589,6 +13867,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-blue-200',
       colorText: 'text-blue-700',
       tooltip: 'Banques sans retour +48h',
+    },
+    {
+      type: 'manqueDoc',
+      label: 'Manque docs',
+      emoji: '📄',
+      count: (rappelsManqueDoc || []).length,
+      adminOnly: false,
+      color: 'from-orange-500 to-amber-500',
+      colorBg: 'bg-orange-50',
+      colorBorder: 'border-orange-200',
+      colorText: 'text-orange-700',
+      tooltip: 'Banque demande des docs complémentaires — à récupérer + renvoyer',
     },
     {
       type: 'aEnvoyerPose',
@@ -13793,6 +14083,20 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
       borderColor: 'border-blue-200',
       lineLabel: (d) => `Envoyé à ${d.financement} le ${d.dateEnvoiFin && new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR')}`,
       suffixLabel: 'sans retour',
+    },
+    manqueDoc: {
+      title: '📄 Banque demande des docs complémentaires',
+      subtitle: 'La banque a renvoyé le dossier en demandant des pièces — à récupérer côté client puis renvoyer',
+      items: dashboard.rappelsManqueDoc || [],
+      gradient: 'from-orange-500 to-amber-500',
+      bgHeader: 'from-orange-50 to-amber-50',
+      borderColor: 'border-orange-200',
+      lineLabel: (d) => {
+        const banque = d.financement || 'la banque';
+        const motif = d.motifManqueDoc ? ` — ${d.motifManqueDoc}` : '';
+        return `${banque} demande${motif}`;
+      },
+      suffixLabel: 'depuis le retour banque',
     },
     aEnvoyerPose: {
       title: '📦 Dossiers à envoyer en pose',

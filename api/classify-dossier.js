@@ -541,7 +541,9 @@ export default async function handler(req, res) {
     if (e?.status === 400 && /credit|balance|insufficient/i.test(msg)) {
       return json(res, 502, { error: 'Crédits IA épuisés — recharge sur console.anthropic.com.' });
     }
-    console.error('classify-dossier error:', msg);
-    return json(res, 502, { error: `Erreur IA : ${msg}` });
+    // Log complet côté serveur, message générique côté client pour ne pas
+    // leak la structure interne / les détails du PDF dans la UI.
+    console.error('classify-dossier error:', msg, e?.stack);
+    return json(res, 502, { error: "Échec de l'analyse IA. Réessaie dans un instant — si ça persiste, vérifie le format du PDF." });
   }
 }
