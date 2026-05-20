@@ -2098,9 +2098,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
   };
 
   // 📊 Export comptable : génère le grand livre — UN seul fichier CSV par
-  // société (jamais de mélange Yolico/Elsun). Chaque fichier liste toutes
-  // les écritures : ventes (installations) et achats (prestataires payés),
-  // une ligne par écriture, avec un récapitulatif des totaux en bas.
+  // société (jamais de mélange Yolico/Elsun). Chaque fichier est organisé
+  // en comptes par tiers : un poseur / régie / fournisseur / commission
+  // interne = un compte, listant tout ce qu'on lui doit (dossier par
+  // dossier, avec N° facture), ce qui est réglé, et son solde restant.
   const exportComptable = () => {
     if (!isAdmin && currentUserRole !== 'compta') {
       alert('🔒 Export comptable réservé à l\'admin et à la compta.');
@@ -2134,42 +2135,34 @@ export default function DossierSaisie({ authUser, onLogout }) {
     }
 
     // Construit LE grand livre comptable d'une société : un seul fichier,
-    // une ligne par écriture. Pour chaque dossier : 1 ligne "Vente"
-    // (l'installation vendue) puis 1 ligne "Achat" par prestataire payé
-    // (fournisseur / régie / poseur / commission interne). Se termine par
-    // un récapitulatif (totaux ventes, achats, marge).
+    // organisé en COMPTES PAR TIERS. Chaque poseur / régie / fournisseur /
+    // commission interne a son propre compte = la liste de tout ce qu'on
+    // lui doit, dossier par dossier, avec le N° de facture, ce qui est
+    // réglé ou non, et un total (dû / payé / reste à payer).
     const buildGrandLivre = (dossiersSub, sufx, socLabel) => {
-      const rows = [['N° BC', 'Date pose', 'Statut dossier', 'Client', 'Ville',
-        'Sens', 'Catégorie', 'Tiers', 'N° facture',
-        'Montant HT', 'Montant TTC', 'TVA', 'Réglé', 'Date règlement', 'Financement']];
-      let totVenteHt = 0, totVenteTtc = 0, totAchatHt = 0, totAchatTtc = 0, totAchatRegleTtc = 0;
+      // Regroupe les sommes dues par tiers (clé = catégorie + nom).
+      const comptes = new Map();
+      const ajoute = (categorie, ordreCat, nom, d, factureNo, ht, ttc, paye, datePaye) => {
+        if (!nom || !String(nom).trim()) return;
+        const key = categorie + '||' + nom;
+        if (!comptes.has(key)) comptes.set(key, { categorie, ordreCat, nom, lignes: [], totHt: 0, totTtc: 0, payeTtc: 0 });
+        const c = comptes.get(key);
+        c.lignes.push({
+          dossierId: d.id || '',
+          client: `${d.nom || ''} ${d.prenom || ''}`.trim(),
+          datePose: formatDateForSheet(d.dateInsta),
+          factureNo: factureNo || '',
+          ht: ht || 0, ttc: ttc || 0,
+          paye: !!paye, datePaye: formatDateForSheet(datePaye),
+        });
+        c.totHt += ht || 0;
+        c.totTtc += ttc || 0;
+        if (paye) c.payeTtc += ttc || 0;
+      };
       dossiersSub.forEach(d => {
-        const statutLabel = STATUTS.find(s => s.id === d.statut)?.label || d.statut || '';
-        const client = `${d.nom || ''} ${d.prenom || ''}`.trim();
-        const datePose = formatDateForSheet(d.dateInsta);
-        // Ligne VENTE (recette).
-        totVenteHt += d.montantHt || 0;
-        totVenteTtc += d.montantTotal || 0;
-        rows.push([
-          d.id || '', datePose, statutLabel, client, d.ville || '',
-          'Vente', 'Vente installation', client, d.factureNo || '',
-          fmt(d.montantHt), fmt(d.montantTotal), fmt(d.tva),
-          d.payeClient ? 'OUI' : 'NON', '', d.financement || '',
-        ]);
-        // Lignes ACHAT (charges : prestataires).
-        const pushAchat = (categorie, nom, factureNo, ht, ttc, paye, datePaye) => {
-          totAchatHt += ht || 0;
-          totAchatTtc += ttc || 0;
-          if (paye) totAchatRegleTtc += ttc || 0;
-          rows.push([
-            d.id || '', datePose, statutLabel, client, d.ville || '',
-            'Achat', categorie, nom || '', factureNo || '',
-            fmt(ht), fmt(ttc), '', paye ? 'OUI' : 'NON', formatDateForSheet(datePaye), '',
-          ]);
-        };
-        (d.fournisseursDetail || []).forEach(f => pushAchat('Fournisseur', f.nom, f.factureNo, f.ht, f.ttc, f.paye, f.datePaye));
-        (d.regiesDetail || []).forEach(r => pushAchat('Régie', r.nom, r.factureNo, r.ht, r.ttc, r.paye, r.datePaye));
-        (d.poseursDetail || []).forEach(p => pushAchat('Poseur', p.nom, p.factureNo, p.ht, p.ttc, p.paye, p.datePaye));
+        (d.poseursDetail || []).forEach(p => ajoute('Poseur', 1, p.nom, d, p.factureNo, p.ht, p.ttc, p.paye, p.datePaye));
+        (d.regiesDetail || []).forEach(r => ajoute('Régie', 2, r.nom, d, r.factureNo, r.ht, r.ttc, r.paye, r.datePaye));
+        (d.fournisseursDetail || []).forEach(f => ajoute('Fournisseur', 3, f.nom, d, f.factureNo, f.ht, f.ttc, f.paye, f.datePaye));
         ROLES_INTERNES.forEach(role => {
           const nom = d[role.key];
           if (!nom) return;
@@ -2177,18 +2170,38 @@ export default function DossierSaisie({ authUser, onLogout }) {
           const tarif = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
           if (tarif <= 0) return;
           // Équipe interne : pas de N° facture (pas de facturation).
-          pushAchat(role.label, nom, '', tarif, tarif, !!d[role.key + 'Paye'], d[role.key + 'DatePaye']);
+          ajoute(role.label, 4, nom, d, '', tarif, tarif, !!d[role.key + 'Paye'], d[role.key + 'DatePaye']);
         });
       });
-      // Récapitulatif en bas du grand livre (ligne vide puis totaux).
-      const ligne = (label, ht, ttc) => ['', '', '', '', '', '', '', '', label, ht, ttc, '', '', '', ''];
-      rows.push([]);
-      rows.push(ligne(`RÉCAPITULATIF — ${socLabel}`, 'Total HT', 'Total TTC'));
-      rows.push(ligne('Total ventes', fmt(totVenteHt), fmt(totVenteTtc)));
-      rows.push(ligne('Total achats / charges', fmt(totAchatHt), fmt(totAchatTtc)));
-      rows.push(ligne('Achats déjà réglés', '', fmt(totAchatRegleTtc)));
-      rows.push(ligne('Reste à payer aux prestataires', '', fmt(totAchatTtc - totAchatRegleTtc)));
-      rows.push(ligne('Marge brute (ventes - achats)', fmt(totVenteHt - totAchatHt), fmt(totVenteTtc - totAchatTtc)));
+      // Tri : poseurs, puis régies, puis fournisseurs, puis interne ; par nom.
+      const comptesList = [...comptes.values()].sort((a, b) =>
+        a.ordreCat !== b.ordreCat ? a.ordreCat - b.ordreCat : a.nom.localeCompare(b.nom));
+
+      const rows = [['Tiers', 'Catégorie', 'N° BC dossier', 'Client', 'Date pose',
+        'N° facture', 'Montant HT', 'Montant TTC', 'Règlement', 'Date règlement']];
+      let gTotHt = 0, gTotTtc = 0, gPayeTtc = 0;
+      comptesList.forEach(c => {
+        c.lignes.forEach(l => {
+          rows.push([c.nom, c.categorie, l.dossierId, l.client, l.datePose,
+            l.factureNo, fmt(l.ht), fmt(l.ttc), l.paye ? 'Réglé' : 'À payer', l.datePaye]);
+        });
+        const reste = c.totTtc - c.payeTtc;
+        // Ligne de total du compte : dû / payé / reste à payer.
+        rows.push([c.nom, '► TOTAL', '', '', '', '',
+          fmt(c.totHt), fmt(c.totTtc),
+          `Payé ${fmt(c.payeTtc)} — Reste ${fmt(reste)}`, '']);
+        rows.push([]); // ligne vide entre deux comptes
+        gTotHt += c.totHt;
+        gTotTtc += c.totTtc;
+        gPayeTtc += c.payeTtc;
+      });
+      if (comptesList.length === 0) {
+        rows.push(['(aucun prestataire enregistré sur cette société)']);
+      } else {
+        rows.push([`RÉCAPITULATIF ${socLabel}`, '► TOTAL GÉNÉRAL', '', '', '', '',
+          fmt(gTotHt), fmt(gTotTtc),
+          `Payé ${fmt(gPayeTtc)} — Reste ${fmt(gTotTtc - gPayeTtc)}`, '']);
+      }
       return { name: `grand-livre_${sufx}_${stamp}.csv`, csv: toCsv(rows) };
     };
 
@@ -3027,7 +3040,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
               {(isAdmin || currentUserRole === 'compta') && dossiers.length > 0 && (
                 <button
                   onClick={exportComptable}
-                  title="Télécharge le grand livre comptable — un fichier CSV par société (ventes + achats prestataires + totaux)"
+                  title="Télécharge le grand livre comptable — un fichier CSV par société, un compte par tiers (poseur/régie/fournisseur) avec dû, payé et solde"
                   className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-emerald-200 whitespace-nowrap flex-shrink-0"
                 >
                   📊 Export comptable
@@ -7937,6 +7950,68 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
   const [dossierScanState, setDossierScanState] = useState({ status: 'idle', error: '', sections: null });
   const dossierScanBusy = ['uploading', 'classifying', 'splitting'].includes(dossierScanState.status);
 
+  // 📄 Panneau "PDF scanné côte à côte" : permet de comparer le document
+  // source scanné avec ce que l'IA a rempli dans le formulaire.
+  const [scanPanel, setScanPanel] = useState({ open: false, loading: false, url: '', name: '', error: '' });
+
+  // Localise le document source scanné à afficher : d'abord le scan en cours
+  // (bon de commande ou dossier complet), sinon un PDF client déjà attaché.
+  const scannedSource = useMemo(() => {
+    const fd = formData || {};
+    const bon = fd.scannedBon;
+    if (bon && bon.bucketPath) return { storage: 'bucket', path: bon.bucketPath, name: bon.name, type: bon.type };
+    if (bon && bon.dataUrl) return { storage: 'inline', dataUrl: bon.dataUrl, name: bon.name, type: bon.type };
+    const sec = Array.isArray(fd.scannedSections) ? fd.scannedSections.find(s => s && s.bucketPath) : null;
+    if (sec) return { storage: 'bucket', path: sec.bucketPath, name: sec.name, type: sec.type };
+    const docs = Array.isArray(fd.documents) ? fd.documents : [];
+    const scanDoc = docs.find(d => d && d.category === 'client'
+      && (d.type === 'application/pdf' || /\.pdf$/i.test(d.name || '')));
+    if (scanDoc) {
+      return scanDoc.storage === 'bucket' && scanDoc.storagePath
+        ? { storage: 'bucket', path: scanDoc.storagePath, name: scanDoc.name, type: scanDoc.type }
+        : { storage: 'kv', docId: scanDoc.id, name: scanDoc.name, type: scanDoc.type };
+    }
+    return null;
+  }, [formData]);
+
+  // Convertit un dataURL base64 en blob URL (meilleur rendu PDF en iframe).
+  const dataUrlToBlobUrl = (dataUrl, type) => {
+    try {
+      const parts = String(dataUrl).split(',');
+      const bytes = atob(parts[1]);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      return URL.createObjectURL(new Blob([arr], { type: type || 'application/pdf' }));
+    } catch (e) { return dataUrl; }
+  };
+
+  const toggleScanPanel = async () => {
+    if (scanPanel.open) { setScanPanel(s => ({ ...s, open: false })); return; }
+    const src = scannedSource;
+    if (!src) {
+      setScanPanel({ open: true, loading: false, url: '', name: '', error: 'Aucun document scanné rattaché à ce dossier.' });
+      return;
+    }
+    setScanPanel({ open: true, loading: true, url: '', name: src.name || 'Document scanné', error: '' });
+    try {
+      let url = '';
+      if (src.storage === 'bucket') {
+        const { url: signed, error } = await getSignedUrl(src.path, 3600);
+        if (error || !signed) throw new Error('URL introuvable');
+        url = signed;
+      } else if (src.storage === 'inline') {
+        url = dataUrlToBlobUrl(src.dataUrl, src.type);
+      } else if (src.storage === 'kv') {
+        const r = await window.storage.get(`file:${src.docId}`);
+        if (!r || !r.value) throw new Error('Fichier introuvable');
+        url = dataUrlToBlobUrl(JSON.parse(r.value).dataUrl, src.type);
+      }
+      setScanPanel({ open: true, loading: false, url, name: src.name || 'Document scanné', error: '' });
+    } catch (e) {
+      setScanPanel({ open: true, loading: false, url: '', name: src.name || '', error: 'Impossible de charger le document scanné.' });
+    }
+  };
+
   const handleScanBon = async (file) => {
     if (!file) return;
     const isImage = file.type && file.type.startsWith('image/');
@@ -8218,16 +8293,44 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
   return (
     <div className="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-40 flex items-center justify-center p-4" onClick={safeClose}>
-      <div className="bg-white rounded-3xl shadow-2xl max-w-3xl w-full max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="sticky top-0 bg-white p-6 border-b border-slate-100 flex items-center justify-between rounded-t-3xl z-10">
-          <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-            <Sparkles className="w-5 h-5 text-violet-500" />{editingId ? 'Modifier le dossier' : 'Nouveau dossier'}
-            {isScanBusy && <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full animate-pulse">🔒 Scan IA en cours</span>}
-          </h2>
-          <button onClick={safeClose} disabled={isScanBusy} aria-label="Fermer le formulaire" className={`text-slate-400 p-1 rounded-lg ${isScanBusy ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100'}`} title={isScanBusy ? 'Scan en cours — attends la fin' : 'Fermer'}><X className="w-5 h-5" /></button>
-        </div>
+      <div className={`bg-white rounded-3xl shadow-2xl w-full max-h-[90vh] flex overflow-hidden transition-all ${scanPanel.open ? 'max-w-6xl' : 'max-w-3xl'}`} onClick={(e) => e.stopPropagation()}>
+        {/* PANNEAU PDF SCANNÉ — affiché à gauche, côte à côte avec le formulaire,
+            pour comparer le document source avec ce que l'IA a rempli. */}
+        {scanPanel.open && (
+          <div className="w-[45%] flex-shrink-0 border-r border-slate-200 flex flex-col bg-slate-100 min-h-0">
+            <div className="p-3 border-b border-slate-200 bg-white flex items-center justify-between gap-2 flex-shrink-0">
+              <span className="text-sm font-bold text-slate-700 truncate">📄 {scanPanel.name || 'Document scanné'}</span>
+              <button type="button" onClick={() => setScanPanel(s => ({ ...s, open: false }))} className="text-slate-400 hover:bg-slate-100 p-1 rounded-lg flex-shrink-0" title="Fermer le panneau PDF"><X className="w-4 h-4" /></button>
+            </div>
+            <div className="flex-1 min-h-0 bg-slate-200">
+              {scanPanel.loading ? (
+                <div className="h-full flex items-center justify-center text-slate-500 text-sm">⏳ Chargement du document…</div>
+              ) : scanPanel.error ? (
+                <div className="h-full flex items-center justify-center text-center text-rose-600 text-sm p-4">⚠️ {scanPanel.error}</div>
+              ) : scanPanel.url ? (
+                <iframe src={scanPanel.url} title="Document scanné" className="w-full h-full border-0" />
+              ) : null}
+            </div>
+          </div>
+        )}
+        {/* COLONNE FORMULAIRE */}
+        <div className="flex-1 min-w-0 min-h-0 overflow-y-auto">
+          <div className="sticky top-0 bg-white p-6 border-b border-slate-100 flex items-center justify-between z-10">
+            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+              <Sparkles className="w-5 h-5 text-violet-500" />{editingId ? 'Modifier le dossier' : 'Nouveau dossier'}
+              {isScanBusy && <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full animate-pulse">🔒 Scan IA en cours</span>}
+            </h2>
+            <div className="flex items-center gap-2">
+              {scannedSource && (
+                <button type="button" onClick={toggleScanPanel} className={`text-xs font-bold px-3 py-1.5 rounded-lg border-2 transition-all flex items-center gap-1 whitespace-nowrap ${scanPanel.open ? 'bg-cyan-500 text-white border-cyan-600' : 'bg-cyan-50 text-cyan-700 border-cyan-200 hover:bg-cyan-100'}`} title="Voir le document scanné côte à côte pour comparer avec le formulaire">
+                  📄 {scanPanel.open ? 'Masquer le PDF' : 'PDF scanné'}
+                </button>
+              )}
+              <button onClick={safeClose} disabled={isScanBusy} aria-label="Fermer le formulaire" className={`text-slate-400 p-1 rounded-lg ${isScanBusy ? 'opacity-40 cursor-not-allowed' : 'hover:bg-slate-100'}`} title={isScanBusy ? 'Scan en cours — attends la fin' : 'Fermer'}><X className="w-5 h-5" /></button>
+            </div>
+          </div>
 
-        <div className="p-6 space-y-5">
+          <div className="p-6 space-y-5">
           {/* SCAN IA — bon de commande manuscrit */}
           {!editingId && (
             <div
@@ -10076,6 +10179,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             <button onClick={onSubmit} disabled={!formData.nom.trim()} className="flex-1 px-4 py-2.5 rounded-xl font-semibold text-white bg-gradient-to-r from-violet-500 to-pink-500 disabled:opacity-50 shadow-md">
               {editingId ? 'Enregistrer' : 'Créer le dossier'}
             </button>
+          </div>
           </div>
         </div>
       </div>
