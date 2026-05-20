@@ -247,6 +247,12 @@ Le bon de commande est souvent rempli À LA MAIN : il peut être mal écrit, mal
 - Pour CHAQUE écart réel constaté entre deux documents, ajoute une ligne claire et précise dans le tableau "incoherences" (valeur de chaque doc + valeur retenue + source). Si tout concorde parfaitement, "incoherences" = [].
 - Ne signale PAS une simple différence de casse (majuscules/minuscules) ou d'accents comme une incohérence — seulement les vraies divergences d'orthographe, de chiffres ou d'adresse.
 
+4ter. 📥 NE LAISSE PAS DE CHAMP VIDE SI L'INFO EXISTE DANS LE DOSSIER.
+Pour CHAQUE champ du bon de commande (téléphone, email, financement, montants, produits…), si l'information est illisible ou absente SUR le bon de commande lui-même, VA LA CHERCHER dans les autres documents du dossier et remplis-la depuis là. Un champ laissé vide alors que l'info est lisible ailleurs = ERREUR.
+- téléphone / email : présents sur le bon de commande, le dossier de financement, parfois le mandat. Prends la version la plus lisible.
+- financement (organisme bancaire) : le nom du prêteur est écrit CLAIREMENT dans le DOSSIER DE FINANCEMENT (section 'financement' : "Renseignements crédit Sofinco/Cofidis/Projexio…") et/ou dans le bloc "PAIEMENT AVEC FINANCEMENT" du BC. Ne laisse JAMAIS financement vide si un dossier de financement est présent — le nom de la banque y figure forcément.
+- produits : si une catégorie de produit est visiblement cochée ou renseignée sur le BC (ex : la section "PANNEAUX PHOTOVOLTAÏQUE" est remplie, une pompe à chaleur est décrite…), AJOUTE ce produit dans produits[] MÊME si la puissance ou un détail est illisible — mets alors puissance: 0, l'utilisateur complétera. Ne laisse JAMAIS produits[] vide si un équipement est manifestement vendu.
+
 5. confiance="haute" si le document est clairement identifiable, "moyenne" si tu hésites, "faible" si très incertain.
 
 Règles :
