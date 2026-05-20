@@ -9315,16 +9315,26 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               {!foldedSteps.financement && (<>
               {formData.envoisHistorique && formData.envoisHistorique.length > 0 && (
                 <div className="mb-2 p-2 bg-white border border-rose-200 rounded-lg">
-                  <div className="text-[10px] font-bold text-rose-700 uppercase mb-1">📜 Banques précédentes ({formData.envoisHistorique.length})</div>
-                  <div className="space-y-1">
-                    {formData.envoisHistorique.map((env, i) => (
-                      <div key={i} className="text-[11px] flex items-center gap-2 flex-wrap">
-                        <span className="font-bold text-slate-700">{env.financeur}</span>
-                        <span className="text-slate-500">envoyé {env.dateEnvoi}</span>
-                        {env.dateRetour && <span className="text-slate-500">· retour {env.dateRetour}</span>}
-                        <span className="text-rose-600 font-semibold">✗ {env.statut}</span>
-                      </div>
-                    ))}
+                  <div className="text-[10px] font-bold text-rose-700 uppercase mb-1.5">📜 Banques précédentes ({formData.envoisHistorique.length})</div>
+                  <div className="space-y-1.5">
+                    {formData.envoisHistorique.map((env, i) => {
+                      const fr = (d) => { if (!d) return null; try { return new Date(d).toLocaleDateString('fr-FR'); } catch (e) { return d; } };
+                      return (
+                        <div key={i} className="text-[11px] bg-rose-50/70 border border-rose-100 rounded-lg px-2 py-1.5">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-slate-700">{env.financeur || '(banque)'}</span>
+                            <span className="text-rose-600 font-semibold">✗ refusé</span>
+                          </div>
+                          <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap text-slate-500 mt-0.5">
+                            {fr(env.dateEnvoi) && <span>📤 envoyé {fr(env.dateEnvoi)}</span>}
+                            {fr(env.dateRetour) && <span>📥 retour {fr(env.dateRetour)}</span>}
+                            {fr(env.dateAccord) && <span>✅ accord {fr(env.dateAccord)}</span>}
+                            {fr(env.dateRenvoiDocs) && <span>↩️ docs renvoyés {fr(env.dateRenvoiDocs)}</span>}
+                          </div>
+                          {env.motifManqueDoc && <div className="text-[10px] text-slate-500 italic mt-0.5">📄 Docs demandés : {env.motifManqueDoc}</div>}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -9439,14 +9449,34 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   <select onChange={(e) => {
                     const newFin = e.target.value;
                     if (!newFin) return;
-                    const archive = { financeur: formData.financement, dateEnvoi: formData.dateEnvoiFin, dateRetour: formData.dateRetourFin, statut: 'refusé', note: '' };
+                    const today = new Date().toISOString().split('T')[0];
+                    // Archive complète de la banque qui a refusé : toutes ses
+                    // dates + le manque doc éventuel, pour garder une trace
+                    // datée par maison de financement (cf. "Banques précédentes").
+                    const archive = {
+                      financeur: formData.financement,
+                      dateEnvoi: formData.dateEnvoiFin || '',
+                      dateRetour: formData.dateRetourFin || '',
+                      dateAccord: formData.dateAccord || '',
+                      statut: 'refusé',
+                      motifManqueDoc: formData.motifManqueDoc || '',
+                      dateRenvoiDocs: formData.dateRenvoiDocs || '',
+                      note: '',
+                    };
                     setFormData({
                       ...formData,
                       envoisHistorique: [...(formData.envoisHistorique || []), archive],
                       financement: newFin,
-                      dateEnvoiFin: new Date().toISOString().split('T')[0],
+                      // Reset COMPLET du cycle financement : la nouvelle banque
+                      // recommence à zéro (envoi → retour → manque doc → accord).
+                      // Sans ça, les dates de l'ancienne banque restaient affichées.
+                      dateEnvoiFin: today,
                       dateRetourFin: '',
                       dateAccord: '',
+                      motifManqueDoc: '',
+                      dateNotifRegie: '',
+                      dateRecuRegie: '',
+                      dateRenvoiDocs: '',
                       statutFin: 'envoyé',
                       statut: 'B1_EN_COURS_FINANCEMENT',
                     });
