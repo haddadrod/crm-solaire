@@ -66,8 +66,10 @@ function computeWorkflowStatut(d) {
 
 // Applique l'auto-statut à un dossier si son statut courant est dans le cycle.
 // Si l'utilisateur a manuellement choisi un statut hors cycle (SAV, LITIGE,
-// ANNULER, etc.), on respecte sa décision et on ne touche à rien.
+// ANNULER, etc.) OU s'il a verrouillé le statut (d.statutLocked === true),
+// on respecte sa décision et on ne touche à rien.
 function applyAutoStatut(d) {
+  if (d.statutLocked) return d; // verrouillage manuel — auto-statut désactivé
   const current = d.statut || 'A_EN_COURS';
   if (current && !AUTO_STATUTS.includes(current)) return d;
   const auto = computeWorkflowStatut(d);
@@ -1008,7 +1010,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     tvaNotes: '', // notes libres sur la démarche
     nom: '', prenom: '', telephone: '', email: '',
     adresse: '', codePostal: '', ville: '',
-    statut: 'A_EN_COURS', financement: '',
+    statut: 'A_EN_COURS', statutLocked: false, financement: '',
     montantTotal: '', montantHtCustom: '', tauxTvaVente: 20, payeClient: false, payeClientDate: '',
     // Détails du financement (si financement bancaire — sinon ignoré). Récupérables
     // par scan IA du BC ou saisis à la main.
@@ -1909,7 +1911,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       nom: d.nom || '', prenom: d.prenom || '',
       telephone: d.telephone || '', email: d.email || '',
       adresse: d.adresse || '', codePostal: d.codePostal || '', ville: d.ville || '',
-      statut: d.statut || 'M_ATT_DOSSIER', financement: d.financement || 'PROJEXIO',
+      statut: d.statut || 'M_ATT_DOSSIER', statutLocked: !!d.statutLocked, financement: d.financement || 'PROJEXIO',
       montantTotal: d.montantTotal?.toString() || '', montantHtCustom: d.montantHtCustom || '', tauxTvaVente: d.tauxTvaVente || 20,
       payeClient: d.payeClient || false, payeClientDate: d.payeClientDate || '',
       montantPret: d.montantPret || '', reportMois: d.reportMois || '',
@@ -10846,9 +10848,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {d.id && <div className="text-[10px] opacity-90 mt-0.5 font-mono">#{d.id}</div>}
             </div>
           </div>
-          {/* Sélecteur de statut */}
+          {/* Sélecteur de statut + verrou anti auto-statut */}
           <div className="mt-3">
-            <label className="text-[10px] font-bold uppercase opacity-80 mb-1 block">Statut</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="text-[10px] font-bold uppercase opacity-80">Statut</label>
+              <button
+                onClick={() => onUpdate({ statutLocked: !d.statutLocked })}
+                title={d.statutLocked
+                  ? "Statut verrouillé — l'auto-statut n'écrasera plus ton choix. Clique pour déverrouiller."
+                  : "Verrouiller le statut — empêche l'auto-statut de l'écraser. Utile si tu choisis un statut manuel hors cycle."}
+                aria-label={d.statutLocked ? 'Statut verrouillé' : 'Verrouiller le statut'}
+                className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded transition ${d.statutLocked ? 'bg-amber-300 text-amber-900 hover:bg-amber-200' : 'bg-white/20 text-white/80 hover:bg-white/30'}`}
+              >
+                {d.statutLocked ? '🔒 Verrouillé' : '🔓 Auto'}
+              </button>
+            </div>
             <select value={d.statut} onChange={(e) => onUpdate({ statut: e.target.value })} className="w-full px-3 py-2 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white font-bold text-sm appearance-none cursor-pointer">
               {STATUTS_ORDERED.map(s => <option key={s.id} value={s.id} className="text-slate-800">{s.emoji}  {s.label}</option>)}
             </select>
