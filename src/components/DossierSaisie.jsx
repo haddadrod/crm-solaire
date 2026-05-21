@@ -45,6 +45,35 @@ const STATUTS = [
   { id: 'W1_DEPOSER',              label: 'DÉPOSÉ',                   color: 'from-red-600 to-rose-700',       bg: 'bg-red-100',     text: 'text-red-800',     emoji: '📦', legacy: true },
 ];
 
+// Étapes du parcours pour la barre de progression — chemin nominal en 9
+// jalons. « Manque doc » et « Refusé financement » sont des variantes de
+// l'étape Financement (signalées à part, pas un jalon distinct).
+const PARCOURS_ETAPES = [
+  { emoji: '🔍', label: 'Contrôle qualité' },
+  { emoji: '🏦', label: 'Envoi banque' },
+  { emoji: '⏳', label: 'Financement' },
+  { emoji: '📅', label: 'Pose à programmer' },
+  { emoji: '🔧', label: 'Pose' },
+  { emoji: '📋', label: 'Accord définitif' },
+  { emoji: '📞', label: 'Contrôle livraison' },
+  { emoji: '💳', label: 'Déblocage' },
+  { emoji: '✅', label: 'Payé' },
+];
+// Statut → index d'étape parcours (0-based). Absent = statut hors parcours.
+const STATUT_ETAPE_INDEX = {
+  A_EN_COURS: 0,
+  B_A_ENVOYER_BANQUE: 1,
+  B1_EN_COURS_FINANCEMENT: 2,
+  B1_MANQUE_DOC: 2,
+  B3_REFUS_FINANCEMENT: 2,
+  B2_A_ENVOYER_POSE: 3,
+  B4_EN_COURS_POSE: 4,
+  G_ATTENTE_ACCORD_DEF: 5,
+  F1_CONTROLE_LIV_BANQUE: 6,
+  F_ATTENTE_DEBLOCAGE: 7,
+  W_DOSSIER_PAYER: 8,
+};
+
 // Statuts gérés par l'auto-statut (cycle workflow CQ → banque → pose →
 // originaux → contrôle livraison → appel banque → paiement).
 // Si le statut courant est dans cette liste, il sera mis à jour automatiquement
@@ -11533,6 +11562,35 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             <select value={d.statut} onChange={(e) => onUpdate({ statut: e.target.value })} className="w-full px-3 py-2 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white font-bold text-sm appearance-none cursor-pointer">
               {STATUTS_ORDERED.filter(s => !s.legacy || s.id === d.statut).map(s => <option key={s.id} value={s.id} className="text-slate-800">{s.emoji}  {s.label}</option>)}
             </select>
+            {/* Barre de progression du parcours */}
+            {(() => {
+              const idx = STATUT_ETAPE_INDEX[d.statut];
+              if (idx === undefined) {
+                return <div className="mt-2 text-[10px] font-semibold opacity-80">⚠️ Statut hors parcours</div>;
+              }
+              const refuse = d.statut === 'B3_REFUS_FINANCEMENT';
+              const manque = d.statut === 'B1_MANQUE_DOC';
+              const et = PARCOURS_ETAPES[idx];
+              return (
+                <div className="mt-2.5">
+                  <div className="flex items-center gap-0.5">
+                    {PARCOURS_ETAPES.map((e, i) => (
+                      <div key={i} title={`${e.emoji} ${e.label}`}
+                        className={`h-1.5 flex-1 rounded-full ${
+                          i < idx ? 'bg-white' :
+                          i === idx ? (refuse ? 'bg-red-300' : manque ? 'bg-orange-300' : 'bg-white') :
+                          'bg-white/25'
+                        }`} />
+                    ))}
+                  </div>
+                  <div className="mt-1 text-[10px] font-semibold opacity-90">
+                    Étape {idx + 1}/9 — {et.emoji} {et.label}
+                    {refuse && ' · refusé'}
+                    {manque && ' · docs manquants'}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           {/* Actions rapides */}
           <div className="flex gap-1.5 mt-2.5 flex-wrap">
