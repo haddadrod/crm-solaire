@@ -4586,6 +4586,10 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
                 );
               })}
             </div>
+            {/* Générateurs de documents PDF — pré-remplis depuis le dossier. */}
+            <div className="px-3">
+              <PdfGeneratorPanel dossier={dossier} />
+            </div>
             <div className="p-3 mx-3 mb-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-700 leading-relaxed">
               💡 Max <strong>50 Mo / fichier</strong> grâce au stockage Supabase. Les PDF lourds passent sans problème.
             </div>
@@ -11369,8 +11373,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
           </div>
 
-          {/* 📄 Documents à générer (pré-remplis depuis les infos du dossier) */}
-          <PdfGeneratorPanel dossier={d} />
+          {/* 📄 Documents à générer : déplacé dans la modale Documents
+              (bouton "Docs" / paperclip) — regroupé avec les fichiers. */}
 
           {/* DATES — éditables */}
           <div>
