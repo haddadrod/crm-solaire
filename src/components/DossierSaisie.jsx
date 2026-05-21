@@ -8049,7 +8049,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
   const scanBusy = scanState.status === 'compressing' || scanState.status === 'analyzing';
   // Scan d'un dossier complet (multi-pages → split par catégorie)
   const [dossierScanState, setDossierScanState] = useState({ status: 'idle', error: '', sections: null });
-  const dossierScanBusy = ['uploading', 'classifying', 'splitting'].includes(dossierScanState.status);
+  const dossierScanBusy = ['uploading', 'classifying', 'splitting', 'fraud-check'].includes(dossierScanState.status);
 
   // 📄 Panneau "PDF scanné côte à côte" : permet de comparer le document
   // source scanné avec ce que l'IA a rempli dans le formulaire.
@@ -8386,6 +8386,42 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       // vers ce même fichier physique avec des bookmarks pageStart/pageEnd.
 
       const incoherences = Array.isArray(result.incoherences) ? result.incoherences : [];
+
+      // 6) Passe anti-fraude APPROFONDIE — chaque document sensible est
+      //    repassé SEUL à l'IA (un appel dédié = analyse en profondeur).
+      //    La passe rapide de classify-dossier ne fait qu'effleurer ;
+      //    ici on scrute vraiment (structure cotisations, ratios, etc.).
+      const SENSIBLE = new Set(['bulletin_paie', 'avis_imposition', 'taxe_fonciere', 'justif_domicile', 'rib']);
+      const aScruter = scannedSections.filter(s => SENSIBLE.has(s.subCategory) && s.standalone && s.bucketPath);
+      if (aScruter.length > 0) {
+        setDossierScanState({ status: 'fraud-check', error: '', sections: [...sections], incoherences, fraudTotal: aScruter.length, fraudDone: 0 });
+        let done = 0;
+        for (const s of aScruter) {
+          try {
+            const fres = await fetch('/api/fraud-check', {
+              method: 'POST',
+              headers,
+              body: JSON.stringify({ storagePath: s.bucketPath, category: s.subCategory, label: s.label }),
+            });
+            const fpayload = await fres.json().catch(() => ({}));
+            if (fres.ok && fpayload.data) {
+              const idx = scannedSections.indexOf(s);
+              s.fraudRisk = fpayload.data.fraudRisk || s.fraudRisk;
+              s.fraudFlags = Array.isArray(fpayload.data.fraudFlags) ? fpayload.data.fraudFlags : s.fraudFlags;
+              s.fraudSynthese = fpayload.data.syntheseHumaine || '';
+              if (idx >= 0 && sections[idx]) {
+                sections[idx].fraudRisk = s.fraudRisk;
+                sections[idx].fraudFlags = s.fraudFlags;
+              }
+            }
+          } catch (e) { /* on garde le verdict de la passe rapide */ }
+          done++;
+          setDossierScanState({ status: 'fraud-check', error: '', sections: [...sections], incoherences, fraudTotal: aScruter.length, fraudDone: done });
+        }
+        // scannedSections (donc les futurs documents) ont reçu les verdicts approfondis
+        setFormData(prev => ({ ...prev, scannedSections: [...scannedSections] }));
+      }
+
       setDossierScanState({ status: 'done', error: '', sections, incoherences });
     } catch (e) {
       setDossierScanState({ status: 'error', error: e.message || 'Erreur inconnue', sections: null });
@@ -8497,6 +8533,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   {dossierScanState.status === 'uploading' ? '⏳ Upload…'
                     : dossierScanState.status === 'classifying' ? '🤖 Analyse IA…'
                     : dossierScanState.status === 'splitting' ? '✂️ Découpage…'
+                    : dossierScanState.status === 'fraud-check' ? `🔍 Anti-fraude… (${dossierScanState.fraudDone || 0}/${dossierScanState.fraudTotal || 0})`
                     : '📂 Scanner un dossier complet (PDF)'}
                   <input type="file" accept="application/pdf" className="hidden" disabled={dossierScanBusy} onChange={(e) => handleScanDossier(e.target.files?.[0])} />
                 </label>
