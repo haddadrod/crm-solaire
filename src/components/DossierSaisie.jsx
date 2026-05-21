@@ -21,8 +21,9 @@ const TARIFS_REGIES_DEFAULT = Object.fromEntries(REGIES_DEFAULT.map(n => [n, {}]
 // emojis, couleurs et ordre changent.
 const STATUTS = [
   // ── Parcours (auto-calculé) ──
-  { id: 'A_EN_COURS',              label: 'CONTRÔLE QUALITÉ',         color: 'from-slate-400 to-slate-500',    bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '🔍' },
-  { id: 'B_A_ENVOYER_BANQUE',      label: 'À ENVOYER EN BANQUE',      color: 'from-violet-400 to-purple-500',  bg: 'bg-violet-100',  text: 'text-violet-700',  emoji: '🏦' },
+  { id: 'A_EN_COURS',              label: 'EN COURS',                 color: 'from-slate-400 to-slate-500',    bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '🔄' },
+  { id: 'A1_CONTROLE_QUALITE',     label: 'CONTRÔLE QUALITÉ',         color: 'from-purple-400 to-fuchsia-500', bg: 'bg-purple-100',  text: 'text-purple-700',  emoji: '🔍' },
+  { id: 'B_A_ENVOYER_BANQUE',      label: 'À ENVOYER EN FINANCEMENT', color: 'from-violet-400 to-purple-500',  bg: 'bg-violet-100',  text: 'text-violet-700',  emoji: '🏦' },
   { id: 'B1_EN_COURS_FINANCEMENT', label: 'EN FINANCEMENT',           color: 'from-blue-400 to-indigo-500',    bg: 'bg-blue-100',    text: 'text-blue-700',    emoji: '⏳' },
   { id: 'B1_MANQUE_DOC',           label: 'MANQUE DOC',               color: 'from-orange-400 to-amber-500',   bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '📄' },
   { id: 'B3_REFUS_FINANCEMENT',    label: 'REFUSÉ FINANCEMENT',       color: 'from-red-500 to-rose-600',       bg: 'bg-red-100',     text: 'text-red-700',     emoji: '🚫' },
@@ -45,12 +46,13 @@ const STATUTS = [
   { id: 'W1_DEPOSER',              label: 'DÉPOSÉ',                   color: 'from-red-600 to-rose-700',       bg: 'bg-red-100',     text: 'text-red-800',     emoji: '📦', legacy: true },
 ];
 
-// Étapes du parcours pour la barre de progression — chemin nominal en 9
+// Étapes du parcours pour la barre de progression — chemin nominal en 10
 // jalons. « Manque doc » et « Refusé financement » sont des variantes de
 // l'étape Financement (signalées à part, pas un jalon distinct).
 const PARCOURS_ETAPES = [
+  { emoji: '🔄', label: 'En cours' },
   { emoji: '🔍', label: 'Contrôle qualité' },
-  { emoji: '🏦', label: 'Envoi banque' },
+  { emoji: '🏦', label: 'Envoi financement' },
   { emoji: '⏳', label: 'Financement' },
   { emoji: '📅', label: 'Pose à programmer' },
   { emoji: '🔧', label: 'Pose' },
@@ -62,23 +64,24 @@ const PARCOURS_ETAPES = [
 // Statut → index d'étape parcours (0-based). Absent = statut hors parcours.
 const STATUT_ETAPE_INDEX = {
   A_EN_COURS: 0,
-  B_A_ENVOYER_BANQUE: 1,
-  B1_EN_COURS_FINANCEMENT: 2,
-  B1_MANQUE_DOC: 2,
-  B3_REFUS_FINANCEMENT: 2,
-  B2_A_ENVOYER_POSE: 3,
-  B4_EN_COURS_POSE: 4,
-  G_ATTENTE_ACCORD_DEF: 5,
-  F1_CONTROLE_LIV_BANQUE: 6,
-  F_ATTENTE_DEBLOCAGE: 7,
-  W_DOSSIER_PAYER: 8,
+  A1_CONTROLE_QUALITE: 1,
+  B_A_ENVOYER_BANQUE: 2,
+  B1_EN_COURS_FINANCEMENT: 3,
+  B1_MANQUE_DOC: 3,
+  B3_REFUS_FINANCEMENT: 3,
+  B2_A_ENVOYER_POSE: 4,
+  B4_EN_COURS_POSE: 5,
+  G_ATTENTE_ACCORD_DEF: 6,
+  F1_CONTROLE_LIV_BANQUE: 7,
+  F_ATTENTE_DEBLOCAGE: 8,
+  W_DOSSIER_PAYER: 9,
 };
 
 // Statuts gérés par l'auto-statut (cycle workflow CQ → banque → pose →
 // originaux → contrôle livraison → appel banque → paiement).
 // Si le statut courant est dans cette liste, il sera mis à jour automatiquement
 // selon l'état du dossier. Sinon (SAV, LITIGE, ANNULER, etc.), on ne touche pas.
-const AUTO_STATUTS = ['A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC', 'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT', 'G_ATTENTE_ACCORD_DEF', 'F_ATTENTE_DEBLOCAGE', 'F1_CONTROLE_LIV_BANQUE', 'W_DOSSIER_PAYER'];
+const AUTO_STATUTS = ['A_EN_COURS', 'A1_CONTROLE_QUALITE', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC', 'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT', 'G_ATTENTE_ACCORD_DEF', 'F_ATTENTE_DEBLOCAGE', 'F1_CONTROLE_LIV_BANQUE', 'W_DOSSIER_PAYER'];
 
 // Calcule le statut workflow à partir de l'état du dossier (CQ, envoi banque,
 // retour banque, date pose, poseur, puis phase financière post-pose :
@@ -125,9 +128,11 @@ function computeWorkflowStatut(d) {
   if (d.statutFin === 'accepté') return 'B2_A_ENVOYER_POSE';
   // Envoyé banque, en attente de retour → EN COURS DE FINANCEMENT
   if (d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
-  // CQ validé OK, pas encore envoyé banque → À ENVOYER EN BANQUE
+  // CQ validé OK, pas encore envoyé banque → À ENVOYER EN FINANCEMENT
   if (d.statutControleQualite === 'ok') return 'B_A_ENVOYER_BANQUE';
-  // Par défaut → EN COURS
+  // Date de contrôle qualité saisie → CONTRÔLE QUALITÉ (CQ en cours)
+  if (d.dateControleQualite) return 'A1_CONTROLE_QUALITE';
+  // Par défaut → EN COURS (dossier scanné, CQ pas encore démarré)
   return 'A_EN_COURS';
 }
 
@@ -157,6 +162,7 @@ function statutMilestoneDate(d, fromStatut, toStatut) {
       // Retour depuis "manque docs" → date de renvoi des docs à la banque
       if (fromStatut === 'B1_MANQUE_DOC') return d.dateRenvoiDocs || d.dateEnvoiFin || '';
       return d.dateEnvoiFin || '';
+    case 'A1_CONTROLE_QUALITE':    return d.dateControleQualite || '';
     case 'G_ATTENTE_ACCORD_DEF':   return d.dateInsta || '';
     case 'F1_CONTROLE_LIV_BANQUE': return d.dateRecusOriginauxBanque || '';
     case 'F_ATTENTE_DEBLOCAGE':    return d.dateControleLivraison || '';
@@ -173,6 +179,7 @@ function statutMilestoneLabel(fromStatut, toStatut) {
     case 'B2_A_ENVOYER_POSE':    return '✅ Accord banque le';
     case 'B1_EN_COURS_FINANCEMENT':
       return fromStatut === 'B1_MANQUE_DOC' ? '↩️ Docs renvoyés à la banque le' : '📤 Envoyé en banque le';
+    case 'A1_CONTROLE_QUALITE':    return '🔍 Passé en contrôle qualité le';
     case 'G_ATTENTE_ACCORD_DEF':   return '📋 Pose terminée le';
     case 'F1_CONTROLE_LIV_BANQUE': return '📞 Accord définitif reçu le';
     case 'F_ATTENTE_DEBLOCAGE':    return '💳 Contrôle livraison fait le';
@@ -11587,7 +11594,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     ))}
                   </div>
                   <div className="mt-1 text-[10px] font-semibold opacity-90">
-                    Étape {idx + 1}/9 — {et.emoji} {et.label}
+                    Étape {idx + 1}/{PARCOURS_ETAPES.length} — {et.emoji} {et.label}
                     {refuse && ' · refusé'}
                     {manque && ' · docs manquants'}
                   </div>
@@ -14709,7 +14716,7 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
 // de badges affichés. Un rôle absent de cette map voit toutes les alertes
 // non adminOnly (comportement par défaut).
 const ALERTES_PAR_ROLE = {
-  envoi_finance: ['aEnvoyerBanque', 'financement', 'originaux'],
+  envoi_finance: ['aEnvoyerBanque', 'financement', 'manqueDoc', 'originaux'],
   compta: ['facturesManquantes'], // la compta ne suit que les factures manquantes
   // l'administratif suit les démarches : mairie, Consuel, raccordement, récup. TVA
   administratif: ['aEnvoyerMairie', 'aEnvoyerConsuel', 'aEnvoyerRaccordement', 'recup_tva'],

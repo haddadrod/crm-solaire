@@ -224,7 +224,11 @@ describe('computeWorkflowStatut', () => {
     expect(computeWorkflowStatut({ statutControleQualite: 'ok' })).toBe('B_A_ENVOYER_BANQUE');
   });
 
-  it("retourne A_EN_COURS par défaut sur un dossier vide", () => {
+  it("retourne A1_CONTROLE_QUALITE quand une date de CQ est saisie (CQ en cours)", () => {
+    expect(computeWorkflowStatut({ dateControleQualite: '2026-05-10' })).toBe('A1_CONTROLE_QUALITE');
+  });
+
+  it("retourne A_EN_COURS par défaut sur un dossier vide (scanné, CQ pas démarré)", () => {
     expect(computeWorkflowStatut({})).toBe('A_EN_COURS');
   });
 });
