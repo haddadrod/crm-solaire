@@ -10022,6 +10022,23 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           </div>
                         </div>
                         <input type="text" value={v.note || ''} onChange={(e) => updateV({ note: e.target.value })} placeholder="Note / remarques (ex: chemin de câble à refaire)" className={inputCls + ' text-[11px]'} />
+                        {v.resultat === 'a_corriger' && idx === formData.visitesConsuel.length - 1 && (
+                          <div className="mt-2 p-2 bg-amber-50 border border-amber-300 rounded-lg space-y-1.5">
+                            <div className="text-[10px] text-amber-800 font-bold">🔧 À corriger — fais la mise aux normes, puis programme la contre-visite à la nouvelle date communiquée par le Consuel.</div>
+                            <div>
+                              <label className="block text-[9px] font-semibold text-amber-700 mb-0.5">📅 Date de la contre-visite</label>
+                              <div className="flex gap-1">
+                                <input type="date" value="" onChange={(e) => {
+                                  if (!e.target.value) return;
+                                  setFormData({ ...formData, visitesConsuel: [...formData.visitesConsuel, { date: e.target.value, resultat: '', note: '', type: 'contre_visite' }] });
+                                }} className={inputCls} />
+                                <button type="button" onClick={() => {
+                                  setFormData({ ...formData, visitesConsuel: [...formData.visitesConsuel, { date: '', resultat: '', note: '', type: 'contre_visite' }] });
+                                }} className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Pas encore</button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -12548,6 +12565,23 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             <button onClick={() => updateV({ resultat: 'a_corriger' })} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
                           </div>
                           <input type="text" value={v.note || ''} onChange={(e) => updateV({ note: e.target.value })} placeholder="Note..." className="w-full px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px]" />
+                          {v.resultat === 'a_corriger' && idx === d.visitesConsuel.length - 1 && (
+                            <div className="mt-1 p-1.5 bg-amber-50 border border-amber-300 rounded space-y-1">
+                              <div className="text-[9px] text-amber-800 font-bold">🔧 À corriger — mise aux normes puis programme la contre-visite.</div>
+                              <div>
+                                <label className="block text-[8px] font-semibold text-amber-700 mb-0.5">📅 Date de la contre-visite</label>
+                                <div className="flex gap-1">
+                                  <input type="date" value="" onChange={(e) => {
+                                    if (!e.target.value) return;
+                                    onUpdate({ visitesConsuel: [...d.visitesConsuel, { date: e.target.value, resultat: '', note: '', type: 'contre_visite' }] });
+                                  }} className="flex-1 px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[10px]" />
+                                  <button onClick={() => {
+                                    onUpdate({ visitesConsuel: [...d.visitesConsuel, { date: '', resultat: '', note: '', type: 'contre_visite' }] });
+                                  }} className="px-1 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Pas encore</button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
