@@ -34,14 +34,17 @@ const STATUTS = [
   { id: 'F3_MANQUE_RECEP',      label: 'MANQUE RECEP',         color: 'from-slate-300 to-gray-400',    bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '📭' },
 ];
 
-// Statuts gérés par l'auto-statut (cycle workflow CQ → banque → pose).
+// Statuts gérés par l'auto-statut (cycle workflow CQ → banque → pose →
+// originaux → contrôle livraison → appel banque → paiement).
 // Si le statut courant est dans cette liste, il sera mis à jour automatiquement
 // selon l'état du dossier. Sinon (SAV, LITIGE, ANNULER, etc.), on ne touche pas.
-const AUTO_STATUTS = ['A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC', 'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT'];
+const AUTO_STATUTS = ['A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC', 'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT', 'G_ATTENTE_ACCORD_DEF', 'F_ATTENTE_DEBLOCAGE', 'F1_CONTROLE_LIV_BANQUE', 'W_DOSSIER_PAYER'];
 
 // Calcule le statut workflow à partir de l'état du dossier (CQ, envoi banque,
-// retour banque, date pose, poseur assigné). Retourne null si on est sorti
-// du cycle (pose effectivement réalisée → l'utilisateur gère le reste).
+// retour banque, date pose, poseur, puis phase financière post-pose :
+// originaux reçus → contrôle livraison → appel banque → paiement).
+// Retourne null si aucun statut auto ne s'applique (pose faite mais banque
+// pas encore servie en originaux → l'utilisateur garde la main).
 function computeWorkflowStatut(d) {
   // ── Verdicts banque négatifs ── priment sur tout le reste, même sur une
   // date de pose saisie : tant que la banque n'a pas validé, le financement
@@ -57,8 +60,20 @@ function computeWorkflowStatut(d) {
   // dossier est en financement (sinon il restait bloqué en sortant de
   // "manque docs" si une date de pose traînait).
   if (d.statutFin === 'envoyé' && d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
-  // Pose réalisée (dateInsta remplie ou statutPose='visite_ok') → sortie du cycle
-  if (d.dateInsta || d.statutPose === 'visite_ok') return null;
+  // Pose réalisée (dateInsta remplie ou statutPose='visite_ok') → phase
+  // financière post-pose, auto-progressée jusqu'au paiement.
+  if (d.dateInsta || d.statutPose === 'visite_ok') {
+    // Paiement reçu → DOSSIER PAYER (statut terminal du cycle).
+    if (d.payeClient || d.datePaiementBanque) return 'W_DOSSIER_PAYER';
+    // La banque appelle le client pour son propre contrôle → CONTROLE DE LIV BANQUE.
+    if (d.dateAppelBanque) return 'F1_CONTROLE_LIV_BANQUE';
+    // Mon contrôle livraison est fait → ATTENTE DE DEBLOCAGE (j'attends les fonds).
+    if (d.dateControleLivraison) return 'F_ATTENTE_DEBLOCAGE';
+    // La banque a reçu les originaux (ou dossier sans originaux) → ATTENTE ACCORD DEF.
+    if (d.dateRecusOriginauxBanque || d.pasOriginauxRequis) return 'G_ATTENTE_ACCORD_DEF';
+    // Pose faite mais banque pas encore servie en originaux → on laisse la main.
+    return null;
+  }
   // Date de pose remplie : selon qu'on a un poseur ou pas
   if (d.dateEnvoiPose) {
     const poseurAssigne = (d.poseurs || []).some(p => p && p.nom && p.nom.trim());
@@ -103,6 +118,10 @@ function statutMilestoneDate(d, fromStatut, toStatut) {
       // Retour depuis "manque docs" → date de renvoi des docs à la banque
       if (fromStatut === 'B1_MANQUE_DOC') return d.dateRenvoiDocs || d.dateEnvoiFin || '';
       return d.dateEnvoiFin || '';
+    case 'G_ATTENTE_ACCORD_DEF':   return d.dateRecusOriginauxBanque || '';
+    case 'F_ATTENTE_DEBLOCAGE':    return d.dateControleLivraison || '';
+    case 'F1_CONTROLE_LIV_BANQUE': return d.dateAppelBanque || '';
+    case 'W_DOSSIER_PAYER':        return d.datePaiementBanque || d.payeClientDate || '';
     default: return '';
   }
 }
@@ -115,6 +134,10 @@ function statutMilestoneLabel(fromStatut, toStatut) {
     case 'B2_A_ENVOYER_POSE':    return '✅ Accord banque le';
     case 'B1_EN_COURS_FINANCEMENT':
       return fromStatut === 'B1_MANQUE_DOC' ? '↩️ Docs renvoyés à la banque le' : '📤 Envoyé en banque le';
+    case 'G_ATTENTE_ACCORD_DEF':   return '📋 Originaux reçus par la banque le';
+    case 'F_ATTENTE_DEBLOCAGE':    return '🔍 Contrôle livraison fait le';
+    case 'F1_CONTROLE_LIV_BANQUE': return '🏦 Banque appelle le client le';
+    case 'W_DOSSIER_PAYER':        return '✅ Dossier payé le';
     default: return '';
   }
 }

@@ -69,7 +69,15 @@ export function computeWorkflowStatut(d) {
   // Prime sur une date de pose (évite que le dossier reste bloqué en
   // sortant de "manque docs" si une date de pose traîne).
   if (d.statutFin === 'envoyé' && d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
-  if (d.dateInsta || d.statutPose === 'visite_ok') return null;
+  // Pose réalisée → phase financière post-pose, auto-progressée jusqu'au
+  // paiement : originaux reçus → contrôle livraison → appel banque → payé.
+  if (d.dateInsta || d.statutPose === 'visite_ok') {
+    if (d.payeClient || d.datePaiementBanque) return 'W_DOSSIER_PAYER';
+    if (d.dateAppelBanque) return 'F1_CONTROLE_LIV_BANQUE';
+    if (d.dateControleLivraison) return 'F_ATTENTE_DEBLOCAGE';
+    if (d.dateRecusOriginauxBanque || d.pasOriginauxRequis) return 'G_ATTENTE_ACCORD_DEF';
+    return null; // pose faite, banque pas encore servie en originaux
+  }
   if (d.dateEnvoiPose) {
     const poseurAssigne = (d.poseurs || []).some(p => p && p.nom && p.nom.trim());
     if (poseurAssigne) return 'B4_EN_COURS_POSE';
@@ -85,6 +93,7 @@ export function computeWorkflowStatut(d) {
 export const AUTO_STATUTS = [
   'A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC',
   'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT',
+  'G_ATTENTE_ACCORD_DEF', 'F_ATTENTE_DEBLOCAGE', 'F1_CONTROLE_LIV_BANQUE', 'W_DOSSIER_PAYER',
 ];
 
 // Applique l'auto-statut à un dossier si son statut courant est dans le cycle.
