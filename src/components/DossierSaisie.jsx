@@ -1051,10 +1051,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Originaux signés (entre pose et contrôle livraison)
     dateRecusOriginauxPoseur: '', dateEnvoiOriginauxBanque: '', dateRecusOriginauxBanque: '',
     pasOriginauxRequis: false, // si le dossier ne nécessite pas d'originaux
-    // Process consuel
+    // Process consuel — le Consuel répond : 'accepté' (visé) ou 'visite' (visite demandée)
     dateEnvoiConsuel: '', dateAccordConsuel: '',
-    dateRetourConsuel: '', // date du retour quand le Consuel répond négativement
-    statutConsuel: '', // '' | 'accepté' | 'refusé'
+    statutConsuel: '', // '' | 'visite' | 'accepté'
     visitesConsuel: [],
     // Process raccordement (demande de raccordement Enedis)
     dateEnvoiRaccordement: '', dateAccordRaccordement: '',
@@ -1985,7 +1984,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dateRecusOriginauxBanque: d.dateRecusOriginauxBanque || '',
       pasOriginauxRequis: d.pasOriginauxRequis || false,
       dateEnvoiConsuel: d.dateEnvoiConsuel || '', dateAccordConsuel: d.dateAccordConsuel || '',
-      dateRetourConsuel: d.dateRetourConsuel || '',
       statutConsuel: d.statutConsuel || '',
       visitesConsuel: d.visitesConsuel || [],
       dateEnvoiRaccordement: d.dateEnvoiRaccordement || '', dateAccordRaccordement: d.dateAccordRaccordement || '',
@@ -2682,7 +2680,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsControleLivraison = [];
     dossiersDash.forEach(d => {
       // Consuel accepté ?
-      const consuelAccepte = d.statutConsuel === 'accepté' || (d.dateConsuel && d.statutConsuel !== 'refusé');
+      const consuelAccepte = d.statutConsuel === 'accepté' || (d.dateConsuel && d.statutConsuel !== 'visite');
       if (!consuelAccepte) return;
       // Originaux reçus banque (ou pas requis) ?
       const originauxOk = d.dateRecusOriginauxBanque || d.pasOriginauxRequis;
@@ -9905,11 +9903,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 {formData.statutConsuel && (
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
                     formData.statutConsuel === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
-                    formData.statutConsuel === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                    formData.statutConsuel === 'visite' ? 'bg-sky-100 text-sky-700' :
                     'bg-amber-100 text-amber-700'
                   }`}>
-                    {formData.statutConsuel === 'accepté' ? '✓ Accepté' :
-                     formData.statutConsuel === 'refusé' ? '✗ Refusé' : '⏳ Envoyé'}
+                    {formData.statutConsuel === 'accepté' ? '✓ Visé' :
+                     formData.statutConsuel === 'visite' ? '🔍 Visite demandée' : '⏳ Envoyé'}
                   </span>
                 )}
               </button>
@@ -9936,34 +9934,27 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               {/* 3 boutons toggleables — toujours visibles */}
               {formData.dateEnvoiConsuel && (
                 <div className="mt-3">
-                  <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Décision Consuel (clique pour changer)</div>
+                  <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Retour du Consuel (clique pour changer)</div>
                   <div className="grid grid-cols-3 gap-2">
                     <button type="button" onClick={() => setFormData({ ...formData, statutConsuel: '' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${!formData.statutConsuel || formData.statutConsuel === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ En attente</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, statutConsuel: 'visite' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutConsuel === 'visite' ? 'bg-sky-500 text-white border-sky-600 shadow-md' : 'bg-white text-sky-600 border-sky-200 hover:bg-sky-50'}`}>🔍 Visite demandée</button>
                     <button type="button" onClick={() => {
                       const today = new Date().toISOString().split('T')[0];
                       setFormData({ ...formData, statutConsuel: 'accepté', dateConsuel: formData.dateConsuel || today, consuel: true });
-                    }} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutConsuel === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
-                    <button type="button" onClick={() => setFormData({ ...formData, statutConsuel: 'refusé' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutConsuel === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
+                    }} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutConsuel === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Consuel visé</button>
                   </div>
                 </div>
               )}
 
               {formData.statutConsuel === 'accepté' && !formData.dateControleLivraison && (
                 <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded-lg text-[11px] text-emerald-800 font-bold">
-                  ✅ Consuel accepté — appelle le client pour le contrôle livraison (étape 5 ci-dessous)
+                  ✅ Consuel visé — appelle le client pour le contrôle livraison (étape 5 ci-dessous)
                 </div>
               )}
-              {formData.statutConsuel === 'refusé' && (
-                <div className="mt-2 p-2 bg-rose-50 border-2 border-rose-300 rounded-lg space-y-2">
-                  <div className="text-[11px] text-rose-800 font-bold">✗ Consuel refusé — le Consuel demande une modification ou une visite.</div>
-                  <div>
-                    <label className="block text-[10px] font-semibold text-rose-700 mb-1">📥 Date du retour Consuel</label>
-                    <div className="flex gap-1">
-                      <input type="date" value={formData.dateRetourConsuel || ''} onChange={(e) => setFormData({ ...formData, dateRetourConsuel: e.target.value })} className={inputCls + ' text-xs'} />
-                      <button type="button" onClick={() => setFormData({ ...formData, dateRetourConsuel: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
-                    </div>
-                  </div>
-                  <p className="text-[10px] text-rose-700/80">→ Fais la modification demandée, ou ajoute une contre-visite ci-dessous.</p>
+              {formData.statutConsuel === 'visite' && (
+                <div className="mt-2 p-2 bg-sky-50 border-2 border-sky-300 rounded-lg text-[11px] text-sky-800">
+                  <div className="font-bold">🔍 Le Consuel demande une visite de conformité.</div>
+                  <div className="text-[10px] text-sky-700/90 mt-0.5">→ Cale la date de visite ci-dessous, envoie ton poseur vérifier que tout est aux normes. Si la visite révèle un défaut → remets aux normes et ajoute une contre-visite, jusqu'à l'accord.</div>
                 </div>
               )}
 
@@ -12451,11 +12442,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </span>
                 <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
                   d.statutConsuel === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
-                  d.statutConsuel === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                  d.statutConsuel === 'visite' ? 'bg-sky-100 text-sky-700' :
                   d.dateEnvoiConsuel ? 'bg-blue-100 text-blue-700' :
                   'bg-amber-100 text-amber-700'
                 }`}>
-                  {d.statutConsuel === 'accepté' ? '✓ Accepté' : d.statutConsuel === 'refusé' ? '✗ Refusé' : d.dateEnvoiConsuel ? '📤 Envoyé' : '⏳ Pas envoyé'}
+                  {d.statutConsuel === 'accepté' ? '✓ Visé' : d.statutConsuel === 'visite' ? '🔍 Visite demandée' : d.dateEnvoiConsuel ? '📤 Envoyé' : '⏳ Pas envoyé'}
                 </span>
               </button>
 
@@ -12477,36 +12468,29 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
               </div>
 
-              {/* 3 boutons toggleables */}
+              {/* 3 boutons toggleables — le Consuel répond : visé OU visite demandée */}
               {d.dateEnvoiConsuel && (
                 <div className="mt-1.5 grid grid-cols-3 gap-1">
                   <button onClick={() => onUpdate({ statutConsuel: '' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${!d.statutConsuel || d.statutConsuel === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
+                  <button onClick={() => onUpdate({ statutConsuel: 'visite' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutConsuel === 'visite' ? 'bg-sky-500 text-white border-sky-600 shadow-md' : 'bg-white text-sky-600 border-sky-200 hover:bg-sky-50'}`}>🔍 Visite</button>
                   <button onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     onUpdate({ statutConsuel: 'accepté', dateConsuel: d.dateConsuel || today, consuel: true });
-                  }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutConsuel === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
-                  <button onClick={() => onUpdate({ statutConsuel: 'refusé' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutConsuel === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
+                  }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutConsuel === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Visé</button>
                 </div>
               )}
 
               {d.statutConsuel === 'accepté' && !d.dateControleLivraison && (
-                <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ Accepté — passe au contrôle livraison ↓</div>
+                <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ Consuel visé — passe au contrôle livraison ↓</div>
               )}
-              {d.statutConsuel === 'refusé' && (
-                <div className="mt-1.5 px-2 py-1.5 bg-rose-50 border border-rose-300 rounded space-y-1.5">
-                  <div className="text-[10px] text-rose-800 font-bold">✗ Refusé — modification ou visite demandée</div>
-                  <div>
-                    <label className="block text-[9px] font-semibold text-rose-700 mb-0.5">📥 Date du retour Consuel</label>
-                    <div className="flex gap-1">
-                      <input type="date" value={d.dateRetourConsuel || ''} onChange={(e) => onUpdate({ dateRetourConsuel: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-rose-200 rounded text-[10px]" />
-                      <button onClick={() => onUpdate({ dateRetourConsuel: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
-                    </div>
-                  </div>
+              {d.statutConsuel === 'visite' && (
+                <div className="mt-1.5 px-2 py-1.5 bg-sky-50 border border-sky-300 rounded text-[10px] text-sky-800">
+                  🔍 <span className="font-bold">Visite demandée</span> — programme une date de visite ci-dessous et envoie le poseur vérifier les normes. Le résultat de la visite décide : conforme → accord, ou à corriger → on remet aux normes et contre-visite.
                 </div>
               )}
 
               {/* Alerte Consuel — > 7 jours sans accord */}
-              {d.dateEnvoiConsuel && !d.dateConsuel && d.statutConsuel !== 'refusé' && (() => {
+              {d.dateEnvoiConsuel && !d.dateConsuel && d.statutConsuel !== 'visite' && (() => {
                 const jours = Math.floor((new Date() - new Date(d.dateEnvoiConsuel)) / 86400000);
                 if (jours < 7) return <div className="mt-1.5 px-2 py-1 bg-cyan-50 border border-cyan-200 rounded text-[10px] text-cyan-700">⏳ {jours}j — délai normal (sous 7j)</div>;
                 if (jours < 14) return <div className="mt-1.5 px-2 py-1 bg-amber-50 border border-amber-300 rounded text-[10px] text-amber-700 font-bold">⚠️ {jours}j sans accord — relance le Consuel</div>;
