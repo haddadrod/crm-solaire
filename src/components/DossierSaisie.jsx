@@ -11,27 +11,38 @@ const FOURNISSEURS_DEFAULT = ['IONERGIK', 'ECO NEGOCE', 'LEH', 'SYNEXIUM', 'CAP 
 const TARIFS_POSEURS_DEFAULT = Object.fromEntries(POSEURS_DEFAULT.map(n => [n, {}]));
 const TARIFS_REGIES_DEFAULT = Object.fromEntries(REGIES_DEFAULT.map(n => [n, {}]));
 
+// ── Statuts du dossier ──────────────────────────────────────────────────
+// 11 statuts « parcours » dans l'ordre du cycle de vie (signature → paiement),
+// tous AUTO-CALCULÉS : l'utilisateur n'a jamais à les choisir, ils suivent
+// l'état du dossier (voir computeWorkflowStatut). 3 statuts « hors parcours »
+// manuels (Annulé, Litige, SAV). Les statuts `legacy` sont d'anciens dossiers :
+// gardés pour l'affichage mais retirés du menu de sélection.
+// Les IDs sont conservés tels quels (pas de migration) — seuls libellés,
+// emojis, couleurs et ordre changent.
 const STATUTS = [
-  { id: 'A_EN_COURS',           label: 'EN COURS',             color: 'from-slate-400 to-slate-500',   bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '🔄' },
-  { id: 'B_A_ENVOYER_BANQUE',   label: 'À ENVOYER EN BANQUE',  color: 'from-violet-400 to-purple-500', bg: 'bg-violet-100',  text: 'text-violet-700',  emoji: '🏦' },
-  { id: 'B1_EN_COURS_FINANCEMENT', label: 'EN COURS DE FINANCEMENT', color: 'from-blue-400 to-indigo-500', bg: 'bg-blue-100',   text: 'text-blue-700',    emoji: '⏳' },
-  { id: 'B1_MANQUE_DOC',        label: 'MANQUE DOCS BANQUE',   color: 'from-orange-400 to-amber-500',  bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '📄' },
-  { id: 'B2_A_ENVOYER_POSE',    label: 'À ENVOYER EN POSE',    color: 'from-amber-400 to-orange-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '📤' },
-  { id: 'B4_EN_COURS_POSE',     label: 'EN COURS DE POSE',     color: 'from-orange-500 to-red-500',    bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🔧' },
-  { id: 'B3_REFUS_FINANCEMENT', label: 'REFUS DE FINANCEMENT', color: 'from-red-500 to-rose-600',      bg: 'bg-red-100',     text: 'text-red-700',     emoji: '🚫' },
-  { id: 'G_ATTENTE_ACCORD_DEF', label: 'ATTENTE ACCORD DEF',   color: 'from-teal-400 to-emerald-500',  bg: 'bg-teal-100',    text: 'text-teal-700',    emoji: '📋' },
-  { id: 'F_ATTENTE_DEBLOCAGE',  label: 'ATTENTE DE DEBLOCAGE', color: 'from-amber-400 to-orange-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '⏳' },
-  { id: 'F1_CONTROLE_LIV_BANQUE', label: 'CONTROLE DE LIV BANQUE', color: 'from-sky-400 to-blue-500', bg: 'bg-sky-100',     text: 'text-sky-700',     emoji: '🏦' },
-  { id: 'F2_PREFINANCEMENT',    label: 'PRÉFINANCEMENT',       color: 'from-emerald-300 to-green-400', bg: 'bg-emerald-50',  text: 'text-emerald-700', emoji: '💳' },
-  { id: 'F1_ACCEPTE',           label: 'ACCEPTÉ',              color: 'from-rose-300 to-pink-300',     bg: 'bg-rose-50',     text: 'text-rose-700',    emoji: '👍' },
-  { id: 'W_DOSSIER_PAYER',      label: 'DOSSIER PAYER',        color: 'from-blue-700 to-indigo-700',   bg: 'bg-blue-100',    text: 'text-blue-800',    emoji: '✅' },
-  { id: 'D_SAV',                label: 'SAV',                  color: 'from-orange-500 to-red-500',    bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🔧' },
-  { id: 'C_LITIGE',             label: 'LITIGE',               color: 'from-rose-500 to-red-500',      bg: 'bg-rose-100',    text: 'text-rose-700',    emoji: '⚠️' },
-  { id: 'W2_ANNULER',           label: 'ANNULER',              color: 'from-stone-500 to-neutral-600', bg: 'bg-stone-100',   text: 'text-stone-700',   emoji: '❌' },
-  { id: 'W1_DEPOSER',           label: 'DEPOSER',              color: 'from-red-600 to-rose-700',      bg: 'bg-red-100',     text: 'text-red-800',     emoji: '📦' },
-  { id: 'CONFORMITE_CONTRAT',   label: 'CONFORMITE CONTRAT',   color: 'from-purple-600 to-violet-700', bg: 'bg-purple-100',  text: 'text-purple-700',  emoji: '📝' },
-  { id: 'Z_DEPLACEMENT',        label: 'DEPLACEMENT',          color: 'from-purple-500 to-fuchsia-500',bg: 'bg-purple-100',  text: 'text-purple-700',  emoji: '🚗' },
-  { id: 'F3_MANQUE_RECEP',      label: 'MANQUE RECEP',         color: 'from-slate-300 to-gray-400',    bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '📭' },
+  // ── Parcours (auto-calculé) ──
+  { id: 'A_EN_COURS',              label: 'CONTRÔLE QUALITÉ',         color: 'from-slate-400 to-slate-500',    bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '🔍' },
+  { id: 'B_A_ENVOYER_BANQUE',      label: 'À ENVOYER EN BANQUE',      color: 'from-violet-400 to-purple-500',  bg: 'bg-violet-100',  text: 'text-violet-700',  emoji: '🏦' },
+  { id: 'B1_EN_COURS_FINANCEMENT', label: 'EN FINANCEMENT',           color: 'from-blue-400 to-indigo-500',    bg: 'bg-blue-100',    text: 'text-blue-700',    emoji: '⏳' },
+  { id: 'B1_MANQUE_DOC',           label: 'MANQUE DOC',               color: 'from-orange-400 to-amber-500',   bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '📄' },
+  { id: 'B3_REFUS_FINANCEMENT',    label: 'REFUSÉ FINANCEMENT',       color: 'from-red-500 to-rose-600',       bg: 'bg-red-100',     text: 'text-red-700',     emoji: '🚫' },
+  { id: 'B2_A_ENVOYER_POSE',       label: 'À PROGRAMMER EN POSE',     color: 'from-amber-400 to-orange-500',   bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '📅' },
+  { id: 'B4_EN_COURS_POSE',        label: 'EN COURS DE POSE',         color: 'from-orange-500 to-red-500',     bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🔧' },
+  { id: 'G_ATTENTE_ACCORD_DEF',    label: 'ATTENTE ACCORD DÉFINITIF', color: 'from-teal-400 to-emerald-500',   bg: 'bg-teal-100',    text: 'text-teal-700',    emoji: '📋' },
+  { id: 'F1_CONTROLE_LIV_BANQUE',  label: 'CONTRÔLE LIVRAISON',       color: 'from-sky-400 to-blue-500',       bg: 'bg-sky-100',     text: 'text-sky-700',     emoji: '📞' },
+  { id: 'F_ATTENTE_DEBLOCAGE',     label: 'ATTENTE DÉBLOCAGE',        color: 'from-cyan-400 to-sky-500',       bg: 'bg-cyan-100',    text: 'text-cyan-700',    emoji: '💳' },
+  { id: 'W_DOSSIER_PAYER',         label: 'PAYÉ',                     color: 'from-emerald-500 to-green-600',  bg: 'bg-emerald-100', text: 'text-emerald-800', emoji: '✅' },
+  // ── Hors parcours (manuel) ──
+  { id: 'W2_ANNULER',              label: 'ANNULÉ',                   color: 'from-stone-500 to-neutral-600',  bg: 'bg-stone-100',   text: 'text-stone-700',   emoji: '❌' },
+  { id: 'C_LITIGE',                label: 'LITIGE',                   color: 'from-rose-500 to-red-500',       bg: 'bg-rose-100',    text: 'text-rose-700',    emoji: '⚠️' },
+  { id: 'D_SAV',                   label: 'SAV',                      color: 'from-orange-500 to-red-500',     bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🛠️' },
+  // ── Hérités (anciens dossiers — non sélectionnables, conservés pour l'affichage) ──
+  { id: 'F2_PREFINANCEMENT',       label: 'PRÉFINANCEMENT',           color: 'from-emerald-300 to-green-400',  bg: 'bg-emerald-50',  text: 'text-emerald-700', emoji: '💳', legacy: true },
+  { id: 'F1_ACCEPTE',              label: 'ACCEPTÉ',                  color: 'from-rose-300 to-pink-300',      bg: 'bg-rose-50',     text: 'text-rose-700',    emoji: '👍', legacy: true },
+  { id: 'F3_MANQUE_RECEP',         label: 'MANQUE RECEP',             color: 'from-slate-300 to-gray-400',     bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '📭', legacy: true },
+  { id: 'CONFORMITE_CONTRAT',      label: 'CONFORMITÉ CONTRAT',       color: 'from-purple-600 to-violet-700',  bg: 'bg-purple-100',  text: 'text-purple-700',  emoji: '📝', legacy: true },
+  { id: 'Z_DEPLACEMENT',           label: 'DÉPLACEMENT',              color: 'from-purple-500 to-fuchsia-500', bg: 'bg-purple-100',  text: 'text-purple-700',  emoji: '🚗', legacy: true },
+  { id: 'W1_DEPOSER',              label: 'DÉPOSÉ',                   color: 'from-red-600 to-rose-700',       bg: 'bg-red-100',     text: 'text-red-800',     emoji: '📦', legacy: true },
 ];
 
 // Statuts gérés par l'auto-statut (cycle workflow CQ → banque → pose →
@@ -63,16 +74,15 @@ function computeWorkflowStatut(d) {
   // Pose réalisée (dateInsta remplie ou statutPose='visite_ok') → phase
   // financière post-pose, auto-progressée jusqu'au paiement.
   if (d.dateInsta || d.statutPose === 'visite_ok') {
-    // Paiement reçu → DOSSIER PAYER (statut terminal du cycle).
+    // Paiement reçu → PAYÉ (statut terminal du cycle).
     if (d.payeClient || d.datePaiementBanque) return 'W_DOSSIER_PAYER';
-    // La banque appelle le client pour son propre contrôle → CONTROLE DE LIV BANQUE.
-    if (d.dateAppelBanque) return 'F1_CONTROLE_LIV_BANQUE';
-    // Mon contrôle livraison est fait → ATTENTE DE DEBLOCAGE (j'attends les fonds).
+    // Contrôle livraison fait → ATTENTE DÉBLOCAGE (la banque vérifie et débloque).
     if (d.dateControleLivraison) return 'F_ATTENTE_DEBLOCAGE';
-    // La banque a reçu les originaux (ou dossier sans originaux) → ATTENTE ACCORD DEF.
-    if (d.dateRecusOriginauxBanque || d.pasOriginauxRequis) return 'G_ATTENTE_ACCORD_DEF';
-    // Pose faite mais banque pas encore servie en originaux → on laisse la main.
-    return null;
+    // Accord définitif obtenu (banque a reçu les originaux, ou dossier sans
+    // originaux requis) → CONTRÔLE LIVRAISON à faire.
+    if (d.dateRecusOriginauxBanque || d.pasOriginauxRequis) return 'F1_CONTROLE_LIV_BANQUE';
+    // Pose finie, dossier (re-signé) en route vers la banque → ATTENTE ACCORD DÉFINITIF.
+    return 'G_ATTENTE_ACCORD_DEF';
   }
   // Date de pose remplie : selon qu'on a un poseur ou pas
   if (d.dateEnvoiPose) {
@@ -118,9 +128,9 @@ function statutMilestoneDate(d, fromStatut, toStatut) {
       // Retour depuis "manque docs" → date de renvoi des docs à la banque
       if (fromStatut === 'B1_MANQUE_DOC') return d.dateRenvoiDocs || d.dateEnvoiFin || '';
       return d.dateEnvoiFin || '';
-    case 'G_ATTENTE_ACCORD_DEF':   return d.dateRecusOriginauxBanque || '';
+    case 'G_ATTENTE_ACCORD_DEF':   return d.dateInsta || '';
+    case 'F1_CONTROLE_LIV_BANQUE': return d.dateRecusOriginauxBanque || '';
     case 'F_ATTENTE_DEBLOCAGE':    return d.dateControleLivraison || '';
-    case 'F1_CONTROLE_LIV_BANQUE': return d.dateAppelBanque || '';
     case 'W_DOSSIER_PAYER':        return d.datePaiementBanque || d.payeClientDate || '';
     default: return '';
   }
@@ -134,9 +144,9 @@ function statutMilestoneLabel(fromStatut, toStatut) {
     case 'B2_A_ENVOYER_POSE':    return '✅ Accord banque le';
     case 'B1_EN_COURS_FINANCEMENT':
       return fromStatut === 'B1_MANQUE_DOC' ? '↩️ Docs renvoyés à la banque le' : '📤 Envoyé en banque le';
-    case 'G_ATTENTE_ACCORD_DEF':   return '📋 Originaux reçus par la banque le';
-    case 'F_ATTENTE_DEBLOCAGE':    return '🔍 Contrôle livraison fait le';
-    case 'F1_CONTROLE_LIV_BANQUE': return '🏦 Banque appelle le client le';
+    case 'G_ATTENTE_ACCORD_DEF':   return '📋 Pose terminée le';
+    case 'F1_CONTROLE_LIV_BANQUE': return '📞 Accord définitif reçu le';
+    case 'F_ATTENTE_DEBLOCAGE':    return '💳 Contrôle livraison fait le';
     case 'W_DOSSIER_PAYER':        return '✅ Dossier payé le';
     default: return '';
   }
@@ -10236,7 +10246,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div className="space-y-2">
                   <div className="relative">
                     <select value={formData.statut} onChange={(e) => setFormData({ ...formData, statut: e.target.value })} className={`w-full ${inputCls} pl-12 font-bold text-base appearance-none cursor-pointer`}>
-                      {STATUTS_ORDERED.map(s => (
+                      {STATUTS_ORDERED.filter(s => !s.legacy || s.id === formData.statut).map(s => (
                         <option key={s.id} value={s.id}>{s.emoji}  {s.label}</option>
                       ))}
                     </select>
@@ -11521,7 +11531,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               </button>
             </div>
             <select value={d.statut} onChange={(e) => onUpdate({ statut: e.target.value })} className="w-full px-3 py-2 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white font-bold text-sm appearance-none cursor-pointer">
-              {STATUTS_ORDERED.map(s => <option key={s.id} value={s.id} className="text-slate-800">{s.emoji}  {s.label}</option>)}
+              {STATUTS_ORDERED.filter(s => !s.legacy || s.id === d.statut).map(s => <option key={s.id} value={s.id} className="text-slate-800">{s.emoji}  {s.label}</option>)}
             </select>
           </div>
           {/* Actions rapides */}
