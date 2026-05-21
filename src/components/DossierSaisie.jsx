@@ -7247,6 +7247,8 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
     '⭐', '🔥', '⚡', '💡', '✨', '🌟', '💎', '🎯', '🚀', '💪', '🦾',
     // Solaire / outils
     '☀️', '🔆', '⚙️', '🔩', '🪛', '🪚',
+    // Fun
+    '💩', '🪵', '🖕',
   ];
 
   const ROLES = [
