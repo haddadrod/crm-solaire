@@ -154,9 +154,29 @@ describe('computeWorkflowStatut', () => {
     expect(computeWorkflowStatut({ statutFin: 'refusé' })).toBe('B3_REFUS_FINANCEMENT');
   });
 
-  it('retourne null si la pose est faite (sortie du cycle auto)', () => {
-    expect(computeWorkflowStatut({ dateInsta: '2026-05-14' })).toBe(null);
-    expect(computeWorkflowStatut({ statutPose: 'visite_ok' })).toBe(null);
+  it('phase post-pose : pose faite → G_ATTENTE_ACCORD_DEF (en route vers accord déf)', () => {
+    expect(computeWorkflowStatut({ dateInsta: '2026-05-14' })).toBe('G_ATTENTE_ACCORD_DEF');
+    expect(computeWorkflowStatut({ statutPose: 'visite_ok' })).toBe('G_ATTENTE_ACCORD_DEF');
+  });
+
+  it('phase post-pose : accord déf reçu (originaux banque) → F1_CONTROLE_LIV_BANQUE', () => {
+    expect(computeWorkflowStatut({ dateInsta: '2026-05-14', dateRecusOriginauxBanque: '2026-05-16' }))
+      .toBe('F1_CONTROLE_LIV_BANQUE');
+    expect(computeWorkflowStatut({ dateInsta: '2026-05-14', pasOriginauxRequis: true }))
+      .toBe('F1_CONTROLE_LIV_BANQUE');
+  });
+
+  it('phase post-pose : contrôle livraison fait → F_ATTENTE_DEBLOCAGE', () => {
+    expect(computeWorkflowStatut({
+      dateInsta: '2026-05-14', dateRecusOriginauxBanque: '2026-05-16', dateControleLivraison: '2026-05-18',
+    })).toBe('F_ATTENTE_DEBLOCAGE');
+  });
+
+  it('phase post-pose : paiement reçu → W_DOSSIER_PAYER (statut terminal)', () => {
+    expect(computeWorkflowStatut({ dateInsta: '2026-05-14', dateControleLivraison: '2026-05-18', payeClient: true }))
+      .toBe('W_DOSSIER_PAYER');
+    expect(computeWorkflowStatut({ dateInsta: '2026-05-14', datePaiementBanque: '2026-05-20' }))
+      .toBe('W_DOSSIER_PAYER');
   });
 
   it("retourne B4_EN_COURS_POSE quand dateEnvoiPose + poseur assigné", () => {

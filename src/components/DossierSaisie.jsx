@@ -11,37 +11,80 @@ const FOURNISSEURS_DEFAULT = ['IONERGIK', 'ECO NEGOCE', 'LEH', 'SYNEXIUM', 'CAP 
 const TARIFS_POSEURS_DEFAULT = Object.fromEntries(POSEURS_DEFAULT.map(n => [n, {}]));
 const TARIFS_REGIES_DEFAULT = Object.fromEntries(REGIES_DEFAULT.map(n => [n, {}]));
 
+// ── Statuts du dossier ──────────────────────────────────────────────────
+// 11 statuts « parcours » dans l'ordre du cycle de vie (signature → paiement),
+// tous AUTO-CALCULÉS : l'utilisateur n'a jamais à les choisir, ils suivent
+// l'état du dossier (voir computeWorkflowStatut). 3 statuts « hors parcours »
+// manuels (Annulé, Litige, SAV). Les statuts `legacy` sont d'anciens dossiers :
+// gardés pour l'affichage mais retirés du menu de sélection.
+// Les IDs sont conservés tels quels (pas de migration) — seuls libellés,
+// emojis, couleurs et ordre changent.
 const STATUTS = [
-  { id: 'A_EN_COURS',           label: 'EN COURS',             color: 'from-slate-400 to-slate-500',   bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '🔄' },
-  { id: 'B_A_ENVOYER_BANQUE',   label: 'À ENVOYER EN BANQUE',  color: 'from-violet-400 to-purple-500', bg: 'bg-violet-100',  text: 'text-violet-700',  emoji: '🏦' },
-  { id: 'B1_EN_COURS_FINANCEMENT', label: 'EN COURS DE FINANCEMENT', color: 'from-blue-400 to-indigo-500', bg: 'bg-blue-100',   text: 'text-blue-700',    emoji: '⏳' },
-  { id: 'B1_MANQUE_DOC',        label: 'MANQUE DOCS BANQUE',   color: 'from-orange-400 to-amber-500',  bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '📄' },
-  { id: 'B2_A_ENVOYER_POSE',    label: 'À ENVOYER EN POSE',    color: 'from-amber-400 to-orange-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '📤' },
-  { id: 'B4_EN_COURS_POSE',     label: 'EN COURS DE POSE',     color: 'from-orange-500 to-red-500',    bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🔧' },
-  { id: 'B3_REFUS_FINANCEMENT', label: 'REFUS DE FINANCEMENT', color: 'from-red-500 to-rose-600',      bg: 'bg-red-100',     text: 'text-red-700',     emoji: '🚫' },
-  { id: 'G_ATTENTE_ACCORD_DEF', label: 'ATTENTE ACCORD DEF',   color: 'from-teal-400 to-emerald-500',  bg: 'bg-teal-100',    text: 'text-teal-700',    emoji: '📋' },
-  { id: 'F_ATTENTE_DEBLOCAGE',  label: 'ATTENTE DE DEBLOCAGE', color: 'from-amber-400 to-orange-500',  bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '⏳' },
-  { id: 'F1_CONTROLE_LIV_BANQUE', label: 'CONTROLE DE LIV BANQUE', color: 'from-sky-400 to-blue-500', bg: 'bg-sky-100',     text: 'text-sky-700',     emoji: '🏦' },
-  { id: 'F2_PREFINANCEMENT',    label: 'PRÉFINANCEMENT',       color: 'from-emerald-300 to-green-400', bg: 'bg-emerald-50',  text: 'text-emerald-700', emoji: '💳' },
-  { id: 'F1_ACCEPTE',           label: 'ACCEPTÉ',              color: 'from-rose-300 to-pink-300',     bg: 'bg-rose-50',     text: 'text-rose-700',    emoji: '👍' },
-  { id: 'W_DOSSIER_PAYER',      label: 'DOSSIER PAYER',        color: 'from-blue-700 to-indigo-700',   bg: 'bg-blue-100',    text: 'text-blue-800',    emoji: '✅' },
-  { id: 'D_SAV',                label: 'SAV',                  color: 'from-orange-500 to-red-500',    bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🔧' },
-  { id: 'C_LITIGE',             label: 'LITIGE',               color: 'from-rose-500 to-red-500',      bg: 'bg-rose-100',    text: 'text-rose-700',    emoji: '⚠️' },
-  { id: 'W2_ANNULER',           label: 'ANNULER',              color: 'from-stone-500 to-neutral-600', bg: 'bg-stone-100',   text: 'text-stone-700',   emoji: '❌' },
-  { id: 'W1_DEPOSER',           label: 'DEPOSER',              color: 'from-red-600 to-rose-700',      bg: 'bg-red-100',     text: 'text-red-800',     emoji: '📦' },
-  { id: 'CONFORMITE_CONTRAT',   label: 'CONFORMITE CONTRAT',   color: 'from-purple-600 to-violet-700', bg: 'bg-purple-100',  text: 'text-purple-700',  emoji: '📝' },
-  { id: 'Z_DEPLACEMENT',        label: 'DEPLACEMENT',          color: 'from-purple-500 to-fuchsia-500',bg: 'bg-purple-100',  text: 'text-purple-700',  emoji: '🚗' },
-  { id: 'F3_MANQUE_RECEP',      label: 'MANQUE RECEP',         color: 'from-slate-300 to-gray-400',    bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '📭' },
+  // ── Parcours (auto-calculé) ──
+  { id: 'A_EN_COURS',              label: 'CONTRÔLE QUALITÉ',         color: 'from-slate-400 to-slate-500',    bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '🔍' },
+  { id: 'B_A_ENVOYER_BANQUE',      label: 'À ENVOYER EN BANQUE',      color: 'from-violet-400 to-purple-500',  bg: 'bg-violet-100',  text: 'text-violet-700',  emoji: '🏦' },
+  { id: 'B1_EN_COURS_FINANCEMENT', label: 'EN FINANCEMENT',           color: 'from-blue-400 to-indigo-500',    bg: 'bg-blue-100',    text: 'text-blue-700',    emoji: '⏳' },
+  { id: 'B1_MANQUE_DOC',           label: 'MANQUE DOC',               color: 'from-orange-400 to-amber-500',   bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '📄' },
+  { id: 'B3_REFUS_FINANCEMENT',    label: 'REFUSÉ FINANCEMENT',       color: 'from-red-500 to-rose-600',       bg: 'bg-red-100',     text: 'text-red-700',     emoji: '🚫' },
+  { id: 'B2_A_ENVOYER_POSE',       label: 'À PROGRAMMER EN POSE',     color: 'from-amber-400 to-orange-500',   bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '📅' },
+  { id: 'B4_EN_COURS_POSE',        label: 'EN COURS DE POSE',         color: 'from-orange-500 to-red-500',     bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🔧' },
+  { id: 'G_ATTENTE_ACCORD_DEF',    label: 'ATTENTE ACCORD DÉFINITIF', color: 'from-teal-400 to-emerald-500',   bg: 'bg-teal-100',    text: 'text-teal-700',    emoji: '📋' },
+  { id: 'F1_CONTROLE_LIV_BANQUE',  label: 'CONTRÔLE LIVRAISON',       color: 'from-sky-400 to-blue-500',       bg: 'bg-sky-100',     text: 'text-sky-700',     emoji: '📞' },
+  { id: 'F_ATTENTE_DEBLOCAGE',     label: 'ATTENTE DÉBLOCAGE',        color: 'from-cyan-400 to-sky-500',       bg: 'bg-cyan-100',    text: 'text-cyan-700',    emoji: '💳' },
+  { id: 'W_DOSSIER_PAYER',         label: 'PAYÉ',                     color: 'from-emerald-500 to-green-600',  bg: 'bg-emerald-100', text: 'text-emerald-800', emoji: '✅' },
+  // ── Hors parcours (manuel) ──
+  { id: 'W2_ANNULER',              label: 'ANNULÉ',                   color: 'from-stone-500 to-neutral-600',  bg: 'bg-stone-100',   text: 'text-stone-700',   emoji: '❌' },
+  { id: 'C_LITIGE',                label: 'LITIGE',                   color: 'from-rose-500 to-red-500',       bg: 'bg-rose-100',    text: 'text-rose-700',    emoji: '⚠️' },
+  { id: 'D_SAV',                   label: 'SAV',                      color: 'from-orange-500 to-red-500',     bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🛠️' },
+  // ── Hérités (anciens dossiers — non sélectionnables, conservés pour l'affichage) ──
+  { id: 'F2_PREFINANCEMENT',       label: 'PRÉFINANCEMENT',           color: 'from-emerald-300 to-green-400',  bg: 'bg-emerald-50',  text: 'text-emerald-700', emoji: '💳', legacy: true },
+  { id: 'F1_ACCEPTE',              label: 'ACCEPTÉ',                  color: 'from-rose-300 to-pink-300',      bg: 'bg-rose-50',     text: 'text-rose-700',    emoji: '👍', legacy: true },
+  { id: 'F3_MANQUE_RECEP',         label: 'MANQUE RECEP',             color: 'from-slate-300 to-gray-400',     bg: 'bg-slate-100',   text: 'text-slate-700',   emoji: '📭', legacy: true },
+  { id: 'CONFORMITE_CONTRAT',      label: 'CONFORMITÉ CONTRAT',       color: 'from-purple-600 to-violet-700',  bg: 'bg-purple-100',  text: 'text-purple-700',  emoji: '📝', legacy: true },
+  { id: 'Z_DEPLACEMENT',           label: 'DÉPLACEMENT',              color: 'from-purple-500 to-fuchsia-500', bg: 'bg-purple-100',  text: 'text-purple-700',  emoji: '🚗', legacy: true },
+  { id: 'W1_DEPOSER',              label: 'DÉPOSÉ',                   color: 'from-red-600 to-rose-700',       bg: 'bg-red-100',     text: 'text-red-800',     emoji: '📦', legacy: true },
 ];
 
-// Statuts gérés par l'auto-statut (cycle workflow CQ → banque → pose).
+// Étapes du parcours pour la barre de progression — chemin nominal en 9
+// jalons. « Manque doc » et « Refusé financement » sont des variantes de
+// l'étape Financement (signalées à part, pas un jalon distinct).
+const PARCOURS_ETAPES = [
+  { emoji: '🔍', label: 'Contrôle qualité' },
+  { emoji: '🏦', label: 'Envoi banque' },
+  { emoji: '⏳', label: 'Financement' },
+  { emoji: '📅', label: 'Pose à programmer' },
+  { emoji: '🔧', label: 'Pose' },
+  { emoji: '📋', label: 'Accord définitif' },
+  { emoji: '📞', label: 'Contrôle livraison' },
+  { emoji: '💳', label: 'Déblocage' },
+  { emoji: '✅', label: 'Payé' },
+];
+// Statut → index d'étape parcours (0-based). Absent = statut hors parcours.
+const STATUT_ETAPE_INDEX = {
+  A_EN_COURS: 0,
+  B_A_ENVOYER_BANQUE: 1,
+  B1_EN_COURS_FINANCEMENT: 2,
+  B1_MANQUE_DOC: 2,
+  B3_REFUS_FINANCEMENT: 2,
+  B2_A_ENVOYER_POSE: 3,
+  B4_EN_COURS_POSE: 4,
+  G_ATTENTE_ACCORD_DEF: 5,
+  F1_CONTROLE_LIV_BANQUE: 6,
+  F_ATTENTE_DEBLOCAGE: 7,
+  W_DOSSIER_PAYER: 8,
+};
+
+// Statuts gérés par l'auto-statut (cycle workflow CQ → banque → pose →
+// originaux → contrôle livraison → appel banque → paiement).
 // Si le statut courant est dans cette liste, il sera mis à jour automatiquement
 // selon l'état du dossier. Sinon (SAV, LITIGE, ANNULER, etc.), on ne touche pas.
-const AUTO_STATUTS = ['A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC', 'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT'];
+const AUTO_STATUTS = ['A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC', 'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT', 'G_ATTENTE_ACCORD_DEF', 'F_ATTENTE_DEBLOCAGE', 'F1_CONTROLE_LIV_BANQUE', 'W_DOSSIER_PAYER'];
 
 // Calcule le statut workflow à partir de l'état du dossier (CQ, envoi banque,
-// retour banque, date pose, poseur assigné). Retourne null si on est sorti
-// du cycle (pose effectivement réalisée → l'utilisateur gère le reste).
+// retour banque, date pose, poseur, puis phase financière post-pose :
+// originaux reçus → contrôle livraison → appel banque → paiement).
+// Retourne null si aucun statut auto ne s'applique (pose faite mais banque
+// pas encore servie en originaux → l'utilisateur garde la main).
 function computeWorkflowStatut(d) {
   // ── Verdicts banque négatifs ── priment sur tout le reste, même sur une
   // date de pose saisie : tant que la banque n'a pas validé, le financement
@@ -57,8 +100,19 @@ function computeWorkflowStatut(d) {
   // dossier est en financement (sinon il restait bloqué en sortant de
   // "manque docs" si une date de pose traînait).
   if (d.statutFin === 'envoyé' && d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
-  // Pose réalisée (dateInsta remplie ou statutPose='visite_ok') → sortie du cycle
-  if (d.dateInsta || d.statutPose === 'visite_ok') return null;
+  // Pose réalisée (dateInsta remplie ou statutPose='visite_ok') → phase
+  // financière post-pose, auto-progressée jusqu'au paiement.
+  if (d.dateInsta || d.statutPose === 'visite_ok') {
+    // Paiement reçu → PAYÉ (statut terminal du cycle).
+    if (d.payeClient || d.datePaiementBanque) return 'W_DOSSIER_PAYER';
+    // Contrôle livraison fait → ATTENTE DÉBLOCAGE (la banque vérifie et débloque).
+    if (d.dateControleLivraison) return 'F_ATTENTE_DEBLOCAGE';
+    // Accord définitif obtenu (banque a reçu les originaux, ou dossier sans
+    // originaux requis) → CONTRÔLE LIVRAISON à faire.
+    if (d.dateRecusOriginauxBanque || d.pasOriginauxRequis) return 'F1_CONTROLE_LIV_BANQUE';
+    // Pose finie, dossier (re-signé) en route vers la banque → ATTENTE ACCORD DÉFINITIF.
+    return 'G_ATTENTE_ACCORD_DEF';
+  }
   // Date de pose remplie : selon qu'on a un poseur ou pas
   if (d.dateEnvoiPose) {
     const poseurAssigne = (d.poseurs || []).some(p => p && p.nom && p.nom.trim());
@@ -103,6 +157,10 @@ function statutMilestoneDate(d, fromStatut, toStatut) {
       // Retour depuis "manque docs" → date de renvoi des docs à la banque
       if (fromStatut === 'B1_MANQUE_DOC') return d.dateRenvoiDocs || d.dateEnvoiFin || '';
       return d.dateEnvoiFin || '';
+    case 'G_ATTENTE_ACCORD_DEF':   return d.dateInsta || '';
+    case 'F1_CONTROLE_LIV_BANQUE': return d.dateRecusOriginauxBanque || '';
+    case 'F_ATTENTE_DEBLOCAGE':    return d.dateControleLivraison || '';
+    case 'W_DOSSIER_PAYER':        return d.datePaiementBanque || d.payeClientDate || '';
     default: return '';
   }
 }
@@ -115,12 +173,37 @@ function statutMilestoneLabel(fromStatut, toStatut) {
     case 'B2_A_ENVOYER_POSE':    return '✅ Accord banque le';
     case 'B1_EN_COURS_FINANCEMENT':
       return fromStatut === 'B1_MANQUE_DOC' ? '↩️ Docs renvoyés à la banque le' : '📤 Envoyé en banque le';
+    case 'G_ATTENTE_ACCORD_DEF':   return '📋 Pose terminée le';
+    case 'F1_CONTROLE_LIV_BANQUE': return '📞 Accord définitif reçu le';
+    case 'F_ATTENTE_DEBLOCAGE':    return '💳 Contrôle livraison fait le';
+    case 'W_DOSSIER_PAYER':        return '✅ Dossier payé le';
     default: return '';
   }
 }
 
 const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM', 'FINANCO', 'FRANFINANCE'];
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
+
+// Prérequis avant de pouvoir saisir le contrôle de livraison (= étape qui
+// débloque le dossier auprès de la banque).
+//   • Consuel visé        → toujours obligatoire.
+//   • Originaux reçus banque → obligatoire (sauf dossiers sans originaux
+//     requis) : on ne peut pas contrôler la livraison tant que la banque
+//     n'a pas reçu les documents originaux.
+//   • Récépissé mairie    → obligatoire uniquement pour les dossiers financés
+//     via SOFINCO (seul organisme qui le réclame avant déblocage).
+// Renvoie { bloque, manquants } — `manquants` listé en clair pour l'UI.
+function controleLivraisonBlocage(d) {
+  const manquants = [];
+  if (d.statutConsuel !== 'accepté') manquants.push('Consuel visé');
+  if (!d.dateRecusOriginauxBanque && !d.pasOriginauxRequis) manquants.push('Originaux reçus par la banque');
+  if (d.financement === 'SOFINCO') {
+    const recepisseMairie = !!(d.dateRecepisseMairie || d.recepisseMairieFileId
+      || (d.envoisMairie || []).some(e => e && (e.dateRecepisse || e.recepisseFileId)));
+    if (!recepisseMairie) manquants.push('Récépissé mairie (exigé par SOFINCO)');
+  }
+  return { bloque: manquants.length > 0, manquants };
+}
 
 // Détecte si l'utilisateur est sur mobile (iOS / Android). Sur mobile, un lien
 // `tel:` est sûr (iOS propose ONOFF dans le picker, Android idem). Sur Mac,
@@ -1051,9 +1134,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Originaux signés (entre pose et contrôle livraison)
     dateRecusOriginauxPoseur: '', dateEnvoiOriginauxBanque: '', dateRecusOriginauxBanque: '',
     pasOriginauxRequis: false, // si le dossier ne nécessite pas d'originaux
-    // Process consuel
+    // Process consuel — le Consuel répond : 'accepté' (visé) ou 'visite' (visite demandée)
     dateEnvoiConsuel: '', dateAccordConsuel: '',
-    statutConsuel: '', // '' | 'accepté' | 'refusé'
+    statutConsuel: '', // '' | 'visite' | 'accepté'
     visitesConsuel: [],
     // Process raccordement (demande de raccordement Enedis)
     dateEnvoiRaccordement: '', dateAccordRaccordement: '',
@@ -2680,7 +2763,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsControleLivraison = [];
     dossiersDash.forEach(d => {
       // Consuel accepté ?
-      const consuelAccepte = d.statutConsuel === 'accepté' || (d.dateConsuel && d.statutConsuel !== 'refusé');
+      const consuelAccepte = d.statutConsuel === 'accepté' || (d.dateConsuel && d.statutConsuel !== 'visite');
       if (!consuelAccepte) return;
       // Originaux reçus banque (ou pas requis) ?
       const originauxOk = d.dateRecusOriginauxBanque || d.pasOriginauxRequis;
@@ -9904,11 +9987,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 {formData.statutConsuel && (
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
                     formData.statutConsuel === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
-                    formData.statutConsuel === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                    formData.statutConsuel === 'visite' ? 'bg-sky-100 text-sky-700' :
                     'bg-amber-100 text-amber-700'
                   }`}>
-                    {formData.statutConsuel === 'accepté' ? '✓ Accepté' :
-                     formData.statutConsuel === 'refusé' ? '✗ Refusé' : '⏳ Envoyé'}
+                    {formData.statutConsuel === 'accepté' ? '✓ Visé' :
+                     formData.statutConsuel === 'visite' ? '🔍 Visite demandée' : '⏳ Envoyé'}
                   </span>
                 )}
               </button>
@@ -9935,26 +10018,27 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               {/* 3 boutons toggleables — toujours visibles */}
               {formData.dateEnvoiConsuel && (
                 <div className="mt-3">
-                  <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Décision Consuel (clique pour changer)</div>
+                  <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Retour du Consuel (clique pour changer)</div>
                   <div className="grid grid-cols-3 gap-2">
                     <button type="button" onClick={() => setFormData({ ...formData, statutConsuel: '' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${!formData.statutConsuel || formData.statutConsuel === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ En attente</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, statutConsuel: 'visite' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutConsuel === 'visite' ? 'bg-sky-500 text-white border-sky-600 shadow-md' : 'bg-white text-sky-600 border-sky-200 hover:bg-sky-50'}`}>🔍 Visite demandée</button>
                     <button type="button" onClick={() => {
                       const today = new Date().toISOString().split('T')[0];
                       setFormData({ ...formData, statutConsuel: 'accepté', dateConsuel: formData.dateConsuel || today, consuel: true });
-                    }} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutConsuel === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
-                    <button type="button" onClick={() => setFormData({ ...formData, statutConsuel: 'refusé' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutConsuel === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
+                    }} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutConsuel === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Consuel visé</button>
                   </div>
                 </div>
               )}
 
               {formData.statutConsuel === 'accepté' && !formData.dateControleLivraison && (
                 <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded-lg text-[11px] text-emerald-800 font-bold">
-                  ✅ Consuel accepté — appelle le client pour le contrôle livraison (étape 5 ci-dessous)
+                  ✅ Consuel visé — appelle le client pour le contrôle livraison (étape 5 ci-dessous)
                 </div>
               )}
-              {formData.statutConsuel === 'refusé' && (
-                <div className="mt-2 p-2 bg-rose-100 border border-rose-300 rounded-lg text-[11px] text-rose-800 font-bold">
-                  ✗ Consuel refusé — ajoute une contre-visite ci-dessous
+              {formData.statutConsuel === 'visite' && (
+                <div className="mt-2 p-2 bg-sky-50 border-2 border-sky-300 rounded-lg text-[11px] text-sky-800">
+                  <div className="font-bold">🔍 Le Consuel demande une visite de conformité.</div>
+                  <div className="text-[10px] text-sky-700/90 mt-0.5">→ Cale la date de visite ci-dessous, envoie ton poseur vérifier que tout est aux normes. Si la visite révèle un défaut → remets aux normes et ajoute une contre-visite, jusqu'à l'accord.</div>
                 </div>
               )}
 
@@ -9988,6 +10072,22 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       list[idx] = { ...list[idx], ...updates };
                       setFormData({ ...formData, visitesConsuel: list });
                     };
+                    // Le résultat de la DERNIÈRE visite pilote le statut Consuel :
+                    // dernière visite OK → Consuel visé ; sinon → visite demandée.
+                    const setResultat = (resultat) => {
+                      const list = [...formData.visitesConsuel];
+                      list[idx] = { ...list[idx], resultat };
+                      const last = list[list.length - 1];
+                      const patch = { visitesConsuel: list };
+                      if (last.resultat === 'ok') {
+                        patch.statutConsuel = 'accepté';
+                        patch.dateConsuel = formData.dateConsuel || last.date || new Date().toISOString().split('T')[0];
+                        patch.consuel = true;
+                      } else {
+                        patch.statutConsuel = 'visite';
+                      }
+                      setFormData({ ...formData, ...patch });
+                    };
                     const removeV = () => {
                       setFormData({ ...formData, visitesConsuel: formData.visitesConsuel.filter((_, i) => i !== idx) });
                     };
@@ -10016,12 +10116,29 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Résultat</label>
                             <div className="flex gap-1">
-                              <button type="button" onClick={() => updateV({ resultat: 'ok' })} className={`flex-1 px-2 py-1 rounded text-[10px] font-bold ${v.resultat === 'ok' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-100'}`}>✓ OK</button>
-                              <button type="button" onClick={() => updateV({ resultat: 'a_corriger' })} className={`flex-1 px-2 py-1 rounded text-[10px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
+                              <button type="button" onClick={() => setResultat('ok')} className={`flex-1 px-2 py-1 rounded text-[10px] font-bold ${v.resultat === 'ok' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-100'}`}>✓ OK</button>
+                              <button type="button" onClick={() => setResultat('a_corriger')} className={`flex-1 px-2 py-1 rounded text-[10px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
                             </div>
                           </div>
                         </div>
                         <input type="text" value={v.note || ''} onChange={(e) => updateV({ note: e.target.value })} placeholder="Note / remarques (ex: chemin de câble à refaire)" className={inputCls + ' text-[11px]'} />
+                        {v.resultat === 'a_corriger' && idx === formData.visitesConsuel.length - 1 && (
+                          <div className="mt-2 p-2 bg-amber-50 border border-amber-300 rounded-lg space-y-1.5">
+                            <div className="text-[10px] text-amber-800 font-bold">🔧 À corriger — fais la mise aux normes, puis programme la contre-visite à la nouvelle date communiquée par le Consuel.</div>
+                            <div>
+                              <label className="block text-[9px] font-semibold text-amber-700 mb-0.5">📅 Date de la contre-visite</label>
+                              <div className="flex gap-1">
+                                <input type="date" value="" onChange={(e) => {
+                                  if (!e.target.value) return;
+                                  setFormData({ ...formData, visitesConsuel: [...formData.visitesConsuel, { date: e.target.value, resultat: '', note: '', type: 'contre_visite' }] });
+                                }} className={inputCls} />
+                                <button type="button" onClick={() => {
+                                  setFormData({ ...formData, visitesConsuel: [...formData.visitesConsuel, { date: '', resultat: '', note: '', type: 'contre_visite' }] });
+                                }} className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Pas encore</button>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     );
                   })}
@@ -10099,10 +10216,21 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Contrôle livraison (toi → client)</label>
-                  <div className="flex gap-1">
-                    <input type="date" value={formData.dateControleLivraison || ''} onChange={(e) => setFormData({ ...formData, dateControleLivraison: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateControleLivraison: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
+                  {(() => {
+                    const { bloque, manquants } = controleLivraisonBlocage(formData);
+                    const verrou = bloque && !formData.dateControleLivraison;
+                    return (<>
+                      <div className="flex gap-1">
+                        <input type="date" disabled={verrou} value={formData.dateControleLivraison || ''} onChange={(e) => setFormData({ ...formData, dateControleLivraison: e.target.value })} className={`${inputCls}${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
+                        <button type="button" disabled={verrou} onClick={() => setFormData({ ...formData, dateControleLivraison: new Date().toISOString().split('T')[0] })} className={`flex-shrink-0 px-2 py-1 rounded-xl text-[10px] font-bold whitespace-nowrap ${verrou ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'}`}>Auj.</button>
+                      </div>
+                      {verrou && (
+                        <div className="mt-1 px-2 py-1.5 bg-rose-50 border border-rose-300 rounded-lg text-[10px] text-rose-800 leading-snug">
+                          🔒 <span className="font-bold">Contrôle livraison bloqué</span> — il manque : {manquants.join(' · ')}.
+                        </div>
+                      )}
+                    </>);
+                  })()}
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Appel banque (banque → client)</label>
@@ -10148,7 +10276,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div className="space-y-2">
                   <div className="relative">
                     <select value={formData.statut} onChange={(e) => setFormData({ ...formData, statut: e.target.value })} className={`w-full ${inputCls} pl-12 font-bold text-base appearance-none cursor-pointer`}>
-                      {STATUTS_ORDERED.map(s => (
+                      {STATUTS_ORDERED.filter(s => !s.legacy || s.id === formData.statut).map(s => (
                         <option key={s.id} value={s.id}>{s.emoji}  {s.label}</option>
                       ))}
                     </select>
@@ -11435,8 +11563,37 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               </button>
             </div>
             <select value={d.statut} onChange={(e) => onUpdate({ statut: e.target.value })} className="w-full px-3 py-2 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white font-bold text-sm appearance-none cursor-pointer">
-              {STATUTS_ORDERED.map(s => <option key={s.id} value={s.id} className="text-slate-800">{s.emoji}  {s.label}</option>)}
+              {STATUTS_ORDERED.filter(s => !s.legacy || s.id === d.statut).map(s => <option key={s.id} value={s.id} className="text-slate-800">{s.emoji}  {s.label}</option>)}
             </select>
+            {/* Barre de progression du parcours */}
+            {(() => {
+              const idx = STATUT_ETAPE_INDEX[d.statut];
+              if (idx === undefined) {
+                return <div className="mt-2 text-[10px] font-semibold opacity-80">⚠️ Statut hors parcours</div>;
+              }
+              const refuse = d.statut === 'B3_REFUS_FINANCEMENT';
+              const manque = d.statut === 'B1_MANQUE_DOC';
+              const et = PARCOURS_ETAPES[idx];
+              return (
+                <div className="mt-2.5">
+                  <div className="flex items-center gap-0.5">
+                    {PARCOURS_ETAPES.map((e, i) => (
+                      <div key={i} title={`${e.emoji} ${e.label}`}
+                        className={`h-1.5 flex-1 rounded-full ${
+                          i < idx ? 'bg-white' :
+                          i === idx ? (refuse ? 'bg-red-300' : manque ? 'bg-orange-300' : 'bg-white') :
+                          'bg-white/25'
+                        }`} />
+                    ))}
+                  </div>
+                  <div className="mt-1 text-[10px] font-semibold opacity-90">
+                    Étape {idx + 1}/9 — {et.emoji} {et.label}
+                    {refuse && ' · refusé'}
+                    {manque && ' · docs manquants'}
+                  </div>
+                </div>
+              );
+            })()}
           </div>
           {/* Actions rapides */}
           <div className="flex gap-1.5 mt-2.5 flex-wrap">
@@ -12444,11 +12601,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </span>
                 <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
                   d.statutConsuel === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
-                  d.statutConsuel === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                  d.statutConsuel === 'visite' ? 'bg-sky-100 text-sky-700' :
                   d.dateEnvoiConsuel ? 'bg-blue-100 text-blue-700' :
                   'bg-amber-100 text-amber-700'
                 }`}>
-                  {d.statutConsuel === 'accepté' ? '✓ Accepté' : d.statutConsuel === 'refusé' ? '✗ Refusé' : d.dateEnvoiConsuel ? '📤 Envoyé' : '⏳ Pas envoyé'}
+                  {d.statutConsuel === 'accepté' ? '✓ Visé' : d.statutConsuel === 'visite' ? '🔍 Visite demandée' : d.dateEnvoiConsuel ? '📤 Envoyé' : '⏳ Pas envoyé'}
                 </span>
               </button>
 
@@ -12470,27 +12627,29 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
               </div>
 
-              {/* 3 boutons toggleables */}
+              {/* 3 boutons toggleables — le Consuel répond : visé OU visite demandée */}
               {d.dateEnvoiConsuel && (
                 <div className="mt-1.5 grid grid-cols-3 gap-1">
                   <button onClick={() => onUpdate({ statutConsuel: '' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${!d.statutConsuel || d.statutConsuel === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
+                  <button onClick={() => onUpdate({ statutConsuel: 'visite' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutConsuel === 'visite' ? 'bg-sky-500 text-white border-sky-600 shadow-md' : 'bg-white text-sky-600 border-sky-200 hover:bg-sky-50'}`}>🔍 Visite</button>
                   <button onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     onUpdate({ statutConsuel: 'accepté', dateConsuel: d.dateConsuel || today, consuel: true });
-                  }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutConsuel === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
-                  <button onClick={() => onUpdate({ statutConsuel: 'refusé' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutConsuel === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
+                  }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutConsuel === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Visé</button>
                 </div>
               )}
 
               {d.statutConsuel === 'accepté' && !d.dateControleLivraison && (
-                <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ Accepté — passe au contrôle livraison ↓</div>
+                <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ Consuel visé — passe au contrôle livraison ↓</div>
               )}
-              {d.statutConsuel === 'refusé' && (
-                <div className="mt-1.5 px-2 py-1 bg-rose-100 border border-rose-300 rounded text-[10px] text-rose-800 font-bold">✗ Refusé — ajoute une contre-visite</div>
+              {d.statutConsuel === 'visite' && (
+                <div className="mt-1.5 px-2 py-1.5 bg-sky-50 border border-sky-300 rounded text-[10px] text-sky-800">
+                  🔍 <span className="font-bold">Visite demandée</span> — programme une date de visite ci-dessous et envoie le poseur vérifier les normes. Le résultat de la visite décide : conforme → accord, ou à corriger → on remet aux normes et contre-visite.
+                </div>
               )}
 
               {/* Alerte Consuel — > 7 jours sans accord */}
-              {d.dateEnvoiConsuel && !d.dateConsuel && d.statutConsuel !== 'refusé' && (() => {
+              {d.dateEnvoiConsuel && !d.dateConsuel && d.statutConsuel !== 'visite' && (() => {
                 const jours = Math.floor((new Date() - new Date(d.dateEnvoiConsuel)) / 86400000);
                 if (jours < 7) return <div className="mt-1.5 px-2 py-1 bg-cyan-50 border border-cyan-200 rounded text-[10px] text-cyan-700">⏳ {jours}j — délai normal (sous 7j)</div>;
                 if (jours < 14) return <div className="mt-1.5 px-2 py-1 bg-amber-50 border border-amber-300 rounded text-[10px] text-amber-700 font-bold">⚠️ {jours}j sans accord — relance le Consuel</div>;
@@ -12522,6 +12681,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         list[idx] = { ...list[idx], ...updates };
                         onUpdate({ visitesConsuel: list });
                       };
+                      // Dernière visite OK → Consuel visé ; sinon → visite demandée.
+                      const setResultat = (resultat) => {
+                        const list = [...d.visitesConsuel];
+                        list[idx] = { ...list[idx], resultat };
+                        const last = list[list.length - 1];
+                        const patch = { visitesConsuel: list };
+                        if (last.resultat === 'ok') {
+                          patch.statutConsuel = 'accepté';
+                          patch.dateConsuel = d.dateConsuel || last.date || new Date().toISOString().split('T')[0];
+                          patch.consuel = true;
+                        } else {
+                          patch.statutConsuel = 'visite';
+                        }
+                        onUpdate(patch);
+                      };
                       const removeV = () => {
                         onUpdate({ visitesConsuel: d.visitesConsuel.filter((_, i) => i !== idx) });
                       };
@@ -12544,10 +12718,27 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             <button onClick={() => updateV({ date: new Date().toISOString().split('T')[0] })} className="px-1 py-0.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[9px] font-bold">Auj.</button>
                           </div>
                           <div className="grid grid-cols-2 gap-1 mb-1">
-                            <button onClick={() => updateV({ resultat: 'ok' })} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${v.resultat === 'ok' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-100'}`}>✓ OK</button>
-                            <button onClick={() => updateV({ resultat: 'a_corriger' })} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
+                            <button onClick={() => setResultat('ok')} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${v.resultat === 'ok' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-100'}`}>✓ OK</button>
+                            <button onClick={() => setResultat('a_corriger')} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
                           </div>
                           <input type="text" value={v.note || ''} onChange={(e) => updateV({ note: e.target.value })} placeholder="Note..." className="w-full px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px]" />
+                          {v.resultat === 'a_corriger' && idx === d.visitesConsuel.length - 1 && (
+                            <div className="mt-1 p-1.5 bg-amber-50 border border-amber-300 rounded space-y-1">
+                              <div className="text-[9px] text-amber-800 font-bold">🔧 À corriger — mise aux normes puis programme la contre-visite.</div>
+                              <div>
+                                <label className="block text-[8px] font-semibold text-amber-700 mb-0.5">📅 Date de la contre-visite</label>
+                                <div className="flex gap-1">
+                                  <input type="date" value="" onChange={(e) => {
+                                    if (!e.target.value) return;
+                                    onUpdate({ visitesConsuel: [...d.visitesConsuel, { date: e.target.value, resultat: '', note: '', type: 'contre_visite' }] });
+                                  }} className="flex-1 px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[10px]" />
+                                  <button onClick={() => {
+                                    onUpdate({ visitesConsuel: [...d.visitesConsuel, { date: '', resultat: '', note: '', type: 'contre_visite' }] });
+                                  }} className="px-1 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Pas encore</button>
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -12675,12 +12866,16 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
               )}
 
+              {(() => {
+              const { bloque, manquants } = controleLivraisonBlocage(d);
+              const verrou = bloque && !d.dateControleLivraison;
+              return (<>
               <div className="grid grid-cols-3 gap-1.5">
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5" title="Toi qui appelles le client">📞 Ctrl liv.</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateControleLivraison || ''} onChange={(e) => onUpdate({ dateControleLivraison: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateControleLivraison: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" disabled={verrou} value={d.dateControleLivraison || ''} onChange={(e) => onUpdate({ dateControleLivraison: e.target.value })} className={`flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
+                    <button disabled={verrou} onClick={() => onUpdate({ dateControleLivraison: new Date().toISOString().split('T')[0] })} className={`flex-shrink-0 px-1.5 py-1 rounded text-[9px] font-bold whitespace-nowrap ${verrou ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'}`}>Auj.</button>
                   </div>
                 </div>
                 <div>
@@ -12701,6 +12896,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   </div>
                 </div>
               </div>
+              {verrou && (
+                <div className="mt-1.5 px-2 py-1.5 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-800 leading-snug">
+                  🔒 <span className="font-bold">Contrôle livraison bloqué</span> — il manque : {manquants.join(' · ')}.
+                </div>
+              )}
+              </>);
+              })()}
 
               {/* 📞 Tentatives d'appel contrôle livraison — client ne répond pas (sous la grille) */}
               {!d.dateControleLivraison && (
