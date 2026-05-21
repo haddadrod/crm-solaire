@@ -103,9 +103,11 @@ function computeWorkflowStatut(d) {
   // dossier est en financement (sinon il restait bloqué en sortant de
   // "manque docs" si une date de pose traînait).
   if (d.statutFin === 'envoyé' && d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
-  // Pose réalisée (dateInsta remplie ou statutPose='visite_ok') → phase
-  // financière post-pose, auto-progressée jusqu'au paiement.
-  if (d.dateInsta || d.statutPose === 'visite_ok') {
+  // Pose réalisée — UNIQUEMENT si statutPose==='visite_ok' (bouton « ✓ Posé »).
+  // ⚠️ Ne PAS se fier à dateInsta : ce champ « date de pose » est pré-rempli à
+  // aujourd'hui sur tout nouveau dossier, il ne prouve pas que la pose a eu
+  // lieu. → phase financière post-pose, auto-progressée jusqu'au paiement.
+  if (d.statutPose === 'visite_ok') {
     // Paiement reçu → PAYÉ (statut terminal du cycle).
     if (d.payeClient || d.datePaiementBanque) return 'W_DOSSIER_PAYER';
     // Contrôle livraison fait → ATTENTE DÉBLOCAGE (la banque vérifie et débloque).
@@ -9902,9 +9904,12 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-gradient-to-r ${st.color} text-white shadow-sm`}>
                       <span>{st.emoji}</span>{st.label}
                     </span>
-                    {formData.statutLocked
-                      ? <span className="text-[10px] text-amber-600 font-semibold">🔒 verrouillé — pas de recalcul auto</span>
-                      : changed && <span className="text-[10px] text-blue-600 font-semibold">↻ sera appliqué à l'enregistrement</span>}
+                    <button type="button" onClick={() => setFormData({ ...formData, statutLocked: !formData.statutLocked })}
+                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition ${formData.statutLocked ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                      title={formData.statutLocked ? 'Statut verrouillé — clic pour repasser en calcul auto' : 'Statut en auto — clic pour figer le choix manuel'}>
+                      {formData.statutLocked ? '🔒 Verrouillé' : '🔓 Auto'}
+                    </button>
+                    {!formData.statutLocked && changed && <span className="text-[10px] text-blue-600 font-semibold">↻ sera appliqué à l'enregistrement</span>}
                   </div>
                 );
               })()}
@@ -10281,7 +10286,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               return (
                 <div className="space-y-2">
                   <div className="relative">
-                    <select value={formData.statut} onChange={(e) => setFormData({ ...formData, statut: e.target.value })} className={`w-full ${inputCls} pl-12 font-bold text-base appearance-none cursor-pointer`}>
+                    <select value={formData.statut} onChange={(e) => setFormData({ ...formData, statut: e.target.value, statutLocked: true })} className={`w-full ${inputCls} pl-12 font-bold text-base appearance-none cursor-pointer`}>
                       {STATUTS_ORDERED.filter(s => !s.legacy || s.id === formData.statut).map(s => (
                         <option key={s.id} value={s.id}>{s.emoji}  {s.label}</option>
                       ))}
@@ -11566,7 +11571,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 {d.statutLocked ? '🔒 Verrouillé' : '🔓 Auto'}
               </button>
             </div>
-            <select value={d.statut} onChange={(e) => onUpdate({ statut: e.target.value })} className="w-full px-3 py-2 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white font-bold text-sm appearance-none cursor-pointer">
+            <select value={d.statut} onChange={(e) => onUpdate({ statut: e.target.value, statutLocked: true })} className="w-full px-3 py-2 bg-white/20 backdrop-blur border border-white/30 rounded-xl text-white font-bold text-sm appearance-none cursor-pointer">
               {STATUTS_ORDERED.filter(s => !s.legacy || s.id === d.statut).map(s => <option key={s.id} value={s.id} className="text-slate-800">{s.emoji}  {s.label}</option>)}
             </select>
             {/* Barre de progression du parcours */}
