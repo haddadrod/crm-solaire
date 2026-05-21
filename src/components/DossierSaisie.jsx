@@ -122,6 +122,23 @@ function statutMilestoneLabel(fromStatut, toStatut) {
 const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM', 'FINANCO', 'FRANFINANCE'];
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
+// Prérequis avant de pouvoir saisir le contrôle de livraison (= étape qui
+// débloque le dossier auprès de la banque).
+//   • Consuel visé      → toujours obligatoire.
+//   • Récépissé mairie  → obligatoire uniquement pour les dossiers financés
+//     via SOFINCO (seul organisme qui le réclame avant déblocage).
+// Renvoie { bloque, manquants } — `manquants` listé en clair pour l'UI.
+function controleLivraisonBlocage(d) {
+  const manquants = [];
+  if (d.statutConsuel !== 'accepté') manquants.push('Consuel visé');
+  if (d.financement === 'SOFINCO') {
+    const recepisseMairie = !!(d.dateRecepisseMairie || d.recepisseMairieFileId
+      || (d.envoisMairie || []).some(e => e && (e.dateRecepisse || e.recepisseFileId)));
+    if (!recepisseMairie) manquants.push('Récépissé mairie (exigé par SOFINCO)');
+  }
+  return { bloque: manquants.length > 0, manquants };
+}
+
 // Détecte si l'utilisateur est sur mobile (iOS / Android). Sur mobile, un lien
 // `tel:` est sûr (iOS propose ONOFF dans le picker, Android idem). Sur Mac,
 // `tel:` est intercepté par Continuity → on doit utiliser la Web App.
@@ -10132,10 +10149,21 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Contrôle livraison (toi → client)</label>
-                  <div className="flex gap-1">
-                    <input type="date" value={formData.dateControleLivraison || ''} onChange={(e) => setFormData({ ...formData, dateControleLivraison: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateControleLivraison: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
+                  {(() => {
+                    const { bloque, manquants } = controleLivraisonBlocage(formData);
+                    const verrou = bloque && !formData.dateControleLivraison;
+                    return (<>
+                      <div className="flex gap-1">
+                        <input type="date" disabled={verrou} value={formData.dateControleLivraison || ''} onChange={(e) => setFormData({ ...formData, dateControleLivraison: e.target.value })} className={`${inputCls}${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
+                        <button type="button" disabled={verrou} onClick={() => setFormData({ ...formData, dateControleLivraison: new Date().toISOString().split('T')[0] })} className={`flex-shrink-0 px-2 py-1 rounded-xl text-[10px] font-bold whitespace-nowrap ${verrou ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'}`}>Auj.</button>
+                      </div>
+                      {verrou && (
+                        <div className="mt-1 px-2 py-1.5 bg-rose-50 border border-rose-300 rounded-lg text-[10px] text-rose-800 leading-snug">
+                          🔒 <span className="font-bold">Contrôle livraison bloqué</span> — il manque : {manquants.join(' · ')}.
+                        </div>
+                      )}
+                    </>);
+                  })()}
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Appel banque (banque → client)</label>
@@ -12740,12 +12768,16 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
               )}
 
+              {(() => {
+              const { bloque, manquants } = controleLivraisonBlocage(d);
+              const verrou = bloque && !d.dateControleLivraison;
+              return (<>
               <div className="grid grid-cols-3 gap-1.5">
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5" title="Toi qui appelles le client">📞 Ctrl liv.</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateControleLivraison || ''} onChange={(e) => onUpdate({ dateControleLivraison: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateControleLivraison: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" disabled={verrou} value={d.dateControleLivraison || ''} onChange={(e) => onUpdate({ dateControleLivraison: e.target.value })} className={`flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
+                    <button disabled={verrou} onClick={() => onUpdate({ dateControleLivraison: new Date().toISOString().split('T')[0] })} className={`flex-shrink-0 px-1.5 py-1 rounded text-[9px] font-bold whitespace-nowrap ${verrou ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'}`}>Auj.</button>
                   </div>
                 </div>
                 <div>
@@ -12766,6 +12798,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   </div>
                 </div>
               </div>
+              {verrou && (
+                <div className="mt-1.5 px-2 py-1.5 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-800 leading-snug">
+                  🔒 <span className="font-bold">Contrôle livraison bloqué</span> — il manque : {manquants.join(' · ')}.
+                </div>
+              )}
+              </>);
+              })()}
 
               {/* 📞 Tentatives d'appel contrôle livraison — client ne répond pas (sous la grille) */}
               {!d.dateControleLivraison && (
