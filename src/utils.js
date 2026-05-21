@@ -71,7 +71,9 @@ export function computeWorkflowStatut(d) {
   if (d.statutFin === 'envoyé' && d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
   // Pose réalisée → phase financière post-pose, auto-progressée jusqu'au
   // paiement : attente accord déf → contrôle livraison → attente déblocage → payé.
-  if (d.dateInsta || d.statutPose === 'visite_ok') {
+  // ⚠️ Uniquement statutPose==='visite_ok' : dateInsta est pré-rempli sur tout
+  // nouveau dossier, il ne prouve pas que la pose a eu lieu.
+  if (d.statutPose === 'visite_ok') {
     if (d.payeClient || d.datePaiementBanque) return 'W_DOSSIER_PAYER';
     if (d.dateControleLivraison) return 'F_ATTENTE_DEBLOCAGE';
     if (d.dateRecusOriginauxBanque || d.pasOriginauxRequis) return 'F1_CONTROLE_LIV_BANQUE';
