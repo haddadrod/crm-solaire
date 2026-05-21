@@ -14706,7 +14706,7 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
 // de badges affichés. Un rôle absent de cette map voit toutes les alertes
 // non adminOnly (comportement par défaut).
 const ALERTES_PAR_ROLE = {
-  envoi_finance: ['aEnvoyerBanque', 'financement', 'originaux'],
+  envoi_finance: ['aEnvoyerBanque', 'financement', 'manqueDoc', 'originaux'],
   compta: ['facturesManquantes'], // la compta ne suit que les factures manquantes
   // l'administratif suit les démarches : mairie, Consuel, raccordement, récup. TVA
   administratif: ['aEnvoyerMairie', 'aEnvoyerConsuel', 'aEnvoyerRaccordement', 'recup_tva'],
