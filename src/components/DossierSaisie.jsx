@@ -1053,6 +1053,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     pasOriginauxRequis: false, // si le dossier ne nécessite pas d'originaux
     // Process consuel
     dateEnvoiConsuel: '', dateAccordConsuel: '',
+    dateRetourConsuel: '', // date du retour quand le Consuel répond négativement
     statutConsuel: '', // '' | 'accepté' | 'refusé'
     visitesConsuel: [],
     // Process raccordement (demande de raccordement Enedis)
@@ -1984,6 +1985,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dateRecusOriginauxBanque: d.dateRecusOriginauxBanque || '',
       pasOriginauxRequis: d.pasOriginauxRequis || false,
       dateEnvoiConsuel: d.dateEnvoiConsuel || '', dateAccordConsuel: d.dateAccordConsuel || '',
+      dateRetourConsuel: d.dateRetourConsuel || '',
       statutConsuel: d.statutConsuel || '',
       visitesConsuel: d.visitesConsuel || [],
       dateEnvoiRaccordement: d.dateEnvoiRaccordement || '', dateAccordRaccordement: d.dateAccordRaccordement || '',
@@ -9952,8 +9954,16 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </div>
               )}
               {formData.statutConsuel === 'refusé' && (
-                <div className="mt-2 p-2 bg-rose-100 border border-rose-300 rounded-lg text-[11px] text-rose-800 font-bold">
-                  ✗ Consuel refusé — ajoute une contre-visite ci-dessous
+                <div className="mt-2 p-2 bg-rose-50 border-2 border-rose-300 rounded-lg space-y-2">
+                  <div className="text-[11px] text-rose-800 font-bold">✗ Consuel refusé — le Consuel demande une modification ou une visite.</div>
+                  <div>
+                    <label className="block text-[10px] font-semibold text-rose-700 mb-1">📥 Date du retour Consuel</label>
+                    <div className="flex gap-1">
+                      <input type="date" value={formData.dateRetourConsuel || ''} onChange={(e) => setFormData({ ...formData, dateRetourConsuel: e.target.value })} className={inputCls + ' text-xs'} />
+                      <button type="button" onClick={() => setFormData({ ...formData, dateRetourConsuel: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-rose-700/80">→ Fais la modification demandée, ou ajoute une contre-visite ci-dessous.</p>
                 </div>
               )}
 
@@ -12483,7 +12493,16 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ Accepté — passe au contrôle livraison ↓</div>
               )}
               {d.statutConsuel === 'refusé' && (
-                <div className="mt-1.5 px-2 py-1 bg-rose-100 border border-rose-300 rounded text-[10px] text-rose-800 font-bold">✗ Refusé — ajoute une contre-visite</div>
+                <div className="mt-1.5 px-2 py-1.5 bg-rose-50 border border-rose-300 rounded space-y-1.5">
+                  <div className="text-[10px] text-rose-800 font-bold">✗ Refusé — modification ou visite demandée</div>
+                  <div>
+                    <label className="block text-[9px] font-semibold text-rose-700 mb-0.5">📥 Date du retour Consuel</label>
+                    <div className="flex gap-1">
+                      <input type="date" value={d.dateRetourConsuel || ''} onChange={(e) => onUpdate({ dateRetourConsuel: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-rose-200 rounded text-[10px]" />
+                      <button onClick={() => onUpdate({ dateRetourConsuel: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    </div>
+                  </div>
+                </div>
               )}
 
               {/* Alerte Consuel — > 7 jours sans accord */}
