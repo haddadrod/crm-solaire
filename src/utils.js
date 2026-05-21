@@ -85,12 +85,14 @@ export function computeWorkflowStatut(d) {
   if (d.statutFin === 'accepté') return 'B2_A_ENVOYER_POSE';
   if (d.dateEnvoiFin) return 'B1_EN_COURS_FINANCEMENT';
   if (d.statutControleQualite === 'ok') return 'B_A_ENVOYER_BANQUE';
-  return 'A_EN_COURS';
+  // Date de contrôle qualité saisie → CONTRÔLE QUALITÉ (CQ en cours)
+  if (d.dateControleQualite) return 'A1_CONTROLE_QUALITE';
+  return 'A_EN_COURS'; // dossier scanné, CQ pas encore démarré
 }
 
 // Liste des statuts auto-calculables (le reste est verrouillé manuel).
 export const AUTO_STATUTS = [
-  'A_EN_COURS', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC',
+  'A_EN_COURS', 'A1_CONTROLE_QUALITE', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC',
   'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT',
   'G_ATTENTE_ACCORD_DEF', 'F_ATTENTE_DEBLOCAGE', 'F1_CONTROLE_LIV_BANQUE', 'W_DOSSIER_PAYER',
 ];
