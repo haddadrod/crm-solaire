@@ -9988,6 +9988,22 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       list[idx] = { ...list[idx], ...updates };
                       setFormData({ ...formData, visitesConsuel: list });
                     };
+                    // Le résultat de la DERNIÈRE visite pilote le statut Consuel :
+                    // dernière visite OK → Consuel visé ; sinon → visite demandée.
+                    const setResultat = (resultat) => {
+                      const list = [...formData.visitesConsuel];
+                      list[idx] = { ...list[idx], resultat };
+                      const last = list[list.length - 1];
+                      const patch = { visitesConsuel: list };
+                      if (last.resultat === 'ok') {
+                        patch.statutConsuel = 'accepté';
+                        patch.dateConsuel = formData.dateConsuel || last.date || new Date().toISOString().split('T')[0];
+                        patch.consuel = true;
+                      } else {
+                        patch.statutConsuel = 'visite';
+                      }
+                      setFormData({ ...formData, ...patch });
+                    };
                     const removeV = () => {
                       setFormData({ ...formData, visitesConsuel: formData.visitesConsuel.filter((_, i) => i !== idx) });
                     };
@@ -10016,8 +10032,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Résultat</label>
                             <div className="flex gap-1">
-                              <button type="button" onClick={() => updateV({ resultat: 'ok' })} className={`flex-1 px-2 py-1 rounded text-[10px] font-bold ${v.resultat === 'ok' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-100'}`}>✓ OK</button>
-                              <button type="button" onClick={() => updateV({ resultat: 'a_corriger' })} className={`flex-1 px-2 py-1 rounded text-[10px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
+                              <button type="button" onClick={() => setResultat('ok')} className={`flex-1 px-2 py-1 rounded text-[10px] font-bold ${v.resultat === 'ok' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-100'}`}>✓ OK</button>
+                              <button type="button" onClick={() => setResultat('a_corriger')} className={`flex-1 px-2 py-1 rounded text-[10px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
                             </div>
                           </div>
                         </div>
@@ -12539,6 +12555,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         list[idx] = { ...list[idx], ...updates };
                         onUpdate({ visitesConsuel: list });
                       };
+                      // Dernière visite OK → Consuel visé ; sinon → visite demandée.
+                      const setResultat = (resultat) => {
+                        const list = [...d.visitesConsuel];
+                        list[idx] = { ...list[idx], resultat };
+                        const last = list[list.length - 1];
+                        const patch = { visitesConsuel: list };
+                        if (last.resultat === 'ok') {
+                          patch.statutConsuel = 'accepté';
+                          patch.dateConsuel = d.dateConsuel || last.date || new Date().toISOString().split('T')[0];
+                          patch.consuel = true;
+                        } else {
+                          patch.statutConsuel = 'visite';
+                        }
+                        onUpdate(patch);
+                      };
                       const removeV = () => {
                         onUpdate({ visitesConsuel: d.visitesConsuel.filter((_, i) => i !== idx) });
                       };
@@ -12561,8 +12592,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             <button onClick={() => updateV({ date: new Date().toISOString().split('T')[0] })} className="px-1 py-0.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[9px] font-bold">Auj.</button>
                           </div>
                           <div className="grid grid-cols-2 gap-1 mb-1">
-                            <button onClick={() => updateV({ resultat: 'ok' })} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${v.resultat === 'ok' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-100'}`}>✓ OK</button>
-                            <button onClick={() => updateV({ resultat: 'a_corriger' })} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
+                            <button onClick={() => setResultat('ok')} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${v.resultat === 'ok' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-100'}`}>✓ OK</button>
+                            <button onClick={() => setResultat('a_corriger')} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
                           </div>
                           <input type="text" value={v.note || ''} onChange={(e) => updateV({ note: e.target.value })} placeholder="Note..." className="w-full px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px]" />
                           {v.resultat === 'a_corriger' && idx === d.visitesConsuel.length - 1 && (
