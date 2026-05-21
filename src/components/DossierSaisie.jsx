@@ -11238,6 +11238,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const refFinancement = useRef(null);
   const refPose = useRef(null);
   const refConsuel = useRef(null);
+  const refRaccordement = useRef(null);
   const refMairie = useRef(null);
 
   // Pliage des sections (étapes process + blocs métier). Tout plié par défaut
@@ -11245,7 +11246,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   // ouvre/ferme. Si on arrive via une alerte (scrollTo), l'étape ciblée
   // s'ouvre automatiquement.
   const [foldedSteps, setFoldedSteps] = useState({
-    cq: true, mairie: true, fin: true, pose: true, consuel: true, paiement: true,
+    cq: true, mairie: true, fin: true, pose: true, consuel: true, raccordement: true, paiement: true,
     produits: true, regies: true, poseurs: true, fournisseurs: true,
   });
   const toggleStep = (key) => setFoldedSteps(prev => ({ ...prev, [key]: !prev[key] }));
@@ -11264,6 +11265,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       financement: 'fin', envoiBanque: 'fin',
       pose: 'pose', envoiPose: 'pose', poseurs: null,
       consuel: 'consuel', envoiConsuel: 'consuel',
+      raccordement: 'raccordement', envoiRaccordement: 'raccordement', aEnvoyerRaccordement: 'raccordement',
       paiement: 'paiement', controleLivraison: 'paiement', originaux: 'paiement', tva: 'paiement', recupTva: 'paiement',
     })[scrollTo];
     if (stepKey) setFoldedSteps(prev => ({ ...prev, [stepKey]: false }));
@@ -11279,6 +11281,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       else if (scrollTo === 'financement' || scrollTo === 'envoiBanque') target = refFinancement.current;
       else if (scrollTo === 'pose' || scrollTo === 'envoiPose') target = refPose.current;
       else if (scrollTo === 'consuel' || scrollTo === 'envoiConsuel') target = refConsuel.current;
+      else if (scrollTo === 'raccordement' || scrollTo === 'envoiRaccordement' || scrollTo === 'aEnvoyerRaccordement') target = refRaccordement.current;
       if (target) {
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         // Effet flash pour attirer l'œil
@@ -12514,6 +12517,57 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   </div>
                 )}
               </div>
+              </>)}
+            </div>
+
+            {/* ============ RACCORDEMENT ENEDIS ============ */}
+            <div ref={refRaccordement} className="bg-sky-50 border-2 border-sky-200 rounded-xl p-2 mb-2">
+              <button onClick={() => toggleStep('raccordement')} className={`w-full text-[10px] font-bold text-sky-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.raccordement ? '' : 'mb-1.5'} hover:opacity-80`}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-sky-600 text-[9px]">{foldedSteps.raccordement ? '▶' : '▼'}</span>
+                  <span>🔌 Raccordement</span>
+                  {foldedSteps.raccordement && d.dateEnvoiRaccordement && (
+                    <span className="text-sky-500 font-normal normal-case ml-1">— envoi {new Date(d.dateEnvoiRaccordement).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
+                  )}
+                </span>
+                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
+                  d.statutRaccordement === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
+                  d.statutRaccordement === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                  d.dateEnvoiRaccordement ? 'bg-blue-100 text-blue-700' :
+                  'bg-amber-100 text-amber-700'
+                }`}>
+                  {d.statutRaccordement === 'accepté' ? '✓ Accepté' : d.statutRaccordement === 'refusé' ? '✗ Refusé' : d.dateEnvoiRaccordement ? '📤 Envoyé' : '⏳ Pas envoyé'}
+                </span>
+              </button>
+
+              {!foldedSteps.raccordement && (<>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Demande envoyée</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.dateEnvoiRaccordement || ''} onChange={(e) => onUpdate({ dateEnvoiRaccordement: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-sky-200 rounded text-[10px]" />
+                    <button onClick={() => onUpdate({ dateEnvoiRaccordement: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Effectué</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={d.dateAccordRaccordement || ''} onChange={(e) => onUpdate({ dateAccordRaccordement: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-sky-200 rounded text-[10px]" />
+                    <button onClick={() => onUpdate({ dateAccordRaccordement: new Date().toISOString().split('T')[0], statutRaccordement: 'accepté' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
+                </div>
+              </div>
+
+              {d.dateEnvoiRaccordement && (
+                <div className="mt-1.5 grid grid-cols-3 gap-1">
+                  <button onClick={() => onUpdate({ statutRaccordement: '' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${!d.statutRaccordement || d.statutRaccordement === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
+                  <button onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    onUpdate({ statutRaccordement: 'accepté', dateAccordRaccordement: d.dateAccordRaccordement || today });
+                  }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutRaccordement === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
+                  <button onClick={() => onUpdate({ statutRaccordement: 'refusé' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutRaccordement === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
+                </div>
+              )}
               </>)}
             </div>
 
