@@ -7674,7 +7674,10 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                             </div>
                           </div>
                           <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${roleInfo.color}`}>{roleInfo.label}</span>
-                          {linkedTo && <span className="flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">🔗 {linkedTo}</span>}
+                          {/* Le rattachement poseur/régie ne concerne QUE ces 2 rôles.
+                              Une donnée linkedTo qui traîne sur un admin/autre rôle
+                              ne doit pas s'afficher (lien sans aucun sens). */}
+                          {(role === 'poseur' || role === 'regie') && linkedTo && <span className="flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">🔗 {linkedTo}</span>}
                           {(role === 'poseur' || role === 'regie') && !linkedTo && (
                             <span className="flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">⚠️ Non rattaché</span>
                           )}
