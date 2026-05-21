@@ -991,6 +991,24 @@ export default function DossierSaisie({ authUser, onLogout }) {
           voirCA: false,
           filtreDossiers: 'tous',
         };
+      case 'administratif':
+        // Démarches : mairie, raccordement, Consuel, récup. TVA. Voit tous les
+        // dossiers et peut les modifier (pour saisir ces dates), sans accès
+        // marges / CA / dashboard / réglages.
+        return {
+          voirTousDossiers: true,
+          voirMarges: false,
+          voirBLFactures: false,
+          creerDossier: false,
+          supprimerDossier: false,
+          modifierTous: true,
+          voirRapportPaiements: false,
+          voirDashboard: false,
+          voirReglages: false,
+          cocherPaiements: false,
+          voirCA: false,
+          filtreDossiers: 'tous',
+        };
       default: // 'equipe' ou rôle non défini
         return {
           voirTousDossiers: true,
@@ -1037,6 +1055,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dateEnvoiConsuel: '', dateAccordConsuel: '',
     statutConsuel: '', // '' | 'accepté' | 'refusé'
     visitesConsuel: [],
+    // Process raccordement (demande de raccordement Enedis)
+    dateEnvoiRaccordement: '', dateAccordRaccordement: '',
+    statutRaccordement: '', // '' | 'accepté' | 'refusé'
     // Process mairie (déclaration préalable / autorisation d'urbanisme)
     dateEnvoiMairie: '', dateRecepisseMairie: '', dateAccordMairie: '',
     recepisseMairieFileId: '', // PDF du récépissé reçu après dépôt en mairie
@@ -1965,6 +1986,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dateEnvoiConsuel: d.dateEnvoiConsuel || '', dateAccordConsuel: d.dateAccordConsuel || '',
       statutConsuel: d.statutConsuel || '',
       visitesConsuel: d.visitesConsuel || [],
+      dateEnvoiRaccordement: d.dateEnvoiRaccordement || '', dateAccordRaccordement: d.dateAccordRaccordement || '',
+      statutRaccordement: d.statutRaccordement || '',
       dateEnvoiMairie: d.dateEnvoiMairie || '', dateRecepisseMairie: d.dateRecepisseMairie || '', dateAccordMairie: d.dateAccordMairie || '',
       recepisseMairieFileId: d.recepisseMairieFileId || '',
       statutMairie: d.statutMairie || '',
@@ -2815,6 +2838,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsAEnvoyerConsuel.sort((a, b) => b.jours - a.jours);
 
+    // Rappels À envoyer Raccordement — pose terminée mais demande de
+    // raccordement Enedis pas encore envoyée. Même logique que le Consuel.
+    const rappelsAEnvoyerRaccordement = [];
+    dossiersDash.forEach(d => {
+      const poseFinie = d.statutPose === 'visite_ok' || !!d.dateInsta;
+      if (!poseFinie) return;
+      if (d.dateEnvoiRaccordement) return; // déjà envoyé
+      if (finalStatuses.includes(d.statut)) return;
+      const ref = d.dateInsta || d.savedAt || d.createdAt;
+      const jours = ref ? joursEcoules(ref) : 0;
+      let level = 'warn';
+      if (jours >= 5) level = 'critical';
+      else if (jours >= 2) level = 'high';
+      rappelsAEnvoyerRaccordement.push({ dossier: d, jours, level });
+    });
+    rappelsAEnvoyerRaccordement.sort((a, b) => b.jours - a.jours);
+
     // Rappels Originaux — pose terminée mais originaux pas reçus banque
     const rappelsOriginaux = [];
     dossiersDash.forEach(d => {
@@ -2903,7 +2943,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes };
+    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -3112,6 +3152,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     poseur: { emoji: '🔧', label: 'Poseur', bg: 'bg-amber-100', text: 'text-amber-700', border: 'border-amber-300' },
                     regie: { emoji: '🤝', label: 'Régie', bg: 'bg-purple-100', text: 'text-purple-700', border: 'border-purple-300' },
                     compta: { emoji: '💰', label: 'Compta', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' },
+                    administratif: { emoji: '🏛️', label: 'Administratif', bg: 'bg-sky-100', text: 'text-sky-700', border: 'border-sky-300' },
                   };
                   const r = currentUserRole && roleMeta[currentUserRole];
                   return (
@@ -3139,6 +3180,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       <option value="poseur">🔧 Poseur</option>
                       <option value="regie">🤝 Régie</option>
                       <option value="compta">💰 Compta</option>
+                      <option value="administratif">🏛️ Administratif</option>
                     </select>
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-sm">👁️</span>
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] opacity-60">▼</span>
@@ -3178,6 +3220,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsPoseNonFinie={dashboard.rappelsPoseNonFinie || []}
             rappelsAEnvoyerMairie={dashboard.rappelsAEnvoyerMairie || []}
             rappelsAEnvoyerConsuel={dashboard.rappelsAEnvoyerConsuel || []}
+            rappelsAEnvoyerRaccordement={dashboard.rappelsAEnvoyerRaccordement || []}
             rappelsOriginaux={dashboard.rappelsOriginaux || []}
             rappelsControleLivraison={dashboard.rappelsControleLivraison || []}
             rappelsPaiement={dashboard.rappelsPaiement || []}
@@ -3669,6 +3712,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 poseNonFinie: 'pose',
                 aEnvoyerMairie: 'mairie',
                 aEnvoyerConsuel: 'consuel',
+                aEnvoyerRaccordement: 'raccordement',
                 facturesManquantes: 'poseurs',
                 originaux: 'paiement',
                 controle: 'paiement',
@@ -7211,6 +7255,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
     { id: 'poseur', label: '🔧 Poseur', desc: 'Voit uniquement ses chantiers + récap paiements, lecture seule', color: 'bg-amber-100 text-amber-700 border-amber-300' },
     { id: 'regie', label: '🤝 Régie', desc: 'Voit uniquement ses dossiers + récap paiements, lecture seule', color: 'bg-purple-100 text-purple-700 border-purple-300' },
     { id: 'compta', label: '💰 Compta', desc: 'Gère les paiements et factures', color: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
+    { id: 'administratif', label: '🏛️ Administratif', desc: 'Démarches mairie, raccordement, Consuel, récup. TVA — ne voit que ces alertes', color: 'bg-sky-100 text-sky-700 border-sky-300' },
   ];
 
   // La gestion des comptes passe par /api/users (fonction serverless Vercel).
@@ -7989,7 +8034,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
   // pour une nouvelle saisie afin de guider le remplissage initial.
   const [foldedSteps, setFoldedSteps] = useState(() => ({
     cq: !!editingId, mairie: !!editingId, financement: !!editingId,
-    pose: !!editingId, consuel: !!editingId, paiement: !!editingId,
+    pose: !!editingId, consuel: !!editingId, raccordement: !!editingId, paiement: !!editingId,
   }));
   const toggleStep = (k) => setFoldedSteps(prev => ({ ...prev, [k]: !prev[k] }));
 
@@ -9939,6 +9984,59 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   })}
                 </div>
               </div>
+              </>)}
+            </div>
+
+            {/* ============ ÉTAPE 3bis : RACCORDEMENT ENEDIS ============ */}
+            <div className="bg-sky-50 border-2 border-sky-200 rounded-xl p-3 mb-3">
+              <button type="button" onClick={() => toggleStep('raccordement')} className={`w-full text-[11px] font-bold text-sky-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.raccordement ? '' : 'mb-2'}`}>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-sky-600 text-[9px]">{foldedSteps.raccordement ? '▶' : '▼'}</span>
+                  <span>🔌 Raccordement (Enedis)</span>
+                </span>
+                {formData.statutRaccordement && (
+                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                    formData.statutRaccordement === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
+                    formData.statutRaccordement === 'refusé' ? 'bg-rose-100 text-rose-700' :
+                    'bg-amber-100 text-amber-700'
+                  }`}>
+                    {formData.statutRaccordement === 'accepté' ? '✓ Accepté' :
+                     formData.statutRaccordement === 'refusé' ? '✗ Refusé' : '⏳ Envoyé'}
+                  </span>
+                )}
+              </button>
+
+              {!foldedSteps.raccordement && (<>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Demande envoyée</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={formData.dateEnvoiRaccordement || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiRaccordement: e.target.value })} className={inputCls} />
+                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiRaccordement: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Raccordement effectué</label>
+                  <div className="flex gap-1">
+                    <input type="date" value={formData.dateAccordRaccordement || ''} onChange={(e) => setFormData({ ...formData, dateAccordRaccordement: e.target.value })} className={inputCls} />
+                    <button type="button" onClick={() => setFormData({ ...formData, dateAccordRaccordement: new Date().toISOString().split('T')[0], statutRaccordement: 'accepté' })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
+                </div>
+              </div>
+
+              {formData.dateEnvoiRaccordement && (
+                <div className="mt-3">
+                  <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Statut raccordement (clique pour changer)</div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <button type="button" onClick={() => setFormData({ ...formData, statutRaccordement: '' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${!formData.statutRaccordement || formData.statutRaccordement === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ En attente</button>
+                    <button type="button" onClick={() => {
+                      const today = new Date().toISOString().split('T')[0];
+                      setFormData({ ...formData, statutRaccordement: 'accepté', dateAccordRaccordement: formData.dateAccordRaccordement || today });
+                    }} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutRaccordement === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, statutRaccordement: 'refusé' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutRaccordement === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
+                  </div>
+                </div>
+              )}
               </>)}
             </div>
 
@@ -14312,11 +14410,13 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
 const ALERTES_PAR_ROLE = {
   envoi_finance: ['aEnvoyerBanque', 'financement', 'originaux'],
   compta: ['facturesManquantes'], // la compta ne suit que les factures manquantes
+  // l'administratif suit les démarches : mairie, Consuel, raccordement, récup. TVA
+  administratif: ['aEnvoyerMairie', 'aEnvoyerConsuel', 'aEnvoyerRaccordement', 'recup_tva'],
   poseur: [], // le poseur ne voit aucune alerte
   regie: [],  // la régie ne voit aucune alerte
 };
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, isAdmin, currentUserRole, onClick }) {
   // Définition des badges
   const badges = [
     {
@@ -14426,6 +14526,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-teal-200',
       colorText: 'text-teal-700',
       tooltip: 'Pose terminée — dossiers à envoyer en Consuel',
+    },
+    {
+      type: 'aEnvoyerRaccordement',
+      label: 'Raccordement',
+      emoji: '🔌',
+      count: (rappelsAEnvoyerRaccordement || []).length,
+      adminOnly: false,
+      color: 'from-sky-500 to-blue-500',
+      colorBg: 'bg-sky-50',
+      colorBorder: 'border-sky-200',
+      colorText: 'text-sky-700',
+      tooltip: 'Pose terminée — demande de raccordement Enedis à envoyer',
     },
     {
       type: 'originaux',
@@ -14649,6 +14761,16 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
       gradient: 'from-teal-500 to-cyan-500',
       bgHeader: 'from-teal-50 to-cyan-50',
       borderColor: 'border-teal-200',
+      lineLabel: (d) => d.dateInsta ? `Posé le ${new Date(d.dateInsta).toLocaleDateString('fr-FR')}` : 'Pose terminée',
+      suffixLabel: 'depuis pose',
+    },
+    aEnvoyerRaccordement: {
+      title: '🔌 Demandes de raccordement à envoyer',
+      subtitle: 'Pose terminée — il faut envoyer la demande de raccordement Enedis',
+      items: dashboard.rappelsAEnvoyerRaccordement || [],
+      gradient: 'from-sky-500 to-blue-500',
+      bgHeader: 'from-sky-50 to-blue-50',
+      borderColor: 'border-sky-200',
       lineLabel: (d) => d.dateInsta ? `Posé le ${new Date(d.dateInsta).toLocaleDateString('fr-FR')}` : 'Pose terminée',
       suffixLabel: 'depuis pose',
     },
