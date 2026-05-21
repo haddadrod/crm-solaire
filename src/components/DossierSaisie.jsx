@@ -11054,37 +11054,54 @@ const buildWhatsAppLink = (phone, message) => {
 // la société du dossier (cf. TEMPLATES_CATALOG dans pdfTemplates.js). Le clic
 // déclenche la génération + téléchargement directs.
 function PdfGeneratorPanel({ dossier }) {
-  const [busy, setBusy] = useState('');
+  const [busy, setBusy] = useState(false);
   const templates = TEMPLATES_CATALOG[dossier.societe] || [];
   if (templates.length === 0) return null;
 
-  const handleGenerate = async (tpl) => {
-    setBusy(tpl.id);
+  const generateOne = async (tpl) => {
     try {
       await tpl.generate(dossier);
     } catch (e) {
       console.error('[pdf]', e);
-      alert(`Erreur génération PDF : ${e.message}`);
+      alert(`Erreur génération PDF "${tpl.label}" : ${e.message}`);
+    }
+  };
+
+  // Menu d'action : on lit le choix puis on remet le select sur le placeholder
+  // (value="" contrôlé) — ce n'est pas un champ, juste un déclencheur.
+  const handleSelect = async (e) => {
+    const val = e.target.value;
+    if (!val || busy) return;
+    setBusy(true);
+    try {
+      if (val === '__all__') {
+        for (const tpl of templates) await generateOne(tpl);
+      } else {
+        const tpl = templates.find(t => t.id === val);
+        if (tpl) await generateOne(tpl);
+      }
     } finally {
-      setBusy('');
+      setBusy(false);
     }
   };
 
   return (
-    <div className="mb-3 p-2 bg-purple-50 border border-purple-200 rounded-lg">
-      <div className="text-[10px] font-bold text-purple-700 uppercase mb-1.5">📄 Documents à générer</div>
-      <div className="grid grid-cols-1 gap-1">
-        {templates.map(tpl => (
-          <button
-            key={tpl.id}
-            onClick={() => handleGenerate(tpl)}
-            disabled={busy === tpl.id}
-            className="px-2 py-1.5 rounded text-[11px] font-bold border-2 bg-white hover:bg-purple-100 text-purple-700 border-purple-300 disabled:opacity-50 disabled:cursor-wait flex items-center justify-center gap-1"
-            title={`Générer "${tpl.label}" pré-rempli avec les infos du dossier`}
-          >
-            {busy === tpl.id ? '⏳ Génération…' : `${tpl.emoji} ${tpl.label}`}
-          </button>
-        ))}
+    <div className="mb-3">
+      <div className="text-[10px] font-bold text-purple-700 uppercase mb-1">📄 Documents à générer</div>
+      <div className="relative">
+        <select
+          value=""
+          onChange={handleSelect}
+          disabled={busy}
+          className="w-full appearance-none px-2.5 py-2 pr-7 rounded-lg text-xs font-bold border-2 bg-purple-50 text-purple-700 border-purple-300 hover:bg-purple-100 disabled:opacity-60 disabled:cursor-wait cursor-pointer focus:outline-none focus:ring-2 focus:ring-purple-300"
+        >
+          <option value="">{busy ? '⏳ Génération en cours…' : '📄 Choisir un document à générer…'}</option>
+          <option value="__all__">🪄 Générer toute la liste ({templates.length} docs)</option>
+          {templates.map(tpl => (
+            <option key={tpl.id} value={tpl.id}>{tpl.emoji} {tpl.label}</option>
+          ))}
+        </select>
+        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-purple-500 text-[9px]">▼</span>
       </div>
     </div>
   );
