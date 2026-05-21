@@ -195,6 +195,11 @@ describe('computeWorkflowStatut', () => {
       .toBe('B1_EN_COURS_FINANCEMENT');
   });
 
+  it("envoyé en banque prime sur une date de pose qui traîne (anti-blocage manque docs)", () => {
+    expect(computeWorkflowStatut({ statutFin: 'envoyé', dateEnvoiFin: '2026-05-15', dateInsta: '2026-05-20' }))
+      .toBe('B1_EN_COURS_FINANCEMENT');
+  });
+
   it("retourne B_A_ENVOYER_BANQUE quand CQ validé sans envoi banque", () => {
     expect(computeWorkflowStatut({ statutControleQualite: 'ok' })).toBe('B_A_ENVOYER_BANQUE');
   });
