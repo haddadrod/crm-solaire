@@ -11836,6 +11836,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
               )}
 
+              {/* 💳 Crédits / leasings en cours du client (annoncés pendant l'appel CQ) */}
+              <div className="mt-1.5 p-1.5 bg-white border border-purple-200 rounded">
+                <label className="block text-[9px] font-bold text-purple-700 uppercase mb-1">💳 Crédits / leasings en cours du client (€)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="Total annoncé par le client — ex. 18500"
+                  value={d.montantCreditClientCQ || ''}
+                  onChange={(e) => onUpdate({ montantCreditClientCQ: e.target.value })}
+                  className={inputCls + ' text-[10px]'}
+                />
+              </div>
+
               {d.statutControleQualite === 'ok' && !d.dateEnvoiFin && (
                 <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ OK pour envoi banque ↓</div>
               )}
