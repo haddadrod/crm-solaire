@@ -2586,8 +2586,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // 🏦 PROJEXIO — plafond mensuel de 2,5 M€ d'envois en banque.
     // Règles de comptage demandées :
-    //   ✗ Refusé par la banque (statutFin === 'refusé') → exclu
-    //   ✓ Annulé par nous (W2_ANNULER) → inclus (c'est de notre fait)
+    //   ✓ Refusé par la banque (statutFin === 'refusé') → COMPTÉ
+    //     (le dossier a quand même consommé du quota chez Projexio).
+    //   ✗ Annulé par nous (statut === 'W2_ANNULER') → EXCLU
+    //     (on a retiré le dossier nous-mêmes, Projexio le sait).
     // Filtre temporel : mois du `dateEnvoiFin` (date d'envoi au financeur).
     const projexioMoisCourant = (() => {
       let total = 0, count = 0;
@@ -2596,7 +2598,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (d.financement !== 'PROJEXIO') return;
         if (!d.dateEnvoiFin) return;
         if (d.dateEnvoiFin.substring(0, 7) !== todayStr) return;
-        if (d.statutFin === 'refusé') return;
+        if (d.statut === 'W2_ANNULER') return;
         const m = parseFloat(d.montantTotal) || 0;
         total += m;
         count += 1;
@@ -5809,7 +5811,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, onCreate, onShowQuick }) 
             <span className="text-xl">🏦</span>
             <div>
               <div className="text-xs font-semibold uppercase opacity-90">Plafond mensuel PROJEXIO</div>
-              <div className="text-[10px] opacity-75">{proj.count} dossier{proj.count > 1 ? 's' : ''} envoyé{proj.count > 1 ? 's' : ''} ce mois (refus banque exclus, annulés inclus)</div>
+              <div className="text-[10px] opacity-75">{proj.count} dossier{proj.count > 1 ? 's' : ''} envoyé{proj.count > 1 ? 's' : ''} ce mois (refus banque inclus, annulés par toi exclus)</div>
             </div>
           </div>
           <div className="text-right">
