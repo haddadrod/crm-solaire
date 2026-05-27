@@ -1125,7 +1125,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     societe: activeSociete || (societes[0]?.id || ''), // 🏢 société émettrice (Yolico/Elsun)
     // Étape 1 : contrôle qualité (avant envoi banque)
     dateControleQualite: '', statutControleQualite: '', // '' | 'ok' | 'pas_ok'
-    montantCreditClientCQ: '', // 💰 montant du crédit annoncé par le client lors de l'appel CQ (anti-fraude commercial)
+    montantCreditClientCQ: '', // 💳 total des crédits / leasings en cours du client, déclaré pendant l'appel CQ ("vous avez des crédits en cours ?")
     vocalCQUrl: '', // lien vers le fichier audio du contrôle qualité
     tentativesCQ: [], // [{datetime: ISO}] — historique des appels où le client n'a pas répondu
     dateAccord: '', dateConsuel: '',
@@ -9448,13 +9448,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               </div>
 
               <div className="mt-2">
-                <label className="block text-[10px] font-semibold text-slate-600 mb-1">💰 Montant du crédit annoncé par le client (€)</label>
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1">💳 Crédits / leasings en cours annoncés par le client (€)</label>
                 <input
                   type="number"
                   min="0"
                   step="0.01"
                   inputMode="decimal"
-                  placeholder="Ex. 18500"
+                  placeholder="Total des crédits/leasings du client — ex. 18500"
                   value={formData.montantCreditClientCQ || ''}
                   onChange={(e) => setFormData({ ...formData, montantCreditClientCQ: e.target.value })}
                   className={inputCls}
