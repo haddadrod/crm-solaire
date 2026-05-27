@@ -199,6 +199,11 @@ function statutMilestoneLabel(fromStatut, toStatut) {
 }
 
 const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM', 'FINANCO', 'FRANFINANCE'];
+
+// 🏦 Plafond mensuel imposé par PROJEXIO : on n'a le droit de leur envoyer
+// que pour 2,5 M€ de financement par mois. Au-delà, ils ne traitent plus
+// les dossiers tant que le mois suivant n'a pas démarré.
+const PROJEXIO_CAP_MENSUEL = 2_500_000;
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
 // Prérequis avant de pouvoir saisir le contrôle de livraison (= étape qui
@@ -2579,6 +2584,27 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const lastStr = lm.toISOString().substring(0, 7);
     const moisPrecedent = statsMois.find(m => m.mois === lastStr) || { count: 0, ca: 0, margeTtc: 0 };
 
+    // 🏦 PROJEXIO — plafond mensuel de 2,5 M€ d'envois en banque.
+    // Règles de comptage demandées :
+    //   ✗ Refusé par la banque (statutFin === 'refusé') → exclu
+    //   ✓ Annulé par nous (W2_ANNULER) → inclus (c'est de notre fait)
+    // Filtre temporel : mois du `dateEnvoiFin` (date d'envoi au financeur).
+    const projexioMoisCourant = (() => {
+      let total = 0, count = 0;
+      const dossiersList = [];
+      dossiersDash.forEach(d => {
+        if (d.financement !== 'PROJEXIO') return;
+        if (!d.dateEnvoiFin) return;
+        if (d.dateEnvoiFin.substring(0, 7) !== todayStr) return;
+        if (d.statutFin === 'refusé') return;
+        const m = parseFloat(d.montantTotal) || 0;
+        total += m;
+        count += 1;
+        dossiersList.push({ localId: d.localId, nom: d.nom, prenom: d.prenom, montant: m, statut: d.statut });
+      });
+      return { total, count, dossiers: dossiersList };
+    })();
+
     const poseurMap = {};
     dossiersDash.forEach(d => {
       (d.poseursDetail || []).forEach(p => {
@@ -3049,7 +3075,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -5761,8 +5787,49 @@ function DashboardView({ dossiers, dashboard, STATUTS, onCreate, onShowQuick }) 
     );
   }
 
+  // 🏦 Plafond mensuel PROJEXIO : couleur graduée selon le taux de remplissage.
+  const proj = dashboard.projexioMoisCourant || { total: 0, count: 0 };
+  const projPct = Math.min(100, (proj.total / PROJEXIO_CAP_MENSUEL) * 100);
+  const projOver = proj.total > PROJEXIO_CAP_MENSUEL;
+  const projReste = Math.max(0, PROJEXIO_CAP_MENSUEL - proj.total);
+  const projLevel = projOver ? 'over' : projPct >= 90 ? 'critical' : projPct >= 70 ? 'warn' : 'ok';
+  const projColors = {
+    ok:       { bg: 'from-emerald-500 to-green-600',  bar: 'bg-emerald-400',  hint: '✅ Marge confortable' },
+    warn:     { bg: 'from-amber-500 to-orange-500',   bar: 'bg-amber-400',    hint: '⚠️ Tu approches du plafond' },
+    critical: { bg: 'from-orange-500 to-rose-500',    bar: 'bg-orange-400',   hint: '🚨 Plus que 10 % de marge' },
+    over:     { bg: 'from-rose-600 to-red-700',       bar: 'bg-rose-500',     hint: '⛔ Plafond dépassé — Projexio ne traite plus' },
+  }[projLevel];
+
   return (
     <div className="space-y-4">
+      {/* 🏦 PROJEXIO — Plafond mensuel 2,5 M€ */}
+      <div className={`bg-gradient-to-r ${projColors.bg} rounded-2xl p-4 text-white shadow-md`}>
+        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+          <div className="flex items-center gap-2">
+            <span className="text-xl">🏦</span>
+            <div>
+              <div className="text-xs font-semibold uppercase opacity-90">Plafond mensuel PROJEXIO</div>
+              <div className="text-[10px] opacity-75">{proj.count} dossier{proj.count > 1 ? 's' : ''} envoyé{proj.count > 1 ? 's' : ''} ce mois (refus banque exclus, annulés inclus)</div>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-2xl font-bold">{formatEuro(proj.total)}</div>
+            <div className="text-[11px] opacity-90">/ {formatEuro(PROJEXIO_CAP_MENSUEL)} ({projPct.toFixed(0)} %)</div>
+          </div>
+        </div>
+        <div className="h-2 bg-white/25 rounded-full overflow-hidden">
+          <div className={`h-full ${projColors.bar} transition-all`} style={{ width: `${projPct}%` }} />
+        </div>
+        <div className="flex items-center justify-between mt-1.5 text-[11px]">
+          <span className="opacity-90">{projColors.hint}</span>
+          <span className="font-semibold">
+            {projOver
+              ? `Dépassement : ${formatEuro(proj.total - PROJEXIO_CAP_MENSUEL)}`
+              : `Reste : ${formatEuro(projReste)}`}
+          </span>
+        </div>
+      </div>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl p-4 text-white">
           <div className="flex justify-between items-start mb-2">
