@@ -1125,6 +1125,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     societe: activeSociete || (societes[0]?.id || ''), // 🏢 société émettrice (Yolico/Elsun)
     // Étape 1 : contrôle qualité (avant envoi banque)
     dateControleQualite: '', statutControleQualite: '', // '' | 'ok' | 'pas_ok'
+    montantCreditClientCQ: '', // 💰 montant du crédit annoncé par le client lors de l'appel CQ (anti-fraude commercial)
     vocalCQUrl: '', // lien vers le fichier audio du contrôle qualité
     tentativesCQ: [], // [{datetime: ISO}] — historique des appels où le client n'a pas répondu
     dateAccord: '', dateConsuel: '',
@@ -2058,6 +2059,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       societe: d.societe || activeSociete || (societes[0]?.id || ''),
       dateAccord: d.dateAccord || '', dateConsuel: d.dateConsuel || '',
       dateControleQualite: d.dateControleQualite || '', statutControleQualite: d.statutControleQualite || '',
+      montantCreditClientCQ: d.montantCreditClientCQ || '',
       vocalCQUrl: d.vocalCQUrl || '',
       onoffCallMeta: d.onoffCallMeta || null,
       tentativesCQ: d.tentativesCQ || [],
@@ -9442,6 +9444,20 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   <input type="date" value={formData.dateControleQualite || ''} onChange={(e) => setFormData({ ...formData, dateControleQualite: e.target.value })} className={inputCls} />
                   <button type="button" onClick={() => setFormData({ ...formData, dateControleQualite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                 </div>
+              </div>
+
+              <div className="mt-2">
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1">💰 Montant du crédit annoncé par le client (€)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="Ex. 18500"
+                  value={formData.montantCreditClientCQ || ''}
+                  onChange={(e) => setFormData({ ...formData, montantCreditClientCQ: e.target.value })}
+                  className={inputCls}
+                />
               </div>
 
               {/* Les boutons d'appel ONOFF sont volontairement absents du formulaire
