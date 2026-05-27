@@ -11,6 +11,14 @@ const FOURNISSEURS_DEFAULT = ['IONERGIK', 'ECO NEGOCE', 'LEH', 'SYNEXIUM', 'CAP 
 const TARIFS_POSEURS_DEFAULT = Object.fromEntries(POSEURS_DEFAULT.map(n => [n, {}]));
 const TARIFS_REGIES_DEFAULT = Object.fromEntries(REGIES_DEFAULT.map(n => [n, {}]));
 
+// Types de crédits / leasings que le client peut déclarer pendant l'appel CQ.
+const CREDIT_TYPES = [
+  { value: 'conso', label: 'Crédit conso' },
+  { value: 'auto', label: 'Crédit auto' },
+  { value: 'immo', label: 'Crédit immo' },
+  { value: 'autre', label: 'Crédit autre' },
+];
+
 // ── Statuts du dossier ──────────────────────────────────────────────────
 // 11 statuts « parcours » dans l'ordre du cycle de vie (signature → paiement),
 // tous AUTO-CALCULÉS : l'utilisateur n'a jamais à les choisir, ils suivent
@@ -1125,7 +1133,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     societe: activeSociete || (societes[0]?.id || ''), // 🏢 société émettrice (Yolico/Elsun)
     // Étape 1 : contrôle qualité (avant envoi banque)
     dateControleQualite: '', statutControleQualite: '', // '' | 'ok' | 'pas_ok'
-    montantCreditClientCQ: '', // 💳 total des crédits / leasings en cours du client, déclaré pendant l'appel CQ ("vous avez des crédits en cours ?")
+    // 💳 Crédits / leasings en cours du client, déclarés pendant l'appel CQ
+    // ("vous avez des crédits en cours ?"). Liste typée : [{ type, montant }].
+    creditsClientCQ: [],
     vocalCQUrl: '', // lien vers le fichier audio du contrôle qualité
     tentativesCQ: [], // [{datetime: ISO}] — historique des appels où le client n'a pas répondu
     dateAccord: '', dateConsuel: '',
@@ -2059,7 +2069,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
       societe: d.societe || activeSociete || (societes[0]?.id || ''),
       dateAccord: d.dateAccord || '', dateConsuel: d.dateConsuel || '',
       dateControleQualite: d.dateControleQualite || '', statutControleQualite: d.statutControleQualite || '',
-      montantCreditClientCQ: d.montantCreditClientCQ || '',
+      creditsClientCQ: Array.isArray(d.creditsClientCQ)
+        ? d.creditsClientCQ
+        : (d.montantCreditClientCQ ? [{ type: 'autre', montant: String(d.montantCreditClientCQ) }] : []),
       vocalCQUrl: d.vocalCQUrl || '',
       onoffCallMeta: d.onoffCallMeta || null,
       tentativesCQ: d.tentativesCQ || [],
@@ -9448,17 +9460,57 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               </div>
 
               <div className="mt-2">
-                <label className="block text-[10px] font-semibold text-slate-600 mb-1">💳 Crédits / leasings en cours annoncés par le client (€)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  placeholder="Total des crédits/leasings du client — ex. 18500"
-                  value={formData.montantCreditClientCQ || ''}
-                  onChange={(e) => setFormData({ ...formData, montantCreditClientCQ: e.target.value })}
-                  className={inputCls}
-                />
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1">💳 Crédits / leasings en cours annoncés par le client</label>
+                {(formData.creditsClientCQ || []).map((c, idx) => (
+                  <div key={idx} className="flex items-center gap-1 mb-1">
+                    <select
+                      value={c.type || 'conso'}
+                      onChange={(e) => {
+                        const next = [...(formData.creditsClientCQ || [])];
+                        next[idx] = { ...next[idx], type: e.target.value };
+                        setFormData({ ...formData, creditsClientCQ: next });
+                      }}
+                      className={inputCls + ' flex-1'}
+                    >
+                      {CREDIT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="€"
+                      value={c.montant || ''}
+                      onChange={(e) => {
+                        const next = [...(formData.creditsClientCQ || [])];
+                        next[idx] = { ...next[idx], montant: e.target.value };
+                        setFormData({ ...formData, creditsClientCQ: next });
+                      }}
+                      className={inputCls + ' w-28'}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const next = (formData.creditsClientCQ || []).filter((_, i) => i !== idx);
+                        setFormData({ ...formData, creditsClientCQ: next });
+                      }}
+                      className="flex-shrink-0 px-2 py-1 text-rose-500 hover:bg-rose-50 rounded text-sm font-bold"
+                      title="Supprimer ce crédit"
+                    >✕</button>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between mt-1">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, creditsClientCQ: [...(formData.creditsClientCQ || []), { type: 'conso', montant: '' }] })}
+                    className="px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-[10px] font-bold"
+                  >+ Ajouter un crédit</button>
+                  {(formData.creditsClientCQ || []).length > 0 && (
+                    <span className="text-[10px] text-purple-700 font-bold">
+                      Total : {(formData.creditsClientCQ || []).reduce((s, c) => s + (parseFloat(c.montant) || 0), 0).toLocaleString('fr-FR')} €
+                    </span>
+                  )}
+                </div>
               </div>
 
               {/* Les boutons d'appel ONOFF sont volontairement absents du formulaire
@@ -11838,17 +11890,55 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
               {/* 💳 Crédits / leasings en cours du client (annoncés pendant l'appel CQ) */}
               <div className="mt-1.5 p-1.5 bg-white border border-purple-200 rounded">
-                <label className="block text-[9px] font-bold text-purple-700 uppercase mb-1">💳 Crédits / leasings en cours du client (€)</label>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  inputMode="decimal"
-                  placeholder="Total annoncé par le client — ex. 18500"
-                  value={d.montantCreditClientCQ || ''}
-                  onChange={(e) => onUpdate({ montantCreditClientCQ: e.target.value })}
-                  className={inputCls + ' text-[10px]'}
-                />
+                <label className="block text-[9px] font-bold text-purple-700 uppercase mb-1">💳 Crédits / leasings en cours du client</label>
+                {(d.creditsClientCQ || []).map((c, idx) => (
+                  <div key={idx} className="flex items-center gap-1 mb-1">
+                    <select
+                      value={c.type || 'conso'}
+                      onChange={(e) => {
+                        const next = [...(d.creditsClientCQ || [])];
+                        next[idx] = { ...next[idx], type: e.target.value };
+                        onUpdate({ creditsClientCQ: next });
+                      }}
+                      className={inputCls + ' text-[10px] flex-1'}
+                    >
+                      {CREDIT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      inputMode="decimal"
+                      placeholder="€"
+                      value={c.montant || ''}
+                      onChange={(e) => {
+                        const next = [...(d.creditsClientCQ || [])];
+                        next[idx] = { ...next[idx], montant: e.target.value };
+                        onUpdate({ creditsClientCQ: next });
+                      }}
+                      className={inputCls + ' text-[10px] w-20'}
+                    />
+                    <button
+                      onClick={() => {
+                        const next = (d.creditsClientCQ || []).filter((_, i) => i !== idx);
+                        onUpdate({ creditsClientCQ: next });
+                      }}
+                      className="text-rose-400 hover:text-rose-600 text-[11px] px-1 font-bold"
+                      title="Supprimer ce crédit"
+                    >✕</button>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between mt-1">
+                  <button
+                    onClick={() => onUpdate({ creditsClientCQ: [...(d.creditsClientCQ || []), { type: 'conso', montant: '' }] })}
+                    className="text-[9px] font-bold text-white bg-purple-500 hover:bg-purple-600 px-2 py-0.5 rounded"
+                  >+ Ajouter un crédit</button>
+                  {(d.creditsClientCQ || []).length > 0 && (
+                    <span className="text-[9px] text-purple-700 font-bold">
+                      Total : {(d.creditsClientCQ || []).reduce((s, c) => s + (parseFloat(c.montant) || 0), 0).toLocaleString('fr-FR')} €
+                    </span>
+                  )}
+                </div>
               </div>
 
               {d.statutControleQualite === 'ok' && !d.dateEnvoiFin && (
