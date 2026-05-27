@@ -9470,7 +9470,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         next[idx] = { ...next[idx], type: e.target.value };
                         setFormData({ ...formData, creditsClientCQ: next });
                       }}
-                      className={inputCls + ' flex-1'}
+                      className="flex-1 min-w-0 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400 text-sm"
                     >
                       {CREDIT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
@@ -9486,7 +9486,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         next[idx] = { ...next[idx], montant: e.target.value };
                         setFormData({ ...formData, creditsClientCQ: next });
                       }}
-                      className={inputCls + ' w-28'}
+                      className="flex-shrink-0 w-32 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400 text-sm"
                     />
                     <button
                       type="button"
@@ -11900,7 +11900,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         next[idx] = { ...next[idx], type: e.target.value };
                         onUpdate({ creditsClientCQ: next });
                       }}
-                      className={inputCls + ' text-[10px] flex-1'}
+                      className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-[10px]"
                     >
                       {CREDIT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
@@ -11916,14 +11916,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         next[idx] = { ...next[idx], montant: e.target.value };
                         onUpdate({ creditsClientCQ: next });
                       }}
-                      className={inputCls + ' text-[10px] w-20'}
+                      className="flex-shrink-0 w-24 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-[10px]"
                     />
                     <button
                       onClick={() => {
                         const next = (d.creditsClientCQ || []).filter((_, i) => i !== idx);
                         onUpdate({ creditsClientCQ: next });
                       }}
-                      className="text-rose-400 hover:text-rose-600 text-[11px] px-1 font-bold"
+                      className="flex-shrink-0 text-rose-400 hover:text-rose-600 text-[11px] px-1 font-bold"
                       title="Supprimer ce crédit"
                     >✕</button>
                   </div>
