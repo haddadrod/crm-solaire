@@ -871,7 +871,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // pour fallback). La méthode primaire est OAuth Google (gmailOAuth ci-dessous).
   const [emailConfig, setEmailConfig] = useState({ smtpUser: '', smtpPass: '', fromName: '' });
   // Statut OAuth Gmail pour l'utilisateur courant. Chargé via
-  // /api/gmail-oauth-status au mount + après retour du callback OAuth.
+  // /api/gmail-oauth (GET) au mount + après retour du callback OAuth.
   const [gmailOAuth, setGmailOAuth] = useState({ connected: false, email: null, connectedAt: null });
   const [tarifsRegies, setTarifsRegies] = useState(TARIFS_REGIES_DEFAULT);
   const [tarifsInternes, setTarifsInternes] = useState(TARIFS_INTERNES_DEFAULT);
@@ -1125,6 +1125,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     societe: activeSociete || (societes[0]?.id || ''), // 🏢 société émettrice (Yolico/Elsun)
     // Étape 1 : contrôle qualité (avant envoi banque)
     dateControleQualite: '', statutControleQualite: '', // '' | 'ok' | 'pas_ok'
+    montantCreditClientCQ: '', // 💰 montant du crédit annoncé par le client lors de l'appel CQ (anti-fraude commercial)
     vocalCQUrl: '', // lien vers le fichier audio du contrôle qualité
     tentativesCQ: [], // [{datetime: ISO}] — historique des appels où le client n'a pas répondu
     dateAccord: '', dateConsuel: '',
@@ -1445,7 +1446,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session?.access_token) return;
-        const res = await fetch('/api/gmail-oauth-status', {
+        const res = await fetch('/api/gmail-oauth', {
           headers: { Authorization: `Bearer ${session.access_token}` },
         });
         if (!res.ok) return;
@@ -2058,6 +2059,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       societe: d.societe || activeSociete || (societes[0]?.id || ''),
       dateAccord: d.dateAccord || '', dateConsuel: d.dateConsuel || '',
       dateControleQualite: d.dateControleQualite || '', statutControleQualite: d.statutControleQualite || '',
+      montantCreditClientCQ: d.montantCreditClientCQ || '',
       vocalCQUrl: d.vocalCQUrl || '',
       onoffCallMeta: d.onoffCallMeta || null,
       tentativesCQ: d.tentativesCQ || [],
@@ -6417,7 +6419,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
       const { data: { session } } = await supabase.auth.getSession();
       const headers = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const res = await fetch('/api/gmail-oauth-disconnect', { method: 'POST', headers });
+      const res = await fetch('/api/gmail-oauth', { method: 'DELETE', headers });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
       setGmailOAuth({ connected: false, email: null, connectedAt: null });
@@ -6426,7 +6428,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
     }
   };
 
-  // Test envoi via OAuth (utilise /api/send-email-gmail, l'API officielle Gmail)
+  // Test envoi via OAuth (utilise /api/send-email avec provider 'gmail-oauth')
   const testSendOAuth = async () => {
     if (!gmailOAuth.connected) {
       alert('Connecte Gmail d\'abord.');
@@ -6438,10 +6440,11 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
       const { data: { session } } = await supabase.auth.getSession();
       const headers = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const res = await fetch('/api/send-email-gmail', {
+      const res = await fetch('/api/send-email', {
         method: 'POST',
         headers,
         body: JSON.stringify({
+          provider: 'gmail-oauth',
           to: gmailOAuth.email,
           subject: '✅ Test CRM Solaire — Gmail OAuth OK',
           text: 'Si tu reçois ce mail, l\'envoi automatique via Gmail OAuth marche. Tu peux utiliser le bouton "Envoyer email" dans le CRM.',
@@ -9444,6 +9447,20 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </div>
               </div>
 
+              <div className="mt-2">
+                <label className="block text-[10px] font-semibold text-slate-600 mb-1">💰 Montant du crédit annoncé par le client (€)</label>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  inputMode="decimal"
+                  placeholder="Ex. 18500"
+                  value={formData.montantCreditClientCQ || ''}
+                  onChange={(e) => setFormData({ ...formData, montantCreditClientCQ: e.target.value })}
+                  className={inputCls}
+                />
+              </div>
+
               {/* Les boutons d'appel ONOFF sont volontairement absents du formulaire
                   d'édition : on passe les appels depuis la QuickView (panel latéral)
                   pour ne pas alourdir cette modale. */}
@@ -12213,10 +12230,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                           const { data: { session } } = await supabase.auth.getSession();
                                           const headers = { 'Content-Type': 'application/json' };
                                           if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                                          const res = await fetch('/api/send-email-gmail', {
+                                          const res = await fetch('/api/send-email', {
                                             method: 'POST',
                                             headers,
                                             body: JSON.stringify({
+                                              provider: 'gmail-oauth',
                                               to: email,
                                               subject: mailSubject,
                                               text: message,
@@ -12370,9 +12388,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                           const { data: { session } } = await supabase.auth.getSession();
                                           const headers = { 'Content-Type': 'application/json' };
                                           if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                                          const res = await fetch('/api/send-email-gmail', {
+                                          const res = await fetch('/api/send-email', {
                                             method: 'POST', headers,
-                                            body: JSON.stringify({ to: email, subject: mailSubject, text: message, fromName: emailConfig?.fromName || 'CRM Solaire' }),
+                                            body: JSON.stringify({ provider: 'gmail-oauth', to: email, subject: mailSubject, text: message, fromName: emailConfig?.fromName || 'CRM Solaire' }),
                                           });
                                           const p = await res.json().catch(() => ({}));
                                           if (!res.ok) throw new Error(p.error || `Erreur ${res.status}`);
@@ -13557,9 +13575,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 const { data: { session } } = await supabase.auth.getSession();
                                 const headers = { 'Content-Type': 'application/json' };
                                 if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                                const res = await fetch('/api/send-email-gmail', {
+                                const res = await fetch('/api/send-email', {
                                   method: 'POST', headers,
-                                  body: JSON.stringify({ to: poseurEmail, subject: chantierSubject, text: chantierMessage, fromName: emailConfig?.fromName || 'CRM Solaire' }),
+                                  body: JSON.stringify({ provider: 'gmail-oauth', to: poseurEmail, subject: chantierSubject, text: chantierMessage, fromName: emailConfig?.fromName || 'CRM Solaire' }),
                                 });
                                 const pl = await res.json().catch(() => ({}));
                                 if (!res.ok) throw new Error(pl.error || `Erreur ${res.status}`);
@@ -13926,11 +13944,10 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
       if (!useOAuth && !useSmtp) {
         throw new Error("Aucun email d'envoi configuré. Va dans Réglages → Email d'envoi pour connecter Gmail ou ajouter SMTP.");
       }
-      const endpoint = useOAuth ? '/api/send-email-gmail' : '/api/send-email';
       const bodyReq = useOAuth
-        ? { to: targetDossier.email, subject: editedSubject, text: editedBody, fromName: emailConfig?.fromName || 'CRM Solaire' }
+        ? { provider: 'gmail-oauth', to: targetDossier.email, subject: editedSubject, text: editedBody, fromName: emailConfig?.fromName || 'CRM Solaire' }
         : { to: targetDossier.email, subject: editedSubject, text: editedBody, smtpUser: emailConfig.smtpUser, smtpPass: emailConfig.smtpPass, fromName: emailConfig?.fromName || 'CRM Solaire' };
-      const res = await fetch(endpoint, { method: 'POST', headers, body: JSON.stringify(bodyReq) });
+      const res = await fetch('/api/send-email', { method: 'POST', headers, body: JSON.stringify(bodyReq) });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
       // Log dans l'historique du dossier + ferme la modale.

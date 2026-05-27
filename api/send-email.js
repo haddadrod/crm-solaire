@@ -1,26 +1,26 @@
-// Fonction serverless Vercel : envoie un email via Gmail SMTP avec les
-// credentials de l'utilisateur (saisis dans Réglages CRM).
+// Fonction serverless Vercel : envoi d'email avec deux providers possibles,
+// sélectionnés via le champ `provider` du body :
 //
-// L'utilisateur configure dans Réglages → Email d'envoi :
-//   - son adresse Gmail (smtpUser)
-//   - un mot de passe d'application Gmail (smtpPass) — généré dans
-//     Google Account → Sécurité → Validation en 2 étapes → Mots de passe
-//     d'application. NE PAS utiliser le vrai password Google.
+//   - provider: 'gmail-oauth' → utilise l'API Gmail officielle avec les
+//     credentials OAuth stockés pour l'utilisateur. Renouvelle automatiquement
+//     l'access_token si expiré.
 //
-// Le front envoie ces credentials dans le body de chaque requête. Cette
-// approche évite de stocker les secrets côté Vercel env (l'utilisateur
-// est admin du CRM, il choisit). Les credentials sont en Supabase storage
-// — accessibles aux users connectés du CRM (assumed friendly).
+//   - provider: 'smtp' (ou absent, valeur par défaut) → utilise nodemailer
+//     avec un mot de passe d'application (Gmail, Outlook, OVH, etc.) saisi
+//     par l'utilisateur dans Réglages → Email d'envoi.
 //
 // Variables d'env requises :
-//   - SUPABASE_URL          : pour valider le JWT appelant
-//   - SUPABASE_SERVICE_KEY  : clé service_role Supabase
+//   - SUPABASE_URL                : pour valider le JWT appelant
+//   - SUPABASE_SERVICE_KEY        : clé service_role Supabase
+//   - GOOGLE_CLIENT_ID / SECRET   : uniquement pour provider 'gmail-oauth'
 
 import nodemailer from 'nodemailer';
 import { createClient } from '@supabase/supabase-js';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
+const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
 
 function json(res, status, body) {
   res.status(status).setHeader('Content-Type', 'application/json');
@@ -38,39 +38,137 @@ async function getCaller(req) {
     });
     const { data, error } = await admin.auth.getUser(token);
     if (error || !data?.user) return null;
-    return data.user;
+    return { user: data.user, admin };
   } catch (e) {
     return null;
   }
 }
 
-export default async function handler(req, res) {
-  if (req.method !== 'POST') {
-    res.setHeader('Allow', 'POST');
-    return json(res, 405, { error: 'Method Not Allowed' });
+// ─── Provider : Gmail OAuth ──────────────────────────────────────────────
+
+function base64Url(str) {
+  return Buffer.from(str, 'utf-8').toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '');
+}
+
+function buildMime({ from, to, subject, text, replyTo }) {
+  const headers = [
+    `From: ${from}`,
+    `To: ${to}`,
+    `Subject: =?UTF-8?B?${Buffer.from(subject, 'utf-8').toString('base64')}?=`,
+    'MIME-Version: 1.0',
+    'Content-Type: text/plain; charset=utf-8',
+    'Content-Transfer-Encoding: 8bit',
+  ];
+  if (replyTo) headers.push(`Reply-To: ${replyTo}`);
+  return headers.join('\r\n') + '\r\n\r\n' + (text || '');
+}
+
+async function refreshAccessToken(refreshToken) {
+  const r = await fetch('https://oauth2.googleapis.com/token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      client_id: GOOGLE_CLIENT_ID,
+      client_secret: GOOGLE_CLIENT_SECRET,
+      refresh_token: refreshToken,
+      grant_type: 'refresh_token',
+    }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(`Refresh token failed: ${JSON.stringify(data)}`);
+  return { accessToken: data.access_token, expiresIn: data.expires_in };
+}
+
+async function sendViaGmailOAuth(res, { user, admin }, body) {
+  if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+    return json(res, 503, { error: 'OAuth Google non configuré côté Vercel.' });
   }
-  const caller = await getCaller(req);
-  if (!caller) return json(res, 401, { error: 'Connexion requise.' });
+  const { to, subject, text, fromName } = body;
+  if (!to) return json(res, 400, { error: 'Destinataire (to) requis.' });
+  if (!subject) return json(res, 400, { error: 'Sujet requis.' });
+  if (!text) return json(res, 400, { error: 'Corps (text) requis.' });
 
-  const body = req.body || {};
-  const {
-    to,
-    subject,
-    text,
-    html,
-    smtpUser,
-    smtpPass,
-    fromName,
-    replyTo,
-  } = body;
+  const { data: row, error: rowErr } = await admin.from('storage')
+    .select('value')
+    .eq('key', `gmail-oauth:${user.id}`)
+    .maybeSingle();
+  if (rowErr) return json(res, 502, { error: `Lecture storage : ${rowErr.message}` });
+  if (!row?.value) {
+    return json(res, 400, { error: "Gmail pas connecté. Va dans Réglages → Email d'envoi → 'Connecter Gmail'." });
+  }
+  let creds;
+  try { creds = JSON.parse(row.value); } catch (e) {
+    return json(res, 502, { error: 'Credentials OAuth corrompus, reconnecte Gmail.' });
+  }
+  if (!creds.refreshToken) {
+    return json(res, 400, { error: 'Refresh token manquant, reconnecte Gmail.' });
+  }
 
+  let accessToken = creds.accessToken;
+  const needRefresh = !accessToken || !creds.expiresAt || creds.expiresAt < Date.now() + 60000;
+  if (needRefresh) {
+    try {
+      const refreshed = await refreshAccessToken(creds.refreshToken);
+      accessToken = refreshed.accessToken;
+      const newCreds = {
+        ...creds,
+        accessToken,
+        expiresAt: Date.now() + (refreshed.expiresIn || 3600) * 1000,
+      };
+      await admin.from('storage').upsert({
+        key: `gmail-oauth:${user.id}`,
+        value: JSON.stringify(newCreds),
+        updated_at: new Date().toISOString(),
+      });
+    } catch (e) {
+      return json(res, 502, { error: `Renouvellement token Gmail échoué : ${e.message}` });
+    }
+  }
+
+  const from = fromName ? `"${fromName.replace(/"/g, '\\"')}" <${creds.email}>` : creds.email;
+  const mime = buildMime({ from, to, subject, text });
+  const raw = base64Url(mime);
+
+  try {
+    const sendRes = await fetch('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ raw }),
+    });
+    const sendPayload = await sendRes.json().catch(() => ({}));
+    if (!sendRes.ok) {
+      return json(res, 502, {
+        error: `Gmail API ${sendRes.status} : ${sendPayload?.error?.message || JSON.stringify(sendPayload)}`,
+      });
+    }
+    return json(res, 200, {
+      data: {
+        messageId: sendPayload?.id,
+        from: creds.email,
+        to,
+      },
+    });
+  } catch (e) {
+    return json(res, 502, { error: `Envoi Gmail échoué : ${e.message}` });
+  }
+}
+
+// ─── Provider : SMTP (mot de passe d'application) ────────────────────────
+
+async function sendViaSmtp(res, body) {
+  const { to, subject, text, html, smtpUser, smtpPass, fromName, replyTo } = body;
   if (!to) return json(res, 400, { error: 'Destinataire (to) requis.' });
   if (!subject) return json(res, 400, { error: 'Sujet requis.' });
   if (!text && !html) return json(res, 400, { error: 'Corps (text ou html) requis.' });
   if (!smtpUser) return json(res, 400, { error: "Email expéditeur (smtpUser) requis — configure-le dans Réglages → Email d'envoi." });
   if (!smtpPass) return json(res, 400, { error: "Mot de passe d'application Gmail (smtpPass) requis — configure-le dans Réglages → Email d'envoi." });
 
-  // Auto-détection du serveur SMTP à partir du domaine (Gmail par défaut)
   const detectSmtp = (email) => {
     const d = String(email || '').toLowerCase().split('@')[1] || '';
     if (d === 'outlook.com' || d === 'hotmail.com' || d === 'live.com' || d === 'msn.com') return { host: 'smtp-mail.outlook.com', port: 587, secure: false };
@@ -79,7 +177,6 @@ export default async function handler(req, res) {
     if (d === 'orange.fr' || d === 'wanadoo.fr') return { host: 'smtp.orange.fr', port: 465, secure: true };
     if (d === 'free.fr') return { host: 'smtp.free.fr', port: 465, secure: true };
     if (d === 'sfr.fr') return { host: 'smtp.sfr.fr', port: 465, secure: true };
-    // Gmail + Google Workspace par défaut
     return { host: 'smtp.gmail.com', port: 465, secure: true };
   };
   const smtp = detectSmtp(smtpUser);
@@ -89,10 +186,7 @@ export default async function handler(req, res) {
       host: smtp.host,
       port: smtp.port,
       secure: smtp.secure,
-      auth: {
-        user: smtpUser,
-        pass: smtpPass,
-      },
+      auth: { user: smtpUser, pass: smtpPass },
     });
 
     const from = fromName ? `"${fromName.replace(/"/g, '\\"')}" <${smtpUser}>` : smtpUser;
@@ -114,7 +208,6 @@ export default async function handler(req, res) {
     });
   } catch (e) {
     const msg = e?.message || 'Erreur SMTP';
-    // Gmail renvoie 535 si app password invalide / mauvais user
     if (/Invalid login|535-5.7.8/.test(msg)) {
       return json(res, 502, { error: "Authentification Gmail refusée. Vérifie l'email et le mot de passe d'application (pas le vrai password Google)." });
     }
@@ -124,4 +217,21 @@ export default async function handler(req, res) {
     console.error('send-email error:', msg);
     return json(res, 502, { error: `Envoi email échoué : ${msg}` });
   }
+}
+
+// ─── Routeur principal ───────────────────────────────────────────────────
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return json(res, 405, { error: 'Method Not Allowed' });
+  }
+  const caller = await getCaller(req);
+  if (!caller) return json(res, 401, { error: 'Connexion requise.' });
+
+  const body = req.body || {};
+  if (body.provider === 'gmail-oauth') {
+    return sendViaGmailOAuth(res, caller, body);
+  }
+  return sendViaSmtp(res, body);
 }
