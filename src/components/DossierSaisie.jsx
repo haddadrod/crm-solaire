@@ -2629,7 +2629,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dossiersFiltres.forEach(d => {
       const montant = parseFloat(d.litigeMontantRembourse);
       if (!montant || isNaN(montant) || montant <= 0) return;
-      const regie = d.litigeRegieNom || '(régie non identifiée)';
+      // Régie = celle du dossier (automatique). On garde litigeRegieNom comme
+      // fallback pour les anciens litiges où elle avait été saisie à la main.
+      const regieDossier = (d.regies || []).filter(r => r.nom).map(r => r.nom).join(', ');
+      const regie = regieDossier || d.litigeRegieNom || '(régie non identifiée)';
       const soc = d.societe || '';
       const key = `${regie}::${soc}`;
       if (!litigeMap[key]) litigeMap[key] = { nom: regie, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
@@ -11027,25 +11030,21 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   />
                 </div>
 
-                {/* Régie qui doit rembourser + montant */}
+                {/* Régie qui doit rembourser + montant.
+                    La régie = celle(s) du dossier, automatique et non modifiable :
+                    si on a payé une régie pour ce dossier, c'est elle qui doit
+                    rembourser. Pas de choix manuel pour éviter les erreurs. */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-600 uppercase mb-1">🤝 Régie qui doit rembourser</label>
-                    <select
-                      value={formData.litigeRegieNom}
-                      onChange={(e) => setFormData({ ...formData, litigeRegieNom: e.target.value })}
-                      className={inputCls}
-                    >
-                      <option value="">— Aucune / non identifiée —</option>
-                      {/* Régies déjà associées au dossier en premier */}
-                      {(formData.regies || []).filter(r => r.nom).map((r, i) => (
-                        <option key={`d-${i}`} value={r.nom}>{r.nom} (régie du dossier)</option>
-                      ))}
-                      {/* Puis le reste du catalogue */}
-                      {(REGIES || []).filter(r => !(formData.regies || []).some(dr => dr.nom === r)).map(r => (
-                        <option key={r} value={r}>{r}</option>
-                      ))}
-                    </select>
+                    {(() => {
+                      const regieDossier = (formData.regies || []).filter(r => r.nom).map(r => r.nom).join(', ');
+                      return (
+                        <div className={`${inputCls} flex items-center bg-slate-100 text-slate-700 font-semibold cursor-not-allowed`} title="Régie du dossier — automatique">
+                          {regieDossier || <span className="text-slate-400 font-normal">Aucune régie sur ce dossier</span>}
+                        </div>
+                      );
+                    })()}
                   </div>
                   <div>
                     <label className="block text-xs font-bold text-slate-600 uppercase mb-1">💸 Montant à me rembourser</label>
@@ -14009,19 +14008,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">📎 Protocole d'accord transactionnel (PDF)</label>
                         <FactureFileInput fileId={d.litigeAccordPdfUrl} onChange={(id) => onUpdate({ litigeAccordPdfUrl: id })} color="purple" />
                       </div>
-                      {/* Régie + montant à rembourser */}
+                      {/* Régie + montant à rembourser — régie = celle du dossier,
+                          automatique et non modifiable. */}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
                           <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">🤝 Régie qui rembourse</label>
-                          <select value={d.litigeRegieNom || ''} onChange={(e) => onUpdate({ litigeRegieNom: e.target.value })} className={inputCls}>
-                            <option value="">—</option>
-                            {(d.regies || []).filter(r => r.nom).map((r, i) => (
-                              <option key={`d-${i}`} value={r.nom}>{r.nom} (du dossier)</option>
-                            ))}
-                            {(REGIES || []).filter(r => !(d.regies || []).some(dr => dr.nom === r)).map(r => (
-                              <option key={r} value={r}>{r}</option>
-                            ))}
-                          </select>
+                          {(() => {
+                            const regieDossier = (d.regies || []).filter(r => r.nom).map(r => r.nom).join(', ');
+                            return (
+                              <div className={`${inputCls} flex items-center bg-slate-100 text-slate-700 font-semibold cursor-not-allowed`} title="Régie du dossier — automatique">
+                                {regieDossier || <span className="text-slate-400 font-normal">Aucune régie</span>}
+                              </div>
+                            );
+                          })()}
                         </div>
                         <div>
                           <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">💸 Montant à rembourser</label>
