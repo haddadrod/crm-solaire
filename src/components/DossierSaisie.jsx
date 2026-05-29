@@ -1147,6 +1147,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dateAccord: '', dateConsuel: '',
     dateEnvoiFin: '', dateRetourFin: '',
     statutFin: '', // '' | 'envoyé' | 'accepté' | 'refusé' | 'manque_doc'
+    observationBanque: '', // 📝 commentaire libre sur la réponse de la banque (motif refus, remarques, etc.)
     motifManqueDoc: '', // texte libre : quels documents la banque réclame (ex : "Bulletin paie + RIB")
     // Workflow Manque docs : banque → régie → client → régie → nous → banque
     dateNotifRegie: '', // date à laquelle on a prévenu la régie (qu'elle réclame au client)
@@ -2084,6 +2085,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       tentativesCQ: d.tentativesCQ || [],
       dateEnvoiFin: d.dateEnvoiFin || '', dateRetourFin: d.dateRetourFin || '',
       statutFin: d.statutFin || '',
+      observationBanque: d.observationBanque || '',
       motifManqueDoc: d.motifManqueDoc || '',
       dateNotifRegie: d.dateNotifRegie || '',
       dateRecuRegie: d.dateRecuRegie || '',
@@ -10065,6 +10067,19 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     setFormData({ ...formData, statutFin: 'refusé', dateEnvoiFin: formData.dateEnvoiFin || today, dateRetourFin: formData.dateRetourFin || today });
                   }} className={`px-3 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
+
+                {/* 📝 Observation banque — note libre (motif refus, remarques…) */}
+                <div className="mt-3">
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📝 Observation banque</label>
+                  <textarea
+                    value={formData.observationBanque || ''}
+                    onChange={(e) => setFormData({ ...formData, observationBanque: e.target.value })}
+                    placeholder="Ex : refusé pour endettement trop élevé / accepté sous condition / etc."
+                    rows={2}
+                    className={inputCls + ' text-xs'}
+                  />
+                </div>
+
                 {formData.statutFin === 'manque_doc' && (
                   <div className="mt-3 p-3 bg-orange-50 border-2 border-orange-300 rounded-xl space-y-3">
                     {/* Étape 1 : ce que la banque demande */}
@@ -12399,6 +12414,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     onUpdate({ statutFin: 'refusé', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: d.dateRetourFin || today });
                   }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
+
+                {/* 📝 Observation banque — note libre (motif refus, remarques…) */}
+                <div className="mt-1.5">
+                  <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">📝 Observation banque</label>
+                  <textarea
+                    value={d.observationBanque || ''}
+                    onChange={(e) => onUpdate({ observationBanque: e.target.value })}
+                    placeholder="Ex : refusé pour endettement / accepté sous condition / etc."
+                    rows={2}
+                    className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-[10px]"
+                  />
+                </div>
+
                 {d.statutFin === 'manque_doc' && (
                   <div className="mt-1.5 p-2 bg-orange-50 border-2 border-orange-300 rounded-lg space-y-2">
                     {/* 1. Demande banque */}
