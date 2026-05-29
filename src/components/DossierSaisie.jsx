@@ -1222,9 +1222,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // 🏠 Caractéristiques de la toiture pour les panneaux solaires
     typeToit: '', // '' | 'tuile' | 'ardoise' | 'tole' | 'zinc' | 'fibro' | 'bac_acier' | 'toit_plat' | 'a_valider'
     orientationPanneaux: '', // '' | 'paysage' | 'portrait' | 'les_deux'
-    // ⚖️ Litige client : si statut === 'C_LITIGE', le client réclame un
-    // remboursement. La régie qui a apporté le dossier doit nous rembourser
-    // ce montant (même mécanique que les pénalités de pose).
+    // ⚖️ Litige client : flag INDÉPENDANT du statut workflow. Un dossier en
+    // « À envoyer banque » peut avoir un litige ouvert en parallèle — les
+    // deux infos coexistent. La régie qui a apporté le dossier doit nous
+    // rembourser ce que rend au client (même mécanique que les pénalités).
+    hasLitige: false, // 🚩 drapeau : un litige est-il ouvert sur ce dossier ?
     litigeDateCourrierRecommande: '', // 📨 date de réception du courrier recommandé (mise en demeure, réclamation)
     litigeTraite: false, // toggle : litige clos / traité ?
     litigeDateCloture: '', // date à laquelle le litige a été clos (auto-remplie quand on coche litigeTraite)
@@ -1235,8 +1237,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     litigeDateRembourse: '', // date du remboursement par la régie
     litigeFactureNo: '', // N° facture émise pour la régie
     litigeNote: '', // notes libres (motif du litige, contexte)
-    // 🛠️ SAV : si statut === 'D_SAV', le client signale une panne / défaut
-    // après la pose. Suivi de la prise en charge et de la résolution.
+    // 🛠️ SAV : flag INDÉPENDANT du statut workflow — un dossier peut être en
+    // pose ou en post-pose et avoir un SAV ouvert en parallèle.
+    hasSav: false, // 🚩 drapeau : un SAV est-il ouvert sur ce dossier ?
     savDateOuverture: '', // 📅 date d'ouverture du SAV (1er signalement client)
     savMotif: '', // 📝 description du problème / défaut signalé
     savIntervenant: '', // 👤 qui s'occupe de l'intervention (poseur, technicien)
@@ -2231,6 +2234,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
       instructionsPose: d.instructionsPose || '',
       typeToit: d.typeToit || '',
       orientationPanneaux: d.orientationPanneaux || '',
+      // Migration : les anciens dossiers qui étaient en statut C_LITIGE / D_SAV
+      // basculent vers le nouveau flag, et leur statut workflow est libéré.
+      // Si hasLitige a déjà été défini explicitement, on le respecte.
+      hasLitige: d.hasLitige !== undefined ? !!d.hasLitige : (d.statut === 'C_LITIGE'),
       litigeDateCourrierRecommande: d.litigeDateCourrierRecommande || '',
       litigeTraite: !!d.litigeTraite,
       litigeDateCloture: d.litigeDateCloture || '',
@@ -2241,6 +2248,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       litigeDateRembourse: d.litigeDateRembourse || '',
       litigeFactureNo: d.litigeFactureNo || '',
       litigeNote: d.litigeNote || '',
+      hasSav: d.hasSav !== undefined ? !!d.hasSav : (d.statut === 'D_SAV'),
       savDateOuverture: d.savDateOuverture || '',
       savMotif: d.savMotif || '',
       savIntervenant: d.savIntervenant || '',
@@ -2877,14 +2885,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsManqueDoc.sort((a, b) => b.jours - a.jours);
 
-    // ⚖️ Rappels Litige — statut LITIGE + courrier recommandé reçu + pas encore traité.
+    // ⚖️ Rappels Litige — flag hasLitige + courrier reçu + pas encore traité.
     // Le délai légal classique pour répondre à une mise en demeure est de 15 jours.
     //   warn     : 0-4 jours après réception
     //   high     : 5-14 jours
     //   critical : 15+ jours
     const rappelsLitige = [];
     dossiersDash.forEach(d => {
-      if (d.statut !== 'C_LITIGE') return;
+      if (!d.hasLitige) return;
       if (d.litigeTraite) return; // déjà clos
       if (!d.litigeDateCourrierRecommande) return; // pas de courrier → rien à mesurer
       const jours = joursEcoules(d.litigeDateCourrierRecommande);
@@ -2895,14 +2903,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsLitige.sort((a, b) => b.jours - a.jours);
 
-    // 🛠️ Rappels SAV — statut SAV + pas encore traité.
+    // 🛠️ Rappels SAV — flag hasSav + pas encore traité.
     // On compte depuis savDateOuverture (ou savedAt/createdAt si pas saisi).
     //   warn     : 0-2 jours
     //   high     : 3-9 jours
     //   critical : 10+ jours (intervention trop tardive)
     const rappelsSav = [];
     dossiersDash.forEach(d => {
-      if (d.statut !== 'D_SAV') return;
+      if (!d.hasSav) return;
       if (d.savTraite) return;
       const ref = d.savDateOuverture || d.savedAt || d.createdAt;
       if (!ref) return;
@@ -10925,11 +10933,10 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             })()}
           </Section>
 
-          {/* ⚖️ LITIGE & REMBOURSEMENT — visible uniquement si statut = LITIGE.
-              Suit la même mécanique que les pénalités déplacement : la régie
-              qui a apporté le dossier doit me rembourser ce que je rends
-              au client. */}
-          {formData.statut === 'C_LITIGE' && (
+          {/* ⚖️ LITIGE & REMBOURSEMENT — visible si le flag hasLitige est levé,
+              indépendamment du statut workflow. Un dossier peut être en
+              « À envoyer banque » et avoir un litige ouvert en parallèle. */}
+          {formData.hasLitige && (
             <Section title="⚖️ Litige & remboursement client" color="rose">
               <div className="space-y-3">
                 {/* 📨 Suivi du traitement — courrier reçu + clôture */}
@@ -11095,10 +11102,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             </Section>
           )}
 
-          {/* 🛠️ SAV — visible uniquement si statut = SAV. Différent du litige :
-              ici c'est une panne / défaut technique signalé par le client après
-              pose, qu'il faut prendre en charge et résoudre. */}
-          {formData.statut === 'D_SAV' && (
+          {/* 🛠️ SAV — visible si le flag hasSav est levé, indépendamment du
+              statut workflow. Le SAV est un problème technique annexe. */}
+          {formData.hasSav && (
             <Section title="🛠️ SAV (Service Après-Vente)" color="orange">
               <div className="space-y-3">
                 {/* 📅 Ouverture + clôture */}
@@ -12378,39 +12384,37 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           {showCreerAction && (
             <div className="mt-2 p-2 bg-white/15 backdrop-blur border border-white/20 rounded-lg space-y-1.5">
               <div className="text-[9px] font-bold uppercase opacity-70 mb-1">Actions hors-parcours</div>
-              {/* ⚖️ LITIGE */}
+              {/* ⚖️ LITIGE — drapeau indépendant, ne touche PAS au statut workflow */}
               <button
                 onClick={() => {
                   const today = new Date().toISOString().split('T')[0];
                   onUpdate({
-                    statut: 'C_LITIGE',
-                    statutLocked: true,
+                    hasLitige: true,
                     litigeDateCourrierRecommande: d.litigeDateCourrierRecommande || today,
                   });
                   setShowCreerAction(false);
                 }}
-                disabled={d.statut === 'C_LITIGE'}
-                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.statut === 'C_LITIGE' ? 'bg-rose-200 text-rose-500 cursor-not-allowed' : 'bg-rose-500 hover:bg-rose-600 text-white border-2 border-rose-600'}`}
+                disabled={!!d.hasLitige}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.hasLitige ? 'bg-rose-200 text-rose-500 cursor-not-allowed' : 'bg-rose-500 hover:bg-rose-600 text-white border-2 border-rose-600'}`}
               >
                 <span className="text-base">⚖️</span>
-                <span className="flex-1 text-left">{d.statut === 'C_LITIGE' ? 'Déjà en litige' : 'Ouvrir un litige'}</span>
+                <span className="flex-1 text-left">{d.hasLitige ? 'Litige déjà ouvert' : 'Ouvrir un litige'}</span>
               </button>
-              {/* 🛠️ SAV */}
+              {/* 🛠️ SAV — drapeau indépendant, ne touche PAS au statut workflow */}
               <button
                 onClick={() => {
                   const today = new Date().toISOString().split('T')[0];
                   onUpdate({
-                    statut: 'D_SAV',
-                    statutLocked: true,
+                    hasSav: true,
                     savDateOuverture: d.savDateOuverture || today,
                   });
                   setShowCreerAction(false);
                 }}
-                disabled={d.statut === 'D_SAV'}
-                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.statut === 'D_SAV' ? 'bg-orange-200 text-orange-500 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white border-2 border-orange-600'}`}
+                disabled={!!d.hasSav}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.hasSav ? 'bg-orange-200 text-orange-500 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white border-2 border-orange-600'}`}
               >
                 <span className="text-base">🛠️</span>
-                <span className="flex-1 text-left">{d.statut === 'D_SAV' ? 'Déjà en SAV' : 'Ouvrir un SAV'}</span>
+                <span className="flex-1 text-left">{d.hasSav ? 'SAV déjà ouvert' : 'Ouvrir un SAV'}</span>
               </button>
               {/* ❌ ANNULER */}
               <button
@@ -14000,9 +14004,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
           )}
 
-          {/* ⚖️ LITIGE — visible uniquement si statut = LITIGE.
-              Même mécanique que les pénalités : la régie doit me rembourser. */}
-          {d.statut === 'C_LITIGE' && (
+          {/* ⚖️ LITIGE — visible si le flag hasLitige est levé (indépendant
+              du statut workflow). La régie doit me rembourser. */}
+          {d.hasLitige && (
             <div>
               <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">⚖️ Litige & remboursement</h3>
               <div className="bg-gradient-to-br from-rose-50 to-pink-50 border-2 border-rose-300 rounded-xl p-2.5 space-y-2">
@@ -14149,8 +14153,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
           )}
 
-          {/* 🛠️ SAV — visible uniquement si statut = SAV */}
-          {d.statut === 'D_SAV' && (
+          {/* 🛠️ SAV — visible si le flag hasSav est levé (indépendant du statut) */}
+          {d.hasSav && (
             <div>
               <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">🛠️ SAV (Service Après-Vente)</h3>
               <div className="bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-300 rounded-xl p-2.5 space-y-2">
