@@ -12,7 +12,18 @@ VALUES (
   'dossier-documents',
   false,
   52428800,  -- 50 Mo
-  ARRAY['application/pdf', 'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic', 'image/gif']
+  ARRAY[
+    -- Documents
+    'application/pdf',
+    -- Images
+    'image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic', 'image/gif',
+    -- Audio (vocaux du contrôle qualité, enregistrements ONOFF, etc.)
+    'audio/mpeg', 'audio/mp3',
+    'audio/mp4', 'audio/m4a', 'audio/x-m4a', 'audio/aac',
+    'audio/wav', 'audio/x-wav', 'audio/wave',
+    'audio/ogg', 'audio/webm',
+    'audio/3gpp', 'audio/3gpp2'
+  ]
 )
 ON CONFLICT (id) DO UPDATE SET
   file_size_limit = EXCLUDED.file_size_limit,
