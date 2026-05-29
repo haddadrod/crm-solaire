@@ -5930,11 +5930,13 @@ function DashboardView({ dossiers, dashboard, STATUTS, onCreate, onShowQuick }) 
   const projOver = proj.total > PROJEXIO_CAP_MENSUEL;
   const projReste = Math.max(0, PROJEXIO_CAP_MENSUEL - proj.total);
   const projLevel = projOver ? 'over' : projPct >= 90 ? 'critical' : projPct >= 70 ? 'warn' : 'ok';
+  // Barre toujours blanche pour bien ressortir sur le fond coloré, quel
+  // que soit le niveau (vert/orange/rouge).
   const projColors = {
-    ok:       { bg: 'from-emerald-500 to-green-600',  bar: 'bg-emerald-400',  hint: '✅ Marge confortable' },
-    warn:     { bg: 'from-amber-500 to-orange-500',   bar: 'bg-amber-400',    hint: '⚠️ Tu approches du plafond' },
-    critical: { bg: 'from-orange-500 to-rose-500',    bar: 'bg-orange-400',   hint: '🚨 Plus que 10 % de marge' },
-    over:     { bg: 'from-rose-600 to-red-700',       bar: 'bg-rose-500',     hint: '⛔ Plafond dépassé — Projexio ne traite plus' },
+    ok:       { bg: 'from-emerald-500 to-green-600', hint: '✅ Marge confortable' },
+    warn:     { bg: 'from-amber-500 to-orange-500',  hint: '⚠️ Tu approches du plafond' },
+    critical: { bg: 'from-orange-500 to-rose-500',   hint: '🚨 Plus que 10 % de marge' },
+    over:     { bg: 'from-rose-600 to-red-700',      hint: '⛔ Plafond dépassé — Projexio ne traite plus' },
   }[projLevel];
 
   return (
@@ -5954,8 +5956,8 @@ function DashboardView({ dossiers, dashboard, STATUTS, onCreate, onShowQuick }) 
             <div className="text-[11px] opacity-90">/ {formatEuro(PROJEXIO_CAP_MENSUEL)} ({projPct.toFixed(0)} %)</div>
           </div>
         </div>
-        <div className="h-2 bg-white/25 rounded-full overflow-hidden">
-          <div className={`h-full ${projColors.bar} transition-all`} style={{ width: `${projPct}%` }} />
+        <div className="h-2 bg-black/25 rounded-full overflow-hidden">
+          <div className="h-full bg-white transition-all" style={{ width: `${projPct}%` }} />
         </div>
         <div className="flex items-center justify-between mt-1.5 text-[11px]">
           <span className="opacity-90">{projColors.hint}</span>
