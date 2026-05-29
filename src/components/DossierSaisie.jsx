@@ -1235,6 +1235,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
     litigeDateRembourse: '', // date du remboursement par la régie
     litigeFactureNo: '', // N° facture émise pour la régie
     litigeNote: '', // notes libres (motif du litige, contexte)
+    // 🛠️ SAV : si statut === 'D_SAV', le client signale une panne / défaut
+    // après la pose. Suivi de la prise en charge et de la résolution.
+    savDateOuverture: '', // 📅 date d'ouverture du SAV (1er signalement client)
+    savMotif: '', // 📝 description du problème / défaut signalé
+    savIntervenant: '', // 👤 qui s'occupe de l'intervention (poseur, technicien)
+    savDateInterventionPrevue: '', // date d'intervention planifiée
+    savDateInterventionFaite: '', // date à laquelle l'intervention a été réalisée
+    savTraite: false, // toggle : SAV résolu / clos
+    savDateCloture: '', // date de clôture (auto-remplie quand on coche savTraite)
+    savNote: '', // notes libres (détails techniques, échanges, etc.)
     historique: [],
     createdBy: '', createdAt: '', modifiedBy: '', modifiedAt: '',
     scannedBon: null, // {dataUrl, name, type, size} si scan IA réussi, sinon null
@@ -2231,6 +2241,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
       litigeDateRembourse: d.litigeDateRembourse || '',
       litigeFactureNo: d.litigeFactureNo || '',
       litigeNote: d.litigeNote || '',
+      savDateOuverture: d.savDateOuverture || '',
+      savMotif: d.savMotif || '',
+      savIntervenant: d.savIntervenant || '',
+      savDateInterventionPrevue: d.savDateInterventionPrevue || '',
+      savDateInterventionFaite: d.savDateInterventionFaite || '',
+      savTraite: !!d.savTraite,
+      savDateCloture: d.savDateCloture || '',
+      savNote: d.savNote || '',
       historique: d.historique || [],
       createdBy: d.createdBy || '', createdAt: d.createdAt || '',
       modifiedBy: d.modifiedBy || '', modifiedAt: d.modifiedAt || '',
@@ -2877,6 +2895,25 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsLitige.sort((a, b) => b.jours - a.jours);
 
+    // 🛠️ Rappels SAV — statut SAV + pas encore traité.
+    // On compte depuis savDateOuverture (ou savedAt/createdAt si pas saisi).
+    //   warn     : 0-2 jours
+    //   high     : 3-9 jours
+    //   critical : 10+ jours (intervention trop tardive)
+    const rappelsSav = [];
+    dossiersDash.forEach(d => {
+      if (d.statut !== 'D_SAV') return;
+      if (d.savTraite) return;
+      const ref = d.savDateOuverture || d.savedAt || d.createdAt;
+      if (!ref) return;
+      const jours = joursEcoules(ref);
+      let level = 'warn';
+      if (jours >= 10) level = 'critical';
+      else if (jours >= 3) level = 'high';
+      rappelsSav.push({ dossier: d, jours, level });
+    });
+    rappelsSav.sort((a, b) => b.jours - a.jours);
+
     // Rappels Paiement — contrôle livraison fait sans paiement reçu depuis +2 jours
     const rappelsPaiement = [];
     dossiersDash.forEach(d => {
@@ -3168,7 +3205,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige, rappelsSav };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -3453,6 +3490,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsRecupTva={dashboard.rappelsRecupTva || []}
             rappelsFacturesManquantes={dashboard.rappelsFacturesManquantes || []}
             rappelsLitige={dashboard.rappelsLitige || []}
+            rappelsSav={dashboard.rappelsSav || []}
             isAdmin={isAdmin}
             currentUserRole={currentUserRole}
             onClick={(type) => setShowAlertesType(type)}
@@ -11057,6 +11095,129 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             </Section>
           )}
 
+          {/* 🛠️ SAV — visible uniquement si statut = SAV. Différent du litige :
+              ici c'est une panne / défaut technique signalé par le client après
+              pose, qu'il faut prendre en charge et résoudre. */}
+          {formData.statut === 'D_SAV' && (
+            <Section title="🛠️ SAV (Service Après-Vente)" color="orange">
+              <div className="space-y-3">
+                {/* 📅 Ouverture + clôture */}
+                <div className={`rounded-xl border-2 p-3 ${formData.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-orange-50 border-orange-200'}`}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-bold text-orange-700 uppercase mb-1">📅 SAV ouvert le</label>
+                      <div className="flex gap-1">
+                        <input
+                          type="date"
+                          value={formData.savDateOuverture}
+                          onChange={(e) => setFormData({ ...formData, savDateOuverture: e.target.value })}
+                          className={inputCls}
+                        />
+                        <button type="button" onClick={() => setFormData({ ...formData, savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+                    {formData.savTraite && (
+                      <div>
+                        <label className="block text-[11px] font-bold text-emerald-700 uppercase mb-1">✅ Date de clôture</label>
+                        <div className="flex gap-1">
+                          <input
+                            type="date"
+                            value={formData.savDateCloture}
+                            onChange={(e) => setFormData({ ...formData, savDateCloture: e.target.value })}
+                            className={inputCls}
+                          />
+                          <button type="button" onClick={() => setFormData({ ...formData, savDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer mt-3">
+                    <input
+                      type="checkbox"
+                      checked={formData.savTraite}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setFormData({
+                          ...formData,
+                          savTraite: checked,
+                          savDateCloture: checked && !formData.savDateCloture
+                            ? new Date().toISOString().split('T')[0]
+                            : (checked ? formData.savDateCloture : ''),
+                        });
+                      }}
+                      className="w-5 h-5 rounded accent-emerald-500"
+                    />
+                    <span className={`text-sm font-bold ${formData.savTraite ? 'text-emerald-700' : 'text-orange-700'}`}>
+                      {formData.savTraite ? '✅ SAV résolu / clos' : '⏳ SAV en cours'}
+                    </span>
+                  </label>
+                </div>
+
+                {/* Motif */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📝 Motif / problème signalé</label>
+                  <textarea
+                    value={formData.savMotif}
+                    onChange={(e) => setFormData({ ...formData, savMotif: e.target.value })}
+                    rows={2}
+                    placeholder="Ex : Onduleur en erreur depuis 3 jours, perte de production..."
+                    className={inputCls + ' resize-none'}
+                  />
+                </div>
+
+                {/* Intervenant + dates intervention */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">👤 Intervenant</label>
+                    <input
+                      type="text"
+                      value={formData.savIntervenant}
+                      onChange={(e) => setFormData({ ...formData, savIntervenant: e.target.value })}
+                      placeholder="Nom du poseur / technicien"
+                      className={inputCls}
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📅 Intervention prévue</label>
+                    <div className="flex gap-1">
+                      <input
+                        type="date"
+                        value={formData.savDateInterventionPrevue}
+                        onChange={(e) => setFormData({ ...formData, savDateInterventionPrevue: e.target.value })}
+                        className={inputCls}
+                      />
+                      <button type="button" onClick={() => setFormData({ ...formData, savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-600 uppercase mb-1">✓ Intervention faite</label>
+                    <div className="flex gap-1">
+                      <input
+                        type="date"
+                        value={formData.savDateInterventionFaite}
+                        onChange={(e) => setFormData({ ...formData, savDateInterventionFaite: e.target.value })}
+                        className={inputCls}
+                      />
+                      <button type="button" onClick={() => setFormData({ ...formData, savDateInterventionFaite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Note */}
+                <div>
+                  <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📝 Note (détails techniques, échanges client...)</label>
+                  <textarea
+                    value={formData.savNote}
+                    onChange={(e) => setFormData({ ...formData, savNote: e.target.value })}
+                    rows={2}
+                    placeholder="Détails de l'échange, pièces remplacées, etc."
+                    className={inputCls + ' resize-none'}
+                  />
+                </div>
+              </div>
+            </Section>
+          )}
+
           {isAdmin && (
             <div className="bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 rounded-2xl p-5 text-white shadow-lg">
               <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
@@ -13925,6 +14086,110 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
           )}
 
+          {/* 🛠️ SAV — visible uniquement si statut = SAV */}
+          {d.statut === 'D_SAV' && (
+            <div>
+              <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">🛠️ SAV (Service Après-Vente)</h3>
+              <div className="bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-300 rounded-xl p-2.5 space-y-2">
+                {/* Ouverture + clôture */}
+                <div className={`rounded-lg border-2 p-2 ${d.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-orange-200'}`}>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[9px] font-bold text-orange-700 uppercase mb-0.5">📅 Ouvert le</label>
+                      <div className="flex gap-1">
+                        <input
+                          type="date"
+                          value={d.savDateOuverture || ''}
+                          onChange={(e) => onUpdate({ savDateOuverture: e.target.value })}
+                          className={inputCls + ' flex-1 min-w-0'}
+                        />
+                        <button type="button" onClick={() => onUpdate({ savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+                    {d.savTraite && (
+                      <div>
+                        <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Clos le</label>
+                        <div className="flex gap-1">
+                          <input
+                            type="date"
+                            value={d.savDateCloture || ''}
+                            onChange={(e) => onUpdate({ savDateCloture: e.target.value })}
+                            className={inputCls + ' flex-1 min-w-0'}
+                          />
+                          <button type="button" onClick={() => onUpdate({ savDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer mt-2">
+                    <input
+                      type="checkbox"
+                      checked={!!d.savTraite}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        const today = new Date().toISOString().split('T')[0];
+                        onUpdate({
+                          savTraite: checked,
+                          savDateCloture: checked && !d.savDateCloture ? today : (checked ? d.savDateCloture : ''),
+                        });
+                      }}
+                      className="w-4 h-4 rounded accent-emerald-500"
+                    />
+                    <span className={`text-[11px] font-bold ${d.savTraite ? 'text-emerald-700' : 'text-orange-700'}`}>
+                      {d.savTraite ? '✅ SAV résolu' : '⏳ SAV en cours'}
+                    </span>
+                  </label>
+                </div>
+                {/* Motif */}
+                <textarea
+                  value={d.savMotif || ''}
+                  onChange={(e) => onUpdate({ savMotif: e.target.value })}
+                  rows={2}
+                  placeholder="📝 Motif / problème signalé"
+                  className={inputCls + ' resize-none text-xs'}
+                />
+                {/* Intervenant + dates */}
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    type="text"
+                    value={d.savIntervenant || ''}
+                    onChange={(e) => onUpdate({ savIntervenant: e.target.value })}
+                    placeholder="👤 Intervenant"
+                    className={inputCls}
+                  />
+                  <div className="flex gap-1">
+                    <input
+                      type="date"
+                      value={d.savDateInterventionPrevue || ''}
+                      onChange={(e) => onUpdate({ savDateInterventionPrevue: e.target.value })}
+                      title="Intervention prévue"
+                      className={inputCls + ' flex-1 min-w-0'}
+                    />
+                    <button type="button" onClick={() => onUpdate({ savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
+                  <div className="flex gap-1">
+                    <input
+                      type="date"
+                      value={d.savDateInterventionFaite || ''}
+                      onChange={(e) => onUpdate({ savDateInterventionFaite: e.target.value })}
+                      title="Intervention faite"
+                      className={inputCls + ' flex-1 min-w-0'}
+                    />
+                    <button type="button" onClick={() => onUpdate({ savDateInterventionFaite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                  </div>
+                </div>
+                {/* Note */}
+                <textarea
+                  value={d.savNote || ''}
+                  onChange={(e) => onUpdate({ savNote: e.target.value })}
+                  rows={2}
+                  placeholder="📝 Note (détails techniques, échanges)…"
+                  className={inputCls + ' resize-none text-xs'}
+                />
+              </div>
+            </div>
+          )}
+
           {/* RÉGIES — multi, éditables (cachées si équipe interne) */}
           {d.typeRegie !== 'interne' && (
           <div ref={refRegie} className="border-2 border-purple-200 bg-purple-50 rounded-xl p-2 mb-2">
@@ -15432,7 +15697,7 @@ const ALERTES_PAR_ROLE = {
   regie: [],  // la régie ne voit aucune alerte
 };
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige = [], isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige = [], rappelsSav = [], isAdmin, currentUserRole, onClick }) {
   // Définition des badges
   const badges = [
     {
@@ -15614,6 +15879,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-rose-300',
       colorText: 'text-rose-700',
       tooltip: 'Litiges en attente de traitement (courrier recommandé reçu, pas encore clos)',
+    },
+    {
+      type: 'sav',
+      label: 'SAV',
+      emoji: '🛠️',
+      count: rappelsSav.length,
+      adminOnly: false,
+      color: 'from-orange-500 to-red-500',
+      colorBg: 'bg-orange-50',
+      colorBorder: 'border-orange-300',
+      colorText: 'text-orange-700',
+      tooltip: 'SAV ouverts non résolus (panne / défaut signalé après pose)',
     },
     {
       type: 'stagnation',
@@ -15861,6 +16138,22 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
         ? `📨 Courrier reçu le ${new Date(d.litigeDateCourrierRecommande).toLocaleDateString('fr-FR')}`
         : 'Litige ouvert',
       suffixLabel: 'depuis le courrier',
+    },
+    sav: {
+      title: '🛠️ SAV en cours',
+      subtitle: 'Pannes / défauts signalés par les clients — à prendre en charge',
+      items: dashboard.rappelsSav || [],
+      gradient: 'from-orange-500 to-red-500',
+      bgHeader: 'from-orange-50 to-red-50',
+      borderColor: 'border-orange-300',
+      lineLabel: (d) => {
+        const parts = [];
+        if (d.savDateOuverture) parts.push(`📅 Ouvert le ${new Date(d.savDateOuverture).toLocaleDateString('fr-FR')}`);
+        if (d.savIntervenant) parts.push(`👤 ${d.savIntervenant}`);
+        if (d.savMotif) parts.push(d.savMotif.length > 40 ? d.savMotif.slice(0, 40) + '…' : d.savMotif);
+        return parts.length ? parts.join(' · ') : 'SAV ouvert';
+      },
+      suffixLabel: 'depuis ouverture',
     },
     facturesManquantes: {
       title: '🧾 Factures manquantes (compta)',
