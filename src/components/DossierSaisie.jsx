@@ -12463,21 +12463,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           {showCreerAction && (
             <div className="mt-2 p-2 bg-white/15 backdrop-blur border border-white/20 rounded-lg space-y-1.5">
               <div className="text-[9px] font-bold uppercase opacity-70 mb-1">Actions hors-parcours</div>
-              {/* ⚖️ LITIGE — drapeau indépendant, ne touche PAS au statut workflow */}
+              {/* Ordre demandé : 1) Rappel  2) SAV  3) Litige  4) Annuler */}
+              {/* 📞 CLIENT À RAPPELER — drapeau indépendant, ne touche pas au statut */}
               <button
                 onClick={() => {
-                  const today = new Date().toISOString().split('T')[0];
-                  onUpdate({
-                    hasLitige: true,
-                    litigeDateCourrierRecommande: d.litigeDateCourrierRecommande || today,
-                  });
+                  onUpdate({ hasRappel: true, rappelFait: false });
                   setShowCreerAction(false);
                 }}
-                disabled={!!d.hasLitige}
-                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.hasLitige ? 'bg-rose-200 text-rose-500 cursor-not-allowed' : 'bg-rose-500 hover:bg-rose-600 text-white border-2 border-rose-600'}`}
+                disabled={!!d.hasRappel && !d.rappelFait}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${(d.hasRappel && !d.rappelFait) ? 'bg-blue-200 text-blue-500 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white border-2 border-blue-600'}`}
               >
-                <span className="text-base">⚖️</span>
-                <span className="flex-1 text-left">{d.hasLitige ? 'Litige déjà ouvert' : 'Ouvrir un litige'}</span>
+                <span className="text-base">📞</span>
+                <span className="flex-1 text-left">{(d.hasRappel && !d.rappelFait) ? 'Rappel déjà en attente' : 'Client à rappeler'}</span>
               </button>
               {/* 🛠️ SAV — drapeau indépendant, ne touche PAS au statut workflow */}
               <button
@@ -12495,19 +12492,23 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <span className="text-base">🛠️</span>
                 <span className="flex-1 text-left">{d.hasSav ? 'SAV déjà ouvert' : 'Ouvrir un SAV'}</span>
               </button>
-              {/* 📞 CLIENT À RAPPELER — drapeau indépendant, ne touche pas au statut */}
+              {/* ⚖️ LITIGE — drapeau indépendant, ne touche PAS au statut workflow */}
               <button
                 onClick={() => {
-                  onUpdate({ hasRappel: true, rappelFait: false });
+                  const today = new Date().toISOString().split('T')[0];
+                  onUpdate({
+                    hasLitige: true,
+                    litigeDateCourrierRecommande: d.litigeDateCourrierRecommande || today,
+                  });
                   setShowCreerAction(false);
                 }}
-                disabled={!!d.hasRappel && !d.rappelFait}
-                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${(d.hasRappel && !d.rappelFait) ? 'bg-blue-200 text-blue-500 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white border-2 border-blue-600'}`}
+                disabled={!!d.hasLitige}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.hasLitige ? 'bg-rose-200 text-rose-500 cursor-not-allowed' : 'bg-rose-500 hover:bg-rose-600 text-white border-2 border-rose-600'}`}
               >
-                <span className="text-base">📞</span>
-                <span className="flex-1 text-left">{(d.hasRappel && !d.rappelFait) ? 'Rappel déjà en attente' : 'Client à rappeler'}</span>
+                <span className="text-base">⚖️</span>
+                <span className="flex-1 text-left">{d.hasLitige ? 'Litige déjà ouvert' : 'Ouvrir un litige'}</span>
               </button>
-              {/* ❌ ANNULER */}
+              {/* ❌ ANNULER ET ARCHIVER */}
               <button
                 onClick={() => {
                   if (!window.confirm('Confirmer l\'annulation de ce dossier ? Il sera auto-archivé.')) return;
@@ -12518,7 +12519,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.statut === 'W2_ANNULER' ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-slate-700 hover:bg-slate-800 text-white border-2 border-slate-800'}`}
               >
                 <span className="text-base">❌</span>
-                <span className="flex-1 text-left">{d.statut === 'W2_ANNULER' ? 'Déjà annulé' : 'Annuler le dossier'}</span>
+                <span className="flex-1 text-left">{d.statut === 'W2_ANNULER' ? 'Déjà annulé' : 'Annuler et archiver'}</span>
               </button>
             </div>
           )}
