@@ -12153,6 +12153,10 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
   // Formulaire "✗ Refusé" — visible quand l'utilisateur clique le bouton
   const [poseRateeForm, setPoseRateeForm] = useState({ visible: false, motif: 'client_absent', penalite: 500, definitif: false });
+  // 🆕 Panneau « Créer une action » — déclenche les statuts hors-parcours
+  // (LITIGE / SAV / ANNULER) en 1 clic, plutôt que d'aller chercher dans la
+  // dropdown statut qui mélange parcours + hors-parcours.
+  const [showCreerAction, setShowCreerAction] = useState(false);
 
   // Scroll vers la section demandée à l'ouverture + déplie l'étape ciblée
   useEffect(() => {
@@ -12362,6 +12366,65 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   );
                 })}
               </div>
+            </div>
+          )}
+          {/* 🆕 Créer une action (LITIGE / SAV / ANNULER) — toggle */}
+          <button
+            onClick={() => setShowCreerAction(v => !v)}
+            className="mt-2 w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center justify-center gap-2 bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur"
+          >
+            {showCreerAction ? '▲ Masquer les actions' : '➕ Créer une action'}
+          </button>
+          {showCreerAction && (
+            <div className="mt-2 p-2 bg-white/15 backdrop-blur border border-white/20 rounded-lg space-y-1.5">
+              <div className="text-[9px] font-bold uppercase opacity-70 mb-1">Actions hors-parcours</div>
+              {/* ⚖️ LITIGE */}
+              <button
+                onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  onUpdate({
+                    statut: 'C_LITIGE',
+                    statutLocked: true,
+                    litigeDateCourrierRecommande: d.litigeDateCourrierRecommande || today,
+                  });
+                  setShowCreerAction(false);
+                }}
+                disabled={d.statut === 'C_LITIGE'}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.statut === 'C_LITIGE' ? 'bg-rose-200 text-rose-500 cursor-not-allowed' : 'bg-rose-500 hover:bg-rose-600 text-white border-2 border-rose-600'}`}
+              >
+                <span className="text-base">⚖️</span>
+                <span className="flex-1 text-left">{d.statut === 'C_LITIGE' ? 'Déjà en litige' : 'Ouvrir un litige'}</span>
+              </button>
+              {/* 🛠️ SAV */}
+              <button
+                onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  onUpdate({
+                    statut: 'D_SAV',
+                    statutLocked: true,
+                    savDateOuverture: d.savDateOuverture || today,
+                  });
+                  setShowCreerAction(false);
+                }}
+                disabled={d.statut === 'D_SAV'}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.statut === 'D_SAV' ? 'bg-orange-200 text-orange-500 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white border-2 border-orange-600'}`}
+              >
+                <span className="text-base">🛠️</span>
+                <span className="flex-1 text-left">{d.statut === 'D_SAV' ? 'Déjà en SAV' : 'Ouvrir un SAV'}</span>
+              </button>
+              {/* ❌ ANNULER */}
+              <button
+                onClick={() => {
+                  if (!window.confirm('Confirmer l\'annulation de ce dossier ? Il sera auto-archivé.')) return;
+                  onUpdate({ statut: 'W2_ANNULER', statutLocked: true });
+                  setShowCreerAction(false);
+                }}
+                disabled={d.statut === 'W2_ANNULER'}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.statut === 'W2_ANNULER' ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-slate-700 hover:bg-slate-800 text-white border-2 border-slate-800'}`}
+              >
+                <span className="text-base">❌</span>
+                <span className="flex-1 text-left">{d.statut === 'W2_ANNULER' ? 'Déjà annulé' : 'Annuler le dossier'}</span>
+              </button>
             </div>
           )}
           {/* Bouton archiver / désarchiver */}
