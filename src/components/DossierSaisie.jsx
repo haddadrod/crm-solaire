@@ -1225,6 +1225,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // ⚖️ Litige client : si statut === 'C_LITIGE', le client réclame un
     // remboursement. La régie qui a apporté le dossier doit nous rembourser
     // ce montant (même mécanique que les pénalités de pose).
+    litigeDateCourrierRecommande: '', // 📨 date de réception du courrier recommandé (mise en demeure, réclamation)
+    litigeTraite: false, // toggle : litige clos / traité ?
+    litigeDateCloture: '', // date à laquelle le litige a été clos (auto-remplie quand on coche litigeTraite)
     litigeAccordPdfUrl: '', // file ID du PDF accord transactionnel (FactureFileInput)
     litigeMontantRembourse: '', // montant que je dois rendre au client (= que la régie me doit)
     litigeRegieNom: '', // quelle régie doit rembourser (utile si plusieurs)
@@ -2218,6 +2221,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
       instructionsPose: d.instructionsPose || '',
       typeToit: d.typeToit || '',
       orientationPanneaux: d.orientationPanneaux || '',
+      litigeDateCourrierRecommande: d.litigeDateCourrierRecommande || '',
+      litigeTraite: !!d.litigeTraite,
+      litigeDateCloture: d.litigeDateCloture || '',
       litigeAccordPdfUrl: d.litigeAccordPdfUrl || '',
       litigeMontantRembourse: d.litigeMontantRembourse || '',
       litigeRegieNom: d.litigeRegieNom || '',
@@ -2853,6 +2859,24 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsManqueDoc.sort((a, b) => b.jours - a.jours);
 
+    // ⚖️ Rappels Litige — statut LITIGE + courrier recommandé reçu + pas encore traité.
+    // Le délai légal classique pour répondre à une mise en demeure est de 15 jours.
+    //   warn     : 0-4 jours après réception
+    //   high     : 5-14 jours
+    //   critical : 15+ jours
+    const rappelsLitige = [];
+    dossiersDash.forEach(d => {
+      if (d.statut !== 'C_LITIGE') return;
+      if (d.litigeTraite) return; // déjà clos
+      if (!d.litigeDateCourrierRecommande) return; // pas de courrier → rien à mesurer
+      const jours = joursEcoules(d.litigeDateCourrierRecommande);
+      let level = 'warn';
+      if (jours >= 15) level = 'critical';
+      else if (jours >= 5) level = 'high';
+      rappelsLitige.push({ dossier: d, jours, level });
+    });
+    rappelsLitige.sort((a, b) => b.jours - a.jours);
+
     // Rappels Paiement — contrôle livraison fait sans paiement reçu depuis +2 jours
     const rappelsPaiement = [];
     dossiersDash.forEach(d => {
@@ -3144,7 +3168,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -3428,6 +3452,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsStagnation={dashboard.rappelsStagnation || []}
             rappelsRecupTva={dashboard.rappelsRecupTva || []}
             rappelsFacturesManquantes={dashboard.rappelsFacturesManquantes || []}
+            rappelsLitige={dashboard.rappelsLitige || []}
             isAdmin={isAdmin}
             currentUserRole={currentUserRole}
             onClick={(type) => setShowAlertesType(type)}
@@ -10869,6 +10894,58 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
           {formData.statut === 'C_LITIGE' && (
             <Section title="⚖️ Litige & remboursement client" color="rose">
               <div className="space-y-3">
+                {/* 📨 Suivi du traitement — courrier reçu + clôture */}
+                <div className={`rounded-xl border-2 p-3 ${formData.litigeTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-200'}`}>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[11px] font-bold text-rose-700 uppercase mb-1">📨 Date courrier recommandé reçu</label>
+                      <div className="flex gap-1">
+                        <input
+                          type="date"
+                          value={formData.litigeDateCourrierRecommande}
+                          onChange={(e) => setFormData({ ...formData, litigeDateCourrierRecommande: e.target.value })}
+                          className={inputCls}
+                        />
+                        <button type="button" onClick={() => setFormData({ ...formData, litigeDateCourrierRecommande: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+                    {formData.litigeTraite && (
+                      <div>
+                        <label className="block text-[11px] font-bold text-emerald-700 uppercase mb-1">✅ Date de clôture</label>
+                        <div className="flex gap-1">
+                          <input
+                            type="date"
+                            value={formData.litigeDateCloture}
+                            onChange={(e) => setFormData({ ...formData, litigeDateCloture: e.target.value })}
+                            className={inputCls}
+                          />
+                          <button type="button" onClick={() => setFormData({ ...formData, litigeDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer mt-3">
+                    <input
+                      type="checkbox"
+                      checked={formData.litigeTraite}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setFormData({
+                          ...formData,
+                          litigeTraite: checked,
+                          litigeDateCloture: checked && !formData.litigeDateCloture
+                            ? new Date().toISOString().split('T')[0]
+                            : (checked ? formData.litigeDateCloture : ''),
+                        });
+                      }}
+                      className="w-5 h-5 rounded accent-emerald-500"
+                    />
+                    <span className={`text-sm font-bold ${formData.litigeTraite ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {formData.litigeTraite ? '✅ Litige traité / clos' : '⏳ Litige en attente de traitement'}
+                    </span>
+                  </label>
+                </div>
+
                 {/* Accord transactionnel — PDF */}
                 <div>
                   <label className="block text-xs font-bold text-slate-600 uppercase mb-1">📎 Accord transactionnel signé (PDF)</label>
@@ -13705,6 +13782,56 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             <div>
               <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">⚖️ Litige & remboursement</h3>
               <div className="bg-gradient-to-br from-rose-50 to-pink-50 border-2 border-rose-300 rounded-xl p-2.5 space-y-2">
+                {/* 📨 Suivi du traitement — courrier + clôture */}
+                <div className={`rounded-lg border-2 p-2 ${d.litigeTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-rose-200'}`}>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="block text-[9px] font-bold text-rose-700 uppercase mb-0.5">📨 Recommandé reçu le</label>
+                      <div className="flex gap-1">
+                        <input
+                          type="date"
+                          value={d.litigeDateCourrierRecommande || ''}
+                          onChange={(e) => onUpdate({ litigeDateCourrierRecommande: e.target.value })}
+                          className={inputCls + ' flex-1 min-w-0'}
+                        />
+                        <button type="button" onClick={() => onUpdate({ litigeDateCourrierRecommande: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      </div>
+                    </div>
+                    {d.litigeTraite && (
+                      <div>
+                        <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Clos le</label>
+                        <div className="flex gap-1">
+                          <input
+                            type="date"
+                            value={d.litigeDateCloture || ''}
+                            onChange={(e) => onUpdate({ litigeDateCloture: e.target.value })}
+                            className={inputCls + ' flex-1 min-w-0'}
+                          />
+                          <button type="button" onClick={() => onUpdate({ litigeDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                  <label className="flex items-center gap-2 cursor-pointer mt-2">
+                    <input
+                      type="checkbox"
+                      checked={!!d.litigeTraite}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        const today = new Date().toISOString().split('T')[0];
+                        onUpdate({
+                          litigeTraite: checked,
+                          litigeDateCloture: checked && !d.litigeDateCloture ? today : (checked ? d.litigeDateCloture : ''),
+                        });
+                      }}
+                      className="w-4 h-4 rounded accent-emerald-500"
+                    />
+                    <span className={`text-[11px] font-bold ${d.litigeTraite ? 'text-emerald-700' : 'text-rose-700'}`}>
+                      {d.litigeTraite ? '✅ Litige traité' : '⏳ En attente de traitement'}
+                    </span>
+                  </label>
+                </div>
+
                 {/* Accord PDF */}
                 <div>
                   <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">📎 Accord transactionnel (PDF)</label>
@@ -15305,7 +15432,7 @@ const ALERTES_PAR_ROLE = {
   regie: [],  // la régie ne voit aucune alerte
 };
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige = [], isAdmin, currentUserRole, onClick }) {
   // Définition des badges
   const badges = [
     {
@@ -15475,6 +15602,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-emerald-200',
       colorText: 'text-emerald-700',
       tooltip: 'Démarches récupération TVA pour le client (délai 6 mois après paiement banque)',
+    },
+    {
+      type: 'litige',
+      label: 'Litiges',
+      emoji: '⚖️',
+      count: rappelsLitige.length,
+      adminOnly: false,
+      color: 'from-rose-500 to-red-600',
+      colorBg: 'bg-rose-50',
+      colorBorder: 'border-rose-300',
+      colorText: 'text-rose-700',
+      tooltip: 'Litiges en attente de traitement (courrier recommandé reçu, pas encore clos)',
     },
     {
       type: 'stagnation',
@@ -15710,6 +15849,18 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
         return `${statut?.label || d.statut} · seuil ${r.seuil}j`;
       },
       suffixLabel: 'au total',
+    },
+    litige: {
+      title: '⚖️ Litiges en attente de traitement',
+      subtitle: 'Courrier recommandé reçu — il faut répondre / traiter (15 j max recommandés)',
+      items: dashboard.rappelsLitige || [],
+      gradient: 'from-rose-500 to-red-600',
+      bgHeader: 'from-rose-50 to-red-50',
+      borderColor: 'border-rose-300',
+      lineLabel: (d) => d.litigeDateCourrierRecommande
+        ? `📨 Courrier reçu le ${new Date(d.litigeDateCourrierRecommande).toLocaleDateString('fr-FR')}`
+        : 'Litige ouvert',
+      suffixLabel: 'depuis le courrier',
     },
     facturesManquantes: {
       title: '🧾 Factures manquantes (compta)',
