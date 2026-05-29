@@ -16111,11 +16111,14 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
   const whitelist = !isAdmin && currentUserRole ? ALERTES_PAR_ROLE[currentUserRole] : null;
   const visible = badges.filter(b => {
     if (!isAdmin && b.adminOnly) return false;
-    if (whitelist) return whitelist.includes(b.type);
-    return true;
+    if (whitelist && !whitelist.includes(b.type)) return false;
+    // On n'affiche QUE les alertes qui ont au moins 1 dossier (pastille > 0).
+    // Les badges à 0 sont masqués pour ne garder à l'écran que ce qui demande
+    // une action.
+    return b.count > 0;
   });
 
-  // Si le rôle n'a aucune alerte à voir (ex : poseur), on masque toute la barre.
+  // Aucune alerte active → on masque toute la barre.
   if (visible.length === 0) return null;
 
   return (
