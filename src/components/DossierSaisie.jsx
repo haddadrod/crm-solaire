@@ -1090,7 +1090,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
           supprimerDossier: false,
           modifierTous: true,
           voirRapportPaiements: false,
-          voirDashboard: false,
+          // Dashboard activé MAIS en mode restreint (cf DashboardView) : seuls
+          // le bandeau Plafond Projexio et le bloc Financements en attente de
+          // retour sont affichés.
+          voirDashboard: true,
           voirReglages: false,
           cocherPaiements: false,
           voirCA: false,
@@ -3586,7 +3589,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         />}
 
         {/* DASHBOARD */}
-        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
+        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
 
         {activeTab === 'calendrier' && (
           <CalendrierView
@@ -5912,7 +5915,11 @@ function PrestatairesPayerSection({ rappels, onShowQuick }) {
   );
 }
 
-function DashboardView({ dossiers, dashboard, STATUTS, onCreate, onShowQuick }) {
+function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, onCreate, onShowQuick }) {
+  // Vue restreinte pour le rôle « Envoi finance » : seules les sections
+  // Plafond Projexio + Financements en attente de retour sont affichées.
+  // Les tuiles CA/marge/évolution et tous les autres rappels sont masqués.
+  const isRestricted = currentUserRole === 'envoi_finance';
   if (dossiers.length === 0) {
     return (
       <div className="bg-white rounded-3xl p-12 text-center shadow-md border border-violet-100">
@@ -5971,42 +5978,45 @@ function DashboardView({ dossiers, dashboard, STATUTS, onCreate, onShowQuick }) 
         </div>
       </div>
 
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl p-4 text-white">
-          <div className="flex justify-between items-start mb-2">
-            <div className="text-xs font-semibold opacity-90 uppercase">Ce mois</div>
-            <Activity className="w-5 h-5 opacity-80" />
+      {!isRestricted && (
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl p-4 text-white">
+            <div className="flex justify-between items-start mb-2">
+              <div className="text-xs font-semibold opacity-90 uppercase">Ce mois</div>
+              <Activity className="w-5 h-5 opacity-80" />
+            </div>
+            <div className="text-3xl font-bold">{dashboard.moisCourant.count}</div>
+            <div className="text-xs opacity-90 mt-1">{formatEuro(dashboard.moisCourant.ca)} CA</div>
           </div>
-          <div className="text-3xl font-bold">{dashboard.moisCourant.count}</div>
-          <div className="text-xs opacity-90 mt-1">{formatEuro(dashboard.moisCourant.ca)} CA</div>
+          <div className="bg-gradient-to-br from-slate-500 to-gray-600 rounded-2xl p-4 text-white">
+            <div className="flex justify-between items-start mb-2">
+              <div className="text-xs font-semibold opacity-90 uppercase">Mois précédent</div>
+              <Calendar className="w-5 h-5 opacity-80" />
+            </div>
+            <div className="text-3xl font-bold">{dashboard.moisPrecedent.count}</div>
+            <div className="text-xs opacity-90 mt-1">{formatEuro(dashboard.moisPrecedent.ca)} CA</div>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-4 text-white">
+            <div className="flex justify-between items-start mb-2">
+              <div className="text-xs font-semibold opacity-90 uppercase">Marge ce mois</div>
+              <TrendingUp className="w-5 h-5 opacity-80" />
+            </div>
+            <div className="text-2xl font-bold truncate">{formatEuro(dashboard.moisCourant.margeTtc)}</div>
+          </div>
+          <div className={`bg-gradient-to-br ${dashboard.moisCourant.ca >= dashboard.moisPrecedent.ca ? 'from-emerald-500 to-green-500' : 'from-rose-500 to-pink-500'} rounded-2xl p-4 text-white`}>
+            <div className="flex justify-between items-start mb-2">
+              <div className="text-xs font-semibold opacity-90 uppercase">Évolution</div>
+              <Zap className="w-5 h-5 opacity-80" />
+            </div>
+            <div className="text-3xl font-bold">
+              {dashboard.moisPrecedent.ca > 0 ? `${dashboard.moisCourant.ca >= dashboard.moisPrecedent.ca ? '+' : ''}${(((dashboard.moisCourant.ca - dashboard.moisPrecedent.ca) / dashboard.moisPrecedent.ca) * 100).toFixed(0)}%` : '—'}
+            </div>
+          </div>
         </div>
-        <div className="bg-gradient-to-br from-slate-500 to-gray-600 rounded-2xl p-4 text-white">
-          <div className="flex justify-between items-start mb-2">
-            <div className="text-xs font-semibold opacity-90 uppercase">Mois précédent</div>
-            <Calendar className="w-5 h-5 opacity-80" />
-          </div>
-          <div className="text-3xl font-bold">{dashboard.moisPrecedent.count}</div>
-          <div className="text-xs opacity-90 mt-1">{formatEuro(dashboard.moisPrecedent.ca)} CA</div>
-        </div>
-        <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-4 text-white">
-          <div className="flex justify-between items-start mb-2">
-            <div className="text-xs font-semibold opacity-90 uppercase">Marge ce mois</div>
-            <TrendingUp className="w-5 h-5 opacity-80" />
-          </div>
-          <div className="text-2xl font-bold truncate">{formatEuro(dashboard.moisCourant.margeTtc)}</div>
-        </div>
-        <div className={`bg-gradient-to-br ${dashboard.moisCourant.ca >= dashboard.moisPrecedent.ca ? 'from-emerald-500 to-green-500' : 'from-rose-500 to-pink-500'} rounded-2xl p-4 text-white`}>
-          <div className="flex justify-between items-start mb-2">
-            <div className="text-xs font-semibold opacity-90 uppercase">Évolution</div>
-            <Zap className="w-5 h-5 opacity-80" />
-          </div>
-          <div className="text-3xl font-bold">
-            {dashboard.moisPrecedent.ca > 0 ? `${dashboard.moisCourant.ca >= dashboard.moisPrecedent.ca ? '+' : ''}${(((dashboard.moisCourant.ca - dashboard.moisPrecedent.ca) / dashboard.moisPrecedent.ca) * 100).toFixed(0)}%` : '—'}
-          </div>
-        </div>
-      </div>
+      )}
 
-      {/* RAPPELS — FINANCEMENT EN ATTENTE DE RETOUR */}
+      {/* RAPPELS — FINANCEMENT EN ATTENTE DE RETOUR
+          Affiché aussi pour le rôle Envoi finance (vue restreinte). */}
       {dashboard.rappelsFinancement && dashboard.rappelsFinancement.length > 0 && (
         <div className="bg-white rounded-3xl shadow-md border-2 border-blue-200 overflow-hidden">
           <div className="p-5 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-cyan-50">
@@ -6050,6 +6060,10 @@ function DashboardView({ dossiers, dashboard, STATUTS, onCreate, onShowQuick }) 
           </div>
         </div>
       )}
+
+      {/* Tous les blocs ci-dessous sont masqués pour le rôle Envoi finance
+          (vue restreinte au plafond Projexio + financements en attente). */}
+      {!isRestricted && (<>
 
       {/* RAPPELS — PAIEMENT EN ATTENTE APRÈS CONTRÔLE LIVRAISON */}
       {dashboard.rappelsPaiement && dashboard.rappelsPaiement.length > 0 && (
@@ -6265,6 +6279,8 @@ function DashboardView({ dossiers, dashboard, STATUTS, onCreate, onShowQuick }) 
           </div>
         );
       })()}
+
+      </>)}
     </div>
   );
 }
