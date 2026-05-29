@@ -4358,40 +4358,63 @@ function Mini({ label, value, sub, color }) {
 
 // ────────────────────────────────────────────────────────────────────────
 // 🎤 VOCAL CQ — helpers réutilisables (formulaire d'édition + QuickView).
-// Le vocal du contrôle qualité peut venir de 3 sources : (1) un lien externe
-// collé/poussé par ONOFF dans `vocalCQUrl`, (2) un fichier téléversé par
-// l'utilisateur dans le bucket Supabase, dont le chemin est stocké dans
-// `vocalCQStoragePath`. Le path prime sur le lien si les deux existent.
+// Le vocal du contrôle qualité peut venir de 3 sources :
+//   (1) un lien externe collé/poussé par ONOFF dans `vocalCQUrl`
+//   (2) un fichier téléversé dans le bucket Supabase → path stocké dans
+//       `vocalCQStoragePath` tel quel (ex. "vocal_cq_xxx.m4a")
+//   (3) un fichier téléversé en fallback KV (si bucket refuse le mime
+//       type audio) → path préfixé "kv:file:vocal_cq_xxx"
+// Le path prime sur le lien si les deux existent.
 // ────────────────────────────────────────────────────────────────────────
 
-// Lit un fichier audio depuis le bucket et l'affiche via <audio>. Tant que
-// l'URL signée n'est pas obtenue, on montre « Chargement… ».
+// Lit un fichier audio depuis le bucket OU la KV et l'affiche via <audio>.
+// Le préfixe "kv:" du path indique un stockage de secours en base64.
 function VocalCqAudio({ storagePath, fallbackUrl, className }) {
-  const [signedUrl, setSignedUrl] = useState(null);
+  const [resolvedUrl, setResolvedUrl] = useState(null);
   const [error, setError] = useState(null);
 
   useEffect(() => {
-    if (!storagePath) { setSignedUrl(null); setError(null); return; }
+    if (!storagePath) { setResolvedUrl(null); setError(null); return; }
     let cancelled = false;
-    getSignedUrl(storagePath, 3600).then(({ url, error: e }) => {
-      if (cancelled) return;
-      if (e || !url) setError(e?.message || 'URL audio indisponible');
-      else { setSignedUrl(url); setError(null); }
-    });
+    (async () => {
+      try {
+        if (storagePath.startsWith('kv:')) {
+          const key = storagePath.slice(3);
+          const row = await window.storage.get(key);
+          if (cancelled) return;
+          if (!row?.value) { setError("Audio introuvable (stockage de secours)."); return; }
+          try {
+            const data = JSON.parse(row.value);
+            if (!data.dataUrl) { setError("Audio KV corrompu."); return; }
+            setResolvedUrl(data.dataUrl);
+            setError(null);
+          } catch (ex) {
+            setError("Audio KV corrompu.");
+          }
+          return;
+        }
+        const { url, error: e } = await getSignedUrl(storagePath, 3600);
+        if (cancelled) return;
+        if (e || !url) setError(e?.message || 'URL audio indisponible');
+        else { setResolvedUrl(url); setError(null); }
+      } catch (ex) {
+        if (!cancelled) setError(ex.message || 'Erreur chargement audio');
+      }
+    })();
     return () => { cancelled = true; };
   }, [storagePath]);
 
   const playUrl = storagePath
-    ? signedUrl
+    ? resolvedUrl
     : (fallbackUrl && isSafeMediaUrl(fallbackUrl) ? fallbackUrl : null);
 
-  if (storagePath && !signedUrl && !error) {
+  if (storagePath && !resolvedUrl && !error) {
     return <div className="text-[10px] text-slate-500 italic">⏳ Chargement de l'audio…</div>;
   }
   if (error) {
     return <div className="p-2 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-700">⚠️ {error}</div>;
   }
-  if (storagePath === '' && fallbackUrl && !isSafeMediaUrl(fallbackUrl)) {
+  if (!storagePath && fallbackUrl && !isSafeMediaUrl(fallbackUrl)) {
     return <div className="p-2 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-700">⚠️ Lien audio invalide. Seuls les liens HTTPS sont acceptés.</div>;
   }
   if (!playUrl) return null;
@@ -4399,8 +4422,9 @@ function VocalCqAudio({ storagePath, fallbackUrl, className }) {
   return <audio controls src={playUrl} className={className || 'w-full'} preload="none" />;
 }
 
-// Bouton + input file caché : téléverse un fichier audio dans le bucket.
-// Appelle onUploaded(path) en cas de succès.
+// Bouton + input file caché. Téléverse dans le bucket Supabase et, si le
+// bucket refuse (mime type pas en whitelist), bascule sur un stockage de
+// secours en base64 dans la table KV `storage`. Appelle onUploaded(path).
 function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier audio', className }) {
   const [uploading, setUploading] = useState(false);
   const inputRef = useRef(null);
@@ -4420,12 +4444,31 @@ function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier
     setUploading(true);
     try {
       const fileId = `vocal_cq_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-      const { path, error } = await uploadFileToBucket(file, fileId);
-      if (error || !path) {
-        alert(`❌ Échec téléversement : ${error?.message || 'erreur inconnue'}\n\nVérifie que le bucket "dossier-documents" est accessible.`);
+      // 1️⃣ Bucket Supabase (50 Mo) — la voie noble
+      const { path, error: upErr } = await uploadFileToBucket(file, fileId);
+      if (!upErr && path) {
+        onUploaded(path);
         return;
       }
-      onUploaded(path);
+      // 2️⃣ Fallback KV — pour quand le bucket refuse le mime type audio.
+      // Le fichier est encodé en base64 et stocké dans la table `storage`.
+      // Limite ~3,7 Mo (largement assez pour un vocal CQ de quelques minutes).
+      if (file.size > MAX_FILE_SIZE_KV) {
+        alert(`❌ Le bucket Supabase refuse ce fichier (« ${upErr?.message || 'erreur inconnue'} »).\n\nLe stockage de secours ne supporte que les fichiers ≤ ${(MAX_FILE_SIZE_KV / 1024 / 1024).toFixed(1)} Mo (le tien fait ${(file.size / 1024 / 1024).toFixed(1)} Mo).\n\nPour téléverser des vocaux plus longs, autorise les mime types audio dans le bucket Supabase.`);
+        return;
+      }
+      try {
+        const dataUrl = await readFileAsDataURL(file);
+        const kvKey = `file:${fileId}`;
+        const result = await window.storage.set(kvKey, JSON.stringify({ dataUrl, name: file.name, type: file.type }));
+        if (!result) {
+          alert(`❌ Échec du stockage de secours.\n\nDétail bucket : ${upErr?.message || 'inconnu'}`);
+          return;
+        }
+        onUploaded(`kv:${kvKey}`);
+      } catch (ex) {
+        alert(`❌ Lecture du fichier échouée : ${ex.message}`);
+      }
     } finally {
       setUploading(false);
     }
