@@ -1173,6 +1173,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     statutRaccordement: '', // '' | 'accepté' | 'refusé'
     // Process mairie (déclaration préalable / autorisation d'urbanisme)
     dateEnvoiMairie: '', dateRecepisseMairie: '', dateAccordMairie: '',
+    dossierEnvoiMairieFileId: '', // PDF du dossier (déclaration préalable) envoyé à la mairie
     recepisseMairieFileId: '', // PDF du récépissé reçu après dépôt en mairie
     statutMairie: '', // '' | 'accepté' | 'refusé'
     envoisMairie: [], // historique des envois en cas de refus (chaque envoi : { dateEnvoi, dateRecepisse, recepisseFileId, dateReponse, resultat, note })
@@ -2148,6 +2149,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dateEnvoiRaccordement: d.dateEnvoiRaccordement || '', dateAccordRaccordement: d.dateAccordRaccordement || '',
       statutRaccordement: d.statutRaccordement || '',
       dateEnvoiMairie: d.dateEnvoiMairie || '', dateRecepisseMairie: d.dateRecepisseMairie || '', dateAccordMairie: d.dateAccordMairie || '',
+      dossierEnvoiMairieFileId: d.dossierEnvoiMairieFileId || '',
       recepisseMairieFileId: d.recepisseMairieFileId || '',
       statutMairie: d.statutMairie || '',
       envoisMairie: d.envoisMairie || [],
@@ -9913,7 +9915,18 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </div>
               </div>
 
-              {/* Upload du PDF récépissé — comme une facture prestataire */}
+              {/* Upload du PDF du dossier envoyé à la mairie */}
+              <div className="mt-3 p-2 bg-white border border-indigo-200 rounded-lg">
+                <div className="text-[10px] font-semibold text-indigo-700 uppercase mb-1.5">📤 Dossier envoyé à la mairie (PDF)</div>
+                <FactureFileInput
+                  fileId={formData.dossierEnvoiMairieFileId || ''}
+                  onChange={(id) => setFormData({ ...formData, dossierEnvoiMairieFileId: id })}
+                  color="indigo"
+                  label="dossier mairie envoyé"
+                />
+              </div>
+
+              {/* Upload du PDF récépissé — reçu après dépôt en mairie */}
               <div className="mt-3 p-2 bg-white border border-indigo-200 rounded-lg">
                 <div className="text-[10px] font-semibold text-indigo-700 uppercase mb-1.5">📎 Récépissé de dépôt (PDF)</div>
                 <FactureFileInput
@@ -12332,6 +12345,16 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <button onClick={() => onUpdate({ dateAccordMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
+                </div>
+                {/* Upload PDF du dossier envoyé à la mairie */}
+                <div className="px-2 py-1.5 bg-white border border-indigo-200 rounded mb-1.5">
+                  <label className="block text-[9px] font-semibold text-indigo-700 uppercase mb-1">📤 Dossier envoyé (PDF)</label>
+                  <FactureFileInput
+                    fileId={d.dossierEnvoiMairieFileId || ''}
+                    onChange={(id) => onUpdate({ dossierEnvoiMairieFileId: id })}
+                    color="indigo"
+                    label="dossier mairie envoyé"
+                  />
                 </div>
                 {/* Upload PDF récépissé dans l'aperçu rapide */}
                 <div className="px-2 py-1.5 bg-white border border-indigo-200 rounded">
