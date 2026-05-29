@@ -1142,6 +1142,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // ("vous avez des crédits en cours ?"). Liste typée : [{ type, montant }].
     creditsClientCQ: [],
     vocalCQUrl: '', // lien vers le fichier audio du contrôle qualité
+    vocalCQStoragePath: '', // chemin Supabase Storage si le vocal a été téléversé directement
     tentativesCQ: [], // [{datetime: ISO}] — historique des appels où le client n'a pas répondu
     dateAccord: '', dateConsuel: '',
     dateEnvoiFin: '', dateRetourFin: '',
@@ -2078,6 +2079,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         ? d.creditsClientCQ
         : (d.montantCreditClientCQ ? [{ type: 'autre', montant: String(d.montantCreditClientCQ) }] : []),
       vocalCQUrl: d.vocalCQUrl || '',
+      vocalCQStoragePath: d.vocalCQStoragePath || '',
       onoffCallMeta: d.onoffCallMeta || null,
       tentativesCQ: d.tentativesCQ || [],
       dateEnvoiFin: d.dateEnvoiFin || '', dateRetourFin: d.dateRetourFin || '',
@@ -4351,6 +4353,96 @@ function Mini({ label, value, sub, color }) {
       <div className={`text-xs font-bold ${color || 'text-slate-700'} truncate`}>{value}</div>
       {sub && <div className="text-[9px] text-slate-500">{sub}</div>}
     </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────
+// 🎤 VOCAL CQ — helpers réutilisables (formulaire d'édition + QuickView).
+// Le vocal du contrôle qualité peut venir de 3 sources : (1) un lien externe
+// collé/poussé par ONOFF dans `vocalCQUrl`, (2) un fichier téléversé par
+// l'utilisateur dans le bucket Supabase, dont le chemin est stocké dans
+// `vocalCQStoragePath`. Le path prime sur le lien si les deux existent.
+// ────────────────────────────────────────────────────────────────────────
+
+// Lit un fichier audio depuis le bucket et l'affiche via <audio>. Tant que
+// l'URL signée n'est pas obtenue, on montre « Chargement… ».
+function VocalCqAudio({ storagePath, fallbackUrl, className }) {
+  const [signedUrl, setSignedUrl] = useState(null);
+  const [error, setError] = useState(null);
+
+  useEffect(() => {
+    if (!storagePath) { setSignedUrl(null); setError(null); return; }
+    let cancelled = false;
+    getSignedUrl(storagePath, 3600).then(({ url, error: e }) => {
+      if (cancelled) return;
+      if (e || !url) setError(e?.message || 'URL audio indisponible');
+      else { setSignedUrl(url); setError(null); }
+    });
+    return () => { cancelled = true; };
+  }, [storagePath]);
+
+  const playUrl = storagePath
+    ? signedUrl
+    : (fallbackUrl && isSafeMediaUrl(fallbackUrl) ? fallbackUrl : null);
+
+  if (storagePath && !signedUrl && !error) {
+    return <div className="text-[10px] text-slate-500 italic">⏳ Chargement de l'audio…</div>;
+  }
+  if (error) {
+    return <div className="p-2 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-700">⚠️ {error}</div>;
+  }
+  if (storagePath === '' && fallbackUrl && !isSafeMediaUrl(fallbackUrl)) {
+    return <div className="p-2 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-700">⚠️ Lien audio invalide. Seuls les liens HTTPS sont acceptés.</div>;
+  }
+  if (!playUrl) return null;
+
+  return <audio controls src={playUrl} className={className || 'w-full'} preload="none" />;
+}
+
+// Bouton + input file caché : téléverse un fichier audio dans le bucket.
+// Appelle onUploaded(path) en cas de succès.
+function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier audio', className }) {
+  const [uploading, setUploading] = useState(false);
+  const inputRef = useRef(null);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (!file.type.startsWith('audio/') && !/\.(mp3|m4a|wav|ogg|webm|aac)$/i.test(file.name)) {
+      alert('❌ Choisis un fichier audio (mp3, m4a, wav, ogg, webm, aac).');
+      return;
+    }
+    if (file.size > MAX_FILE_SIZE_BUCKET) {
+      alert(`❌ Fichier trop gros : ${(file.size / 1024 / 1024).toFixed(1)} Mo. Max : ${MAX_FILE_SIZE_BUCKET / 1024 / 1024} Mo.`);
+      return;
+    }
+    setUploading(true);
+    try {
+      const fileId = `vocal_cq_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const { path, error } = await uploadFileToBucket(file, fileId);
+      if (error || !path) {
+        alert(`❌ Échec téléversement : ${error?.message || 'erreur inconnue'}\n\nVérifie que le bucket "dossier-documents" est accessible.`);
+        return;
+      }
+      onUploaded(path);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <>
+      <input type="file" accept="audio/*" ref={inputRef} onChange={handleFile} className="hidden" />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={uploading}
+        className={className || 'px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-[10px] font-bold disabled:opacity-60'}
+      >
+        {uploading ? '⏳ Téléversement…' : label}
+      </button>
+    </>
   );
 }
 
@@ -9613,55 +9705,62 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </div>
               )}
 
-              {/* 🎤 Vocal du contrôle qualité — lecteur inline, prioritaire sur l'URL */}
+              {/* 🎤 Vocal du contrôle qualité — fichier téléversé OU lien externe (ONOFF/Drive). */}
               <div className="mt-3 p-2 bg-white border border-purple-200 rounded-lg">
                 <label className="block text-[11px] font-semibold text-purple-700 mb-1.5 flex items-center justify-between flex-wrap gap-1">
                   <span className="flex items-center gap-1">
                     🎤 Vocal du contrôle qualité
-                    {formData.onoffCallMeta && (
+                    {formData.vocalCQStoragePath && (
+                      <span className="text-[9px] font-bold uppercase bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">📁 Fichier</span>
+                    )}
+                    {!formData.vocalCQStoragePath && formData.onoffCallMeta && (
                       <span className="text-[9px] font-bold uppercase bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">📞 ONOFF</span>
                     )}
                   </span>
-                  {formData.vocalCQUrl && isSafeMediaUrl(formData.vocalCQUrl) && (
+                  {!formData.vocalCQStoragePath && formData.vocalCQUrl && isSafeMediaUrl(formData.vocalCQUrl) && (
                     <a href={formData.vocalCQUrl} download className="text-[10px] font-bold text-purple-600 hover:underline">⬇️ Télécharger</a>
                   )}
                 </label>
 
-                {formData.vocalCQUrl ? (
-                  <>
-                    {isSafeMediaUrl(formData.vocalCQUrl) ? (
-                      <audio controls src={formData.vocalCQUrl} className="w-full" preload="none">
-                        Ton navigateur ne supporte pas la lecture audio.
-                      </audio>
-                    ) : (
-                      <div className="p-2 bg-rose-50 border border-rose-300 rounded text-[11px] text-rose-700">
-                        ⚠️ Lien audio invalide ou potentiellement dangereux — seuls les liens HTTPS sont acceptés. Recolle un lien direct vers le fichier audio.
-                      </div>
-                    )}
-                    {formData.onoffCallMeta && (
-                      <div className="text-[10px] text-slate-600 mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                        {formData.onoffCallMeta.callStarted && (
-                          <span>📅 {new Date(formData.onoffCallMeta.callStarted).toLocaleString('fr-FR')}</span>
-                        )}
-                        {formData.onoffCallMeta.callDuration > 0 && (
-                          <span>⏱ {formatDurationMmSs(formData.onoffCallMeta.callDuration)}</span>
-                        )}
-                        {formData.onoffCallMeta.onoffUserName && (
-                          <span>👤 {formData.onoffCallMeta.onoffUserName}</span>
-                        )}
-                      </div>
-                    )}
-                    <details className="mt-2">
-                      <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-purple-600">🔗 Modifier le lien du vocal</summary>
-                      <input type="url" value={formData.vocalCQUrl} onChange={(e) => setFormData({ ...formData, vocalCQUrl: e.target.value })} placeholder="https://..." className={inputCls + ' mt-1.5'} />
-                    </details>
-                  </>
-                ) : (
-                  <>
-                    <input type="url" value={formData.vocalCQUrl} onChange={(e) => setFormData({ ...formData, vocalCQUrl: e.target.value })} placeholder="Colle ici l'URL d'un enregistrement audio (mp3, m4a…)" className={inputCls} />
-                    <p className="text-[10px] text-slate-500 mt-1">💡 Quand l'appel passera par ONOFF, l'enregistrement viendra ici tout seul. Sinon : Drive/Dropbox direct link.</p>
-                  </>
+                <VocalCqAudio storagePath={formData.vocalCQStoragePath} fallbackUrl={formData.vocalCQUrl} />
+
+                {formData.vocalCQStoragePath && formData.onoffCallMeta && (
+                  <div className="text-[10px] text-slate-600 mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                    {formData.onoffCallMeta.callStarted && <span>📅 {new Date(formData.onoffCallMeta.callStarted).toLocaleString('fr-FR')}</span>}
+                    {formData.onoffCallMeta.callDuration > 0 && <span>⏱ {formatDurationMmSs(formData.onoffCallMeta.callDuration)}</span>}
+                    {formData.onoffCallMeta.onoffUserName && <span>👤 {formData.onoffCallMeta.onoffUserName}</span>}
+                  </div>
                 )}
+
+                <div className="flex items-center gap-2 mt-2 flex-wrap">
+                  <UploadVocalCqButton
+                    onUploaded={(path) => setFormData({ ...formData, vocalCQStoragePath: path, vocalCQUrl: '' })}
+                    label={formData.vocalCQStoragePath ? '🔄 Remplacer le fichier' : '📤 Téléverser un fichier audio'}
+                  />
+                  {(formData.vocalCQStoragePath || formData.vocalCQUrl) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (window.confirm('Supprimer le vocal de ce dossier ?')) {
+                          setFormData({ ...formData, vocalCQStoragePath: '', vocalCQUrl: '' });
+                        }
+                      }}
+                      className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-bold"
+                    >🗑️ Supprimer</button>
+                  )}
+                </div>
+
+                <details className="mt-2">
+                  <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-purple-600">🔗 Ou coller un lien externe (ONOFF / Drive…)</summary>
+                  <input
+                    type="url"
+                    value={formData.vocalCQUrl}
+                    onChange={(e) => setFormData({ ...formData, vocalCQUrl: e.target.value, vocalCQStoragePath: e.target.value ? '' : formData.vocalCQStoragePath })}
+                    placeholder="https://..."
+                    className={inputCls + ' mt-1.5'}
+                  />
+                  <p className="text-[10px] text-slate-500 mt-1">💡 Quand l'appel passera par ONOFF, l'enregistrement viendra ici tout seul.</p>
+                </details>
               </div>
               </>)}
             </div>
@@ -12017,42 +12116,58 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div className="mt-1.5 px-2 py-1 bg-rose-100 border border-rose-300 rounded text-[10px] text-rose-800 font-bold">✗ Refusé — ne pas envoyer</div>
               )}
 
-              {/* 🎤 Vocal du contrôle qualité — lecteur inline prioritaire */}
+              {/* 🎤 Vocal du contrôle qualité — fichier téléversé ou lien externe. */}
               <div className="mt-2 p-1.5 bg-white border border-purple-200 rounded">
                 <label className="block text-[9px] font-bold text-purple-700 uppercase mb-1 flex items-center justify-between flex-wrap gap-1">
                   <span className="flex items-center gap-1">
                     🎤 Vocal CQ
-                    {d.onoffCallMeta && (
+                    {d.vocalCQStoragePath && (
+                      <span className="text-[8px] font-bold uppercase bg-emerald-100 text-emerald-700 px-1 py-0.5 rounded-full">📁 Fichier</span>
+                    )}
+                    {!d.vocalCQStoragePath && d.onoffCallMeta && (
                       <span className="text-[8px] font-bold uppercase bg-purple-100 text-purple-700 px-1 py-0.5 rounded-full">ONOFF</span>
                     )}
                   </span>
-                  {d.vocalCQUrl && isSafeMediaUrl(d.vocalCQUrl) && (
+                  {!d.vocalCQStoragePath && d.vocalCQUrl && isSafeMediaUrl(d.vocalCQUrl) && (
                     <a href={d.vocalCQUrl} download className="text-[9px] font-bold text-purple-600 hover:underline">⬇️</a>
                   )}
                 </label>
-                {d.vocalCQUrl ? (
-                  <>
-                    {isSafeMediaUrl(d.vocalCQUrl) ? (
-                      <audio controls src={d.vocalCQUrl} className="w-full" preload="none" style={{ height: '32px' }}>
-                        Audio non supporté
-                      </audio>
-                    ) : (
-                      <div className="p-1.5 bg-rose-50 border border-rose-300 rounded text-[9px] text-rose-700">⚠️ Lien invalide</div>
-                    )}
-                    {d.onoffCallMeta && (
-                      <div className="text-[9px] text-slate-600 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
-                        {d.onoffCallMeta.callDuration > 0 && <span>⏱ {formatDurationMmSs(d.onoffCallMeta.callDuration)}</span>}
-                        {d.onoffCallMeta.callStarted && <span>📅 {new Date(d.onoffCallMeta.callStarted).toLocaleDateString('fr-FR')}</span>}
-                      </div>
-                    )}
-                    <details className="mt-1.5">
-                      <summary className="text-[9px] text-slate-500 cursor-pointer hover:text-purple-600">🔗 Modifier le lien</summary>
-                      <input type="url" value={d.vocalCQUrl || ''} onChange={(e) => onUpdate({ vocalCQUrl: e.target.value })} placeholder="Coller le lien" className={inputCls + ' text-[10px] mt-1'} />
-                    </details>
-                  </>
-                ) : (
-                  <input type="url" value={d.vocalCQUrl || ''} onChange={(e) => onUpdate({ vocalCQUrl: e.target.value })} placeholder="Coller le lien du vocal" className={inputCls + ' text-[10px]'} />
+
+                <VocalCqAudio storagePath={d.vocalCQStoragePath} fallbackUrl={d.vocalCQUrl} className="w-full" />
+
+                {d.vocalCQStoragePath && d.onoffCallMeta && (
+                  <div className="text-[9px] text-slate-600 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                    {d.onoffCallMeta.callDuration > 0 && <span>⏱ {formatDurationMmSs(d.onoffCallMeta.callDuration)}</span>}
+                    {d.onoffCallMeta.callStarted && <span>📅 {new Date(d.onoffCallMeta.callStarted).toLocaleDateString('fr-FR')}</span>}
+                  </div>
                 )}
+
+                <div className="flex items-center gap-1 mt-1 flex-wrap">
+                  <UploadVocalCqButton
+                    onUploaded={(path) => onUpdate({ vocalCQStoragePath: path, vocalCQUrl: '' })}
+                    label={d.vocalCQStoragePath ? '🔄 Remplacer' : '📤 Téléverser'}
+                    className="px-2 py-0.5 bg-purple-500 hover:bg-purple-600 text-white rounded text-[9px] font-bold disabled:opacity-60"
+                  />
+                  {(d.vocalCQStoragePath || d.vocalCQUrl) && (
+                    <button
+                      onClick={() => {
+                        if (window.confirm('Supprimer le vocal ?')) onUpdate({ vocalCQStoragePath: '', vocalCQUrl: '' });
+                      }}
+                      className="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded text-[9px] font-bold"
+                    >🗑️</button>
+                  )}
+                </div>
+
+                <details className="mt-1">
+                  <summary className="text-[9px] text-slate-500 cursor-pointer hover:text-purple-600">🔗 Coller un lien externe</summary>
+                  <input
+                    type="url"
+                    value={d.vocalCQUrl || ''}
+                    onChange={(e) => onUpdate({ vocalCQUrl: e.target.value, vocalCQStoragePath: e.target.value ? '' : d.vocalCQStoragePath })}
+                    placeholder="https://..."
+                    className={inputCls + ' text-[10px] mt-1'}
+                  />
+                </details>
               </div>
               </>)}
             </div>
