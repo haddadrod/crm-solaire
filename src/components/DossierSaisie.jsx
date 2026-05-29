@@ -1678,6 +1678,47 @@ export default function DossierSaisie({ authUser, onLogout }) {
     return () => { try { supabase.removeChannel(channel); } catch (e) {} };
   }, [loading]);
 
+  // 🔁 Polling de secours — toutes les 15 s on relit dossiers-data.
+  // Sert de filet de sécurité si Supabase Realtime tombe (onglet en arrière-
+  // plan, WebSocket coupé par le réseau, etc.). Coût : 1 SELECT toutes les
+  // 15 s par client connecté. On évite de re-set le state si le JSON est
+  // identique au dernier reçu — pas de re-render inutile.
+  // Pause si l'onglet n'a pas le focus pour économiser des requêtes.
+  useEffect(() => {
+    if (loading) return;
+    const POLL_MS = 15000;
+    let timer = null;
+    let cancelled = false;
+
+    const pull = async () => {
+      if (cancelled) return;
+      if (typeof document !== 'undefined' && document.hidden) return;
+      try {
+        const r = await window.storage.get('dossiers-data');
+        const v = r?.value;
+        if (!v || v === lastWrittenDossiersJson.current) return;
+        const parsed = JSON.parse(v);
+        if (!Array.isArray(parsed)) return;
+        lastWrittenDossiersJson.current = v;
+        setDossiers(parsed);
+      } catch (e) {
+        // Silencieux : on retentera dans 15 s
+      }
+    };
+
+    timer = setInterval(pull, POLL_MS);
+    // Pull immédiat quand l'onglet récupère le focus — pour l'utilisateur
+    // qui revient sur l'app après avoir bossé ailleurs.
+    const onFocus = () => pull();
+    if (typeof window !== 'undefined') window.addEventListener('focus', onFocus);
+
+    return () => {
+      cancelled = true;
+      if (timer) clearInterval(timer);
+      if (typeof window !== 'undefined') window.removeEventListener('focus', onFocus);
+    };
+  }, [loading]);
+
   useEffect(() => {
     if (loading) return;
     window.storage.set('users-list', JSON.stringify(users)).catch(() => {});
