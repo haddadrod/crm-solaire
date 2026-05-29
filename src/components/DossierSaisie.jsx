@@ -6107,80 +6107,69 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
 
       {/* RAPPELS — FINANCEMENT EN ATTENTE DE RETOUR
           Affiché aussi pour le rôle Envoi finance (vue restreinte).
-          Groupé par société émettrice. */}
+          UNE CARTE INDÉPENDANTE PAR SOCIÉTÉ — chacune avec son propre scroll
+          interne pour pouvoir scroller dans Yolico sans bouger Elsun. */}
       {dashboard.rappelsFinancement && dashboard.rappelsFinancement.length > 0 && (() => {
-        // groupBy société
         const groupes = {};
         dashboard.rappelsFinancement.forEach(r => {
           const soc = r.dossier.societe || '';
           if (!groupes[soc]) groupes[soc] = [];
           groupes[soc].push(r);
         });
-        // Ordre des groupes : sociétés connues d'abord (dans l'ordre du tableau societes),
-        // puis « sans société » à la fin.
         const ordreSocietes = societes.map(s => s.id).filter(id => groupes[id]);
         const orphelins = Object.keys(groupes).filter(id => !ordreSocietes.includes(id));
         const ordreFinal = [...ordreSocietes, ...orphelins];
 
-        return (
-          <div className="bg-white rounded-3xl shadow-md border-2 border-blue-200 overflow-hidden">
-            <div className="p-5 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-cyan-50">
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                💳 Financements en attente de retour
-                <span className="ml-auto text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{dashboard.rappelsFinancement.length} dossier{dashboard.rappelsFinancement.length > 1 ? 's' : ''}</span>
-              </h2>
-              <p className="text-xs text-slate-600 mt-1">Dossiers envoyés au financeur depuis +2 jours sans réponse — pense à relancer.</p>
+        return ordreFinal.map(socId => {
+          const rappels = groupes[socId];
+          const socMeta = societes.find(s => s.id === socId);
+          const socLabel = socMeta?.label || (socId ? socId.toUpperCase() : 'Sans société');
+          const socEmoji = socMeta?.emoji || '🏢';
+          return (
+            <div key={socId || 'sans-societe'} className="bg-white rounded-3xl shadow-md border-2 border-blue-200 overflow-hidden">
+              <div className="p-5 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-cyan-50">
+                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 flex-wrap">
+                  <span className="text-xl">{socEmoji}</span>
+                  💳 Financements en attente — {socLabel}
+                  <span className="ml-auto text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{rappels.length} dossier{rappels.length > 1 ? 's' : ''}</span>
+                </h2>
+                <p className="text-xs text-slate-600 mt-1">Dossiers envoyés au financeur depuis +2 jours sans réponse — pense à relancer.</p>
+              </div>
+              <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
+                {rappels.map((r) => {
+                  const d = r.dossier;
+                  const statut = STATUTS.find(s => s.id === d.statut);
+                  const levelStyle = r.level === 'critical' ? 'text-rose-600' : r.level === 'high' ? 'text-orange-600' : 'text-amber-600';
+                  const levelBg = r.level === 'critical' ? 'bg-rose-50' : r.level === 'high' ? 'bg-orange-50' : 'bg-amber-50';
+                  return (
+                    <button
+                      key={d.localId}
+                      onClick={() => onShowQuick && onShowQuick(d.localId)}
+                      className={`w-full px-4 py-2.5 hover:${levelBg} flex items-center gap-3 text-left transition-colors border-l-4 border-transparent hover:border-blue-400`}
+                    >
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm bg-gradient-to-br ${statut?.color || 'from-slate-400 to-slate-500'} text-white shadow-sm`}>
+                        {statut?.emoji || '📄'}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="font-bold text-slate-800 text-sm truncate">{d.nom} {d.prenom}</span>
+                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">💳 {d.financement}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          Envoyé le {d.dateEnvoiFin && new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR')}
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0 text-right">
+                        <div className={`text-base font-bold ${levelStyle}`}>{r.jours}j</div>
+                        <div className="text-[9px] text-slate-400">sans retour</div>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-            <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
-              {ordreFinal.map(socId => {
-                const rappels = groupes[socId];
-                const socMeta = societes.find(s => s.id === socId);
-                const socLabel = socMeta?.label || (socId ? socId.toUpperCase() : 'Sans société');
-                const socEmoji = socMeta?.emoji || '🏢';
-                return (
-                  <div key={socId || 'sans-societe'}>
-                    {/* En-tête de groupe société */}
-                    <div className="px-4 py-2 bg-slate-50 border-y border-slate-200 flex items-center gap-2 sticky top-0 z-10">
-                      <span className="text-sm">{socEmoji}</span>
-                      <span className="text-xs font-bold text-slate-700 uppercase">{socLabel}</span>
-                      <span className="text-[10px] font-semibold bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full">{rappels.length}</span>
-                    </div>
-                    {rappels.map((r) => {
-                      const d = r.dossier;
-                      const statut = STATUTS.find(s => s.id === d.statut);
-                      const levelStyle = r.level === 'critical' ? 'text-rose-600' : r.level === 'high' ? 'text-orange-600' : 'text-amber-600';
-                      const levelBg = r.level === 'critical' ? 'bg-rose-50' : r.level === 'high' ? 'bg-orange-50' : 'bg-amber-50';
-                      return (
-                        <button
-                          key={d.localId}
-                          onClick={() => onShowQuick && onShowQuick(d.localId)}
-                          className={`w-full px-4 py-2.5 hover:${levelBg} flex items-center gap-3 text-left transition-colors border-l-4 border-transparent hover:border-blue-400`}
-                        >
-                          <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm bg-gradient-to-br ${statut?.color || 'from-slate-400 to-slate-500'} text-white shadow-sm`}>
-                            {statut?.emoji || '📄'}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 flex-wrap">
-                              <span className="font-bold text-slate-800 text-sm truncate">{d.nom} {d.prenom}</span>
-                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">💳 {d.financement}</span>
-                            </div>
-                            <div className="text-[11px] text-slate-500">
-                              Envoyé le {d.dateEnvoiFin && new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR')}
-                            </div>
-                          </div>
-                          <div className="flex-shrink-0 text-right">
-                            <div className={`text-base font-bold ${levelStyle}`}>{r.jours}j</div>
-                            <div className="text-[9px] text-slate-400">sans retour</div>
-                          </div>
-                        </button>
-                      );
-                    })}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
+          );
+        });
       })()}
 
       {/* Tous les blocs ci-dessous sont masqués pour le rôle Envoi finance
