@@ -200,10 +200,14 @@ function statutMilestoneLabel(fromStatut, toStatut) {
 
 const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM', 'FINANCO', 'FRANFINANCE'];
 
-// 🏦 Plafond mensuel imposé par PROJEXIO : on n'a le droit de leur envoyer
-// que pour 2,5 M€ de financement par mois. Au-delà, ils ne traitent plus
-// les dossiers tant que le mois suivant n'a pas démarré.
-const PROJEXIO_CAP_MENSUEL = 2_500_000;
+// 🏦 Plafonds mensuels Projexio par société émettrice. Chaque société a
+// son propre quota négocié avec Projexio ; au-delà du plafond ils ne
+// traitent plus les dossiers du mois pour cette société.
+// Clés alignées sur l'id des sociétés (cf state `societes`).
+const PROJEXIO_CAP_MENSUEL_PAR_SOCIETE = {
+  yolico: 1_000_000,
+  elsun:  2_500_000,
+};
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
 // Prérequis avant de pouvoir saisir le contrôle de livraison (= étape qui
@@ -2635,27 +2639,29 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const lastStr = lm.toISOString().substring(0, 7);
     const moisPrecedent = statsMois.find(m => m.mois === lastStr) || { count: 0, ca: 0, margeTtc: 0 };
 
-    // 🏦 PROJEXIO — plafond mensuel de 2,5 M€ d'envois en banque.
+    // 🏦 PROJEXIO — total d'envois banque du mois, breakdown par société.
     // Règles de comptage demandées :
     //   ✓ Refusé par la banque (statutFin === 'refusé') → COMPTÉ
     //     (le dossier a quand même consommé du quota chez Projexio).
     //   ✗ Annulé par nous (statut === 'W2_ANNULER') → EXCLU
     //     (on a retiré le dossier nous-mêmes, Projexio le sait).
     // Filtre temporel : mois du `dateEnvoiFin` (date d'envoi au financeur).
+    // Le plafond mensuel est défini PAR SOCIÉTÉ dans PROJEXIO_CAP_MENSUEL_PAR_SOCIETE.
     const projexioMoisCourant = (() => {
-      let total = 0, count = 0;
-      const dossiersList = [];
+      const parSociete = {}; // { [societeId]: { total, count, dossiers: [] } }
       dossiersDash.forEach(d => {
         if (d.financement !== 'PROJEXIO') return;
         if (!d.dateEnvoiFin) return;
         if (d.dateEnvoiFin.substring(0, 7) !== todayStr) return;
         if (d.statut === 'W2_ANNULER') return;
         const m = parseFloat(d.montantTotal) || 0;
-        total += m;
-        count += 1;
-        dossiersList.push({ localId: d.localId, nom: d.nom, prenom: d.prenom, montant: m, statut: d.statut });
+        const soc = d.societe || '';
+        if (!parSociete[soc]) parSociete[soc] = { total: 0, count: 0, dossiers: [] };
+        parSociete[soc].total += m;
+        parSociete[soc].count += 1;
+        parSociete[soc].dossiers.push({ localId: d.localId, nom: d.nom, prenom: d.prenom, montant: m, statut: d.statut });
       });
-      return { total, count, dossiers: dossiersList };
+      return { parSociete };
     })();
 
     const poseurMap = {};
@@ -3643,7 +3649,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         />}
 
         {/* DASHBOARD */}
-        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
+        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
 
         {activeTab === 'calendrier' && (
           <CalendrierView
@@ -5982,7 +5988,7 @@ function PrestatairesPayerSection({ rappels, onShowQuick }) {
   );
 }
 
-function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, onCreate, onShowQuick }) {
+function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', onCreate, onShowQuick }) {
   // Vue restreinte pour le rôle « Envoi finance » : seules les sections
   // Plafond Projexio + Financements en attente de retour sont affichées.
   // Les tuiles CA/marge/évolution et tous les autres rappels sont masqués.
@@ -6000,50 +6006,67 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, onCreate
     );
   }
 
-  // 🏦 Plafond mensuel PROJEXIO : couleur graduée selon le taux de remplissage.
-  const proj = dashboard.projexioMoisCourant || { total: 0, count: 0 };
-  const projPct = Math.min(100, (proj.total / PROJEXIO_CAP_MENSUEL) * 100);
-  const projOver = proj.total > PROJEXIO_CAP_MENSUEL;
-  const projReste = Math.max(0, PROJEXIO_CAP_MENSUEL - proj.total);
-  const projLevel = projOver ? 'over' : projPct >= 90 ? 'critical' : projPct >= 70 ? 'warn' : 'ok';
-  // Barre toujours blanche pour bien ressortir sur le fond coloré, quel
-  // que soit le niveau (vert/orange/rouge).
-  const projColors = {
+  // 🏦 Plafonds mensuels PROJEXIO — un bandeau par société qui a un plafond
+  // défini. Si une société est filtrée (activeSociete), on ne montre qu'elle.
+  const projParSociete = dashboard.projexioMoisCourant?.parSociete || {};
+  const projColorsByLevel = {
     ok:       { bg: 'from-emerald-500 to-green-600', hint: '✅ Marge confortable' },
     warn:     { bg: 'from-amber-500 to-orange-500',  hint: '⚠️ Tu approches du plafond' },
     critical: { bg: 'from-orange-500 to-rose-500',   hint: '🚨 Plus que 10 % de marge' },
     over:     { bg: 'from-rose-600 to-red-700',      hint: '⛔ Plafond dépassé — Projexio ne traite plus' },
-  }[projLevel];
+  };
+  const societesAvecPlafond = Object.keys(PROJEXIO_CAP_MENSUEL_PAR_SOCIETE);
+  const societesAAfficher = activeSociete
+    ? (societesAvecPlafond.includes(activeSociete) ? [activeSociete] : [])
+    : societesAvecPlafond;
+  const projBars = societesAAfficher.map(socId => {
+    const cap = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE[socId];
+    const data = projParSociete[socId] || { total: 0, count: 0 };
+    const pct = Math.min(100, (data.total / cap) * 100);
+    const over = data.total > cap;
+    const reste = Math.max(0, cap - data.total);
+    const level = over ? 'over' : pct >= 90 ? 'critical' : pct >= 70 ? 'warn' : 'ok';
+    const socMeta = societes.find(s => s.id === socId);
+    return {
+      socId,
+      socLabel: socMeta?.label || socId.toUpperCase(),
+      socEmoji: socMeta?.emoji || '🏦',
+      cap, data, pct, over, reste, level,
+      colors: projColorsByLevel[level],
+    };
+  });
 
   return (
     <div className="space-y-4">
-      {/* 🏦 PROJEXIO — Plafond mensuel 2,5 M€ */}
-      <div className={`bg-gradient-to-r ${projColors.bg} rounded-2xl p-4 text-white shadow-md`}>
-        <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-          <div className="flex items-center gap-2">
-            <span className="text-xl">🏦</span>
-            <div>
-              <div className="text-xs font-semibold uppercase opacity-90">Plafond mensuel PROJEXIO</div>
-              <div className="text-[10px] opacity-75">{proj.count} dossier{proj.count > 1 ? 's' : ''} envoyé{proj.count > 1 ? 's' : ''} ce mois (refus banque inclus, annulés par toi exclus)</div>
+      {/* 🏦 PROJEXIO — un bandeau de plafond par société émettrice */}
+      {projBars.map(b => (
+        <div key={b.socId} className={`bg-gradient-to-r ${b.colors.bg} rounded-2xl p-4 text-white shadow-md`}>
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{b.socEmoji}</span>
+              <div>
+                <div className="text-xs font-semibold uppercase opacity-90">Plafond mensuel PROJEXIO — {b.socLabel}</div>
+                <div className="text-[10px] opacity-75">{b.data.count} dossier{b.data.count > 1 ? 's' : ''} envoyé{b.data.count > 1 ? 's' : ''} ce mois (refus banque inclus, annulés par toi exclus)</div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold">{formatEuro(b.data.total)}</div>
+              <div className="text-[11px] opacity-90">/ {formatEuro(b.cap)} ({b.pct.toFixed(0)} %)</div>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-2xl font-bold">{formatEuro(proj.total)}</div>
-            <div className="text-[11px] opacity-90">/ {formatEuro(PROJEXIO_CAP_MENSUEL)} ({projPct.toFixed(0)} %)</div>
+          <div className="h-2 bg-black/25 rounded-full overflow-hidden">
+            <div className="h-full bg-white transition-all" style={{ width: `${b.pct}%` }} />
+          </div>
+          <div className="flex items-center justify-between mt-1.5 text-[11px]">
+            <span className="opacity-90">{b.colors.hint}</span>
+            <span className="font-semibold">
+              {b.over
+                ? `Dépassement : ${formatEuro(b.data.total - b.cap)}`
+                : `Reste : ${formatEuro(b.reste)}`}
+            </span>
           </div>
         </div>
-        <div className="h-2 bg-black/25 rounded-full overflow-hidden">
-          <div className="h-full bg-white transition-all" style={{ width: `${projPct}%` }} />
-        </div>
-        <div className="flex items-center justify-between mt-1.5 text-[11px]">
-          <span className="opacity-90">{projColors.hint}</span>
-          <span className="font-semibold">
-            {projOver
-              ? `Dépassement : ${formatEuro(proj.total - PROJEXIO_CAP_MENSUEL)}`
-              : `Reste : ${formatEuro(projReste)}`}
-          </span>
-        </div>
-      </div>
+      ))}
 
       {!isRestricted && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -6083,50 +6106,82 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, onCreate
       )}
 
       {/* RAPPELS — FINANCEMENT EN ATTENTE DE RETOUR
-          Affiché aussi pour le rôle Envoi finance (vue restreinte). */}
-      {dashboard.rappelsFinancement && dashboard.rappelsFinancement.length > 0 && (
-        <div className="bg-white rounded-3xl shadow-md border-2 border-blue-200 overflow-hidden">
-          <div className="p-5 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-cyan-50">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              💳 Financements en attente de retour
-              <span className="ml-auto text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{dashboard.rappelsFinancement.length} dossier{dashboard.rappelsFinancement.length > 1 ? 's' : ''}</span>
-            </h2>
-            <p className="text-xs text-slate-600 mt-1">Dossiers envoyés au financeur depuis +2 jours sans réponse — pense à relancer.</p>
-          </div>
-          <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
-            {dashboard.rappelsFinancement.map((r) => {
-              const d = r.dossier;
-              const statut = STATUTS.find(s => s.id === d.statut);
-              const levelStyle = r.level === 'critical' ? 'text-rose-600' : r.level === 'high' ? 'text-orange-600' : 'text-amber-600';
-              const levelBg = r.level === 'critical' ? 'bg-rose-50' : r.level === 'high' ? 'bg-orange-50' : 'bg-amber-50';
-              return (
-                <button
-                  key={d.localId}
-                  onClick={() => onShowQuick && onShowQuick(d.localId)}
-                  className={`w-full px-4 py-2.5 hover:${levelBg} flex items-center gap-3 text-left transition-colors border-l-4 border-transparent hover:border-blue-400`}
-                >
-                  <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm bg-gradient-to-br ${statut?.color || 'from-slate-400 to-slate-500'} text-white shadow-sm`}>
-                    {statut?.emoji || '📄'}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="font-bold text-slate-800 text-sm truncate">{d.nom} {d.prenom}</span>
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">💳 {d.financement}</span>
+          Affiché aussi pour le rôle Envoi finance (vue restreinte).
+          Groupé par société émettrice. */}
+      {dashboard.rappelsFinancement && dashboard.rappelsFinancement.length > 0 && (() => {
+        // groupBy société
+        const groupes = {};
+        dashboard.rappelsFinancement.forEach(r => {
+          const soc = r.dossier.societe || '';
+          if (!groupes[soc]) groupes[soc] = [];
+          groupes[soc].push(r);
+        });
+        // Ordre des groupes : sociétés connues d'abord (dans l'ordre du tableau societes),
+        // puis « sans société » à la fin.
+        const ordreSocietes = societes.map(s => s.id).filter(id => groupes[id]);
+        const orphelins = Object.keys(groupes).filter(id => !ordreSocietes.includes(id));
+        const ordreFinal = [...ordreSocietes, ...orphelins];
+
+        return (
+          <div className="bg-white rounded-3xl shadow-md border-2 border-blue-200 overflow-hidden">
+            <div className="p-5 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-cyan-50">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                💳 Financements en attente de retour
+                <span className="ml-auto text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{dashboard.rappelsFinancement.length} dossier{dashboard.rappelsFinancement.length > 1 ? 's' : ''}</span>
+              </h2>
+              <p className="text-xs text-slate-600 mt-1">Dossiers envoyés au financeur depuis +2 jours sans réponse — pense à relancer.</p>
+            </div>
+            <div className="divide-y divide-slate-100 max-h-[600px] overflow-y-auto">
+              {ordreFinal.map(socId => {
+                const rappels = groupes[socId];
+                const socMeta = societes.find(s => s.id === socId);
+                const socLabel = socMeta?.label || (socId ? socId.toUpperCase() : 'Sans société');
+                const socEmoji = socMeta?.emoji || '🏢';
+                return (
+                  <div key={socId || 'sans-societe'}>
+                    {/* En-tête de groupe société */}
+                    <div className="px-4 py-2 bg-slate-50 border-y border-slate-200 flex items-center gap-2 sticky top-0 z-10">
+                      <span className="text-sm">{socEmoji}</span>
+                      <span className="text-xs font-bold text-slate-700 uppercase">{socLabel}</span>
+                      <span className="text-[10px] font-semibold bg-slate-200 text-slate-700 px-1.5 py-0.5 rounded-full">{rappels.length}</span>
                     </div>
-                    <div className="text-[11px] text-slate-500">
-                      Envoyé le {d.dateEnvoiFin && new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR')}
-                    </div>
+                    {rappels.map((r) => {
+                      const d = r.dossier;
+                      const statut = STATUTS.find(s => s.id === d.statut);
+                      const levelStyle = r.level === 'critical' ? 'text-rose-600' : r.level === 'high' ? 'text-orange-600' : 'text-amber-600';
+                      const levelBg = r.level === 'critical' ? 'bg-rose-50' : r.level === 'high' ? 'bg-orange-50' : 'bg-amber-50';
+                      return (
+                        <button
+                          key={d.localId}
+                          onClick={() => onShowQuick && onShowQuick(d.localId)}
+                          className={`w-full px-4 py-2.5 hover:${levelBg} flex items-center gap-3 text-left transition-colors border-l-4 border-transparent hover:border-blue-400`}
+                        >
+                          <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm bg-gradient-to-br ${statut?.color || 'from-slate-400 to-slate-500'} text-white shadow-sm`}>
+                            {statut?.emoji || '📄'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-bold text-slate-800 text-sm truncate">{d.nom} {d.prenom}</span>
+                              <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">💳 {d.financement}</span>
+                            </div>
+                            <div className="text-[11px] text-slate-500">
+                              Envoyé le {d.dateEnvoiFin && new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR')}
+                            </div>
+                          </div>
+                          <div className="flex-shrink-0 text-right">
+                            <div className={`text-base font-bold ${levelStyle}`}>{r.jours}j</div>
+                            <div className="text-[9px] text-slate-400">sans retour</div>
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
-                  <div className="flex-shrink-0 text-right">
-                    <div className={`text-base font-bold ${levelStyle}`}>{r.jours}j</div>
-                    <div className="text-[9px] text-slate-400">sans retour</div>
-                  </div>
-                </button>
-              );
-            })}
+                );
+              })}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* Tous les blocs ci-dessous sont masqués pour le rôle Envoi finance
           (vue restreinte au plafond Projexio + financements en attente). */}
