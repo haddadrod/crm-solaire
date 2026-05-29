@@ -15874,6 +15874,8 @@ const ALERTES_PAR_ROLE = {
 };
 
 function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], isAdmin, currentUserRole, onClick }) {
+  // showAll : si true, on affiche aussi les alertes à 0 (déplié via la flèche).
+  const [showAll, setShowAll] = useState(false);
   // Définition des badges
   const badges = [
     {
@@ -16109,17 +16111,20 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
   // Filtrage : admin voit tout ; sinon on retire les adminOnly, puis on
   // applique la liste blanche du rôle si elle existe.
   const whitelist = !isAdmin && currentUserRole ? ALERTES_PAR_ROLE[currentUserRole] : null;
-  const visible = badges.filter(b => {
+  // Badges autorisés pour ce rôle (avant filtre sur le count).
+  const eligibles = badges.filter(b => {
     if (!isAdmin && b.adminOnly) return false;
     if (whitelist && !whitelist.includes(b.type)) return false;
-    // On n'affiche QUE les alertes qui ont au moins 1 dossier (pastille > 0).
-    // Les badges à 0 sont masqués pour ne garder à l'écran que ce qui demande
-    // une action.
-    return b.count > 0;
+    return true;
   });
+  // Si le rôle n'a droit à aucune alerte (ex : poseur) → on masque la barre.
+  if (eligibles.length === 0) return null;
 
-  // Aucune alerte active → on masque toute la barre.
-  if (visible.length === 0) return null;
+  // Par défaut on n'affiche que les alertes actives (count > 0). La flèche
+  // « voir tout » déplie aussi celles à 0.
+  const actifs = eligibles.filter(b => b.count > 0);
+  const visible = showAll ? eligibles : actifs;
+  const nbZero = eligibles.length - actifs.length;
 
   return (
     <div className="mb-5 flex items-center gap-2 flex-wrap">
@@ -16150,6 +16155,17 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
           </button>
         );
       })}
+      {/* Flèche pour déplier / replier les alertes à 0 (« en cas où »). */}
+      {nbZero > 0 && (
+        <button
+          onClick={() => setShowAll(v => !v)}
+          title={showAll ? 'Masquer les alertes vides' : 'Voir toutes les alertes (y compris celles à 0)'}
+          className="flex items-center gap-1 px-2 py-2 rounded-xl border-2 border-slate-200 bg-slate-50 text-slate-500 hover:bg-slate-100 text-xs font-semibold"
+        >
+          <span className="text-sm leading-none">{showAll ? '▴' : '▾'}</span>
+          <span>{showAll ? 'Réduire' : `Tout voir (${nbZero})`}</span>
+        </button>
+      )}
     </div>
   );
 }
