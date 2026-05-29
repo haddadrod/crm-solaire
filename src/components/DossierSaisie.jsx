@@ -3009,7 +3009,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsAEnvoyerConsuel = [];
     dossiersDash.forEach(d => {
       // Pose terminée ? (statut visite_ok OU date de pose remplie)
-      const poseFinie = d.statutPose === 'visite_ok' || !!d.dateInsta;
+      // Pose réellement terminée = bouton « ✓ Posé » cliqué (statutPose = visite_ok).
+      // ⚠️ NE PAS se baser sur dateInsta qui est la date prévue (pré-remplie).
+      const poseFinie = d.statutPose === 'visite_ok';
       if (!poseFinie) return;
       if (d.dateEnvoiConsuel) return; // déjà envoyé
       if (finalStatuses.includes(d.statut)) return;
@@ -3027,7 +3029,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // raccordement Enedis pas encore envoyée. Même logique que le Consuel.
     const rappelsAEnvoyerRaccordement = [];
     dossiersDash.forEach(d => {
-      const poseFinie = d.statutPose === 'visite_ok' || !!d.dateInsta;
+      // Pose réellement terminée = bouton « ✓ Posé » cliqué (statutPose = visite_ok).
+      // ⚠️ NE PAS se baser sur dateInsta qui est la date prévue (pré-remplie).
+      const poseFinie = d.statutPose === 'visite_ok';
       if (!poseFinie) return;
       if (d.dateEnvoiRaccordement) return; // déjà envoyé
       if (finalStatuses.includes(d.statut)) return;
@@ -3045,7 +3049,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dossiersDash.forEach(d => {
       if (d.pasOriginauxRequis) return; // pas concerné
       // Pose terminée ?
-      const poseFinie = d.statutPose === 'visite_ok' || !!d.dateInsta;
+      // Pose réellement terminée = bouton « ✓ Posé » cliqué (statutPose = visite_ok).
+      // ⚠️ NE PAS se baser sur dateInsta qui est la date prévue (pré-remplie).
+      const poseFinie = d.statutPose === 'visite_ok';
       if (!poseFinie) return;
       if (d.dateRecusOriginauxBanque) return; // déjà reçus banque
       if (finalStatuses.includes(d.statut)) return;
@@ -3101,7 +3107,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // uploadée. Plus la pose est ancienne, plus c'est urgent.
     const rappelsFacturesManquantes = [];
     dossiersDash.forEach(d => {
-      const posee = d.statutPose === 'visite_ok' || !!d.dateInsta;
+      // Pose réellement terminée — voir commentaire au-dessus des autres rappels.
+      const posee = d.statutPose === 'visite_ok';
       if (!posee) return;
       if (finalStatuses.includes(d.statut)) {
         // Sauf annulé : si déjà payé, on garde l'alerte tant que les factures
