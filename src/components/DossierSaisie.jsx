@@ -44,7 +44,7 @@ const STATUTS = [
   // ── Hors parcours (manuel) ──
   { id: 'W2_ANNULER',              label: 'ANNULÉ',                   color: 'from-stone-500 to-neutral-600',  bg: 'bg-stone-100',   text: 'text-stone-700',   emoji: '❌' },
   { id: 'C_LITIGE',                label: 'LITIGE',                   color: 'from-rose-500 to-red-500',       bg: 'bg-rose-100',    text: 'text-rose-700',    emoji: '⚠️' },
-  { id: 'D_SAV',                   label: 'SAV',                      color: 'from-orange-500 to-red-500',     bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '🛠️' },
+  { id: 'D_SAV',                   label: 'SAV',                      color: 'from-yellow-400 to-amber-500',   bg: 'bg-yellow-100',  text: 'text-yellow-700',  emoji: '🛠️' },
   // ── Hérités (anciens dossiers — non sélectionnables, conservés pour l'affichage) ──
   { id: 'F2_PREFINANCEMENT',       label: 'PRÉFINANCEMENT',           color: 'from-emerald-300 to-green-400',  bg: 'bg-emerald-50',  text: 'text-emerald-700', emoji: '💳', legacy: true },
   { id: 'F1_ACCEPTE',              label: 'ACCEPTÉ',                  color: 'from-rose-300 to-pink-300',      bg: 'bg-rose-50',     text: 'text-rose-700',    emoji: '👍', legacy: true },
@@ -11168,7 +11168,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             const refDate = formData.savDateOuverture || formData.createdAt;
             const joursOuvert = refDate ? Math.max(0, Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000)) : 0;
             return (
-            <Section title={`🛠️ SAV (Service Après-Vente)${!formData.savTraite ? ` — ouvert depuis ${joursOuvert}j` : ' — clos'}`} color="orange">
+            <Section title={`🛠️ SAV (Service Après-Vente)${!formData.savTraite ? ` — ouvert depuis ${joursOuvert}j` : ' — clos'}`} color="yellow">
               <div className="space-y-3">
                 {/* Bouton « Retirer ce SAV » */}
                 <div className="flex justify-end">
@@ -11179,15 +11179,15 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         setFormData({ ...formData, hasSav: false });
                       }
                     }}
-                    className="text-[10px] font-bold text-orange-600 hover:text-orange-800 bg-orange-100 hover:bg-orange-200 px-2 py-1 rounded-lg"
+                    className="text-[10px] font-bold text-yellow-700 hover:text-yellow-900 bg-yellow-100 hover:bg-yellow-200 px-2 py-1 rounded-lg"
                     title="Retirer ce SAV (ex : test, erreur)"
                   >× Retirer ce SAV</button>
                 </div>
                 {/* 📅 Ouverture + clôture */}
-                <div className={`rounded-xl border-2 p-3 ${formData.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-orange-50 border-orange-200'}`}>
+                <div className={`rounded-xl border-2 p-3 ${formData.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-yellow-50 border-yellow-300'}`}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[11px] font-bold text-orange-700 uppercase mb-1">📅 SAV ouvert le</label>
+                      <label className="block text-[11px] font-bold text-yellow-700 uppercase mb-1">📅 SAV ouvert le</label>
                       <div className="flex gap-1">
                         <input
                           type="date"
@@ -11195,7 +11195,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           onChange={(e) => setFormData({ ...formData, savDateOuverture: e.target.value })}
                           className={inputCls}
                         />
-                        <button type="button" onClick={() => setFormData({ ...formData, savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                        <button type="button" onClick={() => setFormData({ ...formData, savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
                     {formData.savTraite && (
@@ -11229,7 +11229,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       }}
                       className="w-5 h-5 rounded accent-emerald-500"
                     />
-                    <span className={`text-sm font-bold ${formData.savTraite ? 'text-emerald-700' : 'text-orange-700'}`}>
+                    <span className={`text-sm font-bold ${formData.savTraite ? 'text-emerald-700' : 'text-yellow-700'}`}>
                       {formData.savTraite ? '✅ SAV résolu / clos' : '⏳ SAV en cours'}
                     </span>
                   </label>
@@ -11268,7 +11268,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         onChange={(e) => setFormData({ ...formData, savDateInterventionPrevue: e.target.value })}
                         className={inputCls}
                       />
-                      <button type="button" onClick={() => setFormData({ ...formData, savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                      <button type="button" onClick={() => setFormData({ ...formData, savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
                   <div>
@@ -11353,6 +11353,8 @@ function Section({ title, color, children, collapsible = false, defaultCollapsed
     blue: 'border-blue-200 bg-blue-50/50', amber: 'border-amber-200 bg-amber-50/50',
     emerald: 'border-emerald-200 bg-emerald-50/50', slate: 'border-slate-200 bg-slate-50/50',
     purple: 'border-purple-200 bg-purple-50/50', cyan: 'border-cyan-200 bg-cyan-50/50',
+    yellow: 'border-yellow-300 bg-yellow-50/60', rose: 'border-rose-200 bg-rose-50/50',
+    orange: 'border-orange-200 bg-orange-50/50',
   };
 
   if (!collapsible) {
@@ -12488,7 +12490,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   setShowCreerAction(false);
                 }}
                 disabled={!!d.hasSav}
-                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.hasSav ? 'bg-orange-200 text-orange-500 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white border-2 border-orange-600'}`}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.hasSav ? 'bg-yellow-100 text-yellow-500 cursor-not-allowed' : 'bg-yellow-400 hover:bg-yellow-500 text-yellow-900 border-2 border-yellow-500'}`}
               >
                 <span className="text-base">🛠️</span>
                 <span className="flex-1 text-left">{d.hasSav ? 'SAV déjà ouvert' : 'Ouvrir un SAV'}</span>
@@ -14109,14 +14111,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               const refDate = d.savDateOuverture || d.createdAt;
               const joursOuvert = refDate ? Math.max(0, Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000)) : 0;
               return (
-                <div className={`border-2 rounded-xl p-2 mb-2 ${d.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-orange-50 border-orange-300'}`}>
+                <div className={`border-2 rounded-xl p-2 mb-2 ${d.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-yellow-50 border-yellow-300'}`}>
                   <button onClick={() => toggleStep('sav')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.sav ? '' : 'mb-1.5'} hover:opacity-80`}>
-                    <span className="flex items-center gap-1.5 text-orange-700">
-                      <span className="text-orange-600 text-[9px]">{foldedSteps.sav ? '▶' : '▼'}</span>
+                    <span className="flex items-center gap-1.5 text-yellow-700">
+                      <span className="text-yellow-600 text-[9px]">{foldedSteps.sav ? '▶' : '▼'}</span>
                       <span>🛠️ SAV</span>
-                      {!d.savTraite && <span className="text-orange-500 font-normal normal-case ml-1">— ouvert depuis {joursOuvert}j</span>}
+                      {!d.savTraite && <span className="text-yellow-500 font-normal normal-case ml-1">— ouvert depuis {joursOuvert}j</span>}
                     </span>
-                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${d.savTraite ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
+                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${d.savTraite ? 'bg-emerald-100 text-emerald-700' : 'bg-yellow-100 text-yellow-700'}`}>
                       {d.savTraite ? '✓ Résolu' : '⏳ En cours'}
                     </span>
                   </button>
@@ -14130,18 +14132,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               onUpdate({ hasSav: false });
                             }
                           }}
-                          className="text-[9px] font-bold text-orange-600 hover:text-orange-800 bg-orange-100 hover:bg-orange-200 px-2 py-0.5 rounded"
+                          className="text-[9px] font-bold text-yellow-600 hover:text-yellow-800 bg-yellow-100 hover:bg-yellow-200 px-2 py-0.5 rounded"
                           title="Retirer ce SAV (ex : test, erreur)"
                         >× Retirer ce SAV</button>
                       </div>
                       {/* Ouverture + clôture */}
-                      <div className={`rounded-lg border-2 p-2 ${d.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-orange-200'}`}>
+                      <div className={`rounded-lg border-2 p-2 ${d.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-yellow-200'}`}>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="block text-[9px] font-bold text-orange-700 uppercase mb-0.5">📅 Ouvert le</label>
+                            <label className="block text-[9px] font-bold text-yellow-700 uppercase mb-0.5">📅 Ouvert le</label>
                             <div className="flex gap-1">
                               <input type="date" value={d.savDateOuverture || ''} onChange={(e) => onUpdate({ savDateOuverture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
-                              <button type="button" onClick={() => onUpdate({ savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                              <button type="button" onClick={() => onUpdate({ savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
                           {d.savTraite && (
@@ -14160,7 +14162,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             const today = new Date().toISOString().split('T')[0];
                             onUpdate({ savTraite: checked, savDateCloture: checked && !d.savDateCloture ? today : (checked ? d.savDateCloture : '') });
                           }} className="w-4 h-4 rounded accent-emerald-500" />
-                          <span className={`text-[11px] font-bold ${d.savTraite ? 'text-emerald-700' : 'text-orange-700'}`}>
+                          <span className={`text-[11px] font-bold ${d.savTraite ? 'text-emerald-700' : 'text-yellow-700'}`}>
                             {d.savTraite ? '✅ SAV résolu' : '⏳ SAV en cours'}
                           </span>
                         </label>
@@ -14170,7 +14172,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         <input type="text" value={d.savIntervenant || ''} onChange={(e) => onUpdate({ savIntervenant: e.target.value })} placeholder="👤 Intervenant" className={inputCls} />
                         <div className="flex gap-1">
                           <input type="date" value={d.savDateInterventionPrevue || ''} onChange={(e) => onUpdate({ savDateInterventionPrevue: e.target.value })} title="Intervention prévue" className={inputCls + ' flex-1 min-w-0'} />
-                          <button type="button" onClick={() => onUpdate({ savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                          <button type="button" onClick={() => onUpdate({ savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                         </div>
                         <div className="flex gap-1">
                           <input type="date" value={d.savDateInterventionFaite || ''} onChange={(e) => onUpdate({ savDateInterventionFaite: e.target.value })} title="Intervention faite" className={inputCls + ' flex-1 min-w-0'} />
@@ -16059,10 +16061,10 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       emoji: '🛠️',
       count: rappelsSav.length,
       adminOnly: false,
-      color: 'from-orange-500 to-red-500',
-      colorBg: 'bg-orange-50',
-      colorBorder: 'border-orange-300',
-      colorText: 'text-orange-700',
+      color: 'from-yellow-400 to-amber-500',
+      colorBg: 'bg-yellow-50',
+      colorBorder: 'border-yellow-300',
+      colorText: 'text-yellow-700',
       tooltip: 'SAV ouverts non résolus (panne / défaut signalé après pose)',
     },
     {
@@ -16328,9 +16330,9 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
       title: '🛠️ SAV en cours',
       subtitle: 'Pannes / défauts signalés par les clients — à prendre en charge',
       items: dashboard.rappelsSav || [],
-      gradient: 'from-orange-500 to-red-500',
-      bgHeader: 'from-orange-50 to-red-50',
-      borderColor: 'border-orange-300',
+      gradient: 'from-yellow-400 to-amber-500',
+      bgHeader: 'from-yellow-50 to-amber-50',
+      borderColor: 'border-yellow-300',
       lineLabel: (d) => {
         const parts = [];
         if (d.savDateOuverture) parts.push(`📅 Ouvert le ${new Date(d.savDateOuverture).toLocaleDateString('fr-FR')}`);
