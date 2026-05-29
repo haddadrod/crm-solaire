@@ -1248,6 +1248,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
     savTraite: false, // toggle : SAV résolu / clos
     savDateCloture: '', // date de clôture (auto-remplie quand on coche savTraite)
     savNote: '', // notes libres (détails techniques, échanges, etc.)
+    // 📞 Rappel client : flag indépendant du statut. Pour ne pas oublier de
+    // rappeler un client (relance, info à donner, etc.).
+    hasRappel: false, // 🚩 drapeau : un rappel client est-il à faire ?
+    rappelDate: '', // 📅 date à laquelle il faut rappeler (planification)
+    rappelMotif: '', // 📝 pourquoi rappeler
+    rappelFait: false, // toggle : rappel effectué ?
+    rappelDateFait: '', // date à laquelle le rappel a été fait
     historique: [],
     createdBy: '', createdAt: '', modifiedBy: '', modifiedAt: '',
     scannedBon: null, // {dataUrl, name, type, size} si scan IA réussi, sinon null
@@ -2259,6 +2266,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
       litigeFactureNo: d.litigeFactureNo || '',
       litigeNote: d.litigeNote || '',
       hasSav: d.hasSav !== undefined ? !!d.hasSav : (d.statut === 'D_SAV'),
+      hasRappel: !!d.hasRappel,
+      rappelDate: d.rappelDate || '',
+      rappelMotif: d.rappelMotif || '',
+      rappelFait: !!d.rappelFait,
+      rappelDateFait: d.rappelDateFait || '',
       savDateOuverture: d.savDateOuverture || '',
       savMotif: d.savMotif || '',
       savIntervenant: d.savIntervenant || '',
@@ -2935,6 +2947,27 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsSav.sort((a, b) => b.jours - a.jours);
 
+    // 📞 Rappels « Client à rappeler » — flag hasRappel + pas encore fait.
+    // La sévérité dépend de la date de rappel planifiée :
+    //   - pas de date OU date future        → warn (à garder en tête)
+    //   - date = aujourd'hui ou dépassée 1-2j → high
+    //   - date dépassée de 3j+               → critical
+    const rappelsClientRappel = [];
+    dossiersDash.forEach(d => {
+      if (!d.hasRappel) return;
+      if (d.rappelFait) return;
+      let jours = 0; // jours de retard sur la date planifiée
+      let level = 'warn';
+      if (d.rappelDate) {
+        jours = joursEcoules(d.rappelDate); // >0 si la date est passée
+        if (jours >= 3) level = 'critical';
+        else if (jours >= 0) level = 'high'; // aujourd'hui ou dépassé
+        else level = 'warn'; // encore dans le futur
+      }
+      rappelsClientRappel.push({ dossier: d, jours, level });
+    });
+    rappelsClientRappel.sort((a, b) => b.jours - a.jours);
+
     // Rappels Paiement — contrôle livraison fait sans paiement reçu depuis +2 jours
     const rappelsPaiement = [];
     dossiersDash.forEach(d => {
@@ -3226,7 +3259,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige, rappelsSav };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige, rappelsSav, rappelsClientRappel };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -3512,6 +3545,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsFacturesManquantes={dashboard.rappelsFacturesManquantes || []}
             rappelsLitige={dashboard.rappelsLitige || []}
             rappelsSav={dashboard.rappelsSav || []}
+            rappelsClientRappel={dashboard.rappelsClientRappel || []}
             isAdmin={isAdmin}
             currentUserRole={currentUserRole}
             onClick={(type) => setShowAlertesType(type)}
@@ -12459,6 +12493,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <span className="text-base">🛠️</span>
                 <span className="flex-1 text-left">{d.hasSav ? 'SAV déjà ouvert' : 'Ouvrir un SAV'}</span>
               </button>
+              {/* 📞 CLIENT À RAPPELER — drapeau indépendant, ne touche pas au statut */}
+              <button
+                onClick={() => {
+                  onUpdate({ hasRappel: true, rappelFait: false });
+                  setShowCreerAction(false);
+                }}
+                disabled={!!d.hasRappel && !d.rappelFait}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${(d.hasRappel && !d.rappelFait) ? 'bg-blue-200 text-blue-500 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white border-2 border-blue-600'}`}
+              >
+                <span className="text-base">📞</span>
+                <span className="flex-1 text-left">{(d.hasRappel && !d.rappelFait) ? 'Rappel déjà en attente' : 'Client à rappeler'}</span>
+              </button>
               {/* ❌ ANNULER */}
               <button
                 onClick={() => {
@@ -14137,6 +14183,75 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
               );
             })()}
+
+            {/* ============ 📞 CLIENT À RAPPELER — étape annexe, visible si hasRappel ============ */}
+            {d.hasRappel && (() => {
+              const todayStr = new Date().toISOString().split('T')[0];
+              // En retard si une date de rappel est passée et que ce n'est pas fait.
+              const enRetard = !d.rappelFait && d.rappelDate && d.rappelDate < todayStr;
+              const aujourdhui = !d.rappelFait && d.rappelDate === todayStr;
+              return (
+                <div className={`border-2 rounded-xl p-2 mb-2 ${d.rappelFait ? 'bg-emerald-50 border-emerald-300' : enRetard ? 'bg-rose-50 border-rose-300' : 'bg-blue-50 border-blue-300'}`}>
+                  <button onClick={() => toggleStep('rappel')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.rappel ? '' : 'mb-1.5'} hover:opacity-80`}>
+                    <span className="flex items-center gap-1.5 text-blue-700">
+                      <span className="text-blue-600 text-[9px]">{foldedSteps.rappel ? '▶' : '▼'}</span>
+                      <span>📞 Client à rappeler</span>
+                      {!d.rappelFait && d.rappelDate && (
+                        <span className={`font-normal normal-case ml-1 ${enRetard ? 'text-rose-600' : 'text-blue-500'}`}>— {enRetard ? 'en retard depuis le' : aujourdhui ? "aujourd'hui" : 'prévu le'} {d.rappelDate !== todayStr ? new Date(d.rappelDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : ''}</span>
+                      )}
+                    </span>
+                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${d.rappelFait ? 'bg-emerald-100 text-emerald-700' : enRetard ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>
+                      {d.rappelFait ? '✓ Rappelé' : enRetard ? '⏰ En retard' : '⏳ À faire'}
+                    </span>
+                  </button>
+                  {!foldedSteps.rappel && (
+                    <div className="space-y-2">
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm('Retirer ce rappel du dossier ?')) onUpdate({ hasRappel: false });
+                          }}
+                          className="text-[9px] font-bold text-blue-600 hover:text-blue-800 bg-blue-100 hover:bg-blue-200 px-2 py-0.5 rounded"
+                          title="Retirer ce rappel"
+                        >× Retirer ce rappel</button>
+                      </div>
+                      <div className={`rounded-lg border-2 p-2 ${d.rappelFait ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-blue-200'}`}>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[9px] font-bold text-blue-700 uppercase mb-0.5">📅 Rappeler le</label>
+                            <div className="flex gap-1">
+                              <input type="date" value={d.rappelDate || ''} onChange={(e) => onUpdate({ rappelDate: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                              <button type="button" onClick={() => onUpdate({ rappelDate: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                            </div>
+                          </div>
+                          {d.rappelFait && (
+                            <div>
+                              <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Rappelé le</label>
+                              <div className="flex gap-1">
+                                <input type="date" value={d.rappelDateFait || ''} onChange={(e) => onUpdate({ rappelDateFait: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                                <button type="button" onClick={() => onUpdate({ rappelDateFait: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer mt-2">
+                          <input type="checkbox" checked={!!d.rappelFait} onChange={(e) => {
+                            const checked = e.target.checked;
+                            const today = new Date().toISOString().split('T')[0];
+                            onUpdate({ rappelFait: checked, rappelDateFait: checked && !d.rappelDateFait ? today : (checked ? d.rappelDateFait : '') });
+                          }} className="w-4 h-4 rounded accent-emerald-500" />
+                          <span className={`text-[11px] font-bold ${d.rappelFait ? 'text-emerald-700' : 'text-blue-700'}`}>
+                            {d.rappelFait ? '✅ Client rappelé' : '⏳ Rappel à faire'}
+                          </span>
+                        </label>
+                      </div>
+                      <textarea value={d.rappelMotif || ''} onChange={(e) => onUpdate({ rappelMotif: e.target.value })} rows={2} placeholder="📝 Motif du rappel (ex : confirmer date de pose, donner une info…)" className={inputCls + ' resize-none text-xs'} />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {/* FINANCEMENT — supprimé, intégré dans la section 1️⃣ Process Financement et section 4️⃣ Paiement */}
@@ -15755,7 +15870,7 @@ const ALERTES_PAR_ROLE = {
   regie: [],  // la régie ne voit aucune alerte
 };
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige = [], rappelsSav = [], isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], isAdmin, currentUserRole, onClick }) {
   // Définition des badges
   const badges = [
     {
@@ -15949,6 +16064,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-orange-300',
       colorText: 'text-orange-700',
       tooltip: 'SAV ouverts non résolus (panne / défaut signalé après pose)',
+    },
+    {
+      type: 'clientRappel',
+      label: 'À rappeler',
+      emoji: '📞',
+      count: rappelsClientRappel.length,
+      adminOnly: false,
+      color: 'from-blue-500 to-cyan-500',
+      colorBg: 'bg-blue-50',
+      colorBorder: 'border-blue-300',
+      colorText: 'text-blue-700',
+      tooltip: 'Clients à rappeler (pour ne pas oublier)',
     },
     {
       type: 'stagnation',
@@ -16212,6 +16339,21 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
         return parts.length ? parts.join(' · ') : 'SAV ouvert';
       },
       suffixLabel: 'depuis ouverture',
+    },
+    clientRappel: {
+      title: '📞 Clients à rappeler',
+      subtitle: 'Pense à les rappeler — relance, info à donner, etc.',
+      items: dashboard.rappelsClientRappel || [],
+      gradient: 'from-blue-500 to-cyan-500',
+      bgHeader: 'from-blue-50 to-cyan-50',
+      borderColor: 'border-blue-300',
+      lineLabel: (d) => {
+        const parts = [];
+        if (d.rappelDate) parts.push(`📅 Rappeler le ${new Date(d.rappelDate).toLocaleDateString('fr-FR')}`);
+        if (d.rappelMotif) parts.push(d.rappelMotif.length > 45 ? d.rappelMotif.slice(0, 45) + '…' : d.rappelMotif);
+        return parts.length ? parts.join(' · ') : 'À rappeler';
+      },
+      suffixLabel: 'de retard',
     },
     facturesManquantes: {
       title: '🧾 Factures manquantes (compta)',
