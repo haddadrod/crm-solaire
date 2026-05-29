@@ -362,6 +362,7 @@ const CLIENT_DOC_SUBCATS = [
   { id: 'justif_domicile',   label: 'Justificatif domicile',emoji: '📋', color: 'cyan'    },
   { id: 'bulletin_paie',     label: 'Bulletin de paie',     emoji: '💰', color: 'green'   },
   { id: 'rib',               label: 'RIB',                  emoji: '🏦', color: 'indigo'  },
+  { id: 'dossier_mairie',    label: 'Dossier mairie envoyé', emoji: '📤', color: 'indigo'  },
   { id: 'recepisse_mairie',  label: 'Récépissé mairie',     emoji: '🏛️', color: 'indigo'  },
   { id: 'autre',             label: 'Autre',                emoji: '📑', color: 'slate'   },
 ];
@@ -4628,6 +4629,19 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
         });
       }
     });
+    // Dossier envoyé à la mairie (déclaration préalable, uploadé depuis la section Mairie)
+    if (dossier.dossierEnvoiMairieFileId) {
+      out.push({
+        id: dossier.dossierEnvoiMairieFileId,
+        name: `Dossier mairie envoyé${dossier.dateEnvoiMairie ? ' le ' + new Date(dossier.dateEnvoiMairie).toLocaleDateString('fr-FR') : ''}.pdf`,
+        size: 0, type: 'application/pdf',
+        category: 'client', subCategory: 'dossier_mairie',
+        uploadedAt: dossier.dateEnvoiMairie || dossier.savedAt || new Date().toISOString(),
+        note: '📤 Dossier envoyé à la mairie (lié à la section Mairie)',
+        virtual: true,
+        virtualSource: { kind: 'mairie_envoi_dossier' },
+      });
+    }
     // Récépissé mairie principal (uploadé depuis la section Mairie du dossier)
     if (dossier.recepisseMairieFileId) {
       out.push({
@@ -4657,7 +4671,7 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
       }
     });
     return out;
-  }, [dossier.poseurs, dossier.regies, dossier.fournisseurs, dossier.dateInsta, dossier.recepisseMairieFileId, dossier.dateRecepisseMairie, dossier.envoisMairie, dossier.savedAt]);
+  }, [dossier.poseurs, dossier.regies, dossier.fournisseurs, dossier.dateInsta, dossier.recepisseMairieFileId, dossier.dateRecepisseMairie, dossier.dossierEnvoiMairieFileId, dossier.dateEnvoiMairie, dossier.envoisMairie, dossier.savedAt]);
 
   // Documents pour la catégorie active.
   // Cas spécial Client : on prend TOUS les docs client (toutes sous-catégories),
