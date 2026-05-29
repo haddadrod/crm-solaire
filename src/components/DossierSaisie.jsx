@@ -1514,7 +1514,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     } catch (e) {}
   }, []);
 
-  // Sauvegardes + backup snapshot par minute (filet de sécurité)
+  // Sauvegardes + backup snapshot (filet de sécurité)
   useEffect(() => {
     if (isInitialMount.current) { if (!loading) isInitialMount.current = false; return; }
     const json = JSON.stringify(dossiers);
@@ -1522,12 +1522,15 @@ export default function DossierSaisie({ authUser, onLogout }) {
     (async () => {
       try {
         await window.storage.set('dossiers-data', json);
-        // 🛡️ Backup snapshot : 1 max par minute (upsert sur la même clé).
-        // Permet de remonter dans le temps si data perdue/écrasée.
+        // 🛡️ Backup snapshot : 1 max par TRANCHE DE 10 MIN (clé arrondie aux
+        // 10 minutes → upsert sur la même clé pendant 10 min). Permet de
+        // remonter dans le temps sans multiplier les écritures (avant c'était
+        // 1/minute, ce qui pesait lourd sur le quota Supabase).
         // Cleanup auto des backups > 7 jours au chargement de l'app.
         const now = new Date();
         const pad = (n) => String(n).padStart(2, '0');
-        const bkKey = `dossiers-data-bk-${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}`;
+        const min10 = pad(Math.floor(now.getUTCMinutes() / 10) * 10);
+        const bkKey = `dossiers-data-bk-${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}${pad(now.getUTCHours())}${min10}`;
         await window.storage.set(bkKey, json);
       } catch (e) {}
     })();
@@ -1700,21 +1703,27 @@ export default function DossierSaisie({ authUser, onLogout }) {
     return () => { try { supabase.removeChannel(channel); } catch (e) {} };
   }, [loading]);
 
-  // 🔁 Polling de secours — toutes les 15 s on relit dossiers-data.
-  // Sert de filet de sécurité si Supabase Realtime tombe (onglet en arrière-
-  // plan, WebSocket coupé par le réseau, etc.). Coût : 1 SELECT toutes les
-  // 15 s par client connecté. On évite de re-set le state si le JSON est
-  // identique au dernier reçu — pas de re-render inutile.
-  // Pause si l'onglet n'a pas le focus pour économiser des requêtes.
+  // 🔁 Rafraîchissement de secours — UNIQUEMENT quand l'utilisateur revient
+  // sur l'onglet (visibilitychange / focus). PLUS de polling périodique.
+  //
+  // ⚠️ Historique : un polling toutes les 15 s lisait dossiers-data en boucle.
+  // Avec plusieurs clients connectés toute la journée, ça multipliait l'egress
+  // Supabase (chaque lecture = tout le JSON des dossiers) → quota free tier
+  // explosé → base « Unhealthy ». La sync temps réel (Realtime) suffit pour
+  // propager les changements ; on ne relit en plein que quand l'utilisateur
+  // revient sur l'app après l'avoir laissée en arrière-plan.
+  // Throttle : 1 relecture max toutes les 30 s, même si on bascule souvent.
   useEffect(() => {
     if (loading) return;
-    const POLL_MS = 15000;
-    let timer = null;
     let cancelled = false;
+    let lastPull = 0;
 
     const pull = async () => {
       if (cancelled) return;
       if (typeof document !== 'undefined' && document.hidden) return;
+      const now = Date.now();
+      if (now - lastPull < 30000) return; // throttle 30 s
+      lastPull = now;
       try {
         const r = await window.storage.get('dossiers-data');
         const v = r?.value;
@@ -1724,20 +1733,21 @@ export default function DossierSaisie({ authUser, onLogout }) {
         lastWrittenDossiersJson.current = v;
         setDossiers(parsed);
       } catch (e) {
-        // Silencieux : on retentera dans 15 s
+        // Silencieux
       }
     };
 
-    timer = setInterval(pull, POLL_MS);
-    // Pull immédiat quand l'onglet récupère le focus — pour l'utilisateur
-    // qui revient sur l'app après avoir bossé ailleurs.
-    const onFocus = () => pull();
-    if (typeof window !== 'undefined') window.addEventListener('focus', onFocus);
-
+    const onVisible = () => { if (!document.hidden) pull(); };
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', pull);
+      document.addEventListener('visibilitychange', onVisible);
+    }
     return () => {
       cancelled = true;
-      if (timer) clearInterval(timer);
-      if (typeof window !== 'undefined') window.removeEventListener('focus', onFocus);
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', pull);
+        document.removeEventListener('visibilitychange', onVisible);
+      }
     };
   }, [loading]);
 
