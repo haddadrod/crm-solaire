@@ -10936,9 +10936,25 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
           {/* ⚖️ LITIGE & REMBOURSEMENT — visible si le flag hasLitige est levé,
               indépendamment du statut workflow. Un dossier peut être en
               « À envoyer banque » et avoir un litige ouvert en parallèle. */}
-          {formData.hasLitige && (
-            <Section title="⚖️ Litige & remboursement client" color="rose">
+          {formData.hasLitige && (() => {
+            const refDate = formData.litigeDateCourrierRecommande || formData.createdAt;
+            const joursOuvert = refDate ? Math.max(0, Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000)) : 0;
+            return (
+            <Section title={`⚖️ Litige & remboursement client${!formData.litigeTraite ? ` — ouvert depuis ${joursOuvert}j` : ' — clos'}`} color="rose">
               <div className="space-y-3">
+                {/* Bouton « Retirer ce litige » */}
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Retirer ce litige du dossier ? Les données saisies ne seront pas effacées, juste masquées tant qu\'on ne le ré-ouvre pas.')) {
+                        setFormData({ ...formData, hasLitige: false });
+                      }
+                    }}
+                    className="text-[10px] font-bold text-rose-600 hover:text-rose-800 bg-rose-100 hover:bg-rose-200 px-2 py-1 rounded-lg"
+                    title="Retirer ce litige (ex : test, erreur)"
+                  >× Retirer ce litige</button>
+                </div>
                 {/* 📨 Suivi du traitement — courrier reçu + clôture */}
                 <div className={`rounded-xl border-2 p-3 ${formData.litigeTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-200'}`}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -11100,13 +11116,30 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </div>
               </div>
             </Section>
-          )}
+            );
+          })()}
 
           {/* 🛠️ SAV — visible si le flag hasSav est levé, indépendamment du
               statut workflow. Le SAV est un problème technique annexe. */}
-          {formData.hasSav && (
-            <Section title="🛠️ SAV (Service Après-Vente)" color="orange">
+          {formData.hasSav && (() => {
+            const refDate = formData.savDateOuverture || formData.createdAt;
+            const joursOuvert = refDate ? Math.max(0, Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000)) : 0;
+            return (
+            <Section title={`🛠️ SAV (Service Après-Vente)${!formData.savTraite ? ` — ouvert depuis ${joursOuvert}j` : ' — clos'}`} color="orange">
               <div className="space-y-3">
+                {/* Bouton « Retirer ce SAV » */}
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Retirer ce SAV du dossier ? Les données saisies ne seront pas effacées, juste masquées tant qu\'on ne le ré-ouvre pas.')) {
+                        setFormData({ ...formData, hasSav: false });
+                      }
+                    }}
+                    className="text-[10px] font-bold text-orange-600 hover:text-orange-800 bg-orange-100 hover:bg-orange-200 px-2 py-1 rounded-lg"
+                    title="Retirer ce SAV (ex : test, erreur)"
+                  >× Retirer ce SAV</button>
+                </div>
                 {/* 📅 Ouverture + clôture */}
                 <div className={`rounded-xl border-2 p-3 ${formData.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-orange-50 border-orange-200'}`}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -11222,7 +11255,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </div>
               </div>
             </Section>
-          )}
+            );
+          })()}
 
           {isAdmin && (
             <div className="bg-gradient-to-br from-violet-500 via-purple-500 to-pink-500 rounded-2xl p-5 text-white shadow-lg">
@@ -13897,6 +13931,203 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               })()}
               </>)}
             </div>
+
+            {/* ============ ⚖️ LITIGE — étape annexe, visible si hasLitige ============ */}
+            {d.hasLitige && (() => {
+              const refDate = d.litigeDateCourrierRecommande || d.createdAt;
+              const joursOuvert = refDate ? Math.max(0, Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000)) : 0;
+              return (
+                <div className={`border-2 rounded-xl p-2 mb-2 ${d.litigeTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
+                  <button onClick={() => toggleStep('litige')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.litige ? '' : 'mb-1.5'} hover:opacity-80`}>
+                    <span className="flex items-center gap-1.5 text-rose-700">
+                      <span className="text-rose-600 text-[9px]">{foldedSteps.litige ? '▶' : '▼'}</span>
+                      <span>⚖️ Litige client</span>
+                      {!d.litigeTraite && <span className="text-rose-500 font-normal normal-case ml-1">— ouvert depuis {joursOuvert}j</span>}
+                    </span>
+                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${d.litigeTraite ? 'bg-emerald-100 text-emerald-700' : 'bg-rose-100 text-rose-700'}`}>
+                      {d.litigeTraite ? '✓ Traité' : '⏳ En cours'}
+                    </span>
+                  </button>
+                  {!foldedSteps.litige && (
+                    <div className="space-y-2">
+                      {/* Bouton retirer (en haut à droite) */}
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm('Retirer ce litige du dossier ? Les données saisies ne seront pas effacées, juste masquées tant qu\'on ne le ré-ouvre pas.')) {
+                              onUpdate({ hasLitige: false });
+                            }
+                          }}
+                          className="text-[9px] font-bold text-rose-600 hover:text-rose-800 bg-rose-100 hover:bg-rose-200 px-2 py-0.5 rounded"
+                          title="Retirer ce litige (ex : test, erreur)"
+                        >× Retirer ce litige</button>
+                      </div>
+                      {/* 📨 Courrier recommandé + clôture */}
+                      <div className={`rounded-lg border-2 p-2 ${d.litigeTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-rose-200'}`}>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[9px] font-bold text-rose-700 uppercase mb-0.5">📨 Recommandé reçu le</label>
+                            <div className="flex gap-1">
+                              <input type="date" value={d.litigeDateCourrierRecommande || ''} onChange={(e) => onUpdate({ litigeDateCourrierRecommande: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                              <button type="button" onClick={() => onUpdate({ litigeDateCourrierRecommande: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                            </div>
+                          </div>
+                          {d.litigeTraite && (
+                            <div>
+                              <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Clos le</label>
+                              <div className="flex gap-1">
+                                <input type="date" value={d.litigeDateCloture || ''} onChange={(e) => onUpdate({ litigeDateCloture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                                <button type="button" onClick={() => onUpdate({ litigeDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer mt-2">
+                          <input type="checkbox" checked={!!d.litigeTraite} onChange={(e) => {
+                            const checked = e.target.checked;
+                            const today = new Date().toISOString().split('T')[0];
+                            onUpdate({ litigeTraite: checked, litigeDateCloture: checked && !d.litigeDateCloture ? today : (checked ? d.litigeDateCloture : '') });
+                          }} className="w-4 h-4 rounded accent-emerald-500" />
+                          <span className={`text-[11px] font-bold ${d.litigeTraite ? 'text-emerald-700' : 'text-rose-700'}`}>
+                            {d.litigeTraite ? '✅ Litige traité / clos' : '⏳ En attente de traitement'}
+                          </span>
+                        </label>
+                      </div>
+                      {/* Protocole d'accord PDF */}
+                      <div>
+                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">📎 Protocole d'accord transactionnel (PDF)</label>
+                        <FactureFileInput fileId={d.litigeAccordPdfUrl} onChange={(id) => onUpdate({ litigeAccordPdfUrl: id })} color="purple" />
+                      </div>
+                      {/* Régie + montant à rembourser */}
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">🤝 Régie qui rembourse</label>
+                          <select value={d.litigeRegieNom || ''} onChange={(e) => onUpdate({ litigeRegieNom: e.target.value })} className={inputCls}>
+                            <option value="">—</option>
+                            {(d.regies || []).filter(r => r.nom).map((r, i) => (
+                              <option key={`d-${i}`} value={r.nom}>{r.nom} (du dossier)</option>
+                            ))}
+                            {(REGIES || []).filter(r => !(d.regies || []).some(dr => dr.nom === r)).map(r => (
+                              <option key={r} value={r}>{r}</option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">💸 Montant à rembourser</label>
+                          <div className="relative">
+                            <input type="number" step="0.01" value={d.litigeMontantRembourse || ''} onChange={(e) => onUpdate({ litigeMontantRembourse: e.target.value })} placeholder="0,00" className={inputCls + ' pr-6 font-bold text-rose-700'} />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">€</span>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Toggle remboursé régie */}
+                      <label className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border-2 ${d.litigeRegieRembourse ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-rose-200 hover:bg-rose-50'}`}>
+                        <input type="checkbox" checked={!!d.litigeRegieRembourse} onChange={(e) => {
+                          const checked = e.target.checked;
+                          const today = new Date().toISOString().split('T')[0];
+                          onUpdate({ litigeRegieRembourse: checked, litigeDateRembourse: checked && !d.litigeDateRembourse ? today : d.litigeDateRembourse });
+                        }} className="w-4 h-4 rounded accent-emerald-500" />
+                        <span className={`text-[11px] font-bold ${d.litigeRegieRembourse ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          {d.litigeRegieRembourse ? '✅ Régie remboursée' : '⏳ En attente du remboursement régie'}
+                        </span>
+                      </label>
+                      {d.litigeRegieRembourse && (
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="flex gap-1">
+                            <input type="date" value={d.litigeDateRembourse || ''} onChange={(e) => onUpdate({ litigeDateRembourse: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                            <button type="button" onClick={() => onUpdate({ litigeDateRembourse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                          </div>
+                          <input type="text" value={d.litigeFactureNo || ''} onChange={(e) => onUpdate({ litigeFactureNo: e.target.value })} placeholder="N° facture régie" className={inputCls} />
+                        </div>
+                      )}
+                      {/* Note */}
+                      <textarea value={d.litigeNote || ''} onChange={(e) => onUpdate({ litigeNote: e.target.value })} rows={2} placeholder="Note (motif, contexte)…" className={inputCls + ' resize-none text-xs'} />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
+
+            {/* ============ 🛠️ SAV — étape annexe, visible si hasSav ============ */}
+            {d.hasSav && (() => {
+              const refDate = d.savDateOuverture || d.createdAt;
+              const joursOuvert = refDate ? Math.max(0, Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000)) : 0;
+              return (
+                <div className={`border-2 rounded-xl p-2 mb-2 ${d.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-orange-50 border-orange-300'}`}>
+                  <button onClick={() => toggleStep('sav')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.sav ? '' : 'mb-1.5'} hover:opacity-80`}>
+                    <span className="flex items-center gap-1.5 text-orange-700">
+                      <span className="text-orange-600 text-[9px]">{foldedSteps.sav ? '▶' : '▼'}</span>
+                      <span>🛠️ SAV</span>
+                      {!d.savTraite && <span className="text-orange-500 font-normal normal-case ml-1">— ouvert depuis {joursOuvert}j</span>}
+                    </span>
+                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${d.savTraite ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>
+                      {d.savTraite ? '✓ Résolu' : '⏳ En cours'}
+                    </span>
+                  </button>
+                  {!foldedSteps.sav && (
+                    <div className="space-y-2">
+                      <div className="flex justify-end">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (window.confirm('Retirer ce SAV du dossier ? Les données saisies ne seront pas effacées, juste masquées tant qu\'on ne le ré-ouvre pas.')) {
+                              onUpdate({ hasSav: false });
+                            }
+                          }}
+                          className="text-[9px] font-bold text-orange-600 hover:text-orange-800 bg-orange-100 hover:bg-orange-200 px-2 py-0.5 rounded"
+                          title="Retirer ce SAV (ex : test, erreur)"
+                        >× Retirer ce SAV</button>
+                      </div>
+                      {/* Ouverture + clôture */}
+                      <div className={`rounded-lg border-2 p-2 ${d.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-orange-200'}`}>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <label className="block text-[9px] font-bold text-orange-700 uppercase mb-0.5">📅 Ouvert le</label>
+                            <div className="flex gap-1">
+                              <input type="date" value={d.savDateOuverture || ''} onChange={(e) => onUpdate({ savDateOuverture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                              <button type="button" onClick={() => onUpdate({ savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                            </div>
+                          </div>
+                          {d.savTraite && (
+                            <div>
+                              <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Clos le</label>
+                              <div className="flex gap-1">
+                                <input type="date" value={d.savDateCloture || ''} onChange={(e) => onUpdate({ savDateCloture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                                <button type="button" onClick={() => onUpdate({ savDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                        <label className="flex items-center gap-2 cursor-pointer mt-2">
+                          <input type="checkbox" checked={!!d.savTraite} onChange={(e) => {
+                            const checked = e.target.checked;
+                            const today = new Date().toISOString().split('T')[0];
+                            onUpdate({ savTraite: checked, savDateCloture: checked && !d.savDateCloture ? today : (checked ? d.savDateCloture : '') });
+                          }} className="w-4 h-4 rounded accent-emerald-500" />
+                          <span className={`text-[11px] font-bold ${d.savTraite ? 'text-emerald-700' : 'text-orange-700'}`}>
+                            {d.savTraite ? '✅ SAV résolu' : '⏳ SAV en cours'}
+                          </span>
+                        </label>
+                      </div>
+                      <textarea value={d.savMotif || ''} onChange={(e) => onUpdate({ savMotif: e.target.value })} rows={2} placeholder="📝 Motif / problème signalé" className={inputCls + ' resize-none text-xs'} />
+                      <div className="grid grid-cols-3 gap-2">
+                        <input type="text" value={d.savIntervenant || ''} onChange={(e) => onUpdate({ savIntervenant: e.target.value })} placeholder="👤 Intervenant" className={inputCls} />
+                        <div className="flex gap-1">
+                          <input type="date" value={d.savDateInterventionPrevue || ''} onChange={(e) => onUpdate({ savDateInterventionPrevue: e.target.value })} title="Intervention prévue" className={inputCls + ' flex-1 min-w-0'} />
+                          <button type="button" onClick={() => onUpdate({ savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                        </div>
+                        <div className="flex gap-1">
+                          <input type="date" value={d.savDateInterventionFaite || ''} onChange={(e) => onUpdate({ savDateInterventionFaite: e.target.value })} title="Intervention faite" className={inputCls + ' flex-1 min-w-0'} />
+                          <button type="button" onClick={() => onUpdate({ savDateInterventionFaite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                        </div>
+                      </div>
+                      <textarea value={d.savNote || ''} onChange={(e) => onUpdate({ savNote: e.target.value })} rows={2} placeholder="📝 Note (détails techniques, échanges)…" className={inputCls + ' resize-none text-xs'} />
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
 
           {/* FINANCEMENT — supprimé, intégré dans la section 1️⃣ Process Financement et section 4️⃣ Paiement */}
@@ -14004,258 +14235,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
           )}
 
-          {/* ⚖️ LITIGE — visible si le flag hasLitige est levé (indépendant
-              du statut workflow). La régie doit me rembourser. */}
-          {d.hasLitige && (
-            <div>
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">⚖️ Litige & remboursement</h3>
-              <div className="bg-gradient-to-br from-rose-50 to-pink-50 border-2 border-rose-300 rounded-xl p-2.5 space-y-2">
-                {/* 📨 Suivi du traitement — courrier + clôture */}
-                <div className={`rounded-lg border-2 p-2 ${d.litigeTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-rose-200'}`}>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[9px] font-bold text-rose-700 uppercase mb-0.5">📨 Recommandé reçu le</label>
-                      <div className="flex gap-1">
-                        <input
-                          type="date"
-                          value={d.litigeDateCourrierRecommande || ''}
-                          onChange={(e) => onUpdate({ litigeDateCourrierRecommande: e.target.value })}
-                          className={inputCls + ' flex-1 min-w-0'}
-                        />
-                        <button type="button" onClick={() => onUpdate({ litigeDateCourrierRecommande: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
-                      </div>
-                    </div>
-                    {d.litigeTraite && (
-                      <div>
-                        <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Clos le</label>
-                        <div className="flex gap-1">
-                          <input
-                            type="date"
-                            value={d.litigeDateCloture || ''}
-                            onChange={(e) => onUpdate({ litigeDateCloture: e.target.value })}
-                            className={inputCls + ' flex-1 min-w-0'}
-                          />
-                          <button type="button" onClick={() => onUpdate({ litigeDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <label className="flex items-center gap-2 cursor-pointer mt-2">
-                    <input
-                      type="checkbox"
-                      checked={!!d.litigeTraite}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        const today = new Date().toISOString().split('T')[0];
-                        onUpdate({
-                          litigeTraite: checked,
-                          litigeDateCloture: checked && !d.litigeDateCloture ? today : (checked ? d.litigeDateCloture : ''),
-                        });
-                      }}
-                      className="w-4 h-4 rounded accent-emerald-500"
-                    />
-                    <span className={`text-[11px] font-bold ${d.litigeTraite ? 'text-emerald-700' : 'text-rose-700'}`}>
-                      {d.litigeTraite ? '✅ Litige traité' : '⏳ En attente de traitement'}
-                    </span>
-                  </label>
-                </div>
-
-                {/* Accord PDF */}
-                <div>
-                  <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">📎 Accord transactionnel (PDF)</label>
-                  <FactureFileInput
-                    fileId={d.litigeAccordPdfUrl}
-                    onChange={(id) => onUpdate({ litigeAccordPdfUrl: id })}
-                    color="purple"
-                  />
-                </div>
-                {/* Régie + montant */}
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">🤝 Régie qui rembourse</label>
-                    <select
-                      value={d.litigeRegieNom || ''}
-                      onChange={(e) => onUpdate({ litigeRegieNom: e.target.value })}
-                      className={inputCls}
-                    >
-                      <option value="">—</option>
-                      {(d.regies || []).filter(r => r.nom).map((r, i) => (
-                        <option key={`d-${i}`} value={r.nom}>{r.nom} (du dossier)</option>
-                      ))}
-                      {(REGIES || []).filter(r => !(d.regies || []).some(dr => dr.nom === r)).map(r => (
-                        <option key={r} value={r}>{r}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">💸 Montant</label>
-                    <div className="relative">
-                      <input
-                        type="number"
-                        step="0.01"
-                        value={d.litigeMontantRembourse || ''}
-                        onChange={(e) => onUpdate({ litigeMontantRembourse: e.target.value })}
-                        placeholder="0,00"
-                        className={inputCls + ' pr-6 font-bold text-rose-700'}
-                      />
-                      <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">€</span>
-                    </div>
-                  </div>
-                </div>
-                {/* Toggle remboursé */}
-                <label className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer border-2 ${d.litigeRegieRembourse ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-rose-200 hover:bg-rose-50'}`}>
-                  <input
-                    type="checkbox"
-                    checked={!!d.litigeRegieRembourse}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      const today = new Date().toISOString().split('T')[0];
-                      onUpdate({
-                        litigeRegieRembourse: checked,
-                        litigeDateRembourse: checked && !d.litigeDateRembourse ? today : d.litigeDateRembourse,
-                      });
-                    }}
-                    className="w-4 h-4 rounded accent-emerald-500"
-                  />
-                  <span className={`text-[11px] font-bold ${d.litigeRegieRembourse ? 'text-emerald-700' : 'text-rose-700'}`}>
-                    {d.litigeRegieRembourse ? '✅ Régie remboursée' : '⏳ En attente du remboursement régie'}
-                  </span>
-                </label>
-                {d.litigeRegieRembourse && (
-                  <div className="grid grid-cols-2 gap-2">
-                    <div className="flex gap-1">
-                      <input
-                        type="date"
-                        value={d.litigeDateRembourse || ''}
-                        onChange={(e) => onUpdate({ litigeDateRembourse: e.target.value })}
-                        className={inputCls + ' flex-1 min-w-0'}
-                      />
-                      <button type="button" onClick={() => onUpdate({ litigeDateRembourse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
-                    </div>
-                    <input
-                      type="text"
-                      value={d.litigeFactureNo || ''}
-                      onChange={(e) => onUpdate({ litigeFactureNo: e.target.value })}
-                      placeholder="N° facture régie"
-                      className={inputCls}
-                    />
-                  </div>
-                )}
-                {/* Note */}
-                <textarea
-                  value={d.litigeNote || ''}
-                  onChange={(e) => onUpdate({ litigeNote: e.target.value })}
-                  rows={2}
-                  placeholder="Note (motif, contexte)…"
-                  className={inputCls + ' resize-none text-xs'}
-                />
-              </div>
-            </div>
-          )}
-
-          {/* 🛠️ SAV — visible si le flag hasSav est levé (indépendant du statut) */}
-          {d.hasSav && (
-            <div>
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">🛠️ SAV (Service Après-Vente)</h3>
-              <div className="bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-300 rounded-xl p-2.5 space-y-2">
-                {/* Ouverture + clôture */}
-                <div className={`rounded-lg border-2 p-2 ${d.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-orange-200'}`}>
-                  <div className="grid grid-cols-2 gap-2">
-                    <div>
-                      <label className="block text-[9px] font-bold text-orange-700 uppercase mb-0.5">📅 Ouvert le</label>
-                      <div className="flex gap-1">
-                        <input
-                          type="date"
-                          value={d.savDateOuverture || ''}
-                          onChange={(e) => onUpdate({ savDateOuverture: e.target.value })}
-                          className={inputCls + ' flex-1 min-w-0'}
-                        />
-                        <button type="button" onClick={() => onUpdate({ savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
-                      </div>
-                    </div>
-                    {d.savTraite && (
-                      <div>
-                        <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Clos le</label>
-                        <div className="flex gap-1">
-                          <input
-                            type="date"
-                            value={d.savDateCloture || ''}
-                            onChange={(e) => onUpdate({ savDateCloture: e.target.value })}
-                            className={inputCls + ' flex-1 min-w-0'}
-                          />
-                          <button type="button" onClick={() => onUpdate({ savDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  <label className="flex items-center gap-2 cursor-pointer mt-2">
-                    <input
-                      type="checkbox"
-                      checked={!!d.savTraite}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        const today = new Date().toISOString().split('T')[0];
-                        onUpdate({
-                          savTraite: checked,
-                          savDateCloture: checked && !d.savDateCloture ? today : (checked ? d.savDateCloture : ''),
-                        });
-                      }}
-                      className="w-4 h-4 rounded accent-emerald-500"
-                    />
-                    <span className={`text-[11px] font-bold ${d.savTraite ? 'text-emerald-700' : 'text-orange-700'}`}>
-                      {d.savTraite ? '✅ SAV résolu' : '⏳ SAV en cours'}
-                    </span>
-                  </label>
-                </div>
-                {/* Motif */}
-                <textarea
-                  value={d.savMotif || ''}
-                  onChange={(e) => onUpdate({ savMotif: e.target.value })}
-                  rows={2}
-                  placeholder="📝 Motif / problème signalé"
-                  className={inputCls + ' resize-none text-xs'}
-                />
-                {/* Intervenant + dates */}
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    type="text"
-                    value={d.savIntervenant || ''}
-                    onChange={(e) => onUpdate({ savIntervenant: e.target.value })}
-                    placeholder="👤 Intervenant"
-                    className={inputCls}
-                  />
-                  <div className="flex gap-1">
-                    <input
-                      type="date"
-                      value={d.savDateInterventionPrevue || ''}
-                      onChange={(e) => onUpdate({ savDateInterventionPrevue: e.target.value })}
-                      title="Intervention prévue"
-                      className={inputCls + ' flex-1 min-w-0'}
-                    />
-                    <button type="button" onClick={() => onUpdate({ savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
-                  <div className="flex gap-1">
-                    <input
-                      type="date"
-                      value={d.savDateInterventionFaite || ''}
-                      onChange={(e) => onUpdate({ savDateInterventionFaite: e.target.value })}
-                      title="Intervention faite"
-                      className={inputCls + ' flex-1 min-w-0'}
-                    />
-                    <button type="button" onClick={() => onUpdate({ savDateInterventionFaite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
-                </div>
-                {/* Note */}
-                <textarea
-                  value={d.savNote || ''}
-                  onChange={(e) => onUpdate({ savNote: e.target.value })}
-                  rows={2}
-                  placeholder="📝 Note (détails techniques, échanges)…"
-                  className={inputCls + ' resize-none text-xs'}
-                />
-              </div>
-            </div>
-          )}
+          {/* Les sections LITIGE et SAV ont été DÉPLACÉES dans le panneau
+              « Process du dossier » au-dessus (sous forme d'étapes annexes
+              pliables, visibles si hasLitige / hasSav). */}
 
           {/* RÉGIES — multi, éditables (cachées si équipe interne) */}
           {d.typeRegie !== 'interne' && (
