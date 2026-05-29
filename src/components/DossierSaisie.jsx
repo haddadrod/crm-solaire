@@ -2661,12 +2661,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const poseurMap = {};
     dossiersDash.forEach(d => {
       (d.poseursDetail || []).forEach(p => {
-        if (!poseurMap[p.nom]) poseurMap[p.nom] = { nom: p.nom, count: 0, ca: 0, coutTotal: 0, puissanceTotale: 0, margeApportee: 0 };
+        if (!poseurMap[p.nom]) poseurMap[p.nom] = { nom: p.nom, count: 0, ca: 0, coutTotal: 0, puissanceTotale: 0, margeApportee: 0, dossierIds: [] };
         poseurMap[p.nom].count += 1;
         poseurMap[p.nom].ca += d.montantTotal || 0;
         poseurMap[p.nom].coutTotal += p.ttc || 0;
         poseurMap[p.nom].puissanceTotale += d.puissance || 0;
         poseurMap[p.nom].margeApportee += d.margeTtc || 0;
+        poseurMap[p.nom].dossierIds.push(d.localId);
       });
     });
     const statsPoseurs = Object.values(poseurMap).sort((a, b) => b.count - a.count);
@@ -2677,20 +2678,22 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (regiesArr.length === 0) {
         // Pas de régie sur ce dossier
         const r = 'Sans régie';
-        if (!regieMap[r]) regieMap[r] = { nom: r, count: 0, ca: 0, coutTotal: 0, margeApportee: 0 };
+        if (!regieMap[r]) regieMap[r] = { nom: r, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [] };
         regieMap[r].count += 1;
         regieMap[r].ca += d.montantTotal || 0;
         regieMap[r].margeApportee += d.margeTtc || 0;
+        regieMap[r].dossierIds.push(d.localId);
       } else {
         // Pour chaque régie du dossier, on l'attribue (la marge est répartie au prorata du coût)
         const totalCout = regiesArr.reduce((s, r) => s + r.ttc, 0);
         regiesArr.forEach(reg => {
           const r = reg.nom || 'Inconnu';
-          if (!regieMap[r]) regieMap[r] = { nom: r, count: 0, ca: 0, coutTotal: 0, margeApportee: 0 };
+          if (!regieMap[r]) regieMap[r] = { nom: r, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [] };
           regieMap[r].count += 1;
           regieMap[r].ca += d.montantTotal || 0;
           regieMap[r].coutTotal += reg.ttc || 0;
           regieMap[r].margeApportee += (d.margeTtc || 0) * (totalCout > 0 ? reg.ttc / totalCout : 1);
+          regieMap[r].dossierIds.push(d.localId);
         });
       }
     });
@@ -6213,8 +6216,8 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, onCreate
         </div>
       )}
 
-      <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
-      <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
+      <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} onShowQuick={onShowQuick} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
+      <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} onShowQuick={onShowQuick} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
 
       {/* ACTIVITÉ PAR UTILISATEUR */}
       {(() => {
@@ -6349,7 +6352,15 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, onCreate
   );
 }
 
-function PerfList({ titre, data, medal, border, header, iconColor }) {
+function PerfList({ titre, data, dossiers = [], onShowQuick, medal, border, header, iconColor }) {
+  const [expandedNom, setExpandedNom] = useState(null);
+  // Index localId → dossier pour résoudre rapidement les dossiers d'une ligne.
+  const dossierByLocalId = useMemo(() => {
+    const m = new Map();
+    (dossiers || []).forEach(d => m.set(d.localId, d));
+    return m;
+  }, [dossiers]);
+
   return (
     <div className={`bg-white rounded-3xl shadow-md border ${border} overflow-hidden`}>
       <div className={`p-5 border-b border-slate-100 bg-gradient-to-r ${header}`}>
@@ -6361,22 +6372,63 @@ function PerfList({ titre, data, medal, border, header, iconColor }) {
         {data.map((p, idx) => {
           const margePct = p.ca > 0 ? (p.margeApportee / p.ca) * 100 : 0;
           const m = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : medal;
+          const isExpanded = expandedNom === p.nom;
+          const ids = p.dossierIds || [];
           return (
-            <div key={p.nom} className="p-4">
-              <div className="flex items-center justify-between gap-3 flex-wrap">
-                <div className="flex items-center gap-3 flex-1 min-w-0">
-                  <span className="text-xl">{m}</span>
-                  <div className="min-w-0">
-                    <div className="font-bold text-slate-800 truncate">{p.nom}</div>
-                    <div className="text-xs text-slate-500">{p.count} dossier{p.count > 1 ? 's' : ''}</div>
+            <div key={p.nom}>
+              <button
+                type="button"
+                onClick={() => setExpandedNom(isExpanded ? null : p.nom)}
+                className="w-full p-4 hover:bg-slate-50 text-left transition-colors"
+                title="Cliquer pour voir les dossiers"
+              >
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <span className="text-xl">{m}</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-800 truncate flex items-center gap-1">
+                        <span className="text-slate-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
+                        {p.nom}
+                      </div>
+                      <div className="text-xs text-slate-500">{p.count} dossier{p.count > 1 ? 's' : ''}</div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 text-xs">
+                    <SmallStat label="CA" value={formatEuro(p.ca)} color="text-blue-600" />
+                    <SmallStat label="Coût" value={formatEuro(p.coutTotal)} color="text-amber-600" />
+                    <SmallStat label="Marge" value={`${margePct.toFixed(1)}%`} color="text-emerald-600" />
                   </div>
                 </div>
-                <div className="flex gap-3 text-xs">
-                  <SmallStat label="CA" value={formatEuro(p.ca)} color="text-blue-600" />
-                  <SmallStat label="Coût" value={formatEuro(p.coutTotal)} color="text-amber-600" />
-                  <SmallStat label="Marge" value={`${margePct.toFixed(1)}%`} color="text-emerald-600" />
+              </button>
+              {isExpanded && (
+                <div className="px-4 pb-3 bg-slate-50 divide-y divide-slate-200">
+                  {ids.length === 0 && (
+                    <div className="text-xs text-slate-500 italic py-2">Aucun dossier trouvé.</div>
+                  )}
+                  {ids.map((lid) => {
+                    const d = dossierByLocalId.get(lid);
+                    if (!d) return null;
+                    return (
+                      <button
+                        key={lid}
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onShowQuick && onShowQuick(lid); }}
+                        className="w-full flex items-center justify-between gap-2 py-1.5 text-left hover:bg-white rounded px-2 transition-colors"
+                        title="Cliquer pour ouvrir l'aperçu rapide du dossier"
+                      >
+                        <span className="text-xs font-semibold text-slate-700 truncate">
+                          {d.nom} {d.prenom}
+                          {d.id && <span className="text-[10px] text-slate-400 ml-1">· #{d.id}</span>}
+                        </span>
+                        <span className="text-[11px] text-slate-500 flex-shrink-0">
+                          {formatEuro(d.montantTotal || 0)}
+                          {d.dateInsta && <span className="ml-2">📅 {new Date(d.dateInsta).toLocaleDateString('fr-FR')}</span>}
+                        </span>
+                      </button>
+                    );
+                  })}
                 </div>
-              </div>
+              )}
             </div>
           );
         })}
