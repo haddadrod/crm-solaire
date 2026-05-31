@@ -4475,7 +4475,11 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
               {dossierProduits.map((p, i) => {
                 const prod = findProduit(produits, p.type);
                 const qty = p.quantite || 1;
-                const qtyPrefix = (!prod.autoTarif && qty > 1) ? `${qty}× ` : '';
+                const qtyPrefix = prod.autoTarif
+                  ? ''
+                  : p.type === 'ISOLATION'
+                    ? `${qty} m² `
+                    : (qty > 1 ? `${qty}× ` : '');
                 const label = prod.autoTarif && p.puissance
                   ? `${prod.emoji} ${p.puissance} Wc`
                   : `${qtyPrefix}${prod.emoji} ${prod.label}${p.description ? ' · ' + p.description : ''}`;
@@ -9471,9 +9475,22 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         </div>
                       ) : (
                         <>
-                          <div className="w-20 flex-shrink-0">
-                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Quantité</label>
-                            <input type="number" min="1" value={prod.quantite || 1} onChange={(e) => updProd({ quantite: parseInt(e.target.value) || 1 })} className={inputCls + ' text-center font-semibold'} />
+                          <div className={(prod.type === 'ISOLATION' ? 'w-28' : 'w-20') + ' flex-shrink-0'}>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                              {prod.type === 'ISOLATION' ? 'Surface (m²)' : 'Quantité'}
+                            </label>
+                            <input
+                              type="number"
+                              min={prod.type === 'ISOLATION' ? '0' : '1'}
+                              step={prod.type === 'ISOLATION' ? '0.5' : '1'}
+                              value={prod.quantite || ''}
+                              onChange={(e) => updProd({
+                                quantite: prod.type === 'ISOLATION'
+                                  ? (parseFloat(e.target.value) || 0)
+                                  : (parseInt(e.target.value) || 1)
+                              })}
+                              className={inputCls + ' text-center font-semibold'}
+                            />
                           </div>
                           <div className="flex-1 min-w-[180px]">
                             <label className="block text-[10px] font-semibold text-slate-500 mb-1">Description (optionnel)</label>
@@ -14597,7 +14614,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       </select>
                     ) : (
                       <div className="flex gap-1.5">
-                        <input type="number" min="1" value={p.quantite || 1} onChange={(e) => updateProduit(i, { quantite: parseInt(e.target.value) || 1 })} placeholder="Qté" className="w-14 px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-bold text-center" />
+                        <input
+                          type="number"
+                          min={p.type === 'ISOLATION' ? '0' : '1'}
+                          step={p.type === 'ISOLATION' ? '0.5' : '1'}
+                          value={p.quantite || ''}
+                          onChange={(e) => updateProduit(i, {
+                            quantite: p.type === 'ISOLATION'
+                              ? (parseFloat(e.target.value) || 0)
+                              : (parseInt(e.target.value) || 1)
+                          })}
+                          placeholder={p.type === 'ISOLATION' ? 'm²' : 'Qté'}
+                          className={(p.type === 'ISOLATION' ? 'w-20' : 'w-14') + ' px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-bold text-center'}
+                        />
                         <input type="text" value={p.description || ''} onChange={(e) => updateProduit(i, { description: e.target.value })} placeholder="Description" className="flex-1 px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px]" />
                       </div>
                     )}
@@ -14907,7 +14936,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   ? d.produits.map((prod) => {
                       const info = findProduit(produits, prod.type);
                       const qty = prod.quantite || 1;
-                      const qtyPrefix = (!info.autoTarif && qty > 1) ? `${qty}× ` : '';
+                      const qtyPrefix = info.autoTarif
+                        ? ''
+                        : prod.type === 'ISOLATION'
+                          ? `${qty} m² `
+                          : (qty > 1 ? `${qty}× ` : '');
                       const label = info.autoTarif && prod.puissance
                         ? `${qtyPrefix}${info.emoji} ${info.label} ${prod.puissance} Wc`
                         : `${qtyPrefix}${info.emoji} ${info.label}`;
