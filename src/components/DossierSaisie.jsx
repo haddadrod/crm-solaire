@@ -1141,7 +1141,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
   }, [isAdmin, currentUserRole]);
 
   const emptyForm = {
-    id: '', dateInsta: new Date().toISOString().split('T')[0],
+    // ⚠️ dateInsta = « Posé le » (date de pose RÉALISÉE). Reste vide tant que
+    // la pose n'a pas été faite — sinon ça pollue le calendrier et le champ
+    // « Posé le » affiche une date alors que l'utilisateur n'a rien saisi.
+    // Le bouton « ✓ Posé » ou « Auj. » la remplit explicitement.
+    id: '', dateInsta: '',
     dateSignature: '',
     societe: activeSociete || (societes[0]?.id || ''), // 🏢 société émettrice (Yolico/Elsun)
     // Étape 1 : contrôle qualité (avant envoi banque)
@@ -2189,7 +2193,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
   const startEdit = (d) => {
     setFormData({
-      id: d.id || '', dateInsta: d.dateInsta || new Date().toISOString().split('T')[0],
+      // Idem emptyForm : pas de fallback à aujourd'hui sur dateInsta. La pose
+      // n'est considérée réalisée que quand l'utilisateur saisit la date.
+      id: d.id || '', dateInsta: d.dateInsta || '',
       dateSignature: d.dateSignature || '',
       societe: d.societe || activeSociete || (societes[0]?.id || ''),
       dateAccord: d.dateAccord || '', dateConsuel: d.dateConsuel || '',
