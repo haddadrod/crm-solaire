@@ -2721,10 +2721,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const dossiersDash = activeSociete
       ? dossiersEnriched.filter(d => d.societe === activeSociete)
       : dossiersEnriched;
+    // 📊 Stats mensuelles — UNIQUEMENT les dossiers payés par le client.
+    // On groupe par mois du paiement (payeClientDate), pas par dateInsta
+    // (qui est la date de pose et qui était souvent pré-remplie à tort).
+    // Conséquence : la tuile « Ce mois » reflète le CA réellement encaissé
+    // ce mois, pas un total qui mélange payé et en attente.
     const moisMap = {};
     dossiersDash.forEach(d => {
-      if (!d.dateInsta) return;
-      const k = d.dateInsta.substring(0, 7);
+      if (!d.payeClient) return; // dossier non payé → exclu
+      if (!d.payeClientDate) return; // pas de date de paiement → on ne sait pas quel mois rattacher
+      const k = d.payeClientDate.substring(0, 7);
       if (!moisMap[k]) moisMap[k] = { mois: k, count: 0, ca: 0, margeTtc: 0 };
       moisMap[k].count += 1;
       moisMap[k].ca += d.montantTotal || 0;
@@ -2733,8 +2739,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const statsMois = Object.values(moisMap).sort((a, b) => a.mois.localeCompare(b.mois));
     const todayStr = new Date().toISOString().substring(0, 7);
     const moisCourant = statsMois.find(m => m.mois === todayStr) || { count: 0, ca: 0, margeTtc: 0 };
-    const lm = new Date(); lm.setMonth(lm.getMonth() - 1);
-    const lastStr = lm.toISOString().substring(0, 7);
+    // Mois précédent : on calcule le « YYYY-MM » du mois -1 SANS passer par
+    // toISOString() qui décale d'un jour si on est en début/fin de mois.
+    const lastStr = (() => {
+      const now = new Date();
+      const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${prev.getFullYear()}-${pad(prev.getMonth() + 1)}`;
+    })();
     const moisPrecedent = statsMois.find(m => m.mois === lastStr) || { count: 0, ca: 0, margeTtc: 0 };
 
     // 🏦 PROJEXIO — total d'envois banque du mois, breakdown par société.
@@ -6276,23 +6288,23 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
 
       {!isRestricted && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl p-4 text-white">
+          <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl p-4 text-white" title="Dossiers payés ce mois (basé sur la date de paiement client)">
             <div className="flex justify-between items-start mb-2">
-              <div className="text-xs font-semibold opacity-90 uppercase">Ce mois</div>
+              <div className="text-xs font-semibold opacity-90 uppercase">Encaissé ce mois</div>
               <Activity className="w-5 h-5 opacity-80" />
             </div>
             <div className="text-3xl font-bold">{dashboard.moisCourant.count}</div>
-            <div className="text-xs opacity-90 mt-1">{formatEuro(dashboard.moisCourant.ca)} CA</div>
+            <div className="text-xs opacity-90 mt-1">{formatEuro(dashboard.moisCourant.ca)} CA payé</div>
           </div>
-          <div className="bg-gradient-to-br from-slate-500 to-gray-600 rounded-2xl p-4 text-white">
+          <div className="bg-gradient-to-br from-slate-500 to-gray-600 rounded-2xl p-4 text-white" title="Dossiers payés le mois précédent">
             <div className="flex justify-between items-start mb-2">
               <div className="text-xs font-semibold opacity-90 uppercase">Mois précédent</div>
               <Calendar className="w-5 h-5 opacity-80" />
             </div>
             <div className="text-3xl font-bold">{dashboard.moisPrecedent.count}</div>
-            <div className="text-xs opacity-90 mt-1">{formatEuro(dashboard.moisPrecedent.ca)} CA</div>
+            <div className="text-xs opacity-90 mt-1">{formatEuro(dashboard.moisPrecedent.ca)} CA payé</div>
           </div>
-          <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-4 text-white">
+          <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-4 text-white" title="Marge sur les dossiers payés ce mois">
             <div className="flex justify-between items-start mb-2">
               <div className="text-xs font-semibold opacity-90 uppercase">Marge ce mois</div>
               <TrendingUp className="w-5 h-5 opacity-80" />
