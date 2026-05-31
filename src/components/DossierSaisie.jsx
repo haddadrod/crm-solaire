@@ -15757,11 +15757,12 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
   }, [viewDate]);
 
   // Map des dossiers par date.
-  // On exclut :
-  //   - annulés (W2_ANNULER) et archivés : ils n'ont rien à faire sur une vue prévisionnelle.
-  //   - poses dont le statut a déjà dépassé l'étape pose (G_ATTENTE_ACCORD_DEF
-  //     et suivants) : la pose est faite, inutile de polluer le calendrier
-  //     avec des « rendez-vous » qui n'en sont plus.
+  // Pour le filtre POSE, on n'affiche que les poses pertinentes pour la
+  // planification. On exclut :
+  //   - annulés (W2_ANNULER) et archivés
+  //   - poses déjà faites (statut dépassé l'étape pose, index ≥ 6)
+  //   - poses fantômes : dateInsta dans le passé + aucun poseur attribué
+  //     → la pose n'a pas eu lieu, seule la date de tentative est restée.
   const eventsByDate = useMemo(() => {
     const map = {};
     const addEvent = (dateStr, dossier, type) => {
@@ -15772,15 +15773,26 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
     };
     const poseEstFaite = (d) => {
       const idx = STATUT_ETAPE_INDEX[d.statut];
-      // Si le statut est passé après B4_EN_COURS_POSE (index 5), la pose est
-      // terminée. Idem pour le statut "PAYÉ" évidemment.
       return idx !== undefined && idx >= 6;
+    };
+    const poseurAttribue = (d) =>
+      (d.poseurs || []).some(p => p && p.nom && p.nom.trim());
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const dateEstPassee = (dateStr) => {
+      if (!dateStr) return false;
+      const d = new Date(dateStr.split('T')[0]);
+      d.setHours(0, 0, 0, 0);
+      return d < startOfToday;
     };
     dossiers.forEach(d => {
       if (d.statut === 'W2_ANNULER') return;
       if (d.archived === true) return;
       if (filterType === 'pose' || filterType === 'all') {
-        if (d.dateInsta && !poseEstFaite(d)) addEvent(d.dateInsta, d, 'pose');
+        if (d.dateInsta && !poseEstFaite(d)) {
+          const fantome = dateEstPassee(d.dateInsta) && !poseurAttribue(d);
+          if (!fantome) addEvent(d.dateInsta, d, 'pose');
+        }
       }
       if (filterType === 'accord' || filterType === 'all') {
         if (d.dateAccord) addEvent(d.dateAccord, d, 'accord');
