@@ -2790,18 +2790,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
       return Math.floor((end - start) / 86400000);
     };
 
+    // CA / Coût / Marge ne comptent que les dossiers PAYÉS (cohérent avec
+    // les tuiles du dashboard). Le `count` reste le total de dossiers
+    // attribués (info utile pour voir qui en gère combien).
     const poseurMap = {};
     dossiersDash.forEach(d => {
       (d.poseursDetail || []).forEach(p => {
         if (!poseurMap[p.nom]) poseurMap[p.nom] = { nom: p.nom, count: 0, ca: 0, coutTotal: 0, puissanceTotale: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, dureeTotale: 0, dureeCount: 0 };
         const m = poseurMap[p.nom];
         m.count += 1;
-        m.ca += d.montantTotal || 0;
-        m.coutTotal += p.ttc || 0;
         m.puissanceTotale += d.puissance || 0;
-        m.margeApportee += d.margeTtc || 0;
         m.dossierIds.push(d.localId);
-        if (d.payeClient) m.nbPayes += 1;
+        if (d.payeClient) {
+          m.nbPayes += 1;
+          m.ca += d.montantTotal || 0;
+          m.coutTotal += p.ttc || 0;
+          m.margeApportee += d.margeTtc || 0;
+        }
         if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
         const dj = dureeJours(d);
         if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
@@ -2813,8 +2818,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dossiersDash.forEach(d => {
       const regiesArr = d.regiesDetail || [];
       const dj = dureeJours(d);
+      const isPaid = !!d.payeClient;
       const bumpAdvanced = (m) => {
-        if (d.payeClient) m.nbPayes += 1;
+        if (isPaid) m.nbPayes += 1;
         if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
         if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
       };
@@ -2822,9 +2828,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
         const r = 'Sans régie';
         if (!regieMap[r]) regieMap[r] = { nom: r, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, dureeTotale: 0, dureeCount: 0 };
         regieMap[r].count += 1;
-        regieMap[r].ca += d.montantTotal || 0;
-        regieMap[r].margeApportee += d.margeTtc || 0;
         regieMap[r].dossierIds.push(d.localId);
+        if (isPaid) {
+          regieMap[r].ca += d.montantTotal || 0;
+          regieMap[r].margeApportee += d.margeTtc || 0;
+        }
         bumpAdvanced(regieMap[r]);
       } else {
         const totalCout = regiesArr.reduce((s, r) => s + r.ttc, 0);
@@ -2832,10 +2840,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
           const r = reg.nom || 'Inconnu';
           if (!regieMap[r]) regieMap[r] = { nom: r, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, dureeTotale: 0, dureeCount: 0 };
           regieMap[r].count += 1;
-          regieMap[r].ca += d.montantTotal || 0;
-          regieMap[r].coutTotal += reg.ttc || 0;
-          regieMap[r].margeApportee += (d.margeTtc || 0) * (totalCout > 0 ? reg.ttc / totalCout : 1);
           regieMap[r].dossierIds.push(d.localId);
+          if (isPaid) {
+            regieMap[r].ca += d.montantTotal || 0;
+            regieMap[r].coutTotal += reg.ttc || 0;
+            regieMap[r].margeApportee += (d.margeTtc || 0) * (totalCout > 0 ? reg.ttc / totalCout : 1);
+          }
           bumpAdvanced(regieMap[r]);
         });
       }
@@ -2852,10 +2862,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (!commercialMap[nom]) commercialMap[nom] = { nom, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, dureeTotale: 0, dureeCount: 0 };
       const m = commercialMap[nom];
       m.count += 1;
-      m.ca += d.montantTotal || 0;
-      m.margeApportee += d.margeTtc || 0;
       m.dossierIds.push(d.localId);
-      if (d.payeClient) m.nbPayes += 1;
+      if (d.payeClient) {
+        m.nbPayes += 1;
+        m.ca += d.montantTotal || 0;
+        m.margeApportee += d.margeTtc || 0;
+      }
       if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
       const dj = dureeJours(d);
       if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
@@ -6675,8 +6687,8 @@ function PerfList({ titre, data, dossiers = [], onShowQuick, medal, border, head
                       })()}
                     </div>
                   </div>
-                  <div className="flex gap-3 text-xs">
-                    <SmallStat label="CA" value={formatEuro(p.ca)} color="text-blue-600" />
+                  <div className="flex gap-3 text-xs" title="CA / coût / marge basés UNIQUEMENT sur les dossiers payés par le client">
+                    <SmallStat label="CA payé" value={formatEuro(p.ca)} color="text-blue-600" />
                     {!hideCoutMarge && <SmallStat label="Coût" value={formatEuro(p.coutTotal)} color="text-amber-600" />}
                     {!hideCoutMarge && <SmallStat label="Marge" value={`${margePct.toFixed(1)}%`} color="text-emerald-600" />}
                   </div>
