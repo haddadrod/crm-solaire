@@ -1975,6 +1975,41 @@ export default function DossierSaisie({ authUser, onLogout }) {
       } catch (e) {}
       return;
     }
+
+    // 🔍 Détection de doublons — uniquement à la CRÉATION (pas en édition).
+    // On signale toute correspondance forte (téléphone identique, email
+    // identique, ou nom+prénom identiques) et on demande confirmation.
+    // Anti-erreur : évite d'enregistrer 2× le même client par mégarde.
+    if (!editingId) {
+      const normPhone = (s) => String(s || '').replace(/\D/g, '');
+      const normText = (s) => String(s || '').trim().toLowerCase();
+      const newPhone = normPhone(formData.telephone);
+      const newEmail = normText(formData.email);
+      const newNom = normText(formData.nom);
+      const newPrenom = normText(formData.prenom);
+      const matches = dossiers.filter(d => {
+        if (newPhone && newPhone.length >= 6 && normPhone(d.telephone) === newPhone) return true;
+        if (newEmail && normText(d.email) === newEmail) return true;
+        if (newNom && newPrenom && normText(d.nom) === newNom && normText(d.prenom) === newPrenom) return true;
+        return false;
+      });
+      if (matches.length > 0) {
+        const lignes = matches.slice(0, 5).map(d => {
+          const id = d.id ? ` (#${d.id})` : '';
+          const tel = d.telephone ? ` · ${d.telephone}` : '';
+          const ville = d.ville ? ` · ${d.ville}` : '';
+          return `• ${d.nom || '?'} ${d.prenom || ''}${id}${tel}${ville}`;
+        }).join('\n');
+        const suite = matches.length > 5 ? `\n…et ${matches.length - 5} autre(s)` : '';
+        const ok = window.confirm(
+          `⚠️ Un dossier semble déjà exister pour ce client :\n\n${lignes}${suite}\n\n` +
+          `Tu veux quand même créer ce nouveau dossier ?\n\n` +
+          `OK : créer quand même · Annuler : ne pas créer (ouvre le dossier existant).`
+        );
+        if (!ok) return;
+      }
+    }
+
     let dossier = { ...formData, ...calculs, savedAt: new Date().toISOString() };
     // Auto-statut : si le statut courant est dans le cycle workflow, on le
     // recalcule depuis l'état du dossier (CQ, envoi banque, retour, etc.).
