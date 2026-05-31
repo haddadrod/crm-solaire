@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, Lock, Unlock, Shield, KeyRound } from 'lucide-react';
+import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, Lock, Unlock, Shield, KeyRound, LayoutGrid } from 'lucide-react';
 import { supabase, uploadFileToBucket, getSignedUrl, deleteFileFromBucket, downloadFileFromBucket } from '../supabase.js';
 import { TEMPLATES_CATALOG } from '../pdfTemplates.js';
 
@@ -877,7 +877,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const initialTabFromHash = (typeof window !== 'undefined' && window.location.hash)
     ? window.location.hash.replace(/^#/, '').split('/')[0] || 'dossiers'
     : 'dossiers';
-  const VALID_TABS = ['dossiers', 'archives', 'calendrier', 'paiements', 'dashboard', 'reglages'];
+  const VALID_TABS = ['dossiers', 'archives', 'kanban', 'calendrier', 'paiements', 'dashboard', 'reglages'];
   const [activeTab, setActiveTab] = useState(VALID_TABS.includes(initialTabFromHash) ? initialTabFromHash : 'dossiers');
   const [statutsOrder, setStatutsOrder] = useState(STATUTS.map(s => s.id));
   const [tarifsPoseurs, setTarifsPoseurs] = useState(TARIFS_POSEURS_DEFAULT);
@@ -3631,6 +3631,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           <div className="flex gap-2 mb-3 bg-white rounded-2xl p-1.5 shadow-sm border border-violet-100 w-fit flex-wrap">
             <TabButton active={activeTab === 'dossiers'} onClick={() => setActiveTab('dossiers')} icon={FileText} label={`Dossiers (${nbActifs})`} color="from-violet-500 to-pink-500" />
             <TabButton active={activeTab === 'archives'} onClick={() => setActiveTab('archives')} icon={Check} label={`Archivés (${nbArchives})`} color="from-slate-500 to-gray-600" />
+            <TabButton active={activeTab === 'kanban'} onClick={() => setActiveTab('kanban')} icon={LayoutGrid} label="Kanban" color="from-violet-500 to-fuchsia-500" />
             <TabButton active={activeTab === 'calendrier'} onClick={() => setActiveTab('calendrier')} icon={Calendar} label="Calendrier" color="from-orange-500 to-red-500" />
             {permissions.voirRapportPaiements && <TabButton active={activeTab === 'paiements'} onClick={() => setActiveTab('paiements')} icon={Euro} label="Rapport paiements" color="from-emerald-500 to-teal-500" badge={rapportPaiements.totalGeneralRestant > 0 ? formatEuro(rapportPaiements.totalGeneralRestant) + ' dû' : null} badgeColor="bg-rose-100 text-rose-700" />}
             {permissions.voirDashboard && <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={BarChart3} label="Tableau de bord" color="from-blue-500 to-cyan-500" badge={(dashboard.rappelsClient.length + dashboard.rappelsPrestataires.length) > 0 ? `🔔 ${dashboard.rappelsClient.length + dashboard.rappelsPrestataires.length}` : null} badgeColor="bg-amber-100 text-amber-700" />}
@@ -3887,6 +3888,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
             STATUTS={STATUTS}
             onShowQuick={setShowQuickViewId}
             isAdmin={isAdmin}
+          />
+        )}
+
+        {activeTab === 'kanban' && (
+          <KanbanView
+            dossiers={dossiers}
+            STATUTS={STATUTS}
+            onShowQuick={setShowQuickViewId}
+            isAdmin={isAdmin}
+            societes={societes}
           />
         )}
 
@@ -16096,6 +16107,303 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
         <span className="text-slate-400 ml-auto">💡 Clique un point pour voir le dossier</span>
       </div>
     </div>
+  );
+}
+
+// ===================== VUE KANBAN =====================
+//
+// Tableau de bord visuel type Trello : une colonne par statut du workflow,
+// les dossiers groupés en cartes empilées dans leur colonne. Click sur une
+// carte → QuickView. Pas de drag-and-drop : changer le statut passe par les
+// actions habituelles du formulaire (CQ validé, accord banque reçu, etc.),
+// pour ne pas court-circuiter la logique d'auto-statut.
+
+// Ordre des colonnes du Kanban : parcours nominal de gauche (signature) à
+// droite (payé). Les statuts hors-parcours (LITIGE, SAV, ANNULER) ne sont
+// pas des colonnes — Litige et SAV sont des flags affichés en badge sur la
+// carte, les dossiers annulés/archivés sont exclus du Kanban.
+const KANBAN_COLONNES_IDS = [
+  'A_EN_COURS',
+  'A1_CONTROLE_QUALITE',
+  'B_A_ENVOYER_BANQUE',
+  'B1_EN_COURS_FINANCEMENT',
+  'B1_MANQUE_DOC',
+  'B3_REFUS_FINANCEMENT',
+  'B2_A_ENVOYER_POSE',
+  'B4_EN_COURS_POSE',
+  'G_ATTENTE_ACCORD_DEF',
+  'F1_CONTROLE_LIV_BANQUE',
+  'F_ATTENTE_DEBLOCAGE',
+  'W_DOSSIER_PAYER',
+];
+
+function KanbanView({ dossiers, STATUTS, onShowQuick, isAdmin, societes = [] }) {
+  const [societeFilter, setSocieteFilter] = useState('all');
+  const [flagFilter, setFlagFilter] = useState('all'); // all | litige | sav | rappel
+
+  const columns = useMemo(
+    () => KANBAN_COLONNES_IDS.map(id => STATUTS.find(s => s.id === id)).filter(Boolean),
+    [STATUTS]
+  );
+
+  const filtered = useMemo(() => dossiers.filter(d => {
+    if (d.statut === 'W2_ANNULER') return false;
+    if (d.archived === true) return false;
+    if (societeFilter !== 'all' && d.societe !== societeFilter) return false;
+    if (flagFilter === 'litige' && !d.hasLitige) return false;
+    if (flagFilter === 'sav' && !d.hasSav) return false;
+    if (flagFilter === 'rappel' && !d.hasRappel) return false;
+    return true;
+  }), [dossiers, societeFilter, flagFilter]);
+
+  const groups = useMemo(() => {
+    const map = {};
+    columns.forEach(c => { map[c.id] = []; });
+    filtered.forEach(d => {
+      // Les statuts hors parcours (LITIGE, SAV, legacy) ne tombent dans
+      // aucune colonne — on les remappe sur EN COURS pour les voir quand
+      // même, sauf s'ils sont déjà placés ailleurs.
+      if (map[d.statut]) {
+        map[d.statut].push(d);
+      } else if (map['A_EN_COURS']) {
+        map['A_EN_COURS'].push(d);
+      }
+    });
+    // Tri : plus récemment modifié en premier
+    Object.keys(map).forEach(k => {
+      map[k].sort((a, b) => {
+        const da = new Date(a.modifiedAt || a.createdAt || 0).getTime();
+        const db = new Date(b.modifiedAt || b.createdAt || 0).getTime();
+        return db - da;
+      });
+    });
+    return map;
+  }, [filtered, columns]);
+
+  const totalAffiches = filtered.length;
+  const totalCA = useMemo(
+    () => filtered.reduce((sum, d) => sum + (d.montantTotal || 0), 0),
+    [filtered]
+  );
+
+  const flagBtn = (id, label, emoji, count, activeColor) => {
+    const sel = flagFilter === id;
+    return (
+      <button
+        onClick={() => setFlagFilter(id)}
+        className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+          sel
+            ? `bg-gradient-to-r ${activeColor} text-white shadow-md`
+            : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+        }`}
+      >
+        <span>{emoji}</span>
+        <span>{label}</span>
+        {typeof count === 'number' && (
+          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${sel ? 'bg-white/25' : 'bg-slate-200'}`}>
+            {count}
+          </span>
+        )}
+      </button>
+    );
+  };
+
+  // Comptes pour les badges de filtres
+  const counts = useMemo(() => {
+    const base = dossiers.filter(d => d.statut !== 'W2_ANNULER' && d.archived !== true);
+    const inSoc = (d) => societeFilter === 'all' || d.societe === societeFilter;
+    return {
+      all: base.filter(inSoc).length,
+      litige: base.filter(d => d.hasLitige && inSoc(d)).length,
+      sav: base.filter(d => d.hasSav && inSoc(d)).length,
+      rappel: base.filter(d => d.hasRappel && inSoc(d)).length,
+    };
+  }, [dossiers, societeFilter]);
+
+  return (
+    <div className="space-y-3">
+      {/* HEADER filtres */}
+      <div className="bg-white rounded-3xl shadow-md border border-slate-200 p-3">
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wide mr-1">Société</span>
+            <button
+              onClick={() => setSocieteFilter('all')}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                societeFilter === 'all'
+                  ? 'bg-gradient-to-r from-slate-600 to-slate-700 text-white shadow-md'
+                  : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              Toutes
+            </button>
+            {societes.map(s => (
+              <button
+                key={s.id}
+                onClick={() => setSocieteFilter(s.id)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all ${
+                  societeFilter === s.id
+                    ? 'bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white shadow-md'
+                    : 'bg-slate-50 text-slate-600 hover:bg-slate-100'
+                }`}
+              >
+                <span>{s.emoji}</span>
+                <span>{s.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-3 text-xs">
+            <div className="bg-violet-50 px-3 py-1.5 rounded-lg">
+              <span className="font-bold text-violet-700">{totalAffiches}</span>
+              <span className="text-slate-600 ml-1">dossier{totalAffiches > 1 ? 's' : ''}</span>
+            </div>
+            {isAdmin && totalCA > 0 && (
+              <div className="bg-emerald-50 px-3 py-1.5 rounded-lg">
+                <span className="font-bold text-emerald-700">{formatEuro(totalCA)}</span>
+                <span className="text-slate-600 ml-1">CA en cours</span>
+              </div>
+            )}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5 flex-wrap mt-3">
+          <span className="text-xs font-bold text-slate-500 uppercase tracking-wide mr-1">Filtre</span>
+          {flagBtn('all', 'Tout', '📋', counts.all, 'from-slate-600 to-slate-700')}
+          {flagBtn('litige', 'Litige', '⚠️', counts.litige, 'from-rose-500 to-red-500')}
+          {flagBtn('sav', 'SAV', '🛠️', counts.sav, 'from-yellow-400 to-amber-500')}
+          {flagBtn('rappel', 'Rappel', '📞', counts.rappel, 'from-orange-500 to-amber-500')}
+        </div>
+      </div>
+
+      {/* KANBAN — scroll horizontal */}
+      <div className="overflow-x-auto pb-3">
+        <div className="flex gap-3" style={{ minWidth: 'min-content' }}>
+          {columns.map(col => {
+            const items = groups[col.id] || [];
+            const colCA = items.reduce((s, d) => s + (d.montantTotal || 0), 0);
+            return (
+              <div key={col.id} className="w-72 flex-shrink-0 bg-slate-50 rounded-2xl border border-slate-200 flex flex-col">
+                <div className={`p-3 rounded-t-2xl bg-gradient-to-r ${col.color} text-white shadow-sm sticky top-0 z-10`}>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-lg leading-none">{col.emoji}</span>
+                      <span className="font-bold text-[11px] uppercase tracking-wide truncate">{col.label}</span>
+                    </div>
+                    <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0">{items.length}</span>
+                  </div>
+                  {isAdmin && colCA > 0 && (
+                    <div className="text-[10px] text-white/80 mt-1 font-semibold">{formatEuro(colCA)} CA</div>
+                  )}
+                </div>
+                <div className="p-2 space-y-2 max-h-[70vh] overflow-y-auto flex-1">
+                  {items.length === 0 ? (
+                    <div className="text-center text-[11px] text-slate-400 italic py-6">Aucun dossier</div>
+                  ) : (
+                    items.map(d => (
+                      <KanbanCard
+                        key={d.localId}
+                        d={d}
+                        societes={societes}
+                        onShowQuick={onShowQuick}
+                        isAdmin={isAdmin}
+                      />
+                    ))
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <div className="text-[11px] text-center text-slate-500 italic">
+        💡 Clique une carte pour voir le dossier. Les changements de statut se font via les actions du dossier (le Kanban n'a pas de glisser-déposer pour préserver l'auto-statut).
+      </div>
+    </div>
+  );
+}
+
+function KanbanCard({ d, societes = [], onShowQuick, isAdmin }) {
+  const soc = societes.find(s => s.id === d.societe);
+  // Date pertinente selon le statut
+  const dateInfo = (() => {
+    switch (d.statut) {
+      case 'A_EN_COURS':
+      case 'A1_CONTROLE_QUALITE':
+      case 'B_A_ENVOYER_BANQUE':
+        return { label: 'Signé', date: d.dateSignature };
+      case 'B1_EN_COURS_FINANCEMENT':
+      case 'B1_MANQUE_DOC':
+      case 'B3_REFUS_FINANCEMENT':
+        return { label: 'Banque', date: d.dateEnvoiBanque };
+      case 'B2_A_ENVOYER_POSE':
+        return { label: 'Accord', date: d.dateAccord };
+      case 'B4_EN_COURS_POSE':
+        return { label: 'Pose', date: d.dateInsta };
+      case 'G_ATTENTE_ACCORD_DEF':
+      case 'F1_CONTROLE_LIV_BANQUE':
+      case 'F_ATTENTE_DEBLOCAGE':
+        return { label: 'Posé', date: d.dateInsta };
+      case 'W_DOSSIER_PAYER':
+        return { label: 'Payé', date: d.datePaiementClient };
+      default:
+        return { label: 'Maj', date: d.modifiedAt };
+    }
+  })();
+  // Jours depuis dernière modif → badge "stagne" si > 10 j
+  const joursDepuisMaj = (() => {
+    const iso = d.modifiedAt || d.createdAt;
+    if (!iso) return null;
+    const ms = Date.now() - new Date(iso).getTime();
+    if (ms < 0) return null;
+    return Math.floor(ms / 86400000);
+  })();
+  const stagne = joursDepuisMaj !== null && joursDepuisMaj >= 10;
+
+  return (
+    <button
+      onClick={() => onShowQuick && onShowQuick(d.localId)}
+      className={`w-full text-left bg-white hover:bg-violet-50 border rounded-xl p-2.5 shadow-sm hover:shadow-md transition-all ${
+        stagne ? 'border-amber-300' : 'border-slate-200 hover:border-violet-300'
+      }`}
+      title={`${d.nom} ${d.prenom || ''} — ouvrir`}
+    >
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <div className="font-bold text-sm text-slate-800 truncate flex-1 leading-tight">
+          {d.nom} {d.prenom && <span className="font-normal text-slate-500">{d.prenom}</span>}
+        </div>
+        {d.id && (
+          <span className="text-[9px] font-mono bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded flex-shrink-0">
+            #{d.id}
+          </span>
+        )}
+      </div>
+      {isAdmin && d.montantTotal > 0 && (
+        <div className="text-[11px] font-bold text-violet-700 mb-1.5">
+          💰 {formatEuro(d.montantTotal)}
+        </div>
+      )}
+      <div className="flex items-center gap-1 flex-wrap">
+        {dateInfo.date && (
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-700">
+            <Calendar className="w-2.5 h-2.5" />
+            {dateInfo.label} {formatDateForSheet(dateInfo.date)}
+          </span>
+        )}
+        {stagne && (
+          <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-300" title="Aucune modification depuis 10 jours">
+            ⏱ {joursDepuisMaj}j
+          </span>
+        )}
+        {d.hasLitige && <span className="text-[9px] font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">⚠️ Litige</span>}
+        {d.hasSav && <span className="text-[9px] font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">🛠️ SAV</span>}
+        {d.hasRappel && <span className="text-[9px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">📞 Rappel</span>}
+        {soc && (
+          <span className="text-[9px] font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded ml-auto" title={`Société : ${soc.label}`}>
+            {soc.emoji}
+          </span>
+        )}
+      </div>
+    </button>
   );
 }
 
