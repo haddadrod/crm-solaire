@@ -4573,7 +4573,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-1.5 text-xs">
             <Mini label="Vente TTC" value={formatEuro(d.montantTotal)} color="text-blue-600" />
             <Mini label="Vente HT" value={formatEuro(d.montantHt)} color="text-cyan-600" />
-            {isAdmin && <Mini label="Marge TTC" value={formatEuro(d.margeTtc)} color={d.margeTtc >= 0 ? 'text-emerald-600' : 'text-rose-600'} />}
+            {isAdmin && (((d.fournisseurTtc || 0) + (d.regieTtc || 0) + (d.poseurTtc || 0)) > 0) && <Mini label="Marge TTC" value={formatEuro(d.margeTtc)} color={d.margeTtc >= 0 ? 'text-emerald-600' : 'text-rose-600'} />}
             {!isAdmin && <Mini label="Financement" value={d.financement} color="text-violet-600" />}
             {!isAdmin && (() => {
               if (dossierProduits.length > 1) {
@@ -14605,7 +14605,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   <input type="number" step="0.01" value={d.montantTotal || ''} onChange={(e) => onUpdate({ montantTotal: parseFloat(e.target.value) || 0 })} placeholder="0,00" className={inputCls + ' font-bold text-violet-700'} />
                   <span className="text-xs text-slate-500">€</span>
                 </div>
-                {d.margeTtc !== undefined && (
+                {d.margeTtc !== undefined && (((d.fournisseurTtc || 0) + (d.regieTtc || 0) + (d.poseurTtc || 0)) > 0) && (
                   <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-violet-200">
                     <span className="text-slate-600 font-semibold">Marge TTC</span>
                     <span className={`font-bold ${d.margeTtc >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatEuro(d.margeTtc)}</span>
