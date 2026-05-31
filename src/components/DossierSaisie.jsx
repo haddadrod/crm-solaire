@@ -12013,14 +12013,60 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
 
 function HistoriqueModal({ dossier, onClose }) {
   const findStatutInfo = (id) => STATUTS.find(s => s.id === id);
+  // Par défaut on montre seulement les changements de statut, plus parlant
+  // pour voir « où en est le dossier » et combien de temps il a passé dans
+  // chaque phase. L'utilisateur peut basculer sur les autres vues.
+  const [filter, setFilter] = useState('statuts'); // 'all' | 'statuts' | 'modifs' | 'actions'
+
+  // Catégorisation d'un événement → permet le filtrage par type.
+  const eventCategory = (e) => {
+    if (e.kind === 'tentative_cq' || e.kind === 'tentative_liv') return 'actions';
+    if (e.action === 'notif_regie_accord' || e.action === 'relance_whatsapp') return 'actions';
+    if (e.action === 'modification') return 'modifs';
+    // changement_statut, création, ou ancien format
+    return 'statuts';
+  };
 
   // Fusionne l'historique des changements de statut avec les tentatives
   // d'appel (CQ + contrôle livraison) → une seule timeline chronologique.
-  const allEvents = [
+  const allEventsRaw = [
     ...((dossier.historique || []).map(h => ({ ...h, kind: 'hist' }))),
     ...((dossier.tentativesCQ || []).map(t => ({ date: t.datetime, kind: 'tentative_cq' }))),
     ...((dossier.tentativesControleLivraison || []).map(t => ({ date: t.datetime, kind: 'tentative_liv' }))),
-  ].filter(e => e.date).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  ].filter(e => e.date);
+
+  // Calcul de la durée passée dans chaque statut. On trie ASC pour pouvoir
+  // dire « ce statut a duré X jours » = (date du statut suivant – date de
+  // ce statut). Puis on repasse en DESC pour l'affichage.
+  const statutEvents = allEventsRaw
+    .filter(e => e.kind === 'hist' && (e.action === 'création' || e.action === 'changement_statut'))
+    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  const dureeJoursByDate = new Map(); // ISO date → duration in days
+  statutEvents.forEach((e, idx) => {
+    const nxt = statutEvents[idx + 1];
+    if (!nxt) return; // statut actuel, pas de durée fermée
+    const ms = new Date(nxt.date).getTime() - new Date(e.date).getTime();
+    if (ms < 0) return;
+    dureeJoursByDate.set(e.date, Math.max(1, Math.round(ms / 86400000)));
+  });
+  // Aussi, pour le statut COURANT (dernier de la chaîne), durée depuis l'entrée jusqu'à aujourd'hui.
+  const lastStatutEvt = statutEvents[statutEvents.length - 1];
+  const lastStatutDureeJours = lastStatutEvt
+    ? Math.max(0, Math.round((Date.now() - new Date(lastStatutEvt.date).getTime()) / 86400000))
+    : null;
+
+  // Tri DESC pour l'affichage + filtre selon le bouton choisi.
+  const allEvents = allEventsRaw
+    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    .filter(e => filter === 'all' || eventCategory(e) === filter);
+
+  // Compteurs par catégorie pour les badges de filtre.
+  const counts = {
+    all: allEventsRaw.length,
+    statuts: allEventsRaw.filter(e => eventCategory(e) === 'statuts').length,
+    modifs: allEventsRaw.filter(e => eventCategory(e) === 'modifs').length,
+    actions: allEventsRaw.filter(e => eventCategory(e) === 'actions').length,
+  };
 
   const formatDateTime = (iso) => {
     if (!iso) return '—';
@@ -12035,25 +12081,67 @@ function HistoriqueModal({ dossier, onClose }) {
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
-        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-orange-50 flex items-center justify-between">
-          <div>
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <Activity className="w-5 h-5 text-amber-500" />
-              Historique du dossier
-            </h2>
-            <p className="text-xs text-slate-600 mt-0.5">
-              {dossier.nom} {dossier.prenom} · {allEvents.length} évènement{allEvents.length > 1 ? 's' : ''}
-            </p>
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-orange-50">
+          <div className="flex items-center justify-between mb-3">
+            <div>
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                <Activity className="w-5 h-5 text-amber-500" />
+                Historique du dossier
+              </h2>
+              <p className="text-xs text-slate-600 mt-0.5">
+                {dossier.nom} {dossier.prenom} · {counts.all} évènement{counts.all > 1 ? 's' : ''} au total
+              </p>
+            </div>
+            <button onClick={onClose} aria-label="Fermer" title="Fermer" className="p-2 hover:bg-white rounded-xl"><X className="w-5 h-5" /></button>
           </div>
-          <button onClick={onClose} aria-label="Fermer" title="Fermer" className="p-2 hover:bg-white rounded-xl"><X className="w-5 h-5" /></button>
+          {/* Filtres par type d'évènement */}
+          <div className="flex gap-1.5 flex-wrap">
+            {[
+              { id: 'statuts', label: '📋 Statuts',  color: 'amber' },
+              { id: 'actions', label: '📞 Actions',  color: 'purple' },
+              { id: 'modifs',  label: '✏️ Modifs',   color: 'blue' },
+              { id: 'all',     label: 'Tout',         color: 'slate' },
+            ].map(f => {
+              const active = filter === f.id;
+              const n = counts[f.id];
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => setFilter(f.id)}
+                  className={`px-2.5 py-1 rounded-lg text-xs font-bold border-2 transition ${
+                    active
+                      ? f.color === 'amber'  ? 'bg-amber-500 text-white border-amber-600 shadow-sm'
+                      : f.color === 'purple' ? 'bg-purple-500 text-white border-purple-600 shadow-sm'
+                      : f.color === 'blue'   ? 'bg-blue-500 text-white border-blue-600 shadow-sm'
+                      :                        'bg-slate-700 text-white border-slate-800 shadow-sm'
+                      : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                  }`}
+                >
+                  {f.label}
+                  <span className={`ml-1.5 inline-block min-w-[20px] px-1 py-0.5 rounded-full text-[10px] font-bold ${active ? 'bg-white/30 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                    {n}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-5">
           {allEvents.length === 0 ? (
             <div className="text-center py-10 text-slate-400">
               <Activity className="w-12 h-12 mx-auto mb-3 opacity-30" />
-              <p className="text-sm">Aucun évènement enregistré pour le moment.</p>
-              <p className="text-xs mt-1">Les changements de statut et essais d'appel apparaîtront ici à partir de maintenant.</p>
+              {counts.all === 0 ? (
+                <>
+                  <p className="text-sm">Aucun évènement enregistré pour le moment.</p>
+                  <p className="text-xs mt-1">Les changements de statut et essais d'appel apparaîtront ici à partir de maintenant.</p>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm">Aucun évènement dans cette catégorie.</p>
+                  <p className="text-xs mt-1">Clique sur un autre filtre en haut pour voir les autres évènements.</p>
+                </>
+              )}
             </div>
           ) : (
             <div className="relative">
@@ -12199,6 +12287,14 @@ function HistoriqueModal({ dossier, onClose }) {
                   const fromInfo = h.from ? findStatutInfo(h.from) : null;
                   const toInfo = findStatutInfo(h.to);
                   const isCreation = h.action === 'création';
+                  // Durée passée dans le statut "to" : entre cet évènement et le suivant.
+                  // Pour le DERNIER statut de la chaîne (le courant), c'est la durée
+                  // depuis cet évènement jusqu'à AUJOURD'HUI → suffixe « (en cours) ».
+                  const dureeFermee = dureeJoursByDate.get(h.date);
+                  const isLastStatut = lastStatutEvt && h.date === lastStatutEvt.date;
+                  const dureeJours = dureeFermee !== undefined
+                    ? dureeFermee
+                    : (isLastStatut ? lastStatutDureeJours : null);
                   return (
                     <div key={`h-${i}`} className="relative pl-10">
                       {/* Pastille de la timeline */}
@@ -12206,8 +12302,13 @@ function HistoriqueModal({ dossier, onClose }) {
                         {isCreation ? '✨' : (toInfo?.emoji || '🔄')}
                       </div>
                       <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-                        <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">
-                          📅 {formatDateTime(h.date)}
+                        <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1 flex items-center justify-between gap-2 flex-wrap">
+                          <span>📅 {formatDateTime(h.date)}</span>
+                          {dureeJours !== null && dureeJours !== undefined && toInfo && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isLastStatut ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'}`} title={isLastStatut ? 'Durée écoulée dans le statut courant' : 'Durée passée dans ce statut avant le changement suivant'}>
+                              ⏱ {dureeJours}j {isLastStatut ? '(en cours)' : `dans « ${toInfo.label} »`}
+                            </span>
+                          )}
                         </div>
                         {isCreation ? (
                           <div className="text-sm font-bold text-emerald-700">
