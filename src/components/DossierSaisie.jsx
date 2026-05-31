@@ -2629,6 +2629,15 @@ export default function DossierSaisie({ authUser, onLogout }) {
         || d.statutPose === 'client_refuse';
       if (isDead && !d.payeClient) return;
 
+      // Le financeur ne nous doit rien tant que la pose n'est pas faite : le
+      // déblocage des fonds se déclenche après la pose (signature procès-
+      // verbal, accord définitif, etc.). On exclut donc les dossiers qui ne
+      // sont pas encore réellement posés (statutPose === 'visite_ok' = bouton
+      // « ✓ Posé » cliqué). Les dossiers déjà payés sont conservés pour la
+      // traçabilité du « reçu ».
+      const poseFinie = d.statutPose === 'visite_ok';
+      if (!poseFinie && !d.payeClient) return;
+
       const fin = d.financement || 'AUTRE';
       const soc = d.societe || '';
       // Banque × société = clé unique. Projexio peut nous devoir 30k sur Yolico
