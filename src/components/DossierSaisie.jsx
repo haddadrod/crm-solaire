@@ -15719,7 +15719,9 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
     return days;
   }, [viewDate]);
 
-  // Map des dossiers par date (selon le filtre actif)
+  // Map des dossiers par date (selon le filtre actif).
+  // On exclut les dossiers annulés et archivés : ils n'ont rien à faire sur
+  // une vue prévisionnelle (sinon le calendrier affiche des poses fantômes).
   const eventsByDate = useMemo(() => {
     const map = {};
     const addEvent = (dateStr, dossier, type) => {
@@ -15729,6 +15731,8 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
       map[key].push({ dossier, type });
     };
     dossiers.forEach(d => {
+      if (d.statut === 'W2_ANNULER') return;
+      if (d.archived === true) return;
       if (filterType === 'pose' || filterType === 'all') {
         if (d.dateInsta) addEvent(d.dateInsta, d, 'pose');
       }
@@ -15946,8 +15950,11 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
   const [leafletReady, setLeafletReady] = useState(typeof window !== 'undefined' && !!window.L);
 
   // Dossiers pertinents : ont une adresse + correspondent au filtre.
+  // On exclut annulés / archivés (cohérent avec la vue calendrier).
   const dossiersToPlot = useMemo(() => {
     return dossiers.filter(d => {
+      if (d.statut === 'W2_ANNULER') return false;
+      if (d.archived === true) return false;
       if (!(d.adresse || d.ville)) return false;
       if (filterType === 'pose') return !!d.dateInsta;
       if (filterType === 'accord') return !!d.dateAccord;
