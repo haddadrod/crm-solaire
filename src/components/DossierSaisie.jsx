@@ -16298,17 +16298,44 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [leafletReady, setLeafletReady] = useState(typeof window !== 'undefined' && !!window.L);
 
-  // Dossiers pertinents : ont une adresse + correspondent au filtre.
-  // On exclut annulés / archivés (cohérent avec la vue calendrier).
+  // Dossiers à afficher sur la carte. Doit suivre exactement la même logique
+  // que CalendrierView.eventsByDate pour rester cohérent :
+  //   - exclure annulés / archivés
+  //   - exclure poses déjà faites (statut passé l'étape pose)
+  //   - exclure poses fantômes (date passée sans poseur attribué)
+  //   - filtre Consuel : visites Consuel détaillées OU date Consuel finale
+  //   - filtre SAV : flag hasSav + une date d'intervention (prévue ou faite)
   const dossiersToPlot = useMemo(() => {
+    const startOfToday = new Date();
+    startOfToday.setHours(0, 0, 0, 0);
+    const dateEstPassee = (s) => {
+      if (!s) return false;
+      const d = new Date(s.split('T')[0]);
+      d.setHours(0, 0, 0, 0);
+      return d < startOfToday;
+    };
+    const poseEstFaite = (d) => {
+      const idx = STATUT_ETAPE_INDEX[d.statut];
+      return idx !== undefined && idx >= 6;
+    };
+    const poseurAttribue = (d) =>
+      (d.poseurs || []).some(p => p && p.nom && p.nom.trim());
+    const hasPosePertinente = (d) =>
+      !!d.dateInsta && !poseEstFaite(d) && !(dateEstPassee(d.dateInsta) && !poseurAttribue(d));
+    const hasConsuelPertinent = (d) =>
+      (d.visitesConsuel || []).some(v => v && v.date) || !!d.dateConsuel;
+    const hasSavPertinent = (d) =>
+      !!d.hasSav && !!(d.savDateInterventionFaite || d.savDateInterventionPrevue);
+
     return dossiers.filter(d => {
       if (d.statut === 'W2_ANNULER') return false;
       if (d.archived === true) return false;
       if (!(d.adresse || d.ville)) return false;
-      if (filterType === 'pose') return !!d.dateInsta;
-      if (filterType === 'accord') return !!d.dateAccord;
-      if (filterType === 'consuel') return !!d.dateConsuel;
-      return d.dateInsta || d.dateAccord || d.dateConsuel;
+      if (filterType === 'pose') return hasPosePertinente(d);
+      if (filterType === 'consuel') return hasConsuelPertinent(d);
+      if (filterType === 'sav') return hasSavPertinent(d);
+      // 'all' : au moins un évènement pertinent
+      return hasPosePertinente(d) || hasConsuelPertinent(d) || hasSavPertinent(d);
     });
   }, [dossiers, filterType]);
 
@@ -16375,11 +16402,12 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
           } catch (e) {}
         }
         if (coords && mapRef.current && !cancelled) {
-          // Couleur selon date : pose ambre, consuel vert, accord cyan, défaut violet
-          const color = d.dateConsuel && filterType !== 'pose' && filterType !== 'accord' ? '#10b981'
-                      : d.dateInsta ? '#f59e0b'
-                      : d.dateAccord ? '#06b6d4'
-                      : '#a855f7';
+          // Couleur du marker selon le filtre actif :
+          //   pose → orange, sav → jaune, consuel → cyan, all → priorité pose
+          const color = filterType === 'sav' ? '#facc15'
+                      : filterType === 'consuel' ? '#06b6d4'
+                      : filterType === 'pose' ? '#f59e0b'
+                      : (d.dateInsta ? '#f59e0b' : (d.hasSav ? '#facc15' : '#06b6d4'));
           const icon = L.divIcon({
             html: `<div style="background:${color};width:22px;height:22px;border-radius:50%;border:3px solid white;box-shadow:0 1px 4px rgba(0,0,0,.4);"></div>`,
             className: '',
@@ -16388,15 +16416,21 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
             popupAnchor: [0, -11],
           });
           const marker = L.marker([coords.lat, coords.lng], { icon }).addTo(mapRef.current);
-          const dateInsta = d.dateInsta ? new Date(d.dateInsta).toLocaleDateString('fr-FR') : null;
-          const dateAccord = d.dateAccord ? new Date(d.dateAccord).toLocaleDateString('fr-FR') : null;
-          const dateConsuel = d.dateConsuel ? new Date(d.dateConsuel).toLocaleDateString('fr-FR') : null;
+          const fmt = (s) => s ? new Date(s).toLocaleDateString('fr-FR') : null;
+          const dateInsta = fmt(d.dateInsta);
+          const dateConsuel = fmt(d.dateConsuel);
+          const visitesC = (d.visitesConsuel || []).filter(v => v && v.date);
+          const dateSav = fmt(d.savDateInterventionFaite || d.savDateInterventionPrevue);
+          const showPose = !!dateInsta && (filterType === 'pose' || filterType === 'all');
+          const showConsuel = !!(dateConsuel || visitesC.length) && (filterType === 'consuel' || filterType === 'all');
+          const showSav = !!(d.hasSav && dateSav) && (filterType === 'sav' || filterType === 'all');
+          const visiteLines = visitesC.map((v, i) => `<div style="font-size:11px">⚡ ${i === 0 ? 'Visite' : 'Contre-visite n°'+i} : ${fmt(v.date)}</div>`).join('');
           marker.bindPopup(`
             <div style="font-weight:bold;font-size:13px">${(d.nom || '').toUpperCase()} ${d.prenom || ''}</div>
             <div style="font-size:11px;color:#666;margin-bottom:4px">📍 ${fullAddress}</div>
-            ${dateInsta ? `<div style="font-size:11px">🔧 Pose : ${dateInsta}</div>` : ''}
-            ${dateAccord ? `<div style="font-size:11px">✅ Accord : ${dateAccord}</div>` : ''}
-            ${dateConsuel ? `<div style="font-size:11px">⚡ Consuel : ${dateConsuel}</div>` : ''}
+            ${showPose ? `<div style="font-size:11px">🔧 Pose : ${dateInsta}</div>` : ''}
+            ${showConsuel && visitesC.length ? visiteLines : (showConsuel && dateConsuel ? `<div style="font-size:11px">⚡ Consuel : ${dateConsuel}</div>` : '')}
+            ${showSav ? `<div style="font-size:11px">🛠️ SAV : ${dateSav}</div>` : ''}
             <button onclick="window.dispatchEvent(new CustomEvent('crm:openQuick', { detail: '${d.localId}' }))" style="margin-top:6px;padding:4px 10px;background:#8b5cf6;color:white;border:none;border-radius:6px;cursor:pointer;font-weight:bold;font-size:11px">Ouvrir le dossier ›</button>
           `);
           markersRef.current.push(marker);
@@ -16440,8 +16474,8 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
       <div className="px-4 py-2 bg-slate-50 border-t border-slate-200 flex items-center gap-3 flex-wrap text-xs">
         <span className="font-semibold text-slate-600">Légende :</span>
         <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-amber-500 border-2 border-white shadow"></span>Pose</span>
-        <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-cyan-500 border-2 border-white shadow"></span>Accord</span>
-        <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-emerald-500 border-2 border-white shadow"></span>Consuel</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-yellow-400 border-2 border-white shadow"></span>SAV</span>
+        <span className="inline-flex items-center gap-1.5"><span className="w-3 h-3 rounded-full bg-cyan-500 border-2 border-white shadow"></span>Consuel</span>
         <span className="text-slate-400 ml-auto">💡 Clique un point pour voir le dossier</span>
       </div>
     </div>
