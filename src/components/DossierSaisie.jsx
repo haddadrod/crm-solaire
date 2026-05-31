@@ -15794,9 +15794,6 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
           if (!fantome) addEvent(d.dateInsta, d, 'pose');
         }
       }
-      if (filterType === 'accord' || filterType === 'all') {
-        if (d.dateAccord) addEvent(d.dateAccord, d, 'accord');
-      }
       if (filterType === 'consuel' || filterType === 'all') {
         // Visites Consuel (initiale + contre-visites) — comme les SAV, elles
         // restent visibles même réalisées. Si aucune visite n'est saisie mais
@@ -15856,7 +15853,6 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
 
   const filterOptions = [
     { id: 'pose', label: 'Poses', emoji: '🔧', color: 'from-orange-500 to-red-500', bg: 'bg-orange-100', text: 'text-orange-700' },
-    { id: 'accord', label: 'Accords', emoji: '✅', color: 'from-emerald-500 to-teal-500', bg: 'bg-emerald-100', text: 'text-emerald-700' },
     { id: 'consuel', label: 'Consuel', emoji: '⚡', color: 'from-cyan-500 to-blue-500', bg: 'bg-cyan-100', text: 'text-cyan-700' },
     { id: 'sav', label: 'SAV', emoji: '🛠️', color: 'from-yellow-400 to-amber-500', bg: 'bg-yellow-100', text: 'text-yellow-700' },
     { id: 'all', label: 'Tout', emoji: '📋', color: 'from-violet-500 to-pink-500', bg: 'bg-violet-100', text: 'text-violet-700' },
@@ -15864,13 +15860,12 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
 
   const eventTypeStyle = (type) => {
     if (type === 'pose') return 'bg-orange-100 text-orange-700 border-orange-300';
-    if (type === 'accord') return 'bg-emerald-100 text-emerald-700 border-emerald-300';
     if (type === 'consuel') return 'bg-cyan-100 text-cyan-700 border-cyan-300';
     if (type === 'sav') return 'bg-yellow-100 text-yellow-700 border-yellow-300';
     return 'bg-slate-100 text-slate-700 border-slate-300';
   };
   const eventTypeEmoji = (type) =>
-    type === 'pose' ? '🔧' : type === 'accord' ? '✅' : type === 'consuel' ? '⚡' : type === 'sav' ? '🛠️' : '📅';
+    type === 'pose' ? '🔧' : type === 'consuel' ? '⚡' : type === 'sav' ? '🛠️' : '📅';
 
   // Titre du header selon la vue
   const headerTitle = () => {
@@ -16049,7 +16044,6 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
           <span className="font-semibold text-slate-600">Légende :</span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-orange-100 text-orange-700 border-orange-300">🔧 Pose</span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-yellow-100 text-yellow-700 border-yellow-300">🛠️ SAV</span>
-          <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-emerald-100 text-emerald-700 border-emerald-300">✅ Accord</span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-cyan-100 text-cyan-700 border-cyan-300">⚡ Consuel</span>
           <span className="text-slate-400 ml-auto">💡 Clique sur un évènement pour ouvrir l'aperçu</span>
         </div>
@@ -16061,7 +16055,7 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
 // Vue Jour : liste verticale des évènements pour la date sélectionnée.
 function DayView({ date, events, isToday, onShowQuick, STATUTS, isAdmin }) {
   const sorted = [...events].sort((a, b) => {
-    const order = { pose: 0, sav: 1, accord: 2, consuel: 3 };
+    const order = { pose: 0, sav: 1, consuel: 2 };
     return (order[a.type] ?? 9) - (order[b.type] ?? 9);
   });
   const ca = sorted.filter(e => e.type === 'pose').reduce((s, e) => s + (e.dossier.montantTotal || 0), 0);
@@ -16102,9 +16096,7 @@ function DayView({ date, events, isToday, onShowQuick, STATUTS, isAdmin }) {
               ? { emoji: '🔧', label: 'Pose', bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300' }
               : ev.type === 'sav'
                 ? { emoji: '🛠️', label: d.savDateInterventionFaite ? 'SAV (fait)' : 'SAV', bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-300' }
-                : ev.type === 'accord'
-                  ? { emoji: '✅', label: 'Accord banque', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' }
-                  : { emoji: '⚡', label: consuelLabel, bg: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-300' };
+                : { emoji: '⚡', label: consuelLabel, bg: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-300' };
             return (
               <button
                 key={i}
