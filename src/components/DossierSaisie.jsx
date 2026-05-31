@@ -2756,16 +2756,37 @@ export default function DossierSaisie({ authUser, onLogout }) {
       return { parSociete };
     })();
 
+    // 📊 Métriques avancées partagées (régies / poseurs / commerciaux) :
+    //   - nbPayes        : dossiers où le client a été payé (réussite)
+    //   - nbRefusBanque  : dossiers refusés par la banque (échec dossier)
+    //   - dureeTotale    : somme des jours entre dateInsta (signature) et
+    //                      payeClientDate (paiement reçu), uniquement pour
+    //                      les dossiers payés. Sert à calculer la moyenne.
+    //   - dureeCount     : nb de dossiers payés avec dates valides pour
+    //                      éviter la div / 0.
+    const dureeJours = (d) => {
+      if (!d.payeClient || !d.dateInsta || !d.payeClientDate) return null;
+      const start = new Date(d.dateInsta).getTime();
+      const end = new Date(d.payeClientDate).getTime();
+      if (isNaN(start) || isNaN(end) || end < start) return null;
+      return Math.floor((end - start) / 86400000);
+    };
+
     const poseurMap = {};
     dossiersDash.forEach(d => {
       (d.poseursDetail || []).forEach(p => {
-        if (!poseurMap[p.nom]) poseurMap[p.nom] = { nom: p.nom, count: 0, ca: 0, coutTotal: 0, puissanceTotale: 0, margeApportee: 0, dossierIds: [] };
-        poseurMap[p.nom].count += 1;
-        poseurMap[p.nom].ca += d.montantTotal || 0;
-        poseurMap[p.nom].coutTotal += p.ttc || 0;
-        poseurMap[p.nom].puissanceTotale += d.puissance || 0;
-        poseurMap[p.nom].margeApportee += d.margeTtc || 0;
-        poseurMap[p.nom].dossierIds.push(d.localId);
+        if (!poseurMap[p.nom]) poseurMap[p.nom] = { nom: p.nom, count: 0, ca: 0, coutTotal: 0, puissanceTotale: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, dureeTotale: 0, dureeCount: 0 };
+        const m = poseurMap[p.nom];
+        m.count += 1;
+        m.ca += d.montantTotal || 0;
+        m.coutTotal += p.ttc || 0;
+        m.puissanceTotale += d.puissance || 0;
+        m.margeApportee += d.margeTtc || 0;
+        m.dossierIds.push(d.localId);
+        if (d.payeClient) m.nbPayes += 1;
+        if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
+        const dj = dureeJours(d);
+        if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
       });
     });
     const statsPoseurs = Object.values(poseurMap).sort((a, b) => b.count - a.count);
@@ -2773,29 +2794,55 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const regieMap = {};
     dossiersDash.forEach(d => {
       const regiesArr = d.regiesDetail || [];
+      const dj = dureeJours(d);
+      const bumpAdvanced = (m) => {
+        if (d.payeClient) m.nbPayes += 1;
+        if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
+        if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
+      };
       if (regiesArr.length === 0) {
-        // Pas de régie sur ce dossier
         const r = 'Sans régie';
-        if (!regieMap[r]) regieMap[r] = { nom: r, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [] };
+        if (!regieMap[r]) regieMap[r] = { nom: r, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, dureeTotale: 0, dureeCount: 0 };
         regieMap[r].count += 1;
         regieMap[r].ca += d.montantTotal || 0;
         regieMap[r].margeApportee += d.margeTtc || 0;
         regieMap[r].dossierIds.push(d.localId);
+        bumpAdvanced(regieMap[r]);
       } else {
-        // Pour chaque régie du dossier, on l'attribue (la marge est répartie au prorata du coût)
         const totalCout = regiesArr.reduce((s, r) => s + r.ttc, 0);
         regiesArr.forEach(reg => {
           const r = reg.nom || 'Inconnu';
-          if (!regieMap[r]) regieMap[r] = { nom: r, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [] };
+          if (!regieMap[r]) regieMap[r] = { nom: r, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, dureeTotale: 0, dureeCount: 0 };
           regieMap[r].count += 1;
           regieMap[r].ca += d.montantTotal || 0;
           regieMap[r].coutTotal += reg.ttc || 0;
           regieMap[r].margeApportee += (d.margeTtc || 0) * (totalCout > 0 ? reg.ttc / totalCout : 1);
           regieMap[r].dossierIds.push(d.localId);
+          bumpAdvanced(regieMap[r]);
         });
       }
     });
     const statsRegies = Object.values(regieMap).sort((a, b) => b.count - a.count);
+
+    // 💼 Stats commerciaux — basées sur le champ d.commercial (équipe interne).
+    // Sans coût direct (pas de TTC commercial dans le modèle), donc on
+    // affiche surtout count / CA / taux de transformation / durée moyenne.
+    const commercialMap = {};
+    dossiersDash.forEach(d => {
+      const nom = (d.commercial || '').trim();
+      if (!nom) return; // pas d'attribution commercial → on saute
+      if (!commercialMap[nom]) commercialMap[nom] = { nom, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, dureeTotale: 0, dureeCount: 0 };
+      const m = commercialMap[nom];
+      m.count += 1;
+      m.ca += d.montantTotal || 0;
+      m.margeApportee += d.margeTtc || 0;
+      m.dossierIds.push(d.localId);
+      if (d.payeClient) m.nbPayes += 1;
+      if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
+      const dj = dureeJours(d);
+      if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
+    });
+    const statsCommerciaux = Object.values(commercialMap).sort((a, b) => b.count - a.count);
 
     const today = new Date(); today.setHours(0, 0, 0, 0);
     // Nombre de jours pleins écoulés depuis une date passée. On normalise la
@@ -3294,7 +3341,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige, rappelsSav, rappelsClientRappel };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsCommerciaux, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige, rappelsSav, rappelsClientRappel };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -6415,6 +6462,9 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
 
       <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} onShowQuick={onShowQuick} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
       <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} onShowQuick={onShowQuick} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
+      {(dashboard.statsCommerciaux || []).length > 0 && (
+        <PerfList titre="💼 Performance des commerciaux" data={dashboard.statsCommerciaux} dossiers={dossiers} onShowQuick={onShowQuick} medal="💼" border="border-blue-100" header="from-blue-50 to-cyan-50" iconColor="text-blue-500" hideCoutMarge />
+      )}
 
       {/* ACTIVITÉ PAR UTILISATEUR */}
       {(() => {
@@ -6549,7 +6599,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
   );
 }
 
-function PerfList({ titre, data, dossiers = [], onShowQuick, medal, border, header, iconColor }) {
+function PerfList({ titre, data, dossiers = [], onShowQuick, medal, border, header, iconColor, hideCoutMarge = false }) {
   const [expandedNom, setExpandedNom] = useState(null);
   // Index localId → dossier pour résoudre rapidement les dossiers d'une ligne.
   const dossierByLocalId = useMemo(() => {
@@ -6588,12 +6638,29 @@ function PerfList({ titre, data, dossiers = [], onShowQuick, medal, border, head
                         {p.nom}
                       </div>
                       <div className="text-xs text-slate-500">{p.count} dossier{p.count > 1 ? 's' : ''}</div>
+                      {/* Stats avancées : taux de transfo, refus banque, durée moyenne signature→paiement */}
+                      {(p.count > 0 && (p.nbPayes !== undefined || p.nbRefusBanque !== undefined || p.dureeCount !== undefined)) && (() => {
+                        const tauxTransfo = p.count > 0 ? Math.round((p.nbPayes / p.count) * 100) : 0;
+                        const tauxRefus = p.count > 0 ? Math.round((p.nbRefusBanque / p.count) * 100) : 0;
+                        const dureeMoy = p.dureeCount > 0 ? Math.round(p.dureeTotale / p.dureeCount) : null;
+                        return (
+                          <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                            <span className="text-emerald-600 font-semibold" title={`${p.nbPayes} dossier(s) payé(s) sur ${p.count}`}>✅ {tauxTransfo}% payés</span>
+                            {p.nbRefusBanque > 0 && (
+                              <span className="text-rose-600 font-semibold" title={`${p.nbRefusBanque} refus banque sur ${p.count}`}>🚫 {tauxRefus}% refus</span>
+                            )}
+                            {dureeMoy !== null && (
+                              <span className="text-blue-600 font-semibold" title="Durée moyenne entre la signature et le paiement client">⏱ {dureeMoy}j moy.</span>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                   <div className="flex gap-3 text-xs">
                     <SmallStat label="CA" value={formatEuro(p.ca)} color="text-blue-600" />
-                    <SmallStat label="Coût" value={formatEuro(p.coutTotal)} color="text-amber-600" />
-                    <SmallStat label="Marge" value={`${margePct.toFixed(1)}%`} color="text-emerald-600" />
+                    {!hideCoutMarge && <SmallStat label="Coût" value={formatEuro(p.coutTotal)} color="text-amber-600" />}
+                    {!hideCoutMarge && <SmallStat label="Marge" value={`${margePct.toFixed(1)}%`} color="text-emerald-600" />}
                   </div>
                 </div>
               </button>
