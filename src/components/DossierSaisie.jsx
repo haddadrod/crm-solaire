@@ -1223,6 +1223,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // adresse, date, matériel). Ex : 'accès par le portail bleu, pas de
     // gravier dans la cour, prévoir échelle 4m, branchement Linky à droite'.
     instructionsPose: '',
+    // 🔐 Token public envoyé au poseur dans le lien WhatsApp/email pour qu'il
+    // ouvre la fiche chantier et envoie ses photos sans se connecter.
+    poseurToken: '',
+    // 📸 Photos chantier envoyées par le poseur depuis le lien public.
+    photosChantier: [],
     // 🏠 Caractéristiques de la toiture pour les panneaux solaires
     typeToit: '', // '' | 'tuile' | 'ardoise' | 'tole' | 'zinc' | 'fibro' | 'bac_acier' | 'toit_plat' | 'a_valider'
     orientationPanneaux: '', // '' | 'paysage' | 'portrait' | 'les_deux'
@@ -2290,6 +2295,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       accordDef: d.accordDef || false, consuel: d.consuel || false,
       observations: d.observations || '',
       instructionsPose: d.instructionsPose || '',
+      poseurToken: d.poseurToken || '',
+      photosChantier: d.photosChantier || [],
       typeToit: d.typeToit || '',
       orientationPanneaux: d.orientationPanneaux || '',
       // Migration : les anciens dossiers qui étaient en statut C_LITIGE / D_SAV
@@ -14910,6 +14917,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
             {!foldedSteps.poseurs && (
             <div className="space-y-1.5">
+              {(d.photosChantier && d.photosChantier.length > 0) && (
+                <ChantierPhotosPanel photos={d.photosChantier} />
+              )}
               {/* 🛠️ Instructions partagées pour la pose — incluses dans tous
                   les messages chantier (WhatsApp/email) envoyés aux poseurs. */}
               <div>
@@ -14949,6 +14959,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   : (d.puissance ? [`   • ☀️ Panneaux solaires ${d.puissance} Wc`] : []);
                 const toitLabel = TYPES_TOIT.find(t => t.id === d.typeToit)?.label || null;
                 const orientLabel = ORIENTATIONS_PANNEAUX.find(o => o.id === d.orientationPanneaux)?.label || null;
+                // 🔐 Token poseur — génère un identifiant aléatoire la première
+                // fois qu'on envoie le chantier. Sert d'auth pour le lien public
+                // (le poseur ouvre l'URL, voit le chantier, envoie ses photos).
+                if (!d.poseurToken) {
+                  const newTok = (crypto && crypto.randomUUID)
+                    ? crypto.randomUUID().replace(/-/g, '')
+                    : (Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2) + Date.now().toString(36));
+                  onUpdate({ poseurToken: newTok });
+                  d.poseurToken = newTok;
+                }
+                const origin = (typeof window !== 'undefined' && window.location && window.location.origin) ? window.location.origin : '';
+                const chantierUrl = origin ? `${origin}/?chantier=${d.poseurToken}` : `?chantier=${d.poseurToken}`;
                 const chantierMessage = [
                   `🔧 Nouveau chantier à poser`,
                   ``,
@@ -14961,6 +14983,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   toitLabel ? `🏠 Toit : ${toitLabel}` : '',
                   orientLabel ? `📐 Orientation : ${orientLabel}` : '',
                   d.instructionsPose ? `\n🛠️ Instructions :\n${d.instructionsPose}` : '',
+                  `\n📸 Photos du chantier (à envoyer depuis ce lien) :\n${chantierUrl}`,
                 ].filter(Boolean).join('\n');
                 const chantierSubject = `Nouveau chantier à poser — ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''}`;
                 const poseurFromEmail = emailConfig?.smtpUser || gmailOAuth?.email || '';
@@ -16735,6 +16758,68 @@ const ALERTES_PAR_ROLE = {
   poseur: [], // le poseur ne voit aucune alerte
   regie: [],  // la régie ne voit aucune alerte
 };
+
+// Affichage des photos envoyées par le poseur depuis le lien chantier public.
+// Charge les URL signées Supabase au montage (1h de validité, suffisant pour
+// consulter). Click sur une vignette ouvre la photo plein écran dans un nouvel
+// onglet.
+function ChantierPhotosPanel({ photos }) {
+  const [urls, setUrls] = useState({});
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const next = {};
+      for (const p of photos) {
+        if (!p || !p.path) continue;
+        try {
+          const { url } = await getSignedUrl(p.path, 3600);
+          if (url) next[p.path] = url;
+        } catch (e) { /* ignore */ }
+      }
+      if (!cancelled) setUrls(next);
+    })();
+    return () => { cancelled = true; };
+  }, [photos]);
+  return (
+    <div className="bg-white border border-violet-200 rounded-xl p-2">
+      <div className="flex items-center justify-between mb-1.5">
+        <span className="text-[10px] font-bold text-violet-700 uppercase">
+          📸 Photos du poseur ({photos.length})
+        </span>
+        <span className="text-[9px] text-slate-500 italic">envoyées depuis le lien chantier</span>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {photos.map((p, i) => {
+          const url = urls[p.path];
+          const dateLabel = p.uploadedAt
+            ? new Date(p.uploadedAt).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+            : '';
+          return (
+            <a
+              key={i}
+              href={url || '#'}
+              target="_blank"
+              rel="noreferrer"
+              className="aspect-square rounded-lg bg-slate-100 border border-slate-200 hover:border-violet-400 hover:shadow overflow-hidden relative block"
+              title={`${p.name || 'Photo'} — ${dateLabel}`}
+            >
+              {url ? (
+                <img src={url} alt="" className="w-full h-full object-cover" loading="lazy" />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center text-xl text-slate-400">📷</div>
+              )}
+              {dateLabel && (
+                <span className="absolute bottom-0.5 right-0.5 bg-white/85 text-[8px] font-bold px-1 rounded">
+                  {dateLabel}
+                </span>
+              )}
+            </a>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], isAdmin, currentUserRole, onClick }) {
   // showAll : si true, on affiche aussi les alertes à 0 (déplié via la flèche).
