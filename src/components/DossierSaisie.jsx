@@ -15800,6 +15800,15 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
       if (filterType === 'consuel' || filterType === 'all') {
         if (d.dateConsuel) addEvent(d.dateConsuel, d, 'consuel');
       }
+      if (filterType === 'sav' || filterType === 'all') {
+        // Intervention SAV : on prend la date réellement effectuée si elle
+        // existe (cas où le tech est passé un autre jour que prévu), sinon
+        // la date d'intervention prévue. Les SAV terminés restent visibles.
+        if (d.hasSav) {
+          const dateSav = d.savDateInterventionFaite || d.savDateInterventionPrevue;
+          if (dateSav) addEvent(dateSav, d, 'sav');
+        }
+      }
     });
     return map;
   }, [dossiers, filterType]);
@@ -15836,6 +15845,7 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
     { id: 'pose', label: 'Poses', emoji: '🔧', color: 'from-orange-500 to-red-500', bg: 'bg-orange-100', text: 'text-orange-700' },
     { id: 'accord', label: 'Accords', emoji: '✅', color: 'from-emerald-500 to-teal-500', bg: 'bg-emerald-100', text: 'text-emerald-700' },
     { id: 'consuel', label: 'Consuel', emoji: '⚡', color: 'from-cyan-500 to-blue-500', bg: 'bg-cyan-100', text: 'text-cyan-700' },
+    { id: 'sav', label: 'SAV', emoji: '🛠️', color: 'from-yellow-400 to-amber-500', bg: 'bg-yellow-100', text: 'text-yellow-700' },
     { id: 'all', label: 'Tout', emoji: '📋', color: 'from-violet-500 to-pink-500', bg: 'bg-violet-100', text: 'text-violet-700' },
   ];
 
@@ -15843,8 +15853,11 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
     if (type === 'pose') return 'bg-orange-100 text-orange-700 border-orange-300';
     if (type === 'accord') return 'bg-emerald-100 text-emerald-700 border-emerald-300';
     if (type === 'consuel') return 'bg-cyan-100 text-cyan-700 border-cyan-300';
+    if (type === 'sav') return 'bg-yellow-100 text-yellow-700 border-yellow-300';
     return 'bg-slate-100 text-slate-700 border-slate-300';
   };
+  const eventTypeEmoji = (type) =>
+    type === 'pose' ? '🔧' : type === 'accord' ? '✅' : type === 'consuel' ? '⚡' : type === 'sav' ? '🛠️' : '📅';
 
   // Titre du header selon la vue
   const headerTitle = () => {
@@ -15954,6 +15967,7 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
           dayNamesLong={dayNamesLong}
           onShowQuick={onShowQuick}
           eventTypeStyle={eventTypeStyle}
+          eventTypeEmoji={eventTypeEmoji}
         />
       )}
 
@@ -15995,7 +16009,7 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
                             className={`w-full text-left text-[9px] font-semibold px-1.5 py-0.5 rounded border ${eventTypeStyle(ev.type)} hover:shadow-sm hover:scale-[1.02] transition-all truncate flex items-center gap-1`}
                             title={`${d.nom} ${d.prenom || ''} — ${ev.type}`}
                           >
-                            <span>{ev.type === 'pose' ? '🔧' : ev.type === 'accord' ? '✅' : '⚡'}</span>
+                            <span>{eventTypeEmoji(ev.type)}</span>
                             <span className="truncate">{d.nom}</span>
                           </button>
                         );
@@ -16021,6 +16035,7 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
         <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 flex items-center gap-3 flex-wrap text-xs">
           <span className="font-semibold text-slate-600">Légende :</span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-orange-100 text-orange-700 border-orange-300">🔧 Pose</span>
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-yellow-100 text-yellow-700 border-yellow-300">🛠️ SAV</span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-emerald-100 text-emerald-700 border-emerald-300">✅ Accord</span>
           <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-cyan-100 text-cyan-700 border-cyan-300">⚡ Consuel</span>
           <span className="text-slate-400 ml-auto">💡 Clique sur un évènement pour ouvrir l'aperçu</span>
@@ -16033,8 +16048,8 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
 // Vue Jour : liste verticale des évènements pour la date sélectionnée.
 function DayView({ date, events, isToday, onShowQuick, STATUTS, isAdmin }) {
   const sorted = [...events].sort((a, b) => {
-    const order = { pose: 0, accord: 1, consuel: 2 };
-    return (order[a.type] || 9) - (order[b.type] || 9);
+    const order = { pose: 0, sav: 1, accord: 2, consuel: 3 };
+    return (order[a.type] ?? 9) - (order[b.type] ?? 9);
   });
   const ca = sorted.filter(e => e.type === 'pose').reduce((s, e) => s + (e.dossier.montantTotal || 0), 0);
   return (
@@ -16065,9 +16080,11 @@ function DayView({ date, events, isToday, onShowQuick, STATUTS, isAdmin }) {
             const statut = STATUTS.find(s => s.id === d.statut);
             const typeMeta = ev.type === 'pose'
               ? { emoji: '🔧', label: 'Pose', bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300' }
-              : ev.type === 'accord'
-                ? { emoji: '✅', label: 'Accord banque', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' }
-                : { emoji: '⚡', label: 'Consuel', bg: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-300' };
+              : ev.type === 'sav'
+                ? { emoji: '🛠️', label: d.savDateInterventionFaite ? 'SAV (fait)' : 'SAV', bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-300' }
+                : ev.type === 'accord'
+                  ? { emoji: '✅', label: 'Accord banque', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' }
+                  : { emoji: '⚡', label: 'Consuel', bg: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-300' };
             return (
               <button
                 key={i}
@@ -16103,7 +16120,7 @@ function DayView({ date, events, isToday, onShowQuick, STATUTS, isAdmin }) {
 }
 
 // Vue Semaine : 7 colonnes (Lun-Dim), évènements empilés
-function WeekView({ weekGrid, eventsByDate, dateKey, todayKey, dayNamesLong, onShowQuick, eventTypeStyle }) {
+function WeekView({ weekGrid, eventsByDate, dateKey, todayKey, dayNamesLong, onShowQuick, eventTypeStyle, eventTypeEmoji }) {
   return (
     <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
       <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
@@ -16150,7 +16167,7 @@ function WeekView({ weekGrid, eventsByDate, dateKey, todayKey, dayNamesLong, onS
                         title={`${d.nom} ${d.prenom || ''} — ${ev.type}`}
                       >
                         <div className="flex items-center gap-1 mb-0.5">
-                          <span>{ev.type === 'pose' ? '🔧' : ev.type === 'accord' ? '✅' : '⚡'}</span>
+                          <span>{eventTypeEmoji(ev.type)}</span>
                           <span className="truncate">{d.nom}</span>
                         </div>
                         {d.prenom && <div className="text-[10px] font-normal opacity-80 truncate">{d.prenom}</div>}
