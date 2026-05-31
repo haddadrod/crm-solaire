@@ -15798,7 +15798,20 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
         if (d.dateAccord) addEvent(d.dateAccord, d, 'accord');
       }
       if (filterType === 'consuel' || filterType === 'all') {
-        if (d.dateConsuel) addEvent(d.dateConsuel, d, 'consuel');
+        // Visites Consuel (initiale + contre-visites) — comme les SAV, elles
+        // restent visibles même réalisées. Si aucune visite n'est saisie mais
+        // que dateConsuel est renseigné directement (cas legacy / accord sans
+        // visite), on retombe sur l'ancien comportement.
+        const visites = (d.visitesConsuel || []).filter(v => v && v.date);
+        if (visites.length > 0) {
+          visites.forEach((v, idx) => {
+            const key = v.date.split('T')[0];
+            if (!map[key]) map[key] = [];
+            map[key].push({ dossier: d, type: 'consuel', visite: v, visiteIdx: idx });
+          });
+        } else if (d.dateConsuel) {
+          addEvent(d.dateConsuel, d, 'consuel');
+        }
       }
       if (filterType === 'sav' || filterType === 'all') {
         // Intervention SAV : on prend la date réellement effectuée si elle
@@ -16078,13 +16091,20 @@ function DayView({ date, events, isToday, onShowQuick, STATUTS, isAdmin }) {
           {sorted.map((ev, i) => {
             const d = ev.dossier;
             const statut = STATUTS.find(s => s.id === d.statut);
+            const consuelLabel = (() => {
+              if (!ev.visite) return 'Consuel';
+              const base = ev.visiteIdx === 0 ? 'Visite Consuel' : `Contre-visite n°${ev.visiteIdx}`;
+              if (ev.visite.resultat === 'ok') return `${base} ✓ OK`;
+              if (ev.visite.resultat === 'a_corriger') return `${base} ✗ à corriger`;
+              return base;
+            })();
             const typeMeta = ev.type === 'pose'
               ? { emoji: '🔧', label: 'Pose', bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300' }
               : ev.type === 'sav'
                 ? { emoji: '🛠️', label: d.savDateInterventionFaite ? 'SAV (fait)' : 'SAV', bg: 'bg-yellow-100', text: 'text-yellow-700', border: 'border-yellow-300' }
                 : ev.type === 'accord'
                   ? { emoji: '✅', label: 'Accord banque', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' }
-                  : { emoji: '⚡', label: 'Consuel', bg: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-300' };
+                  : { emoji: '⚡', label: consuelLabel, bg: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-300' };
             return (
               <button
                 key={i}
