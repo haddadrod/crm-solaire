@@ -9490,20 +9490,30 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               })}
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-              <Field label="🏠 Type de toiture">
-                <select value={formData.typeToit || ''} onChange={(e) => setFormData({ ...formData, typeToit: e.target.value })} className={inputCls + ' font-semibold'}>
-                  <option value="">— Choisir —</option>
-                  {TYPES_TOIT.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
-                </select>
-              </Field>
-              <Field label="📐 Orientation des panneaux">
-                <select value={formData.orientationPanneaux || ''} onChange={(e) => setFormData({ ...formData, orientationPanneaux: e.target.value })} className={inputCls + ' font-semibold'}>
-                  <option value="">— Choisir —</option>
-                  {ORIENTATIONS_PANNEAUX.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-                </select>
-              </Field>
-            </div>
+            {/* Toiture + orientation = caractéristiques liées aux panneaux solaires.
+                Inutile de les afficher si le dossier ne contient que de l'isolation,
+                de la pompe à chaleur, etc. On les montre dès qu'au moins un produit
+                est facturé au Wc (autoTarif = true, signature des panneaux). */}
+            {(formData.produits || []).some(p => {
+              if (!p || !p.type) return false;
+              const prod = (produits || []).find(x => x.id === p.type) || PRODUITS_DEFAULT.find(x => x.id === p.type);
+              return prod && prod.autoTarif === true;
+            }) && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                <Field label="🏠 Type de toiture">
+                  <select value={formData.typeToit || ''} onChange={(e) => setFormData({ ...formData, typeToit: e.target.value })} className={inputCls + ' font-semibold'}>
+                    <option value="">— Choisir —</option>
+                    {TYPES_TOIT.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="📐 Orientation des panneaux">
+                  <select value={formData.orientationPanneaux || ''} onChange={(e) => setFormData({ ...formData, orientationPanneaux: e.target.value })} className={inputCls + ' font-semibold'}>
+                    <option value="">— Choisir —</option>
+                    {ORIENTATIONS_PANNEAUX.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+                  </select>
+                </Field>
+              </div>
+            )}
 
             {!calculs.useAutoTarif && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 text-xs text-blue-700 leading-relaxed mb-3">
@@ -14537,8 +14547,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             {!foldedSteps.produits && (
             <div className="space-y-1.5">
               {/* 🏠 Type de toiture + orientation des panneaux — info utile
-                  pour le poseur (fixations, calepinage). Incluse dans le
-                  message chantier envoyé. */}
+                  pour le poseur (fixations, calepinage). N'affiché que si le
+                  dossier contient au moins un produit au Wc (panneaux). */}
+              {(d.produits || []).some(p => {
+                if (!p || !p.type) return false;
+                const prod = (produits || []).find(x => x.id === p.type) || PRODUITS_DEFAULT.find(x => x.id === p.type);
+                return prod && prod.autoTarif === true;
+              }) && (
               <div className="grid grid-cols-2 gap-1.5 p-2 bg-white border border-amber-200 rounded-xl">
                 <div>
                   <label className="block text-[9px] font-bold text-amber-700 uppercase mb-1">🏠 Type de toit</label>
@@ -14563,6 +14578,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   </select>
                 </div>
               </div>
+              )}
               {dossierProduits.map((p, i) => {
                 const prodInfo = findProduit(produits, p.type);
                 return (
