@@ -15689,39 +15689,59 @@ function GlobalSearchModal({ dossiers, STATUTS, isAdmin, onClose, onSelect }) {
 
 function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
   const today = new Date();
-  const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
+  const [viewDate, setViewDate] = useState(new Date(today.getFullYear(), today.getMonth(), today.getDate()));
   const [filterType, setFilterType] = useState('pose'); // 'pose' | 'accord' | 'consuel' | 'all'
-  const [viewMode, setViewMode] = useState('mois'); // 'mois' | 'carte'
+  const [viewMode, setViewMode] = useState('mois'); // 'jour' | 'semaine' | 'mois' | 'carte'
 
   const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+  const monthNamesShort = ['Janv.', 'Févr.', 'Mars', 'Avr.', 'Mai', 'Juin', 'Juil.', 'Août', 'Sept.', 'Oct.', 'Nov.', 'Déc.'];
   const dayNames = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+  const dayNamesLong = ['Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi', 'Dimanche'];
 
-  const goPrev = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1));
-  const goNext = () => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1));
-  const goToday = () => setViewDate(new Date(today.getFullYear(), today.getMonth(), 1));
+  // Helpers
+  const addDays = (date, n) => {
+    const d = new Date(date);
+    d.setDate(d.getDate() + n);
+    return d;
+  };
+  const startOfWeek = (date) => {
+    const d = new Date(date);
+    const offset = (d.getDay() + 6) % 7; // Lundi = 0
+    d.setDate(d.getDate() - offset);
+    d.setHours(0, 0, 0, 0);
+    return d;
+  };
+
+  const goPrev = () => {
+    if (viewMode === 'jour') setViewDate(addDays(viewDate, -1));
+    else if (viewMode === 'semaine') setViewDate(addDays(viewDate, -7));
+    else setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1));
+  };
+  const goNext = () => {
+    if (viewMode === 'jour') setViewDate(addDays(viewDate, 1));
+    else if (viewMode === 'semaine') setViewDate(addDays(viewDate, 7));
+    else setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1));
+  };
+  const goToday = () => setViewDate(new Date(today.getFullYear(), today.getMonth(), today.getDate()));
 
   // Construit la grille du mois (avec jours du mois précédent/suivant pour compléter les semaines)
-  const grid = useMemo(() => {
+  const monthGrid = useMemo(() => {
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
     const firstDay = new Date(year, month, 1);
     const lastDay = new Date(year, month + 1, 0);
-    // Lundi = 0 dans notre logique (au lieu de 0=Dimanche)
     const startOffset = (firstDay.getDay() + 6) % 7;
     const daysInMonth = lastDay.getDate();
 
     const days = [];
-    // Jours du mois précédent
     const prevMonthLastDay = new Date(year, month, 0).getDate();
     for (let i = startOffset - 1; i >= 0; i--) {
       const day = prevMonthLastDay - i;
       days.push({ date: new Date(year, month - 1, day), isCurrentMonth: false });
     }
-    // Jours du mois courant
     for (let i = 1; i <= daysInMonth; i++) {
       days.push({ date: new Date(year, month, i), isCurrentMonth: true });
     }
-    // Jours du mois suivant pour compléter (max 42 cases = 6 semaines)
     const totalCells = days.length <= 35 ? 35 : 42;
     let nextDay = 1;
     while (days.length < totalCells) {
@@ -15730,9 +15750,18 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
     return days;
   }, [viewDate]);
 
-  // Map des dossiers par date (selon le filtre actif).
-  // On exclut les dossiers annulés et archivés : ils n'ont rien à faire sur
-  // une vue prévisionnelle (sinon le calendrier affiche des poses fantômes).
+  // Grille semaine : 7 jours à partir du lundi
+  const weekGrid = useMemo(() => {
+    const start = startOfWeek(viewDate);
+    return Array.from({ length: 7 }, (_, i) => ({ date: addDays(start, i), isCurrentMonth: true }));
+  }, [viewDate]);
+
+  // Map des dossiers par date.
+  // On exclut :
+  //   - annulés (W2_ANNULER) et archivés : ils n'ont rien à faire sur une vue prévisionnelle.
+  //   - poses dont le statut a déjà dépassé l'étape pose (G_ATTENTE_ACCORD_DEF
+  //     et suivants) : la pose est faite, inutile de polluer le calendrier
+  //     avec des « rendez-vous » qui n'en sont plus.
   const eventsByDate = useMemo(() => {
     const map = {};
     const addEvent = (dateStr, dossier, type) => {
@@ -15741,11 +15770,17 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
       if (!map[key]) map[key] = [];
       map[key].push({ dossier, type });
     };
+    const poseEstFaite = (d) => {
+      const idx = STATUT_ETAPE_INDEX[d.statut];
+      // Si le statut est passé après B4_EN_COURS_POSE (index 5), la pose est
+      // terminée. Idem pour le statut "PAYÉ" évidemment.
+      return idx !== undefined && idx >= 6;
+    };
     dossiers.forEach(d => {
       if (d.statut === 'W2_ANNULER') return;
       if (d.archived === true) return;
       if (filterType === 'pose' || filterType === 'all') {
-        if (d.dateInsta) addEvent(d.dateInsta, d, 'pose');
+        if (d.dateInsta && !poseEstFaite(d)) addEvent(d.dateInsta, d, 'pose');
       }
       if (filterType === 'accord' || filterType === 'all') {
         if (d.dateAccord) addEvent(d.dateAccord, d, 'accord');
@@ -15765,7 +15800,7 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
   };
   const todayKey = dateKey(today);
 
-  // Stats du mois
+  // Stats du mois affichées en haut (uniquement en vue Mois pour rester sobre)
   const monthStats = useMemo(() => {
     const year = viewDate.getFullYear();
     const month = viewDate.getMonth();
@@ -15799,20 +15834,45 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
     return 'bg-slate-100 text-slate-700 border-slate-300';
   };
 
+  // Titre du header selon la vue
+  const headerTitle = () => {
+    if (viewMode === 'jour') {
+      return `${dayNamesLong[(viewDate.getDay() + 6) % 7]} ${viewDate.getDate()} ${monthNamesShort[viewDate.getMonth()]} ${viewDate.getFullYear()}`;
+    }
+    if (viewMode === 'semaine') {
+      const s = startOfWeek(viewDate);
+      const e = addDays(s, 6);
+      const sameMonth = s.getMonth() === e.getMonth();
+      const sameYear = s.getFullYear() === e.getFullYear();
+      if (sameMonth) return `${s.getDate()} – ${e.getDate()} ${monthNamesShort[s.getMonth()]} ${s.getFullYear()}`;
+      if (sameYear) return `${s.getDate()} ${monthNamesShort[s.getMonth()]} – ${e.getDate()} ${monthNamesShort[e.getMonth()]} ${s.getFullYear()}`;
+      return `${s.getDate()} ${monthNamesShort[s.getMonth()]} ${s.getFullYear()} – ${e.getDate()} ${monthNamesShort[e.getMonth()]} ${e.getFullYear()}`;
+    }
+    // mois
+    return `${monthNames[viewDate.getMonth()]} ${viewDate.getFullYear()}`;
+  };
+
+  const viewModeButtons = [
+    { id: 'jour',     label: 'Jour',     icon: '📆' },
+    { id: 'semaine',  label: 'Semaine',  icon: '🗓️' },
+    { id: 'mois',     label: 'Mois',     icon: '📅' },
+    { id: 'carte',    label: 'Carte',    icon: '🗺️' },
+  ];
+
   return (
     <div className="space-y-4">
-      {/* HEADER avec navigation mois */}
+      {/* HEADER avec navigation */}
       <div className="bg-white rounded-3xl shadow-md border border-slate-200 p-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-2">
-            <button onClick={goPrev} className="p-2 hover:bg-slate-100 rounded-xl text-slate-600">◀</button>
-            <h2 className="text-xl font-bold text-slate-800 min-w-[200px] text-center">
-              {monthNames[viewDate.getMonth()]} {viewDate.getFullYear()}
+            <button onClick={goPrev} className="p-2 hover:bg-slate-100 rounded-xl text-slate-600" title="Précédent">◀</button>
+            <h2 className="text-xl font-bold text-slate-800 min-w-[240px] text-center capitalize">
+              {headerTitle()}
             </h2>
-            <button onClick={goNext} className="p-2 hover:bg-slate-100 rounded-xl text-slate-600">▶</button>
+            <button onClick={goNext} className="p-2 hover:bg-slate-100 rounded-xl text-slate-600" title="Suivant">▶</button>
             <button onClick={goToday} className="ml-2 text-xs font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-3 py-1.5 rounded-lg">Aujourd'hui</button>
           </div>
-          {filterType === 'pose' && (
+          {filterType === 'pose' && viewMode === 'mois' && (
             <div className="flex items-center gap-3 text-xs">
               <div className="bg-orange-50 px-3 py-1.5 rounded-lg">
                 <span className="font-bold text-orange-700">{monthStats.count}</span>
@@ -15845,96 +15905,252 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
             })}
           </div>
           <div className="flex gap-1 bg-slate-100 rounded-xl p-1">
-            <button
-              onClick={() => setViewMode('mois')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${viewMode === 'mois' ? 'bg-white shadow text-violet-700' : 'text-slate-500'}`}
-            >
-              📅 Mois
-            </button>
-            <button
-              onClick={() => setViewMode('carte')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${viewMode === 'carte' ? 'bg-white shadow text-violet-700' : 'text-slate-500'}`}
-            >
-              🗺️ Carte
-            </button>
+            {viewModeButtons.map(v => (
+              <button
+                key={v.id}
+                onClick={() => setViewMode(v.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 ${viewMode === v.id ? 'bg-white shadow text-violet-700' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                {v.icon} {v.label}
+              </button>
+            ))}
           </div>
         </div>
       </div>
 
-      {viewMode === 'carte' ? (
+      {viewMode === 'carte' && (
         <CarteView dossiers={dossiers} filterType={filterType} onShowQuick={onShowQuick} />
-      ) : (
-      <>
-      {/* GRILLE CALENDRIER */}
-      <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
-        {/* Jours de la semaine */}
-        <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
-          {dayNames.map(d => (
-            <div key={d} className="p-2 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wide">{d}</div>
-          ))}
-        </div>
+      )}
 
-        {/* Cases */}
-        <div className="grid grid-cols-7 auto-rows-fr">
-          {grid.map((cell, idx) => {
-            const key = dateKey(cell.date);
-            const events = eventsByDate[key] || [];
-            const isToday = key === todayKey;
-            const isWeekend = cell.date.getDay() === 0 || cell.date.getDay() === 6;
+      {viewMode === 'jour' && (
+        <DayView
+          date={viewDate}
+          events={eventsByDate[dateKey(viewDate)] || []}
+          isToday={dateKey(viewDate) === todayKey}
+          onShowQuick={onShowQuick}
+          STATUTS={STATUTS}
+          isAdmin={isAdmin}
+        />
+      )}
+
+      {viewMode === 'semaine' && (
+        <WeekView
+          weekGrid={weekGrid}
+          eventsByDate={eventsByDate}
+          dateKey={dateKey}
+          todayKey={todayKey}
+          dayNamesLong={dayNamesLong}
+          onShowQuick={onShowQuick}
+          eventTypeStyle={eventTypeStyle}
+        />
+      )}
+
+      {viewMode === 'mois' && (
+        <>
+          {/* GRILLE CALENDRIER MOIS */}
+          <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
+            <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+              {dayNames.map(d => (
+                <div key={d} className="p-2 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wide">{d}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 auto-rows-fr">
+              {monthGrid.map((cell, idx) => {
+                const key = dateKey(cell.date);
+                const events = eventsByDate[key] || [];
+                const isToday = key === todayKey;
+                const isWeekend = cell.date.getDay() === 0 || cell.date.getDay() === 6;
+                return (
+                  <div
+                    key={idx}
+                    className={`min-h-[90px] p-1.5 border-r border-b border-slate-100 ${cell.isCurrentMonth ? 'bg-white' : 'bg-slate-50/50'} ${isWeekend && cell.isCurrentMonth ? 'bg-slate-50/30' : ''}`}
+                  >
+                    <div className={`text-xs font-bold mb-1 flex items-center justify-between ${cell.isCurrentMonth ? (isToday ? 'text-violet-700' : 'text-slate-700') : 'text-slate-300'}`}>
+                      <span className={isToday ? 'bg-violet-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]' : ''}>
+                        {cell.date.getDate()}
+                      </span>
+                      {events.length > 0 && (
+                        <span className="text-[9px] font-semibold bg-slate-100 text-slate-600 px-1 rounded-full">{events.length}</span>
+                      )}
+                    </div>
+                    <div className="space-y-0.5">
+                      {events.slice(0, 3).map((ev, i) => {
+                        const d = ev.dossier;
+                        return (
+                          <button
+                            key={i}
+                            onClick={() => onShowQuick && onShowQuick(d.localId)}
+                            className={`w-full text-left text-[9px] font-semibold px-1.5 py-0.5 rounded border ${eventTypeStyle(ev.type)} hover:shadow-sm hover:scale-[1.02] transition-all truncate flex items-center gap-1`}
+                            title={`${d.nom} ${d.prenom || ''} — ${ev.type}`}
+                          >
+                            <span>{ev.type === 'pose' ? '🔧' : ev.type === 'accord' ? '✅' : '⚡'}</span>
+                            <span className="truncate">{d.nom}</span>
+                          </button>
+                        );
+                      })}
+                      {events.length > 3 && (
+                        <button
+                          onClick={() => onShowQuick && events[3] && onShowQuick(events[3].dossier.localId)}
+                          className="w-full text-[9px] text-slate-500 hover:text-violet-600 font-semibold text-center"
+                        >
+                          +{events.length - 3} autres
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </>
+      )}
+
+      {viewMode !== 'carte' && (
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 flex items-center gap-3 flex-wrap text-xs">
+          <span className="font-semibold text-slate-600">Légende :</span>
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-orange-100 text-orange-700 border-orange-300">🔧 Pose</span>
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-emerald-100 text-emerald-700 border-emerald-300">✅ Accord</span>
+          <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-cyan-100 text-cyan-700 border-cyan-300">⚡ Consuel</span>
+          <span className="text-slate-400 ml-auto">💡 Clique sur un évènement pour ouvrir l'aperçu</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Vue Jour : liste verticale des évènements pour la date sélectionnée.
+function DayView({ date, events, isToday, onShowQuick, STATUTS, isAdmin }) {
+  const sorted = [...events].sort((a, b) => {
+    const order = { pose: 0, accord: 1, consuel: 2 };
+    return (order[a.type] || 9) - (order[b.type] || 9);
+  });
+  const ca = sorted.filter(e => e.type === 'pose').reduce((s, e) => s + (e.dossier.montantTotal || 0), 0);
+  return (
+    <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
+      <div className={`p-4 border-b border-slate-200 ${isToday ? 'bg-gradient-to-r from-violet-50 to-pink-50' : 'bg-slate-50'}`}>
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="text-sm font-bold text-slate-700">
+            {isToday && <span className="inline-block bg-violet-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full mr-2">AUJOURD'HUI</span>}
+            {sorted.length} évènement{sorted.length > 1 ? 's' : ''}
+          </div>
+          {isAdmin && ca > 0 && (
+            <div className="text-xs">
+              <span className="bg-violet-100 text-violet-700 font-bold px-2 py-1 rounded-lg">{formatEuro(ca)} CA en pose</span>
+            </div>
+          )}
+        </div>
+      </div>
+      {sorted.length === 0 ? (
+        <div className="p-10 text-center text-slate-400">
+          <div className="text-4xl mb-2">📭</div>
+          <p className="text-sm font-semibold">Aucun évènement ce jour-là</p>
+          <p className="text-xs mt-1">Navigue avec ◀ ▶ ou clique sur « Aujourd'hui ».</p>
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {sorted.map((ev, i) => {
+            const d = ev.dossier;
+            const statut = STATUTS.find(s => s.id === d.statut);
+            const typeMeta = ev.type === 'pose'
+              ? { emoji: '🔧', label: 'Pose', bg: 'bg-orange-100', text: 'text-orange-700', border: 'border-orange-300' }
+              : ev.type === 'accord'
+                ? { emoji: '✅', label: 'Accord banque', bg: 'bg-emerald-100', text: 'text-emerald-700', border: 'border-emerald-300' }
+                : { emoji: '⚡', label: 'Consuel', bg: 'bg-cyan-100', text: 'text-cyan-700', border: 'border-cyan-300' };
             return (
-              <div
-                key={idx}
-                className={`min-h-[90px] p-1.5 border-r border-b border-slate-100 ${cell.isCurrentMonth ? 'bg-white' : 'bg-slate-50/50'} ${isWeekend && cell.isCurrentMonth ? 'bg-slate-50/30' : ''}`}
+              <button
+                key={i}
+                onClick={() => onShowQuick && onShowQuick(d.localId)}
+                className="w-full text-left p-3 hover:bg-violet-50 transition-colors flex items-center gap-3"
               >
-                <div className={`text-xs font-bold mb-1 flex items-center justify-between ${cell.isCurrentMonth ? (isToday ? 'text-violet-700' : 'text-slate-700') : 'text-slate-300'}`}>
-                  <span className={isToday ? 'bg-violet-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]' : ''}>
+                <span className={`flex-shrink-0 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-bold ${typeMeta.bg} ${typeMeta.text} ${typeMeta.border}`}>
+                  <span>{typeMeta.emoji}</span>
+                  <span>{typeMeta.label}</span>
+                </span>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {d.id && <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">#{d.id}</span>}
+                    <span className="font-bold text-sm text-slate-800 truncate">
+                      {d.nom} {d.prenom && <span className="font-normal text-slate-500">{d.prenom}</span>}
+                    </span>
+                    {statut && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${statut.bg} ${statut.text}`}>{statut.emoji} {statut.label}</span>}
+                  </div>
+                  <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                    {d.telephone && <span>📞 {d.telephone}</span>}
+                    {(d.adresse || d.ville) && <span className="truncate">📍 {d.adresse} {d.codePostal} {d.ville}</span>}
+                    {isAdmin && d.montantTotal > 0 && <span className="font-bold text-violet-600">💰 {formatEuro(d.montantTotal)}</span>}
+                  </div>
+                </div>
+                <span className="text-slate-300 text-xs">›</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Vue Semaine : 7 colonnes (Lun-Dim), évènements empilés
+function WeekView({ weekGrid, eventsByDate, dateKey, todayKey, dayNamesLong, onShowQuick, eventTypeStyle }) {
+  return (
+    <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
+      <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
+        {weekGrid.map((cell, idx) => {
+          const key = dateKey(cell.date);
+          const isToday = key === todayKey;
+          return (
+            <div key={idx} className={`p-2 text-center ${isToday ? 'bg-violet-50' : ''}`}>
+              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{dayNamesLong[(cell.date.getDay() + 6) % 7].slice(0, 3)}</div>
+              <div className={`text-lg font-bold mt-0.5 ${isToday ? 'text-violet-700' : 'text-slate-700'}`}>
+                {isToday ? (
+                  <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-violet-500 text-white text-sm">
                     {cell.date.getDate()}
                   </span>
-                  {events.length > 0 && (
-                    <span className="text-[9px] font-semibold bg-slate-100 text-slate-600 px-1 rounded-full">{events.length}</span>
-                  )}
-                </div>
-                <div className="space-y-0.5">
-                  {events.slice(0, 3).map((ev, i) => {
+                ) : (
+                  cell.date.getDate()
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="grid grid-cols-7" style={{ minHeight: 500 }}>
+        {weekGrid.map((cell, idx) => {
+          const key = dateKey(cell.date);
+          const events = eventsByDate[key] || [];
+          const isWeekend = cell.date.getDay() === 0 || cell.date.getDay() === 6;
+          return (
+            <div
+              key={idx}
+              className={`p-2 border-r border-slate-100 last:border-r-0 ${isWeekend ? 'bg-slate-50/40' : ''}`}
+            >
+              {events.length === 0 ? (
+                <div className="text-center text-[10px] text-slate-300 italic mt-4">—</div>
+              ) : (
+                <div className="space-y-1">
+                  {events.map((ev, i) => {
                     const d = ev.dossier;
-                    const statut = STATUTS.find(s => s.id === d.statut);
                     return (
                       <button
                         key={i}
                         onClick={() => onShowQuick && onShowQuick(d.localId)}
-                        className={`w-full text-left text-[9px] font-semibold px-1.5 py-0.5 rounded border ${eventTypeStyle(ev.type)} hover:shadow-sm hover:scale-[1.02] transition-all truncate flex items-center gap-1`}
+                        className={`w-full text-left text-[11px] font-semibold px-2 py-1.5 rounded-lg border ${eventTypeStyle(ev.type)} hover:shadow-md transition-all`}
                         title={`${d.nom} ${d.prenom || ''} — ${ev.type}`}
                       >
-                        <span>{ev.type === 'pose' ? '🔧' : ev.type === 'accord' ? '✅' : '⚡'}</span>
-                        <span className="truncate">{d.nom}</span>
+                        <div className="flex items-center gap-1 mb-0.5">
+                          <span>{ev.type === 'pose' ? '🔧' : ev.type === 'accord' ? '✅' : '⚡'}</span>
+                          <span className="truncate">{d.nom}</span>
+                        </div>
+                        {d.prenom && <div className="text-[10px] font-normal opacity-80 truncate">{d.prenom}</div>}
                       </button>
                     );
                   })}
-                  {events.length > 3 && (
-                    <button
-                      onClick={() => onShowQuick && events[3] && onShowQuick(events[3].dossier.localId)}
-                      className="w-full text-[9px] text-slate-500 hover:text-violet-600 font-semibold text-center"
-                    >
-                      +{events.length - 3} autres
-                    </button>
-                  )}
                 </div>
-              </div>
-            );
-          })}
-        </div>
+              )}
+            </div>
+          );
+        })}
       </div>
-
-      {/* LÉGENDE */}
-      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-3 flex items-center gap-3 flex-wrap text-xs">
-        <span className="font-semibold text-slate-600">Légende :</span>
-        <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-orange-100 text-orange-700 border-orange-300">🔧 Pose</span>
-        <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-emerald-100 text-emerald-700 border-emerald-300">✅ Accord</span>
-        <span className="inline-flex items-center gap-1 px-2 py-1 rounded border bg-cyan-100 text-cyan-700 border-cyan-300">⚡ Consuel</span>
-        <span className="text-slate-400 ml-auto">💡 Clique sur un évènement pour ouvrir l'aperçu</span>
-      </div>
-      </>
-      )}
     </div>
   );
 }
