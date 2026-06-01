@@ -10148,28 +10148,30 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   <div key={idx} className="rounded-xl border border-amber-200 bg-white p-3">
                     <div className="flex items-end gap-2 flex-wrap">
                       <span className="flex-shrink-0 self-center text-xs font-bold rounded-full w-7 h-7 flex items-center justify-center bg-amber-100 text-amber-600">{idx + 1}</span>
-                      <div className="flex-1 min-w-[200px]">
+                      <div className="flex-1 min-w-[180px]">
                         <label className="block text-[10px] font-semibold text-slate-500 mb-1">Type de produit</label>
                         <select value={prod.type} onChange={(e) => updProd({ type: e.target.value, variantId: '' })} className={inputCls + ' font-semibold'}>
                           <option value="">— Choisir un produit —</option>
                           {produits.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>)}
                         </select>
-                        {/* Sélecteur de variante (marque/modèle) — visible si le
-                            type sélectionné a un catalogue non vide. La bannière
-                            micro-onduleur est rendue en pleine largeur sous la
-                            ligne (voir plus bas). */}
-                        {(() => {
-                          const t = produits.find(x => x.id === prod.type);
-                          const variants = (t && Array.isArray(t.variants)) ? t.variants : [];
-                          if (variants.length === 0) return null;
-                          return (
-                            <select value={prod.variantId || ''} onChange={(e) => updProd({ variantId: e.target.value })} className={inputCls + ' mt-1.5 text-xs font-bold'}>
-                              <option value="">— Choisir une marque/modèle —</option>
+                      </div>
+                      {/* Sélecteur de variante (marque/modèle) — sur la MÊME
+                          ligne que le type. Visible si le type a un catalogue
+                          non vide. La bannière micro est en pleine largeur dessous. */}
+                      {(() => {
+                        const t = produits.find(x => x.id === prod.type);
+                        const variants = (t && Array.isArray(t.variants)) ? t.variants : [];
+                        if (variants.length === 0) return null;
+                        return (
+                          <div className="flex-1 min-w-[160px]">
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Marque / modèle</label>
+                            <select value={prod.variantId || ''} onChange={(e) => updProd({ variantId: e.target.value })} className={inputCls + ' font-bold'}>
+                              <option value="">— Choisir —</option>
                               {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
                             </select>
-                          );
-                        })()}
-                      </div>
+                          </div>
+                        );
+                      })()}
                       {prodInfo.autoTarif ? (() => {
                         // Si la variante a une puissance unitaire renseignée,
                         // on bascule en mode « Quantité × W = Total » (plus
