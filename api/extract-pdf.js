@@ -1,14 +1,14 @@
-// Fonction serverless Vercel : lecture d'un bon de commande manuscrit via l'IA
-// de vision Claude. Le front envoie une photo (base64), on extrait les champs
-// du client + de la vente, et on renvoie un JSON structuré pour pré-remplir
-// le formulaire de dossier.
+// Fonction serverless Vercel : extraction structurée via Claude vision.
+// Couvre deux cas d'usage selon `type` dans le body :
+//   - type: 'bon'     → bon de commande client (extrait coordonnées, produits,
+//                       montants, financement, etc.)
+//   - type: 'facture' → facture prestataire (extrait fournisseur, n°, dates,
+//                       montants HT/TTC/TVA)
 //
 // Variables d'environnement requises côté Vercel (SANS préfixe VITE_) :
 //   - ANTHROPIC_API_KEY     : clé API Anthropic (console.anthropic.com)
 //   - SUPABASE_URL          : URL du projet Supabase (pour valider le JWT appelant)
 //   - SUPABASE_SERVICE_KEY  : clé service_role Supabase
-//
-// La clé Anthropic reste côté serveur — jamais exposée au navigateur.
 
 import Anthropic from '@anthropic-ai/sdk';
 import { createClient } from '@supabase/supabase-js';
@@ -22,7 +22,6 @@ function json(res, status, body) {
   res.send(JSON.stringify(body));
 }
 
-// Vérifie que l'appelant est un utilisateur Supabase authentifié.
 async function getCaller(req) {
   const authHeader = req.headers['authorization'] || req.headers['Authorization'];
   if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
@@ -40,12 +39,12 @@ async function getCaller(req) {
   }
 }
 
-// IDs de produits que le CRM connaît (synchro avec PRODUITS_DEFAULT du front)
+// ============================================================================
+//                         SCHEMA + PROMPT : BON DE COMMANDE
+// ============================================================================
 const PRODUIT_IDS = ['PANNEAU_SOLAIRE', 'PERGOLA', 'POMPE_A_CHALEUR', 'CLIMATISATION', 'BALLON_THERMO', 'BATTERIE', 'ISOLATION', 'VMC', 'AUTRE'];
 
-// Schéma de sortie structurée — l'IA est contrainte de renvoyer exactement ces champs.
-// Construit dynamiquement pour inclure 'societe' enum si availableSocietes fourni.
-function buildExtractionSchema(availableSocietes = []) {
+function buildBonSchema(availableSocietes = []) {
   const socIds = availableSocietes.map(s => s.id).filter(Boolean);
   const props = {
     nom: { type: 'string', description: 'Nom de famille du client' },
@@ -55,8 +54,6 @@ function buildExtractionSchema(availableSocietes = []) {
     ville: { type: 'string', description: 'Ville' },
     telephone: { type: 'string', description: 'Numéro de téléphone' },
     email: { type: 'string', description: 'Adresse email si présente, sinon vide' },
-    // Liste des produits/équipements présents sur le BC (un dossier peut combiner
-    // plusieurs équipements : panneaux solaires + pergola + ballon thermo, etc.)
     produits: {
       type: 'array',
       description: "Liste de TOUS les produits/équipements présents sur le bon de commande. RÈGLE CRITIQUE : 'panneaux solaires installés sur une pergola' = DEUX produits SÉPARÉS (1 ligne PANNEAU_SOLAIRE avec sa puissance Wc + 1 ligne PERGOLA quantité 1), pas un seul produit fusionné. Une pergola seule (sans solaire) = 1 ligne PERGOLA. Des panneaux seuls (sur toiture) = 1 ligne PANNEAU_SOLAIRE. Idem pour les combinaisons : panneaux + PAC + ballon thermo = 3 lignes distinctes.",
@@ -72,18 +69,14 @@ function buildExtractionSchema(availableSocietes = []) {
         additionalProperties: false,
       },
     },
-    // 🏠 Caractéristiques toiture / pose — n'extraire QUE si présent sur le BC.
-    // Sinon laisser '' (chaîne vide) ou null — ne pas inventer.
     typeToiture: { type: 'string', enum: ['', 'tuile', 'ardoise', 'tole', 'zinc', 'fibro', 'bac_acier', 'pergola', 'autre'], description: "Type de toiture / support, UNIQUEMENT si coché ou écrit sur le BC. Sinon ''. Si pergola = laisser '' (l'info est déjà dans le produit PERGOLA)." },
     orientationPanneaux: { type: 'string', enum: ['', 'portrait', 'paysage', 'les_deux'], description: "Orientation des panneaux, UNIQUEMENT si coché sur le BC. Sinon ''." },
-    // [LEGACY] Conservés pour rétrocompat avec l'ancien front
     produit: { type: 'string', description: "[LEGACY] 1er produit en texte libre (ex: panneaux solaires)." },
     puissance: { type: 'string', description: '[LEGACY] Puissance en Wc du 1er produit solaire, sinon vide.' },
     montantTTC: { type: 'number', description: 'Montant total TTC en euros (nombre, sans symbole ni espace)' },
     montantHT: { type: 'number', description: 'Montant HT en euros si indiqué, sinon 0' },
     financement: { type: 'string', description: 'Organisme de financement / banque si indiqué, sinon vide' },
     dateSignature: { type: 'string', description: 'Date de signature au format AAAA-MM-JJ si présente, sinon vide' },
-    // 🏦 Détails du prêt (bloc "PAIEMENT AVEC FINANCEMENT" du BC). Tous à 0/vide si comptant.
     montantPret: { type: 'number', description: 'Montant du prêt en euros (champ "Montant du prêt"). 0 si comptant.' },
     reportMois: { type: 'number', description: 'Report en mois (champ "Report : X mois"). 0 si non indiqué.' },
     tauxDebiteur: { type: 'number', description: 'Taux débiteur fixe en % (ex 6.39). 0 si non indiqué.' },
@@ -113,7 +106,7 @@ function buildExtractionSchema(availableSocietes = []) {
   return { type: 'object', properties: props, required, additionalProperties: false };
 }
 
-const INSTRUCTIONS = `Tu lis des bons de commande manuscrits d'une entreprise française de vente et pose de panneaux solaires.
+const BON_INSTRUCTIONS = `Tu lis des bons de commande manuscrits d'une entreprise française de vente et pose de panneaux solaires.
 Extrais les informations du client et de la vente depuis l'image.
 
 Règles :
@@ -125,6 +118,48 @@ Règles :
 - "confiance" : "haute" si tout est net et lisible, "moyenne" si quelques doutes, "faible" si l'image est globalement difficile à lire.
 - N'invente jamais une valeur : en cas de doute, laisse vide et explique dans "remarques".`;
 
+// ============================================================================
+//                         SCHEMA + PROMPT : FACTURE
+// ============================================================================
+const FACTURE_SCHEMA = {
+  type: 'object',
+  properties: {
+    fournisseur: { type: 'string', description: "Raison sociale en haut de la facture (l'entité qui a émis la facture, pas le destinataire). Ex : 'ECO NEGOCE', 'IONERGIK', 'SOLAR PRO'." },
+    factureNo: { type: 'string', description: "Numéro de facture (champs typiques : 'Facture n°', 'N° facture', 'Numéro'). Garde le format d'origine (FA2026-0145, 2026/03/012, etc.)." },
+    bl: { type: 'string', description: "Numéro de bon de livraison s'il est mentionné sur la facture (champs : 'BL', 'B/L', 'Bon de livraison n°'). Sinon vide." },
+    dateFacture: { type: 'string', description: "Date d'émission de la facture au format AAAA-MM-JJ. Si pas trouvée, vide." },
+    montantHt: { type: 'number', description: "Total HT en euros (nombre, sans symbole ni espace). Si seul un TTC est lisible, mets 0 et précise dans remarques." },
+    montantTtc: { type: 'number', description: "Total TTC en euros." },
+    tauxTva: { type: 'number', description: "Taux de TVA appliqué en pourcentage (ex : 20, 10, 5.5, 0). 0 si auto-entrepreneur / société étrangère sans TVA." },
+    confiance: { type: 'string', enum: ['haute', 'moyenne', 'faible'], description: "Niveau de confiance global de la lecture." },
+    remarques: { type: 'string', description: "Notes brèves : champs illisibles, incohérences, ou contexte utile. Sinon vide." },
+  },
+  required: ['fournisseur', 'factureNo', 'bl', 'dateFacture', 'montantHt', 'montantTtc', 'tauxTva', 'confiance', 'remarques'],
+  additionalProperties: false,
+};
+
+const FACTURE_INSTRUCTIONS = `Tu lis une facture émise par un prestataire (fournisseur de matériel solaire, poseur, ou régie commerciale) pour une entreprise française de pose de panneaux solaires.
+
+Extrais ces informations depuis la facture :
+- fournisseur : raison sociale de l'émetteur (en haut de la facture, pas le destinataire)
+- factureNo : numéro de facture exactement comme écrit
+- bl : numéro de bon de livraison s'il est mentionné, sinon vide
+- dateFacture : date d'émission au format AAAA-MM-JJ
+- montantHt : total HT en euros (nombre)
+- montantTtc : total TTC en euros (nombre)
+- tauxTva : taux de TVA en pourcentage (20, 10, 5.5, ou 0 pour auto-entrepreneur / sans TVA)
+- confiance : 'haute' / 'moyenne' / 'faible' selon la lisibilité
+- remarques : court texte si quelque chose mérite vérification, sinon vide
+
+Règles :
+- Enlève espaces, symboles € et séparateurs de milliers des montants.
+- Si une info est absente ou illisible, mets une chaîne vide (ou 0 pour les montants) et signale dans 'remarques'.
+- N'invente jamais une valeur — en cas de doute, laisse vide.
+- Si la facture est sans TVA (auto-entrepreneur, société étrangère hors UE), mets tauxTva: 0.`;
+
+// ============================================================================
+//                             HANDLER
+// ============================================================================
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -140,24 +175,19 @@ export default async function handler(req, res) {
   if (!caller) return json(res, 401, { error: 'Connexion requise.' });
 
   const body = req.body || {};
-  const { imageBase64, mediaType, storagePath, availableSocietes } = body;
+  const { type, imageBase64, mediaType, storagePath, availableSocietes } = body;
+  if (type !== 'bon' && type !== 'facture') {
+    return json(res, 400, { error: "Paramètre 'type' manquant (attendu : 'bon' ou 'facture')." });
+  }
   if ((!imageBase64 && !storagePath) || !mediaType) {
     return json(res, 400, { error: 'Fichier manquant (imageBase64 ou storagePath requis).' });
   }
-  const socList = Array.isArray(availableSocietes)
-    ? availableSocietes
-        .filter(s => s && typeof s.id === 'string' && typeof s.label === 'string' && s.id && s.label)
-        .map(s => ({ id: s.id, label: s.label }))
-        .slice(0, 10)
-    : [];
   const isImage = /^image\/(jpeg|png|webp|gif)$/.test(mediaType);
   const isPdf = mediaType === 'application/pdf';
   if (!isImage && !isPdf) {
     return json(res, 400, { error: 'Format non supporté (JPEG, PNG, WebP, GIF ou PDF).' });
   }
 
-  // Si le client a uploadé d'abord dans le bucket et nous envoie juste le path,
-  // on télécharge le fichier ici (bypass la limite 4 Mo du body Vercel).
   let fileBase64 = imageBase64;
   if (!fileBase64 && storagePath) {
     try {
@@ -177,28 +207,45 @@ export default async function handler(req, res) {
     }
   }
 
+  // Choisit schema + prompt + max_tokens selon le type
+  let schema, instructions, maxTokens;
+  if (type === 'bon') {
+    const socList = Array.isArray(availableSocietes)
+      ? availableSocietes
+          .filter(s => s && typeof s.id === 'string' && typeof s.label === 'string' && s.id && s.label)
+          .map(s => ({ id: s.id, label: s.label }))
+          .slice(0, 10)
+      : [];
+    schema = buildBonSchema(socList);
+    instructions = BON_INSTRUCTIONS + (socList.length > 0
+      ? `\n\nSOCIÉTÉS DISPONIBLES : ${socList.map(s => `${s.id} (${s.label})`).join(', ')}. Identifie la société émettrice via le LOGO / raison sociale / SIRET / pied de page. Renvoie l'identifiant exact dans 'societe'.`
+      : '');
+    maxTokens = 4000;
+  } else {
+    schema = FACTURE_SCHEMA;
+    instructions = FACTURE_INSTRUCTIONS;
+    maxTokens = 2000;
+  }
+
   try {
     const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
-    // Pour un PDF on utilise le bloc "document" (Claude lit chaque page nativement) ;
-    // pour une image, on utilise le bloc "image".
     const fileBlock = isPdf
       ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: fileBase64 } }
       : { type: 'image', source: { type: 'base64', media_type: mediaType, data: fileBase64 } };
     const message = await client.messages.create({
       model: 'claude-opus-4-7',
-      max_tokens: 4000,
+      max_tokens: maxTokens,
       thinking: { type: 'adaptive' },
       output_config: {
         effort: 'medium',
-        format: { type: 'json_schema', schema: buildExtractionSchema(socList) },
+        format: { type: 'json_schema', schema },
       },
       messages: [
         {
           role: 'user',
           content: [
             fileBlock,
-            { type: 'text', text: INSTRUCTIONS + (socList.length > 0 ? `\n\nSOCIÉTÉS DISPONIBLES : ${socList.map(s => `${s.id} (${s.label})`).join(', ')}. Identifie la société émettrice via le LOGO / raison sociale / SIRET / pied de page. Renvoie l'identifiant exact dans 'societe'.` : ''),
-            },
+            { type: 'text', text: instructions },
           ],
         },
       ],
@@ -222,8 +269,8 @@ export default async function handler(req, res) {
     if (e?.status === 400 && /credit|balance|insufficient/i.test(msg)) {
       return json(res, 502, { error: 'Crédits IA épuisés — recharge sur console.anthropic.com.' });
     }
-    if (e?.status === 413) return json(res, 502, { error: 'Image trop lourde — reprends une photo plus petite.' });
-    console.error('extract-bon error:', msg, e?.stack);
+    if (e?.status === 413) return json(res, 502, { error: 'Fichier trop lourd — réessaie avec une image plus petite ou un PDF compressé.' });
+    console.error(`extract-pdf (${type}) error:`, msg, e?.stack);
     return json(res, 502, { error: "Échec de l'analyse IA. Réessaie dans un instant — si ça persiste, vérifie le format du PDF/image." });
   }
 }

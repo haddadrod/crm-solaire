@@ -536,10 +536,10 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       const { data: { session } } = await supabase.auth.getSession();
       const headers = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const res = await fetch('/api/extract-facture', {
+      const res = await fetch('/api/extract-pdf', {
         method: 'POST',
         headers,
-        body: JSON.stringify({ imageBase64: base64, mediaType: mimeType }),
+        body: JSON.stringify({ type: 'facture', imageBase64: base64, mediaType: mimeType }),
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
@@ -8943,10 +8943,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       const { data: { session } } = await supabase.auth.getSession();
       const headers = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const res = await fetch('/api/extract-bon', {
+      const res = await fetch('/api/extract-pdf', {
         method: 'POST',
         headers,
         body: JSON.stringify({
+          type: 'bon',
           storagePath: bucketPath,
           mediaType,
           availableSocietes: (societes || []).map(s => ({ id: s.id, label: s.label })),
