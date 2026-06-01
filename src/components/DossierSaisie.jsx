@@ -14626,75 +14626,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               );
             })()}
 
-            {/* ============ 📞 CLIENT À RAPPELER — étape annexe, visible si hasRappel ============ */}
-            {d.hasRappel && (() => {
-              const todayStr = new Date().toISOString().split('T')[0];
-              // En retard si une date de rappel est passée et que ce n'est pas fait.
-              const enRetard = !d.rappelFait && d.rappelDate && d.rappelDate < todayStr;
-              const aujourdhui = !d.rappelFait && d.rappelDate === todayStr;
-              return (
-                <div ref={refRappel} className={`border-2 rounded-xl p-2 mb-2 ${d.rappelFait ? 'bg-emerald-50 border-emerald-300' : enRetard ? 'bg-rose-50 border-rose-300' : 'bg-blue-50 border-blue-300'}`}>
-                  <button onClick={() => toggleStep('rappel')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.rappel ? '' : 'mb-1.5'} hover:opacity-80`}>
-                    <span className="flex items-center gap-1.5 text-blue-700">
-                      <span className="text-blue-600 text-[9px]">{foldedSteps.rappel ? '▶' : '▼'}</span>
-                      <span>📞 Client à rappeler</span>
-                      {!d.rappelFait && d.rappelDate && (
-                        <span className={`font-normal normal-case ml-1 ${enRetard ? 'text-rose-600' : 'text-blue-500'}`}>— {enRetard ? 'en retard depuis le' : aujourdhui ? "aujourd'hui" : 'prévu le'} {d.rappelDate !== todayStr ? new Date(d.rappelDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : ''}</span>
-                      )}
-                    </span>
-                    <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${d.rappelFait ? 'bg-emerald-100 text-emerald-700' : enRetard ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>
-                      {d.rappelFait ? '✓ Rappelé' : enRetard ? '⏰ En retard' : '⏳ À faire'}
-                    </span>
-                  </button>
-                  {!foldedSteps.rappel && (
-                    <div className="space-y-2">
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            if (window.confirm('Retirer ce rappel du dossier ?')) onUpdate({ hasRappel: false });
-                          }}
-                          className="text-[9px] font-bold text-blue-600 hover:text-blue-800 bg-blue-100 hover:bg-blue-200 px-2 py-0.5 rounded"
-                          title="Retirer ce rappel"
-                        >× Retirer ce rappel</button>
-                      </div>
-                      <div className={`rounded-lg border-2 p-2 ${d.rappelFait ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-blue-200'}`}>
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="block text-[9px] font-bold text-blue-700 uppercase mb-0.5">📅 Rappeler le</label>
-                            <div className="flex gap-1">
-                              <input type="date" min="2000-01-01" max="2100-12-31" value={d.rappelDate || ''} onChange={(e) => onUpdate({ rappelDate: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
-                              <button type="button" onClick={() => onUpdate({ rappelDate: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
-                            </div>
-                          </div>
-                          {d.rappelFait && (
-                            <div>
-                              <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Rappelé le</label>
-                              <div className="flex gap-1">
-                                <input type="date" min="2000-01-01" max="2100-12-31" value={d.rappelDateFait || ''} onChange={(e) => onUpdate({ rappelDateFait: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
-                                <button type="button" onClick={() => onUpdate({ rappelDateFait: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                        <label className="flex items-center gap-2 cursor-pointer mt-2">
-                          <input type="checkbox" checked={!!d.rappelFait} onChange={(e) => {
-                            const checked = e.target.checked;
-                            const today = new Date().toISOString().split('T')[0];
-                            onUpdate({ rappelFait: checked, rappelDateFait: checked && !d.rappelDateFait ? today : (checked ? d.rappelDateFait : '') });
-                          }} className="w-4 h-4 rounded accent-emerald-500" />
-                          <span className={`text-[11px] font-bold ${d.rappelFait ? 'text-emerald-700' : 'text-blue-700'}`}>
-                            {d.rappelFait ? '✅ Client rappelé' : '⏳ Rappel à faire'}
-                          </span>
-                        </label>
-                      </div>
-                      <textarea value={d.rappelMotif || ''} onChange={(e) => onUpdate({ rappelMotif: e.target.value })} rows={2} placeholder="📝 Motif du rappel (ex : confirmer date de pose, donner une info…)" className={inputCls + ' resize-none text-xs'} />
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
           </div>
+
+          {/* CLIENT À RAPPELER : déplacé tout en bas du panneau (après
+              Fournisseurs) pour ne plus polluer le haut du dossier — c'est
+              une action annexe, pas une étape du parcours principal. */}
 
           {/* FINANCEMENT — supprimé, intégré dans la section 1️⃣ Process Financement et section 4️⃣ Paiement */}
 
@@ -15428,6 +15364,75 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
             )}
           </div>
+
+          {/* ============ 📞 CLIENT À RAPPELER — étape annexe, visible si hasRappel ============ */}
+          {d.hasRappel && (() => {
+            const todayStr = new Date().toISOString().split('T')[0];
+            // En retard si une date de rappel est passée et que ce n'est pas fait.
+            const enRetard = !d.rappelFait && d.rappelDate && d.rappelDate < todayStr;
+            const aujourdhui = !d.rappelFait && d.rappelDate === todayStr;
+            return (
+              <div ref={refRappel} className={`border-2 rounded-xl p-2 mb-2 ${d.rappelFait ? 'bg-emerald-50 border-emerald-300' : enRetard ? 'bg-rose-50 border-rose-300' : 'bg-blue-50 border-blue-300'}`}>
+                <button onClick={() => toggleStep('rappel')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.rappel ? '' : 'mb-1.5'} hover:opacity-80`}>
+                  <span className="flex items-center gap-1.5 text-blue-700">
+                    <span className="text-blue-600 text-[9px]">{foldedSteps.rappel ? '▶' : '▼'}</span>
+                    <span>📞 Client à rappeler</span>
+                    {!d.rappelFait && d.rappelDate && (
+                      <span className={`font-normal normal-case ml-1 ${enRetard ? 'text-rose-600' : 'text-blue-500'}`}>— {enRetard ? 'en retard depuis le' : aujourdhui ? "aujourd'hui" : 'prévu le'} {d.rappelDate !== todayStr ? new Date(d.rappelDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : ''}</span>
+                    )}
+                  </span>
+                  <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${d.rappelFait ? 'bg-emerald-100 text-emerald-700' : enRetard ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>
+                    {d.rappelFait ? '✓ Rappelé' : enRetard ? '⏰ En retard' : '⏳ À faire'}
+                  </span>
+                </button>
+                {!foldedSteps.rappel && (
+                  <div className="space-y-2">
+                    <div className="flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (window.confirm('Retirer ce rappel du dossier ?')) onUpdate({ hasRappel: false });
+                        }}
+                        className="text-[9px] font-bold text-blue-600 hover:text-blue-800 bg-blue-100 hover:bg-blue-200 px-2 py-0.5 rounded"
+                        title="Retirer ce rappel"
+                      >× Retirer ce rappel</button>
+                    </div>
+                    <div className={`rounded-lg border-2 p-2 ${d.rappelFait ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-blue-200'}`}>
+                      <div className="grid grid-cols-2 gap-2">
+                        <div>
+                          <label className="block text-[9px] font-bold text-blue-700 uppercase mb-0.5">📅 Rappeler le</label>
+                          <div className="flex gap-1">
+                            <input type="date" min="2000-01-01" max="2100-12-31" value={d.rappelDate || ''} onChange={(e) => onUpdate({ rappelDate: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                            <button type="button" onClick={() => onUpdate({ rappelDate: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                          </div>
+                        </div>
+                        {d.rappelFait && (
+                          <div>
+                            <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Rappelé le</label>
+                            <div className="flex gap-1">
+                              <input type="date" min="2000-01-01" max="2100-12-31" value={d.rappelDateFait || ''} onChange={(e) => onUpdate({ rappelDateFait: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                              <button type="button" onClick={() => onUpdate({ rappelDateFait: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <label className="flex items-center gap-2 cursor-pointer mt-2">
+                        <input type="checkbox" checked={!!d.rappelFait} onChange={(e) => {
+                          const checked = e.target.checked;
+                          const today = new Date().toISOString().split('T')[0];
+                          onUpdate({ rappelFait: checked, rappelDateFait: checked && !d.rappelDateFait ? today : (checked ? d.rappelDateFait : '') });
+                        }} className="w-4 h-4 rounded accent-emerald-500" />
+                        <span className={`text-[11px] font-bold ${d.rappelFait ? 'text-emerald-700' : 'text-blue-700'}`}>
+                          {d.rappelFait ? '✅ Client rappelé' : '⏳ Rappel à faire'}
+                        </span>
+                      </label>
+                    </div>
+                    <textarea value={d.rappelMotif || ''} onChange={(e) => onUpdate({ rappelMotif: e.target.value })} rows={2} placeholder="📝 Motif du rappel (ex : confirmer date de pose, donner une info…)" className={inputCls + ' resize-none text-xs'} />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* OBSERVATIONS — éditable */}
           <div>
