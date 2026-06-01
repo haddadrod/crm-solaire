@@ -1291,6 +1291,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [quickViewScrollTo, setQuickViewScrollTo] = useState(null); // 🎯 section à scroller dans la bannière
   const [showSearch, setShowSearch] = useState(false); // 🔍 recherche globale Ctrl+K
   const [showAssistantIa, setShowAssistantIa] = useState(false); // 🤖 modale assistant IA email
+  const [copilotCtx, setCopilotCtx] = useState(null); // 🤖 contexte Sol : { action, dossier }
   const [showAlertesType, setShowAlertesType] = useState(null); // 🔔 type d'alerte ouvert : null | 'financement' | 'consuel' | 'paiement' | 'stagnation'
   const [showImport, setShowImport] = useState(false); // 📥 modal import dossiers
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
@@ -4179,9 +4180,32 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {activeTab === 'ajourd' && (
           <MaJourneeView
             dashboard={dashboard}
+            dossiers={dossiers}
             currentUserRole={currentUserRole}
             isAdmin={isAdmin}
             onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }}
+            onCopilot={(action, dossier) => setCopilotCtx({ action, dossier })}
+          />
+        )}
+
+        {/* 🤖 COPILOTE IA — modale Sol qui pré-rédige un message contextualisé */}
+        {copilotCtx && (
+          <AiCopilotModal
+            action={copilotCtx.action}
+            dossier={copilotCtx.dossier}
+            currentUser={currentUser}
+            gmailOAuth={gmailOAuth}
+            emailConfig={emailConfig}
+            onClose={() => setCopilotCtx(null)}
+            onSent={(entry) => {
+              // Loggue l'action dans l'historique du dossier comme une relance
+              const userTag = currentUser || '(anonyme)';
+              const now = new Date().toISOString();
+              setDossiers(prev => prev.map(d => d.localId === copilotCtx.dossier.localId
+                ? { ...d, historique: [...(d.historique || []), { date: now, user: userTag, action: 'relance_whatsapp', cible_kind: 'client', cible_nom: `${d.nom || ''} ${d.prenom || ''}`.trim(), channel: entry.channel, motif: copilotCtx.action?.label || 'copilote_ia' }] }
+                : d
+              ));
+            }}
           />
         )}
 
@@ -6761,7 +6785,12 @@ function PrestatairesPayerSection({ rappels, onShowQuick }) {
 // dashboard en une seule liste actionnable, triée par urgence (le plus en
 // retard en haut). Chaque action → clic ouvre le dossier sur la bonne section.
 // Transforme le CRM de « base qu'on consulte » en « assistant qui dit quoi faire ».
-function MaJourneeView({ dashboard, currentUserRole, isAdmin, onShowQuick }) {
+function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onShowQuick, onCopilot }) {
+  const dossierById = useMemo(() => {
+    const m = new Map();
+    (dossiers || []).forEach(d => m.set(d.localId, d));
+    return m;
+  }, [dossiers]);
   // Mapping rappel → action concrète. scrollTo cible la section QuickView.
   // adminCompta = action réservée admin/compta (argent, banque) — masquée
   // pour les autres rôles pour ne pas noyer la secrétaire sous des items
@@ -6848,27 +6877,45 @@ function MaJourneeView({ dashboard, currentUserRole, isAdmin, onShowQuick }) {
         </div>
       ) : (
         <div className="space-y-1.5">
-          {actions.map((a, i) => (
-            <button
-              key={`${a.localId}_${a.label}_${i}`}
-              onClick={() => onShowQuick && onShowQuick(a.localId, a.scrollTo)}
-              className={`w-full text-left flex items-center gap-3 p-3 rounded-xl border border-slate-100 border-l-4 ${levelStyle(a.level)} hover:shadow-md transition-all`}
-            >
-              <span className="text-xl flex-shrink-0">{a.emoji}</span>
-              <div className="flex-1 min-w-0">
-                <div className="font-bold text-slate-800 text-sm truncate">{a.label}</div>
-                <div className="text-xs text-slate-500 truncate">
-                  👤 {a.nom}{a.ville ? ` · ${a.ville}` : ''} · <span className="font-semibold text-slate-600">{a.cat}</span>
-                </div>
-              </div>
-              <div className="flex-shrink-0 text-right">
-                {a.jours > 0 && (
-                  <div className={`text-lg font-bold ${a.level === 'critical' ? 'text-rose-600' : a.level === 'high' ? 'text-orange-600' : 'text-amber-600'}`}>{a.jours}j</div>
+          {actions.map((a, i) => {
+            const dossier = dossierById.get(a.localId);
+            return (
+              <div
+                key={`${a.localId}_${a.label}_${i}`}
+                className={`flex items-stretch rounded-xl border border-slate-100 border-l-4 ${levelStyle(a.level)} hover:shadow-md transition-all overflow-hidden`}
+              >
+                <button
+                  onClick={() => onShowQuick && onShowQuick(a.localId, a.scrollTo)}
+                  className="flex-1 text-left flex items-center gap-3 p-3 hover:bg-white/40 min-w-0"
+                  title="Ouvrir le dossier"
+                >
+                  <span className="text-xl flex-shrink-0">{a.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-slate-800 text-sm truncate">{a.label}</div>
+                    <div className="text-xs text-slate-500 truncate">
+                      👤 {a.nom}{a.ville ? ` · ${a.ville}` : ''} · <span className="font-semibold text-slate-600">{a.cat}</span>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 text-right">
+                    {a.jours > 0 && (
+                      <div className={`text-lg font-bold ${a.level === 'critical' ? 'text-rose-600' : a.level === 'high' ? 'text-orange-600' : 'text-amber-600'}`}>{a.jours}j</div>
+                    )}
+                    <div className="text-[9px] text-slate-400 uppercase">{a.level === 'critical' ? 'urgent' : a.level === 'high' ? 'à faire' : 'à voir'}</div>
+                  </div>
+                </button>
+                {/* 🤖 Sol — pré-rédige un message contextualisé pour cette action */}
+                {dossier && onCopilot && (dossier.telephone || dossier.email) && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onCopilot(a, dossier); }}
+                    title="Sol : demander à l'IA de rédiger un message pour cette action"
+                    className="flex-shrink-0 px-3 flex items-center justify-center bg-violet-100 hover:bg-violet-200 text-violet-700 border-l border-slate-200 transition-colors"
+                  >
+                    🤖
+                  </button>
                 )}
-                <div className="text-[9px] text-slate-400 uppercase">{a.level === 'critical' ? 'urgent' : a.level === 'high' ? 'à faire' : 'à voir'}</div>
               </div>
-            </button>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
@@ -16885,6 +16932,228 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 }
 
 // ===================== ASSISTANT IA — façon secrétaire =====================
+// 🤖 Co-pilote IA « Sol » — pour chaque action de Ma journée, pré-rédige un
+// message contextualisé via Claude (réutilise /api/ai-email-assistant). L'user
+// révise et envoie en 1 clic (Gmail OAuth / WhatsApp / copie presse-papier).
+// C'est la version « secrétaire virtuelle » : Sol propose, l'humain valide.
+function AiCopilotModal({ action, dossier, currentUser, gmailOAuth, emailConfig, onClose, onSent }) {
+  const [intent, setIntent] = useState(action?.label || '');
+  const [generating, setGenerating] = useState(false);
+  const [draft, setDraft] = useState({ subject: '', body: '', reasoning: '' });
+  const [editedSubject, setEditedSubject] = useState('');
+  const [editedBody, setEditedBody] = useState('');
+  const [error, setError] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [sentFlash, setSentFlash] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const tel = dossier?.telephone || '';
+  const email = dossier?.email || '';
+  const clientLabel = `${dossier?.nom || ''} ${dossier?.prenom || ''}`.trim();
+
+  // Construit l'ordre IA contextualisé pour ce dossier + cette action.
+  const buildCommand = (intentText) => {
+    const lines = [
+      `Pour le dossier de ${clientLabel}${dossier?.ville ? ` à ${dossier.ville}` : ''}, rédige un message court et professionnel.`,
+      `Intention : ${intentText}`,
+      dossier?.dateInsta ? `Date de pose : ${new Date(dossier.dateInsta).toLocaleDateString('fr-FR')}` : '',
+      dossier?.financement ? `Financement : ${dossier.financement}` : '',
+      dossier?.statut ? `Statut actuel : ${dossier.statut}` : '',
+    ].filter(Boolean);
+    return lines.join('\n');
+  };
+
+  const generate = async (customIntent) => {
+    if (!dossier) return;
+    setGenerating(true);
+    setError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/ai-email-assistant', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          command: buildCommand(customIntent || intent),
+          // On ne passe QUE le dossier ciblé → pas d'ambiguïté possible.
+          dossiers: [{
+            localId: dossier.localId,
+            nom: dossier.nom, prenom: dossier.prenom,
+            email: dossier.email, telephone: dossier.telephone,
+            statut: dossier.statut, dateInsta: dossier.dateInsta,
+            financement: dossier.financement,
+            ville: dossier.ville,
+          }],
+          senderName: currentUser || '',
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      const d = payload.data || {};
+      setDraft({ subject: d.subject || '', body: d.body || '', reasoning: d.reasoning || '' });
+      setEditedSubject(d.subject || '');
+      setEditedBody(d.body || '');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // Auto-génération à l'ouverture de la modale
+  useEffect(() => { generate(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
+
+  const copyDraft = async () => {
+    const text = editedSubject ? `${editedSubject}\n\n${editedBody}` : editedBody;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      window.prompt('Copie ce message :', text);
+    }
+  };
+
+  const openWhatsApp = () => {
+    if (!tel) return;
+    const text = editedBody;
+    const link = buildWhatsAppLink(tel, text);
+    window.open(link, '_blank');
+    if (onSent) onSent({ channel: 'whatsapp', subject: editedSubject, body: editedBody });
+  };
+
+  const sendEmail = async () => {
+    if (!email) { setError("Pas d'email sur ce client."); return; }
+    setSending(true); setError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const useOAuth = !!gmailOAuth?.connected;
+      const useSmtp = !useOAuth && !!(emailConfig?.smtpUser && emailConfig?.smtpPass);
+      if (!useOAuth && !useSmtp) {
+        throw new Error("Aucun email d'envoi configuré (Réglages → Email d'envoi).");
+      }
+      const body = useOAuth
+        ? { provider: 'gmail-oauth', to: email, subject: editedSubject, text: editedBody, fromName: emailConfig?.fromName || 'CRM Solaire' }
+        : { to: email, subject: editedSubject, text: editedBody, smtpUser: emailConfig.smtpUser, smtpPass: emailConfig.smtpPass, fromName: emailConfig?.fromName || 'CRM Solaire' };
+      const res = await fetch('/api/send-email', { method: 'POST', headers, body: JSON.stringify(body) });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      setSentFlash('email');
+      if (onSent) onSent({ channel: useOAuth ? 'email_oauth' : 'email_smtp', subject: editedSubject, body: editedBody });
+      setTimeout(() => onClose && onClose(), 1500);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl shadow-2xl border border-violet-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="px-5 py-4 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-lg flex items-center gap-2">🤖 Sol — Copilote IA</h2>
+            <p className="text-xs opacity-90 mt-0.5">
+              {action?.emoji} {action?.label} · 👤 {clientLabel}
+            </p>
+          </div>
+          <button onClick={onClose} className="hover:bg-white/20 rounded p-1"><X className="w-5 h-5" /></button>
+        </div>
+
+        {/* Corps */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {/* Champ intention modifiable + bouton régénérer */}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Intention</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={intent}
+                onChange={(e) => setIntent(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') generate(); }}
+                className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+              />
+              <button onClick={() => generate()} disabled={generating} className="px-3 py-2 bg-violet-500 hover:bg-violet-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1 whitespace-nowrap">
+                <Sparkles className="w-3 h-3" />{generating ? '…' : 'Régénérer'}
+              </button>
+            </div>
+          </div>
+
+          {/* État chargement / erreur */}
+          {generating && (
+            <div className="p-6 text-center text-violet-600 text-sm">
+              <div className="text-3xl mb-2 animate-pulse">🤖</div>
+              Sol réfléchit…
+            </div>
+          )}
+          {error && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
+              ❌ {error}
+            </div>
+          )}
+
+          {/* Brouillon éditable */}
+          {!generating && (draft.subject || draft.body) && (
+            <>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Sujet (email)</label>
+                <input
+                  type="text"
+                  value={editedSubject}
+                  onChange={(e) => setEditedSubject(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Message</label>
+                <textarea
+                  value={editedBody}
+                  onChange={(e) => setEditedBody(e.target.value)}
+                  rows={8}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-violet-400 resize-y"
+                />
+              </div>
+              {draft.reasoning && (
+                <div className="text-[11px] text-slate-500 italic px-1">💡 {draft.reasoning}</div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        <div className="p-3 border-t border-slate-200 bg-slate-50 flex gap-2 flex-wrap">
+          <button onClick={copyDraft} disabled={generating || !editedBody} className="flex-1 min-w-[100px] px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-700 rounded-xl text-sm font-bold">
+            {copied ? '✓ Copié !' : '📋 Copier'}
+          </button>
+          {tel && (
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); openWhatsApp(); }}
+              className={`flex-1 min-w-[100px] px-3 py-2 text-center rounded-xl text-sm font-bold ${(!generating && editedBody) ? 'bg-[#25D366] hover:bg-[#1ebe5a] text-white' : 'bg-slate-200 text-slate-400 pointer-events-none'}`}
+            >
+              📲 WhatsApp
+            </a>
+          )}
+          {email && (
+            <button
+              onClick={sendEmail}
+              disabled={generating || sending || !editedBody}
+              className="flex-1 min-w-[100px] px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-xl text-sm font-bold"
+            >
+              {sending ? '⏳…' : sentFlash === 'email' ? '✓ Envoyé !' : '📧 Envoyer'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Tape un ordre en langage naturel ("Envoie un mail à Marage pour confirmer
 // la pose mardi"), Claude identifie le client + rédige le mail, tu valides
 // et tu envoies via Gmail OAuth ou SMTP.
