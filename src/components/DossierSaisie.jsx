@@ -1539,6 +1539,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     blMaterielFileName: '',
     materielRendu: false,
     materielRenduDate: '',
+    // Bon de retour quand le poseur ramène le matériel non utilisé.
+    materielRenduStoragePath: '',
+    materielRenduFileName: '',
     dateRecuRegie: '',  // date à laquelle la régie nous a renvoyé le doc du client
     dateRenvoiDocs: '', // date à laquelle on a renvoyé les docs à la banque
     envoisHistorique: [], // [{financeur, dateEnvoi, dateRetour, statut, note}]
@@ -2604,6 +2607,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       blMaterielFileName: d.blMaterielFileName || '',
       materielRendu: !!d.materielRendu,
       materielRenduDate: d.materielRenduDate || '',
+      materielRenduStoragePath: d.materielRenduStoragePath || '',
+      materielRenduFileName: d.materielRenduFileName || '',
       dateRenvoiDocs: d.dateRenvoiDocs || '',
       envoisHistorique: d.envoisHistorique || [],
       dateEnvoiPose: d.dateEnvoiPose || '', dateVisitePose: d.dateVisitePose || '',
@@ -12927,31 +12932,27 @@ function PdfGeneratorPanel({ dossier }) {
   );
 }
 
-// 📦 Bloc « BL matériel remis au poseur » — affiché dans la section
-// POSEURS de la QuickView. Coche du BL + date, upload du PDF, et toggle
-// « matériel rendu » qui apparaît quand le dossier est annulé/refusé.
-// Le PDF est stocké dans le bucket Supabase (dossier-documents), on garde
-// juste le path + le nom du fichier sur le dossier (blMaterielStoragePath,
-// blMaterielFileName) pour pouvoir le rouvrir / le remplacer / le retirer.
-function BLMaterielBlock({ d, onUpdate }) {
+// 📎 Composant générique d'upload d'un PDF dans le bucket Supabase.
+// Utilisé pour le BL matériel ALLER (livraison au poseur) ET le BL matériel
+// RETOUR (poseur rend le matériel non utilisé après annulation/refus).
+// Couleur configurable pour différencier visuellement les 2 (orange / vert).
+function PdfUploader({ storagePath, fileName, onChange, color = 'orange', placeholder = 'Insérer le PDF', fileIdPrefix = 'bl_materiel' }) {
   const [uploading, setUploading] = useState(false);
   const [pdfUrl, setPdfUrl] = useState(null);
   const inputRef = useRef(null);
 
-  // Résout l'URL signée du PDF actuel (1 h de validité, largement assez).
   useEffect(() => {
     let cancelled = false;
     setPdfUrl(null);
-    const path = d.blMaterielStoragePath;
-    if (!path) return;
+    if (!storagePath) return;
     (async () => {
       try {
-        const { url } = await getSignedUrl(path, 3600);
+        const { url } = await getSignedUrl(storagePath, 3600);
         if (!cancelled) setPdfUrl(url || null);
       } catch (e) {}
     })();
     return () => { cancelled = true; };
-  }, [d.blMaterielStoragePath]);
+  }, [storagePath]);
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -12963,35 +12964,72 @@ function BLMaterielBlock({ d, onUpdate }) {
     }
     setUploading(true);
     try {
-      const fileId = `bl_materiel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const fileId = `${fileIdPrefix}_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const { path, error: upErr } = await uploadFileToBucket(file, fileId);
       if (upErr || !path) {
         alert(`❌ Upload échoué : ${upErr?.message || 'erreur inconnue'}`);
         return;
       }
-      // Supprime l'ancien fichier du bucket si on remplace
-      if (d.blMaterielStoragePath) {
-        try { await deleteFileFromBucket(d.blMaterielStoragePath); } catch (er) {}
+      if (storagePath) {
+        try { await deleteFileFromBucket(storagePath); } catch (er) {}
       }
-      onUpdate({
-        blMaterielStoragePath: path,
-        blMaterielFileName: file.name,
-      });
+      onChange(path, file.name);
     } finally {
       setUploading(false);
     }
   };
 
   const removeFile = async () => {
-    if (!window.confirm('Retirer le PDF du BL matériel ?')) return;
-    if (d.blMaterielStoragePath) {
-      try { await deleteFileFromBucket(d.blMaterielStoragePath); } catch (e) {}
+    if (!window.confirm('Retirer le PDF ?')) return;
+    if (storagePath) {
+      try { await deleteFileFromBucket(storagePath); } catch (e) {}
     }
-    onUpdate({ blMaterielStoragePath: '', blMaterielFileName: '' });
+    onChange('', '');
   };
 
+  // Map couleur → classes Tailwind (statiques pour pas que le purger CSS les vire).
+  const palette = {
+    orange: { border: 'border-orange-200', hover: 'hover:bg-orange-100', text: 'text-orange-700', btnBg: 'bg-orange-100', btnHover: 'hover:bg-orange-200', dash: 'border-orange-300' },
+    emerald: { border: 'border-emerald-200', hover: 'hover:bg-emerald-100', text: 'text-emerald-700', btnBg: 'bg-emerald-100', btnHover: 'hover:bg-emerald-200', dash: 'border-emerald-300' },
+  }[color] || { border: 'border-orange-200', hover: 'hover:bg-orange-100', text: 'text-orange-700', btnBg: 'bg-orange-100', btnHover: 'hover:bg-orange-200', dash: 'border-orange-300' };
+
+  return (
+    <>
+      <input ref={inputRef} type="file" accept="application/pdf" onChange={handleFile} className="hidden" />
+      {storagePath ? (
+        <div className="flex items-center gap-1">
+          {pdfUrl ? (
+            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className={`flex-1 min-w-0 px-1.5 py-1 bg-white border ${palette.border} rounded text-[10px] ${palette.text} font-bold truncate ${palette.hover}`} title={fileName || 'document.pdf'}>
+              📄 {fileName || 'document.pdf'}
+            </a>
+          ) : (
+            <span className={`flex-1 px-1.5 py-1 bg-white border ${palette.border} rounded text-[10px] text-slate-400 italic truncate`}>Chargement…</span>
+          )}
+          <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} title="Remplacer le PDF" className={`flex-shrink-0 p-1 ${palette.btnBg} ${palette.btnHover} ${palette.text} rounded`}>
+            <RotateCcw className="w-3 h-3" />
+          </button>
+          <button type="button" onClick={removeFile} disabled={uploading} title="Retirer le PDF" className="flex-shrink-0 p-1 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded">
+            <Trash2 className="w-3 h-3" />
+          </button>
+        </div>
+      ) : (
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className={`w-full flex items-center justify-center gap-1 px-1.5 py-1 bg-white ${palette.hover} border border-dashed ${palette.dash} rounded text-[10px] font-semibold ${palette.text} disabled:opacity-50`}>
+          {uploading ? '⏳ Upload…' : <><Upload className="w-3 h-3" /> {placeholder}</>}
+        </button>
+      )}
+    </>
+  );
+}
+
+// 📦 Bloc « BL matériel remis au poseur » — affiché dans la section POSEURS.
+// Contient 2 sous-blocs :
+//   - BL ALLER  : livraison du matériel au poseur (toggle + date + PDF)
+//   - BL RETOUR : poseur a rendu le matériel (toggle + date + PDF), visible
+//                 uniquement si dossier annulé/refusé/pose ratée.
+function BLMaterielBlock({ d, onUpdate }) {
   return (
     <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+      {/* BL ALLER */}
       <label className="flex items-center gap-1.5 text-[10px] font-bold text-orange-700 cursor-pointer">
         <input
           type="checkbox"
@@ -13016,33 +13054,20 @@ function BLMaterielBlock({ d, onUpdate }) {
               <input type="date" min="2000-01-01" max="2100-12-31" value={d.blMaterielDate || ''} onChange={(e) => onUpdate({ blMaterielDate: e.target.value })} className="w-full px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
             </div>
             <div>
-              <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📄 PDF du BL</label>
-              <input ref={inputRef} type="file" accept="application/pdf" onChange={handleFile} className="hidden" />
-              {d.blMaterielStoragePath ? (
-                <div className="flex items-center gap-1">
-                  {pdfUrl ? (
-                    <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px] text-orange-700 font-bold truncate hover:bg-orange-100" title={d.blMaterielFileName || 'BL.pdf'}>
-                      📄 {d.blMaterielFileName || 'BL.pdf'}
-                    </a>
-                  ) : (
-                    <span className="flex-1 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px] text-slate-400 italic truncate">Chargement…</span>
-                  )}
-                  <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} title="Remplacer le PDF" className="flex-shrink-0 p-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded">
-                    <RotateCcw className="w-3 h-3" />
-                  </button>
-                  <button type="button" onClick={removeFile} disabled={uploading} title="Retirer le PDF" className="flex-shrink-0 p-1 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded">
-                    <Trash2 className="w-3 h-3" />
-                  </button>
-                </div>
-              ) : (
-                <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="w-full flex items-center justify-center gap-1 px-1.5 py-1 bg-white hover:bg-orange-100 border border-dashed border-orange-300 rounded text-[10px] font-semibold text-orange-700 disabled:opacity-50">
-                  {uploading ? '⏳ Upload…' : <><Upload className="w-3 h-3" /> Insérer le PDF</>}
-                </button>
-              )}
+              <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📄 PDF du BL aller</label>
+              <PdfUploader
+                storagePath={d.blMaterielStoragePath}
+                fileName={d.blMaterielFileName}
+                onChange={(path, name) => onUpdate({ blMaterielStoragePath: path, blMaterielFileName: name })}
+                color="orange"
+                placeholder="Insérer le PDF"
+                fileIdPrefix="bl_materiel"
+              />
             </div>
           </div>
-          {/* Toggle « rendu » : pertinent uniquement après annulation/refus.
-              Visible si dossier annulé OU tentative pose ratée OU si déjà coché. */}
+
+          {/* BL RETOUR + toggle « rendu ». Visible si dossier annulé/refusé OU
+              tentative pose ratée OU si déjà coché (pour pouvoir décocher). */}
           {(d.statut === 'W2_ANNULER' || d.statut === 'ANNULER' || (d.tentativesPose || []).length > 0 || d.materielRendu) && (
             <div className={`p-1.5 rounded border-2 ${d.materielRendu ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
               <label className="flex items-center gap-1.5 text-[10px] font-bold cursor-pointer">
@@ -13063,9 +13088,22 @@ function BLMaterielBlock({ d, onUpdate }) {
                 </span>
               </label>
               {d.materielRendu && (
-                <div className="mt-1 flex items-center gap-1">
-                  <label className="text-[9px] font-semibold text-emerald-600 whitespace-nowrap">📅 Le</label>
-                  <input type="date" min="2000-01-01" max="2100-12-31" value={d.materielRenduDate || ''} onChange={(e) => onUpdate({ materielRenduDate: e.target.value })} className="flex-1 px-1.5 py-0.5 bg-white border border-emerald-200 rounded text-[10px]" />
+                <div className="mt-1 grid grid-cols-2 gap-1.5">
+                  <div>
+                    <label className="block text-[9px] font-semibold text-emerald-600 mb-0.5">📅 Rendu le</label>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.materielRenduDate || ''} onChange={(e) => onUpdate({ materielRenduDate: e.target.value })} className="w-full px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
+                  </div>
+                  <div>
+                    <label className="block text-[9px] font-semibold text-emerald-600 mb-0.5">📄 PDF du bon de retour</label>
+                    <PdfUploader
+                      storagePath={d.materielRenduStoragePath}
+                      fileName={d.materielRenduFileName}
+                      onChange={(path, name) => onUpdate({ materielRenduStoragePath: path, materielRenduFileName: name })}
+                      color="emerald"
+                      placeholder="Insérer le bon de retour"
+                      fileIdPrefix="bl_retour"
+                    />
+                  </div>
                 </div>
               )}
             </div>
