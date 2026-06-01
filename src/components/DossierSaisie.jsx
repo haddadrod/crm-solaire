@@ -1275,6 +1275,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Chargement initial
   useEffect(() => {
     (async () => {
+      // 📊 Mesures de perfs pour diagnostiquer la lenteur perçue. Visibles
+      // dans la console (F12). Sera retiré une fois le bottleneck identifié.
+      const T0 = performance.now();
+      const tlog = (label) => console.log(`[CRM perf] ${label} : ${Math.round(performance.now() - T0)} ms`);
+
       // 🚀 Priorité : afficher l'app dès que les dossiers sont prêts. Les
       // autres réglages (tarifs, contacts, sociétés) continuent de charger
       // en arrière-plan et s'appliquent au fur et à mesure. L'utilisateur
@@ -1345,9 +1350,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
           window.storage.get('dossiers-data'),
           window.storage.get('societes'),
         ]);
+        tlog('Supabase fetch dossiers+societes');
         if (dossiersRes?.value) {
           const arr = JSON.parse(dossiersRes.value);
-          setDossiers(arr.map(migrateDossier));
+          tlog(`JSON.parse dossiers (${arr.length} dossiers, ${(dossiersRes.value.length / 1024).toFixed(0)} Ko)`);
+          const migrated = arr.map(migrateDossier);
+          tlog('Migration in-memory');
+          setDossiers(migrated);
         }
         if (societesRes?.value) {
           const arr = JSON.parse(societesRes.value);
@@ -1355,6 +1364,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         }
       } catch (e) {}
       setLoading(false);
+      tlog('setLoading(false) — UI dispo');
 
       // 🛠️ Phase 2 — non bloquant : tout le reste en parallèle, sans bloquer
       // l'affichage. Les setters mettent à jour l'état dès que chaque clé est
