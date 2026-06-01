@@ -1516,8 +1516,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
     if (isInitialMount.current) { if (!loading) isInitialMount.current = false; return; }
     const json = JSON.stringify(dossiers);
     lastWrittenDossiersJson.current = json;
-    // 🔎 DIAGNOSTIC TEMPORAIRE — voir d'où viennent les bascules de state.
-    console.log('[CRM save] write dossiers-data', { size: json.length, n: dossiers.length });
     (async () => {
       try {
         await window.storage.set('dossiers-data', json);
@@ -1679,17 +1677,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
           if (!newValue) return;
           // Ignore les évènements qui matchent notre propre dernière écriture
           // (sinon boucle infinie : on écrit → realtime → on relit → on écrit…)
-          if (newValue === lastWrittenDossiersJson.current) {
-            console.log('[CRM realtime] echo ignored (same as last write)');
-            return;
-          }
+          if (newValue === lastWrittenDossiersJson.current) return;
           try {
             const parsed = JSON.parse(newValue);
             if (!Array.isArray(parsed)) return;
-            // 🔎 DIAGNOSTIC TEMPORAIRE — c'est ici qu'on rapatrie l'état d'un
-            // autre device. Si tu vois ce log SANS avoir un autre onglet/PC
-            // ouvert, c'est un faux positif à creuser.
-            console.warn('[CRM realtime] applying external update', { size: newValue.length, n: parsed.length });
             lastWrittenDossiersJson.current = newValue;
             setDossiers(parsed);
           } catch (e) {
@@ -1734,7 +1725,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (!v || v === lastWrittenDossiersJson.current) return;
         const parsed = JSON.parse(v);
         if (!Array.isArray(parsed)) return;
-        console.warn('[CRM focus pull] applying refresh', { size: v.length, n: parsed.length });
         lastWrittenDossiersJson.current = v;
         setDossiers(parsed);
       } catch (e) {
@@ -4160,6 +4150,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 controleQualite: 'cq',
                 aEnvoyerBanque: 'financement',
                 financement: 'financement',
+                manqueDoc: 'manqueDoc',
                 aEnvoyerPose: 'pose',
                 poseurNonAssigne: 'poseurs',
                 poseNonFinie: 'pose',
@@ -4172,6 +4163,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 paiement: 'paiement',
                 recup_tva: 'paiement',
                 clientRappel: 'rappel',
+                litige: 'litige',
+                sav: 'sav',
                 stagnation: null, // pas de section précise, on ouvre juste le panneau
               };
               const target = scrollMap[showAlertesType] || null;
@@ -12603,6 +12596,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const refRaccordement = useRef(null);
   const refMairie = useRef(null);
   const refRappel = useRef(null);
+  const refLitige = useRef(null);
+  const refSav = useRef(null);
 
   // Pliage des sections (étapes process + blocs métier). Tout plié par défaut
   // pour éviter d'avoir à scroller dans tout le panneau. Clic sur le titre =
@@ -12611,6 +12606,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const [foldedSteps, setFoldedSteps] = useState({
     cq: true, mairie: true, fin: true, pose: true, consuel: true, raccordement: true, paiement: true,
     produits: true, regies: true, poseurs: true, fournisseurs: true, rappel: true,
+    litige: true, sav: true,
   });
   const toggleStep = (key) => setFoldedSteps(prev => ({ ...prev, [key]: !prev[key] }));
   const openStep = (key) => setFoldedSteps(prev => ({ ...prev, [key]: false }));
@@ -12635,6 +12631,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       raccordement: 'raccordement', envoiRaccordement: 'raccordement', aEnvoyerRaccordement: 'raccordement',
       paiement: 'paiement', controleLivraison: 'paiement', originaux: 'paiement', tva: 'paiement', recupTva: 'paiement',
       rappel: 'rappel', clientRappel: 'rappel',
+      litige: 'litige',
+      sav: 'sav',
+      manqueDoc: 'fin', // les manques docs s'éditent dans la section financement
     })[scrollTo];
     if (stepKey) setFoldedSteps(prev => ({ ...prev, [stepKey]: false }));
     setTimeout(() => {
@@ -12651,6 +12650,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       else if (scrollTo === 'consuel' || scrollTo === 'envoiConsuel') target = refConsuel.current;
       else if (scrollTo === 'raccordement' || scrollTo === 'envoiRaccordement' || scrollTo === 'aEnvoyerRaccordement') target = refRaccordement.current;
       else if (scrollTo === 'rappel' || scrollTo === 'clientRappel') target = refRappel.current;
+      else if (scrollTo === 'litige') target = refLitige.current;
+      else if (scrollTo === 'sav') target = refSav.current;
+      else if (scrollTo === 'manqueDoc') target = refFinancement.current;
       if (target) {
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         // Effet flash pour attirer l'œil
@@ -14382,7 +14384,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               const refDate = d.litigeDateCourrierRecommande || d.createdAt;
               const joursOuvert = refDate ? Math.max(0, Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000)) : 0;
               return (
-                <div className={`border-2 rounded-xl p-2 mb-2 ${d.litigeTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
+                <div ref={refLitige} className={`border-2 rounded-xl p-2 mb-2 ${d.litigeTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
                   <button onClick={() => toggleStep('litige')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.litige ? '' : 'mb-1.5'} hover:opacity-80`}>
                     <span className="flex items-center gap-1.5 text-rose-700">
                       <span className="text-rose-600 text-[9px]">{foldedSteps.litige ? '▶' : '▼'}</span>
@@ -14499,7 +14501,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               const refDate = d.savDateOuverture || d.createdAt;
               const joursOuvert = refDate ? Math.max(0, Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000)) : 0;
               return (
-                <div className={`border-2 rounded-xl p-2 mb-2 ${d.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-yellow-50 border-yellow-300'}`}>
+                <div ref={refSav} className={`border-2 rounded-xl p-2 mb-2 ${d.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-yellow-50 border-yellow-300'}`}>
                   <button onClick={() => toggleStep('sav')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.sav ? '' : 'mb-1.5'} hover:opacity-80`}>
                     <span className="flex items-center gap-1.5 text-yellow-700">
                       <span className="text-yellow-600 text-[9px]">{foldedSteps.sav ? '▶' : '▼'}</span>
