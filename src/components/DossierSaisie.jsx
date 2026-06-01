@@ -3075,6 +3075,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const totalEncaisseClient = encaissList.reduce((s, e) => s + e.totalRecu, 0);
     const totalAEncaisserClient = encaissList.reduce((s, e) => s + e.totalRestant, 0);
 
+    // 💰 Trésorerie prévisionnelle — découpage temporel des entrées attendues :
+    //   • IMMINENTES : pose faite ET contrôle livraison fait → la banque va
+    //     débloquer sous peu (le contrôle livraison est le dernier verrou).
+    //   • À VENIR    : pose faite mais contrôle livraison pas encore fait.
+    let encaissImminent = 0, encaissAVenir = 0;
+    dossiersFiltres.forEach(d => {
+      const poseFinie = d.statutPose === 'visite_ok';
+      if (!poseFinie || d.payeClient) return;
+      const isDead = d.statut === 'W2_ANNULER' || d.statut === 'W1_DEPOSER'
+        || d.statut === 'B3_REFUS_FINANCEMENT' || d.statutFin === 'refusé'
+        || d.statutPose === 'client_refuse';
+      if (isDead) return;
+      const m = d.montantTotal || 0;
+      if (d.dateControleLivraison) encaissImminent += m;
+      else encaissAVenir += m;
+    });
+
     // Pénalités régies (poses ratées) — agrégées par régie × société
     const penaliteMap = {};
     dossiersFiltres.forEach(d => {
@@ -3140,7 +3157,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const totalLitigesPaye = litigesList.reduce((s, p) => s + p.totalPaye, 0);
     const totalLitigesRestant = litigesList.reduce((s, p) => s + p.totalRestant, 0);
 
-    return { list, totalGeneralPaye, totalGeneralRestant, totalAPayerMaintenant, totalEnAttenteFinanceur, totalPayeAvance, totalEncaisseClient, totalAEncaisserClient, encaissList, penalitesList, totalPenalitesDu, totalPenalitesPaye, totalPenalitesRestant, litigesList, totalLitigesDu, totalLitigesPaye, totalLitigesRestant, activeSociete };
+    return { list, totalGeneralPaye, totalGeneralRestant, totalAPayerMaintenant, totalEnAttenteFinanceur, totalPayeAvance, totalEncaisseClient, totalAEncaisserClient, encaissImminent, encaissAVenir, encaissList, penalitesList, totalPenalitesDu, totalPenalitesPaye, totalPenalitesRestant, litigesList, totalLitigesDu, totalLitigesPaye, totalLitigesRestant, activeSociete };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Dashboard
@@ -6227,9 +6244,56 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
         <div className="bg-gradient-to-br from-violet-500 to-purple-500 rounded-2xl p-5 text-white shadow-lg">
           <div className="text-xs font-semibold opacity-90 uppercase">💰 Trésorerie nette</div>
           <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalEncaisseClient - rapportPaiements.totalGeneralPaye)}</div>
-          <div className="text-sm opacity-90 mt-2">Reçu − Payé</div>
+          <div className="text-sm opacity-90 mt-2">Reçu − Payé (réalisé)</div>
         </div>
       </div>
+
+      {/* 🔮 TRÉSORERIE PRÉVISIONNELLE — ce qui va rentrer vs ce qui va sortir,
+          pour anticiper les semaines tendues. */}
+      {(() => {
+        const entrees = rapportPaiements.totalAEncaisserClient || 0;
+        const sorties = rapportPaiements.totalAPayerMaintenant || 0;
+        const solde = entrees - sorties;
+        const imminent = rapportPaiements.encaissImminent || 0;
+        const avenir = rapportPaiements.encaissAVenir || 0;
+        return (
+          <div className="bg-white rounded-3xl shadow-md border border-violet-100 overflow-hidden">
+            <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-violet-50 to-fuchsia-50">
+              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">🔮 Trésorerie prévisionnelle</h2>
+              <p className="text-xs text-slate-500 mt-0.5">Ce qui doit rentrer (banques) vs ce qui doit sortir (poseurs, régies, commissions) sur les dossiers déjà posés.</p>
+            </div>
+            <div className="p-4 space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                {/* ENTRÉES */}
+                <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-4">
+                  <div className="text-xs font-bold text-emerald-700 uppercase">⬆️ À encaisser</div>
+                  <div className="text-2xl font-bold text-emerald-800 mt-1">{formatEuro(entrees)}</div>
+                  <div className="mt-2 space-y-1 text-[11px]">
+                    <div className="flex justify-between"><span className="text-emerald-700">🟢 Imminent (livraison contrôlée)</span><span className="font-bold text-emerald-800">{formatEuro(imminent)}</span></div>
+                    <div className="flex justify-between"><span className="text-emerald-600">⏳ À venir (pose faite)</span><span className="font-bold text-emerald-700">{formatEuro(avenir)}</span></div>
+                  </div>
+                </div>
+                {/* SORTIES */}
+                <div className="rounded-2xl border-2 border-rose-200 bg-rose-50 p-4">
+                  <div className="text-xs font-bold text-rose-700 uppercase">⬇️ À décaisser</div>
+                  <div className="text-2xl font-bold text-rose-800 mt-1">{formatEuro(sorties)}</div>
+                  <div className="mt-2 text-[11px] text-rose-600">Poseurs, régies, fournisseurs et commissions internes des dossiers posés, pas encore payés.</div>
+                </div>
+                {/* SOLDE NET */}
+                <div className={`rounded-2xl border-2 p-4 ${solde >= 0 ? 'border-emerald-300 bg-gradient-to-br from-emerald-500 to-teal-500' : 'border-rose-300 bg-gradient-to-br from-rose-500 to-orange-500'} text-white`}>
+                  <div className="text-xs font-bold uppercase opacity-90">{solde >= 0 ? '✅ Solde net prévisionnel' : '⚠️ Solde net prévisionnel'}</div>
+                  <div className="text-2xl font-bold mt-1">{solde >= 0 ? '+' : ''}{formatEuro(solde)}</div>
+                  <div className="mt-2 text-[11px] opacity-90">
+                    {solde >= 0
+                      ? 'Les encaissements attendus couvrent les sorties à prévoir.'
+                      : 'Attention : les sorties dépassent les rentrées attendues. Anticipe.'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="bg-white rounded-3xl shadow-md border border-emerald-100 overflow-hidden">
         <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-teal-50">
