@@ -1393,6 +1393,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
             // statut est hors cycle (SAV, LITIGE, W2_ANNULER, etc.) ou déjà
             // correct, applyAutoStatut renvoie le dossier inchangé.
             dossier = applyAutoStatut(dossier);
+            // 🧹 Nettoyage des dateInsta orphelines : si une date de pose est
+            // saisie alors que statutPose n'est pas 'visite_ok' (= pose pas
+            // validée), c'est un reliquat d'un ancien bug de remplissage
+            // automatique. On vide la date pour que « Posé le » redevienne
+            // cohérent avec « PAS PLANIFIÉ ».
+            if (dossier.dateInsta && dossier.statutPose !== 'visite_ok') {
+              dossier = { ...dossier, dateInsta: '' };
+            }
             // Auto-archive de rattrapage : un dossier annulé devrait être archivé.
             // Si on tombe sur un dossier W2_ANNULER non archivé (annulation faite
             // avant la mise en place de l'auto-archive), on l'archive maintenant.
@@ -10743,7 +10751,21 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Posé le</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateInsta || ''} onChange={(e) => setFormData({ ...formData, dateInsta: e.target.value })} className={inputCls} />
+                    <input
+                      type="date"
+                      value={formData.statutPose === 'visite_ok' ? (formData.dateInsta || '') : ''}
+                      onChange={(e) => setFormData({
+                        ...formData,
+                        dateInsta: e.target.value,
+                        // Saisir une date « Posé le » implique que la pose a
+                        // eu lieu : on synchronise statutPose pour garder
+                        // l'état cohérent (et le calendrier propre).
+                        statutPose: e.target.value
+                          ? 'visite_ok'
+                          : (formData.statutPose === 'visite_ok' ? '' : formData.statutPose),
+                      })}
+                      className={inputCls}
+                    />
                     <button type="button" onClick={() => setFormData({ ...formData, dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
@@ -13731,7 +13753,17 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Posé le</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateInsta || ''} onChange={(e) => onUpdate({ dateInsta: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                    <input
+                      type="date"
+                      value={d.statutPose === 'visite_ok' ? (d.dateInsta || '') : ''}
+                      onChange={(e) => onUpdate({
+                        dateInsta: e.target.value,
+                        statutPose: e.target.value
+                          ? 'visite_ok'
+                          : (d.statutPose === 'visite_ok' ? '' : d.statutPose),
+                      })}
+                      className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]"
+                    />
                     <button onClick={() => onUpdate({ dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
