@@ -9154,6 +9154,19 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
     setProduits(produits.filter(prod => prod.id !== p.id));
   };
 
+  // Décale un type d'une position dans la liste (↑ ou ↓). L'ordre stocké
+  // dans le tableau `produits` pilote l'ordre d'affichage partout — UI
+  // Réglages mais aussi les menus déroulants du dossier.
+  const moveType = (typeId, direction) => {
+    const idx = produits.findIndex(p => p.id === typeId);
+    if (idx === -1) return;
+    const target = direction === 'up' ? idx - 1 : idx + 1;
+    if (target < 0 || target >= produits.length) return;
+    const next = [...produits];
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setProduits(next);
+  };
+
   // Helpers pour gérer le catalogue marques/modèles d'un type de produit.
   // Chaque variant a un id stable (slug) pour qu'on puisse le référencer
   // dans les dossiers sans dépendre de l'index dans le tableau.
@@ -9210,10 +9223,12 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
           )}
         </div>
         <div className="space-y-2">
-          {produits.map(p => {
+          {produits.map((p, idx) => {
             const used = dossiers.filter(d => (d.produits || []).some(pp => pp.type === p.id) || d.produit === p.id).length;
             const variants = Array.isArray(p.variants) ? p.variants : [];
             const expanded = expandedTypeIds.has(p.id);
+            const isFirst = idx === 0;
+            const isLast = idx === produits.length - 1;
             return (
               <div key={p.id} className={`rounded-xl border ${p.autoTarif ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
                 {/* Ligne du type — clic sur le chevron OU le label déplie */}
@@ -9241,6 +9256,15 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
                     <span className="text-[10px] font-bold px-2 py-1 bg-amber-200 text-amber-800 rounded-full whitespace-nowrap">⚡ Tarifs auto par Wc</span>
                   )}
                   <span className={`text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap ${used > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-400'}`}>{used} dossier{used > 1 ? 's' : ''}</span>
+                  {/* Boutons de réordonnancement */}
+                  <div className="flex items-center gap-0.5">
+                    <button onClick={() => moveType(p.id, 'up')} disabled={isFirst} className="p-1 text-slate-500 hover:bg-slate-200 rounded disabled:opacity-20 disabled:cursor-not-allowed" title="Remonter ce type">
+                      <ArrowUp className="w-3.5 h-3.5" />
+                    </button>
+                    <button onClick={() => moveType(p.id, 'down')} disabled={isLast} className="p-1 text-slate-500 hover:bg-slate-200 rounded disabled:opacity-20 disabled:cursor-not-allowed" title="Descendre ce type">
+                      <ArrowDown className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                   <button onClick={() => del(p)} disabled={p.autoTarif} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed" title={p.autoTarif ? 'Type système, non supprimable' : 'Supprimer le type'}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
