@@ -4488,6 +4488,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             societes={societes}
             projexioMoisCourant={dashboard.projexioMoisCourant}
             projexioCaps={projexioCaps}
+            dossiers={dossiers}
             currentUser={currentUser}
             onClose={resetForm} onSubmit={handleSubmit} isAdmin={isAdmin}
           />
@@ -9870,7 +9871,33 @@ function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
   );
 }
 
-function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], projexioMoisCourant = { parSociete: {} }, projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, currentUser, onClose, onSubmit, isAdmin }) {
+function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], projexioMoisCourant = { parSociete: {} }, projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, dossiers = [], currentUser, onClose, onSubmit, isAdmin }) {
+  // 🚨 Détection de doublons : scanne les dossiers existants à mesure que
+  // l'utilisateur saisit nom/prenom/tel. Match strict sur :
+  //   - téléphone normalisé E.164 (le plus fiable)
+  //   - couple (nom + prenom) case-insensitive (fallback si pas de tel)
+  // On EXCLUT le dossier en cours d'édition (editingId) pour ne pas se
+  // matcher soi-même quand on modifie un dossier existant.
+  const dossierDoublons = useMemo(() => {
+    const nom = (formData.nom || '').trim().toLowerCase();
+    const prenom = (formData.prenom || '').trim().toLowerCase();
+    const tel = normalizePhoneE164(formData.telephone || '');
+    if (!tel && !nom) return [];
+    const out = [];
+    for (const d of dossiers || []) {
+      if (!d || d.localId === editingId) continue;
+      const dTel = normalizePhoneE164(d.telephone || '');
+      const dNom = (d.nom || '').trim().toLowerCase();
+      const dPrenom = (d.prenom || '').trim().toLowerCase();
+      const telMatch = tel && dTel && tel === dTel;
+      const namesMatch = nom && dNom && nom === dNom && (!prenom || !dPrenom || prenom === dPrenom);
+      if (telMatch || namesMatch) {
+        out.push({ d, reason: telMatch ? 'téléphone' : 'nom + prénom' });
+        if (out.length >= 3) break;
+      }
+    }
+    return out;
+  }, [formData.nom, formData.prenom, formData.telephone, dossiers, editingId]);
   const inputCls = "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400 text-sm";
 
   // Sous-étapes du "Process du dossier" dépliables (comme dans la QuickView).
@@ -10478,6 +10505,29 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               {!formData.societe && (
                 <div className="mt-2 text-[11px] text-rose-600 font-bold">⚠️ Choisis une société pour éviter d'envoyer les mauvais documents/emails au client.</div>
               )}
+            </div>
+          )}
+          {/* 🚨 Détection de doublons — alerte si on s'apprête à créer un
+              dossier qui existe déjà (même tel OU même nom/prénom). */}
+          {dossierDoublons.length > 0 && (
+            <div className="mb-4 p-3 bg-amber-50 border-2 border-amber-300 rounded-2xl">
+              <div className="text-sm font-bold text-amber-800 flex items-center gap-1.5">
+                ⚠️ {dossierDoublons.length === 1 ? 'Un dossier existe déjà pour ce client' : `${dossierDoublons.length} dossiers existent déjà pour ce client`}
+              </div>
+              <div className="mt-2 space-y-1">
+                {dossierDoublons.map(({ d, reason }) => (
+                  <div key={d.localId} className="flex items-center gap-2 flex-wrap text-[12px]">
+                    <span className="font-semibold text-slate-800">👤 {d.nom} {d.prenom || ''}</span>
+                    {d.telephone && <span className="text-slate-500">· 📞 {d.telephone}</span>}
+                    {d.ville && <span className="text-slate-500">· {d.ville}</span>}
+                    <span className="text-amber-700 italic">— match sur {reason}</span>
+                    {d.statut && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{d.statut}</span>}
+                  </div>
+                ))}
+              </div>
+              <div className="mt-2 text-[11px] text-amber-700">
+                Continue uniquement si c'est volontairement un <strong>nouveau dossier</strong> (ex : 2ᵉ installation à la même adresse). Sinon, annule et édite le dossier existant pour ne pas créer un doublon.
+              </div>
             </div>
           )}
           <Section title="👤 Identité & Coordonnées" color="violet">
