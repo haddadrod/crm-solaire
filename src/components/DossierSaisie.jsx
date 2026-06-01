@@ -159,6 +159,25 @@ function applyAutoStatut(d) {
   return { ...d, statut: auto };
 }
 
+// Normalisations à appliquer systématiquement à toute liste de dossiers
+// qui rentre depuis Supabase (chargement initial, realtime, focus pull) ou
+// qui s'apprête à être enregistrée. Évite que les données « sales » d'un
+// device se propagent à l'autre.
+function sanitizeDossiers(list) {
+  if (!Array.isArray(list)) return list;
+  return list.map(d => {
+    if (!d || typeof d !== 'object') return d;
+    // 🧹 dateInsta = « Posé le ». Tant que la pose n'est pas validée
+    // (statutPose === 'visite_ok'), cette date n'a pas de sens et était
+    // historiquement remplie par erreur par d'anciens chemins de saisie.
+    // On la vide ici pour rester cohérent avec le badge « Pas planifié ».
+    if (d.dateInsta && d.statutPose !== 'visite_ok') {
+      return { ...d, dateInsta: '' };
+    }
+    return d;
+  });
+}
+
 // Date métier rattachée à un changement de statut workflow, pour l'afficher
 // directement dans la timeline de l'historique ("Refusé le 19/05/2026").
 // Snapshotée au moment du changement (les dates du dossier évoluent ensuite,
@@ -1393,14 +1412,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
             // statut est hors cycle (SAV, LITIGE, W2_ANNULER, etc.) ou déjà
             // correct, applyAutoStatut renvoie le dossier inchangé.
             dossier = applyAutoStatut(dossier);
-            // 🧹 Nettoyage des dateInsta orphelines : si une date de pose est
-            // saisie alors que statutPose n'est pas 'visite_ok' (= pose pas
-            // validée), c'est un reliquat d'un ancien bug de remplissage
-            // automatique. On vide la date pour que « Posé le » redevienne
-            // cohérent avec « PAS PLANIFIÉ ».
-            if (dossier.dateInsta && dossier.statutPose !== 'visite_ok') {
-              dossier = { ...dossier, dateInsta: '' };
-            }
             // Auto-archive de rattrapage : un dossier annulé devrait être archivé.
             // Si on tombe sur un dossier W2_ANNULER non archivé (annulation faite
             // avant la mise en place de l'auto-archive), on l'archive maintenant.
@@ -1415,7 +1426,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             }
             return dossier;
           });
-          setDossiers(migrated);
+          setDossiers(sanitizeDossiers(migrated));
         }
       } catch (e) {}
       try {
@@ -1541,7 +1552,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Sauvegardes + backup snapshot (filet de sécurité)
   useEffect(() => {
     if (isInitialMount.current) { if (!loading) isInitialMount.current = false; return; }
-    const json = JSON.stringify(dossiers);
+    // sanitizeDossiers : défense en profondeur. Si une dateInsta sale s'est
+    // glissée en mémoire (ex: import, sync depuis un device pas à jour), on
+    // la vide avant de persister — comme ça la version dans Supabase reste
+    // toujours propre, et les autres devices ne réimportent pas la saleté.
+    const cleaned = sanitizeDossiers(dossiers);
+    const json = JSON.stringify(cleaned);
     lastWrittenDossiersJson.current = json;
     (async () => {
       try {
@@ -1711,7 +1727,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             // Met à jour notre état avec ce que l'autre device vient d'écrire.
             // On marque ce JSON comme 'déjà écrit' pour pas le réécrire en boucle.
             lastWrittenDossiersJson.current = newValue;
-            setDossiers(parsed);
+            setDossiers(sanitizeDossiers(parsed));
           } catch (e) {
             console.warn('[realtime dossiers] parse failed', e);
           }
@@ -1755,7 +1771,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         const parsed = JSON.parse(v);
         if (!Array.isArray(parsed)) return;
         lastWrittenDossiersJson.current = v;
-        setDossiers(parsed);
+        setDossiers(sanitizeDossiers(parsed));
       } catch (e) {
         // Silencieux
       }
