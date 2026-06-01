@@ -4163,6 +4163,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 controle: 'paiement',
                 paiement: 'paiement',
                 recup_tva: 'paiement',
+                clientRappel: 'rappel',
                 stagnation: null, // pas de section précise, on ouvre juste le panneau
               };
               const target = scrollMap[showAlertesType] || null;
@@ -12593,6 +12594,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const refConsuel = useRef(null);
   const refRaccordement = useRef(null);
   const refMairie = useRef(null);
+  const refRappel = useRef(null);
 
   // Pliage des sections (étapes process + blocs métier). Tout plié par défaut
   // pour éviter d'avoir à scroller dans tout le panneau. Clic sur le titre =
@@ -12600,7 +12602,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   // s'ouvre automatiquement.
   const [foldedSteps, setFoldedSteps] = useState({
     cq: true, mairie: true, fin: true, pose: true, consuel: true, raccordement: true, paiement: true,
-    produits: true, regies: true, poseurs: true, fournisseurs: true,
+    produits: true, regies: true, poseurs: true, fournisseurs: true, rappel: true,
   });
   const toggleStep = (key) => setFoldedSteps(prev => ({ ...prev, [key]: !prev[key] }));
   const openStep = (key) => setFoldedSteps(prev => ({ ...prev, [key]: false }));
@@ -12624,6 +12626,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       consuel: 'consuel', envoiConsuel: 'consuel',
       raccordement: 'raccordement', envoiRaccordement: 'raccordement', aEnvoyerRaccordement: 'raccordement',
       paiement: 'paiement', controleLivraison: 'paiement', originaux: 'paiement', tva: 'paiement', recupTva: 'paiement',
+      rappel: 'rappel', clientRappel: 'rappel',
     })[scrollTo];
     if (stepKey) setFoldedSteps(prev => ({ ...prev, [stepKey]: false }));
     setTimeout(() => {
@@ -12639,6 +12642,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       else if (scrollTo === 'pose' || scrollTo === 'envoiPose') target = refPose.current;
       else if (scrollTo === 'consuel' || scrollTo === 'envoiConsuel') target = refConsuel.current;
       else if (scrollTo === 'raccordement' || scrollTo === 'envoiRaccordement' || scrollTo === 'aEnvoyerRaccordement') target = refRaccordement.current;
+      else if (scrollTo === 'rappel' || scrollTo === 'clientRappel') target = refRappel.current;
       if (target) {
         target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         // Effet flash pour attirer l'œil
@@ -12836,14 +12840,20 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {/* 📞 CLIENT À RAPPELER — drapeau indépendant, ne touche pas au statut */}
               <button
                 onClick={() => {
-                  onUpdate({ hasRappel: true, rappelFait: false });
+                  // Si un rappel est déjà coché fait, on demande confirmation
+                  // avant de le réinitialiser — évite que l'utilisateur clique
+                  // par réflexe et perde l'historique de « rappelé le X ».
+                  if (d.hasRappel && d.rappelFait) {
+                    if (!window.confirm('Un rappel a déjà été marqué comme fait. Reprogrammer un nouveau rappel ?')) return;
+                  }
+                  onUpdate({ hasRappel: true, rappelFait: false, rappelDateFait: '' });
                   setShowCreerAction(false);
                 }}
                 disabled={!!d.hasRappel && !d.rappelFait}
                 className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${(d.hasRappel && !d.rappelFait) ? 'bg-blue-200 text-blue-500 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white border-2 border-blue-600'}`}
               >
                 <span className="text-base">📞</span>
-                <span className="flex-1 text-left">{(d.hasRappel && !d.rappelFait) ? 'Rappel déjà en attente' : 'Client à rappeler'}</span>
+                <span className="flex-1 text-left">{(d.hasRappel && !d.rappelFait) ? 'Rappel déjà en attente' : (d.hasRappel && d.rappelFait) ? 'Reprogrammer un rappel' : 'Client à rappeler'}</span>
               </button>
               {/* 🛠️ SAV — drapeau indépendant, ne touche PAS au statut workflow */}
               <button
@@ -14563,7 +14573,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               const enRetard = !d.rappelFait && d.rappelDate && d.rappelDate < todayStr;
               const aujourdhui = !d.rappelFait && d.rappelDate === todayStr;
               return (
-                <div className={`border-2 rounded-xl p-2 mb-2 ${d.rappelFait ? 'bg-emerald-50 border-emerald-300' : enRetard ? 'bg-rose-50 border-rose-300' : 'bg-blue-50 border-blue-300'}`}>
+                <div ref={refRappel} className={`border-2 rounded-xl p-2 mb-2 ${d.rappelFait ? 'bg-emerald-50 border-emerald-300' : enRetard ? 'bg-rose-50 border-rose-300' : 'bg-blue-50 border-blue-300'}`}>
                   <button onClick={() => toggleStep('rappel')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.rappel ? '' : 'mb-1.5'} hover:opacity-80`}>
                     <span className="flex items-center gap-1.5 text-blue-700">
                       <span className="text-blue-600 text-[9px]">{foldedSteps.rappel ? '▶' : '▼'}</span>
