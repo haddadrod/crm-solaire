@@ -1275,161 +1275,106 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Chargement initial
   useEffect(() => {
     (async () => {
-      // 🚀 Optimisation : on lance tous les storage.get() en parallèle avec
-      // Promise.allSettled. Avant on enchaînait 13 awaits en séquence (~150 ms
-      // par appel × 13 = ~2 s). Maintenant tout part en même temps, le temps
-      // total = max des appels au lieu de la somme. Sur une connexion lente
-      // ça divise par 3 à 5 le temps de chargement.
-      const keys = [
-        'dossiers-data', 'statuts-order', 'tarifs-poseurs', 'tarifs-regies',
-        'poseurs-contacts', 'regies-contacts', 'email-config', 'tarifs-internes',
-        'noms-internes', 'liste-fournisseurs', 'tarifs-fournisseurs',
-        'produits', 'users-list', 'societes',
-      ];
-      const results = await Promise.allSettled(keys.map(k => window.storage.get(k)));
-      const data = {};
-      keys.forEach((k, i) => {
-        const r = results[i];
-        data[k] = (r.status === 'fulfilled') ? r.value : null;
-      });
+      // 🚀 Priorité : afficher l'app dès que les dossiers sont prêts. Les
+      // autres réglages (tarifs, contacts, sociétés) continuent de charger
+      // en arrière-plan et s'appliquent au fur et à mesure. L'utilisateur
+      // n'attend plus que les dossiers eux-mêmes — ~500 ms au lieu de 5-10 s.
 
+      const REMOVED_STATUSES = ['I_CONSUEL_OK', 'CONSUEL_OK', 'J_VISITE_CONSUEL', 'M_VISITE_CONSUEL', 'K_ATTENTE_CONSUEL', 'ATTENTE_CONSUEL', 'K2_PROBLEME_CONSUEL', 'M_PROBLEME_CONSUEL', 'M_ATT_DOSSIER', 'ATT_DOSSIER', 'E_PASSE_COMPTANT', 'PASSE_COMPTANT', 'H_NRP_CQ_LIVRAISON', 'G1_ATT_NRP_CL'];
+      const RENAMED_STATUSES = { 'ANNULER': 'W2_ANNULER', 'DOSSIER_PAYER': 'W_DOSSIER_PAYER', 'DEPOSER': 'W1_DEPOSER', 'ACCEPTE': 'F1_ACCEPTE' };
+      const ROLES_KEYS = ['teleprospecteur', 'confirmateur', 'commercial', 'coordinateurProjet', 'responsableEnvoiPose'];
+      const isFullyPaid = (d) => {
+        if (!d.payeClient) return false;
+        const poseurs = d.poseurs || [];
+        if (poseurs.some(p => p.nom && !p.paye)) return false;
+        const fournisseurs = d.fournisseurs || [];
+        if (fournisseurs.some(f => f.nom && !f.paye)) return false;
+        if (d.regie && !d.regiePaye) return false;
+        if ((d.regies || []).some(r => r.nom && !r.paye)) return false;
+        if (ROLES_KEYS.some(k => d[k] && !d[k + 'Paye'])) return false;
+        return true;
+      };
+      const migrateDossier = (d) => {
+        let dossier = d;
+        if (dossier.statut && RENAMED_STATUSES[dossier.statut]) {
+          dossier = { ...dossier, statut: RENAMED_STATUSES[dossier.statut] };
+        }
+        if (REMOVED_STATUSES.includes(dossier.statut)) {
+          dossier = { ...dossier, statut: 'A_EN_COURS' };
+        }
+        if (dossier.archived === true && !dossier.manualArchive && !isFullyPaid(dossier)) {
+          dossier = { ...dossier, archived: false, archivedAt: null, autoArchived: false };
+        }
+        if (!dossier.regies) {
+          if (dossier.regie) {
+            dossier = { ...dossier, regies: [{ nom: dossier.regie, htCustom: dossier.regieHtCustom || '', paye: dossier.regiePaye || false, datePaye: dossier.regieDatePaye || '', bl: '', factureNo: '', facturePdfUrl: '' }] };
+          } else {
+            dossier = { ...dossier, regies: [] };
+          }
+        }
+        if (!dossier.produits || dossier.produits.length === 0) {
+          dossier = { ...dossier, produits: [{ type: dossier.produit || 'PANNEAU_SOLAIRE', puissance: dossier.puissance || 6000, description: '', quantite: 1 }] };
+        } else {
+          dossier = { ...dossier, produits: dossier.produits.map(p => ({ ...p, quantite: p.quantite || 1 })) };
+        }
+        if (!dossier.poseurs) {
+          if (dossier.poseur) {
+            dossier = { ...dossier, poseurs: [{ nom: dossier.poseur, htCustom: dossier.poseurHtCustom || '', paye: !!dossier.poseurPaye, datePaye: dossier.poseurDatePaye || '' }], poseursDetail: dossier.poseursDetail || [{ nom: dossier.poseur, ht: dossier.poseurHt || 0, ttc: dossier.poseurTtc || 0, paye: !!dossier.poseurPaye, datePaye: dossier.poseurDatePaye || '' }] };
+          } else {
+            dossier = { ...dossier, poseurs: [], poseursDetail: [] };
+          }
+        }
+        if (dossier.documents?.some(doc => doc.category === 'poseur' && !doc.subCategory)) {
+          const firstPoseurName = dossier.poseurs[0]?.nom;
+          if (firstPoseurName) {
+            dossier = { ...dossier, documents: dossier.documents.map(doc => doc.category === 'poseur' && !doc.subCategory ? { ...doc, subCategory: firstPoseurName } : doc) };
+          }
+        }
+        dossier = applyAutoStatut(dossier);
+        if (dossier.statut === 'W2_ANNULER' && !dossier.archived) {
+          dossier = { ...dossier, archived: true, archivedAt: dossier.archivedAt || new Date().toISOString(), autoArchived: true, autoArchivedReason: 'annule' };
+        }
+        return dossier;
+      };
+
+      // ⚡ Phase 1 — bloquant : seulement les dossiers + sociétés (les sociétés
+      // servent à la barre de filtres en haut, indispensable). Tout le reste
+      // est chargé après en background.
       try {
-        const r = data['dossiers-data'];
-        if (r?.value) {
-          const arr = JSON.parse(r.value);
-          // Migration : ancien format poseur unique → tableau poseurs + poseursDetail
-          const REMOVED_STATUSES = ['I_CONSUEL_OK', 'CONSUEL_OK', 'J_VISITE_CONSUEL', 'M_VISITE_CONSUEL', 'K_ATTENTE_CONSUEL', 'ATTENTE_CONSUEL', 'K2_PROBLEME_CONSUEL', 'M_PROBLEME_CONSUEL', 'M_ATT_DOSSIER', 'ATT_DOSSIER', 'E_PASSE_COMPTANT', 'PASSE_COMPTANT', 'H_NRP_CQ_LIVRAISON', 'G1_ATT_NRP_CL'];
-          // Statuts legacy (sans préfixe) → renommés vers leur vrai ID actuel.
-          // Avant, le bouton "✗ Refuse" stockait 'ANNULER' sans préfixe ; idem
-          // pour des migrations partielles précédentes. On les recolle ici.
-          const RENAMED_STATUSES = { 'ANNULER': 'W2_ANNULER', 'DOSSIER_PAYER': 'W_DOSSIER_PAYER', 'DEPOSER': 'W1_DEPOSER', 'ACCEPTE': 'F1_ACCEPTE' };
-          const ROLES_KEYS = ['teleprospecteur', 'confirmateur', 'commercial', 'coordinateurProjet', 'responsableEnvoiPose'];
-          // Vérifie si tous les paiements d'un dossier sont OK
-          const isFullyPaid = (d) => {
-            if (!d.payeClient) return false;
-            const poseurs = d.poseurs || [];
-            if (poseurs.some(p => p.nom && !p.paye)) return false;
-            const fournisseurs = d.fournisseurs || [];
-            if (fournisseurs.some(f => f.nom && !f.paye)) return false;
-            if (d.regie && !d.regiePaye) return false;
-            // Multi-régies : toutes payées
-            if ((d.regies || []).some(r => r.nom && !r.paye)) return false;
-            if (ROLES_KEYS.some(k => d[k] && !d[k + 'Paye'])) return false;
-            return true;
-          };
-          const migrated = arr.map(d => {
-            let dossier = d;
-            // Migration : statuts legacy (sans préfixe) → ID actuel
-            if (dossier.statut && RENAMED_STATUSES[dossier.statut]) {
-              dossier = { ...dossier, statut: RENAMED_STATUSES[dossier.statut] };
-            }
-            // Migration : statuts supprimés → repasser en EN COURS
-            if (REMOVED_STATUSES.includes(dossier.statut)) {
-              dossier = { ...dossier, statut: 'A_EN_COURS' };
-            }
-            // ⚠️ NOUVEAU : Désarchive automatiquement les dossiers archivés à tort
-            // (statut DOSSIER_PAYER mais paiements pas tous OK)
-            // Sauf si l'utilisateur a explicitement archivé manuellement (`manualArchive: true`)
-            if (dossier.archived === true && !dossier.manualArchive && !isFullyPaid(dossier)) {
-              dossier = { ...dossier, archived: false, archivedAt: null, autoArchived: false };
-            }
-            // Migration : régie unique → tableau régies
-            if (!dossier.regies) {
-              if (dossier.regie) {
-                dossier = {
-                  ...dossier,
-                  regies: [{
-                    nom: dossier.regie,
-                    htCustom: dossier.regieHtCustom || '',
-                    paye: dossier.regiePaye || false,
-                    datePaye: dossier.regieDatePaye || '',
-                    bl: '',
-                    factureNo: '',
-                    facturePdfUrl: '',
-                  }],
-                };
-              } else {
-                dossier = { ...dossier, regies: [] };
-              }
-            }
-            // Migration : format produit unique → tableau produits
-            if (!dossier.produits || dossier.produits.length === 0) {
-              dossier = {
-                ...dossier,
-                produits: [{
-                  type: dossier.produit || 'PANNEAU_SOLAIRE',
-                  puissance: dossier.puissance || 6000,
-                  description: '',
-                  quantite: 1
-                }],
-              };
-            } else {
-              // Migration : ajoute quantite=1 aux produits qui n'en ont pas
-              dossier = {
-                ...dossier,
-                produits: dossier.produits.map(p => ({ ...p, quantite: p.quantite || 1 })),
-              };
-            }
-            if (!dossier.poseurs) {
-              if (dossier.poseur) {
-                dossier = {
-                  ...dossier,
-                  poseurs: [{
-                    nom: dossier.poseur,
-                    htCustom: dossier.poseurHtCustom || '',
-                    paye: !!dossier.poseurPaye,
-                    datePaye: dossier.poseurDatePaye || ''
-                  }],
-                  poseursDetail: dossier.poseursDetail || [{
-                    nom: dossier.poseur,
-                    ht: dossier.poseurHt || 0,
-                    ttc: dossier.poseurTtc || 0,
-                    paye: !!dossier.poseurPaye,
-                    datePaye: dossier.poseurDatePaye || ''
-                  }],
-                };
-              } else {
-                dossier = { ...dossier, poseurs: [], poseursDetail: [] };
-              }
-            }
-            // Migration documents poseur sans subCategory → assigner au 1er poseur
-            if (dossier.documents?.some(doc => doc.category === 'poseur' && !doc.subCategory)) {
-              const firstPoseurName = dossier.poseurs[0]?.nom;
-              if (firstPoseurName) {
-                dossier = {
-                  ...dossier,
-                  documents: dossier.documents.map(doc =>
-                    doc.category === 'poseur' && !doc.subCategory
-                      ? { ...doc, subCategory: firstPoseurName }
-                      : doc
-                  ),
-                };
-              }
-            }
-            // Auto-statut : recalcule le statut workflow depuis l'état du dossier
-            // (CQ, envoi banque, accord, date pose, poseur). Idempotent : si le
-            // statut est hors cycle (SAV, LITIGE, W2_ANNULER, etc.) ou déjà
-            // correct, applyAutoStatut renvoie le dossier inchangé.
-            dossier = applyAutoStatut(dossier);
-            // Auto-archive de rattrapage : un dossier annulé devrait être archivé.
-            // Si on tombe sur un dossier W2_ANNULER non archivé (annulation faite
-            // avant la mise en place de l'auto-archive), on l'archive maintenant.
-            if (dossier.statut === 'W2_ANNULER' && !dossier.archived) {
-              dossier = {
-                ...dossier,
-                archived: true,
-                archivedAt: dossier.archivedAt || new Date().toISOString(),
-                autoArchived: true,
-                autoArchivedReason: 'annule',
-              };
-            }
-            return dossier;
-          });
-          setDossiers(migrated);
+        const [dossiersRes, societesRes] = await Promise.all([
+          window.storage.get('dossiers-data'),
+          window.storage.get('societes'),
+        ]);
+        if (dossiersRes?.value) {
+          const arr = JSON.parse(dossiersRes.value);
+          setDossiers(arr.map(migrateDossier));
+        }
+        if (societesRes?.value) {
+          const arr = JSON.parse(societesRes.value);
+          if (Array.isArray(arr) && arr.length > 0) setSocietes(arr);
         }
       } catch (e) {}
+      setLoading(false);
+
+      // 🛠️ Phase 2 — non bloquant : tout le reste en parallèle, sans bloquer
+      // l'affichage. Les setters mettent à jour l'état dès que chaque clé est
+      // arrivée. Si l'utilisateur ouvre un dossier avant que les tarifs soient
+      // chargés, les défauts internes (TARIFS_INTERNES_DEFAULT, etc.) tiennent
+      // l'intérim.
+      const bgKeys = [
+        'statuts-order', 'tarifs-poseurs', 'tarifs-regies',
+        'poseurs-contacts', 'regies-contacts', 'email-config', 'tarifs-internes',
+        'noms-internes', 'liste-fournisseurs', 'tarifs-fournisseurs',
+        'produits', 'users-list',
+      ];
+      const bgResults = await Promise.allSettled(bgKeys.map(k => window.storage.get(k)));
+      const bgData = {};
+      bgKeys.forEach((k, i) => {
+        const r = bgResults[i];
+        bgData[k] = (r.status === 'fulfilled') ? r.value : null;
+      });
       try {
-        const r = data['statuts-order'];
+        const r = bgData['statuts-order'];
         if (r?.value) {
           const saved = JSON.parse(r.value);
           const allIds = STATUTS.map(s => s.id);
@@ -1439,29 +1384,29 @@ export default function DossierSaisie({ authUser, onLogout }) {
         }
       } catch (e) {}
       try {
-        const r = data['tarifs-poseurs'];
+        const r = bgData['tarifs-poseurs'];
         if (r?.value) setTarifsPoseurs(JSON.parse(r.value));
       } catch (e) {}
       try {
-        const r = data['tarifs-regies'];
+        const r = bgData['tarifs-regies'];
         if (r?.value) setTarifsRegies(JSON.parse(r.value));
       } catch (e) {}
       try {
-        const r = data['poseurs-contacts'];
+        const r = bgData['poseurs-contacts'];
         if (r?.value) {
           const obj = JSON.parse(r.value);
           if (obj && typeof obj === 'object') setPoseursContacts(obj);
         }
       } catch (e) {}
       try {
-        const r = data['regies-contacts'];
+        const r = bgData['regies-contacts'];
         if (r?.value) {
           const obj = JSON.parse(r.value);
           if (obj && typeof obj === 'object') setRegiesContacts(obj);
         }
       } catch (e) {}
       try {
-        const r = data['email-config'];
+        const r = bgData['email-config'];
         if (r?.value) {
           const obj = JSON.parse(r.value);
           if (obj && typeof obj === 'object') setEmailConfig({
@@ -1472,46 +1417,38 @@ export default function DossierSaisie({ authUser, onLogout }) {
         }
       } catch (e) {}
       try {
-        const r = data['tarifs-internes'];
+        const r = bgData['tarifs-internes'];
         if (r?.value) setTarifsInternes({ ...TARIFS_INTERNES_DEFAULT, ...JSON.parse(r.value) });
       } catch (e) {}
       try {
-        const r = data['noms-internes'];
+        const r = bgData['noms-internes'];
         if (r?.value) setNomsInternes({ ...NOMS_INTERNES_DEFAULT, ...JSON.parse(r.value) });
       } catch (e) {}
       try {
-        const r = data['liste-fournisseurs'];
+        const r = bgData['liste-fournisseurs'];
         if (r?.value) setListeFournisseurs(JSON.parse(r.value));
       } catch (e) {}
       try {
-        const r = data['tarifs-fournisseurs'];
+        const r = bgData['tarifs-fournisseurs'];
         if (r?.value) {
           const obj = JSON.parse(r.value);
           if (obj && typeof obj === 'object') setTarifsFournisseurs(obj);
         }
       } catch (e) {}
       try {
-        const r = data['produits'];
+        const r = bgData['produits'];
         if (r?.value) {
           const arr = JSON.parse(r.value);
           if (Array.isArray(arr) && arr.length > 0) setProduits(arr);
         }
       } catch (e) {}
       try {
-        const r = data['users-list'];
+        const r = bgData['users-list'];
         if (r?.value) {
           const arr = JSON.parse(r.value);
           if (Array.isArray(arr)) setUsers(arr);
         }
       } catch (e) {}
-      try {
-        const r = data['societes'];
-        if (r?.value) {
-          const arr = JSON.parse(r.value);
-          if (Array.isArray(arr) && arr.length > 0) setSocietes(arr);
-        }
-      } catch (e) {}
-      setLoading(false);
     })();
   }, []);
 
