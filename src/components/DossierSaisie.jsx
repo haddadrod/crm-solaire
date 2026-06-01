@@ -9061,6 +9061,25 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
   );
 }
 
+// 🧮 Calcule le nombre total de panneaux dans un dossier en sommant les
+// lignes de type autoTarif (panneaux solaires) — pour chacune, on divise
+// la puissance totale par la W/u de la variante sélectionnée.
+// Utilisé pour suggérer auto la quantité d'onduleurs selon leur ratio.
+function computeTotalPanneauxFromLines(lines, catalog) {
+  let total = 0;
+  for (const line of lines || []) {
+    if (!line || !line.type) continue;
+    const t = (catalog || []).find(c => c.id === line.type);
+    if (!t || !t.autoTarif) continue;
+    const variant = (t.variants || []).find(v => v.id === line.variantId);
+    const wU = variant && Number(variant.puissanceUnitaire) > 0 ? Number(variant.puissanceUnitaire) : 0;
+    if (wU > 0 && Number(line.puissance) > 0) {
+      total += Math.round(Number(line.puissance) / wU);
+    }
+  }
+  return total;
+}
+
 // 📦 Ligne de variante (marque/modèle/W-unité) avec brouillon local.
 // Sans ce brouillon, chaque keystroke déclenche setProduits → save → sync
 // Realtime, et un écho retardé peut écraser une lettre qu'on vient de taper
@@ -9075,18 +9094,23 @@ function VariantRow({ variant, onSave, onRemove }) {
       ? String(variant.puissanceUnitaire)
       : ''
   );
-  const [ratioNote, setRatioNote] = useState(variant.ratioNote || '');
+  // Ratio panneaux (pour onduleurs principalement) : « X unités pour Y
+  // panneaux ». Si renseigné, la qté est auto-calculée dans le dossier.
+  const [ratioUnites, setRatioUnites] = useState(variant.ratioUnites ? String(variant.ratioUnites) : '');
+  const [ratioPanneaux, setRatioPanneaux] = useState(variant.ratioPanneaux ? String(variant.ratioPanneaux) : '');
   const dirty =
     marque.trim() !== (variant.marque || '') ||
     modele.trim() !== (variant.modele || '') ||
     String(puissanceU).trim() !== (variant.puissanceUnitaire != null ? String(variant.puissanceUnitaire) : '') ||
-    ratioNote.trim() !== (variant.ratioNote || '');
+    String(ratioUnites).trim() !== (variant.ratioUnites ? String(variant.ratioUnites) : '') ||
+    String(ratioPanneaux).trim() !== (variant.ratioPanneaux ? String(variant.ratioPanneaux) : '');
   const save = () => {
     onSave({
       marque: marque.trim(),
       modele: modele.trim(),
       puissanceUnitaire: puissanceU !== '' ? Number(puissanceU) || 0 : 0,
-      ratioNote: ratioNote.trim(),
+      ratioUnites: ratioUnites !== '' ? Number(ratioUnites) || 0 : 0,
+      ratioPanneaux: ratioPanneaux !== '' ? Number(ratioPanneaux) || 0 : 0,
     });
   };
   const onKey = (e) => { if (e.key === 'Enter' && dirty) { e.preventDefault(); save(); } };
@@ -9096,7 +9120,12 @@ function VariantRow({ variant, onSave, onRemove }) {
       <input type="text" value={marque} onChange={(e) => setMarque(e.target.value)} onKeyDown={onKey} placeholder="Marque" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
       <input type="text" value={modele} onChange={(e) => setModele(e.target.value)} onKeyDown={onKey} placeholder="Modèle" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
       <input type="number" min="0" step="1" value={puissanceU} onChange={(e) => setPuissanceU(e.target.value)} onKeyDown={onKey} placeholder="W/u" title="Puissance unitaire en Watts (ex: 500 pour un panneau 500W). Sert au calcul auto Quantité × W = total." className="w-20 px-2 py-1 bg-white border border-slate-200 rounded text-xs text-center" />
-      <input type="text" value={ratioNote} onChange={(e) => setRatioNote(e.target.value)} onKeyDown={onKey} placeholder="Note (ex: 1 pour 2 panneaux)" title="Aide-mémoire affiché dans le dossier quand on choisit cette variante. Utile pour les ratios onduleurs/panneaux variables." className="flex-1 min-w-[140px] px-2 py-1 bg-white border border-slate-200 rounded text-xs italic" />
+      <div className="flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-xs" title="Ratio : X de ces unités pour Y panneaux. Si renseigné, la quantité est calculée auto dans le dossier (modifiable).">
+        <input type="number" min="0" step="0.5" value={ratioUnites} onChange={(e) => setRatioUnites(e.target.value)} onKeyDown={onKey} placeholder="—" className="w-10 px-1 py-0.5 bg-white border border-blue-200 rounded text-[10px] text-center" />
+        <span className="text-[10px] text-blue-700 font-semibold">pour</span>
+        <input type="number" min="0" step="0.5" value={ratioPanneaux} onChange={(e) => setRatioPanneaux(e.target.value)} onKeyDown={onKey} placeholder="—" className="w-10 px-1 py-0.5 bg-white border border-blue-200 rounded text-[10px] text-center" />
+        <span className="text-[10px] text-blue-700 font-semibold">panneaux</span>
+      </div>
       {dirty ? (
         <button onClick={save} title="Enregistrer cette variante" className="px-2 py-1 bg-violet-500 hover:bg-violet-600 text-white rounded text-[10px] font-bold whitespace-nowrap">💾 Enregistrer</button>
       ) : (
@@ -10087,15 +10116,30 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           const variants = (t && Array.isArray(t.variants)) ? t.variants : [];
                           if (variants.length === 0) return null;
                           const picked = variants.find(v => v.id === prod.variantId);
+                          const ratioOk = picked && Number(picked.ratioPanneaux) > 0 && Number(picked.ratioUnites) > 0;
+                          const handleVariantChange = (newVid) => {
+                            const updates = { variantId: newVid };
+                            const v = variants.find(x => x.id === newVid);
+                            // Auto-fill quantite si la variante a un ratio + qu'on
+                            // a déjà des panneaux dans le dossier. L'user peut
+                            // toujours modifier la quantité après.
+                            if (v && Number(v.ratioPanneaux) > 0 && Number(v.ratioUnites) > 0 && !t.autoTarif) {
+                              const totalPanneaux = computeTotalPanneauxFromLines(formData.produits, produits);
+                              if (totalPanneaux > 0) {
+                                updates.quantite = Math.ceil(totalPanneaux * Number(v.ratioUnites) / Number(v.ratioPanneaux));
+                              }
+                            }
+                            updProd(updates);
+                          };
                           return (
                             <>
-                              <select value={prod.variantId || ''} onChange={(e) => updProd({ variantId: e.target.value })} className={inputCls + ' mt-1.5 text-xs'}>
+                              <select value={prod.variantId || ''} onChange={(e) => handleVariantChange(e.target.value)} className={inputCls + ' mt-1.5 text-xs'}>
                                 <option value="">— Choisir une marque/modèle —</option>
                                 {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
                               </select>
-                              {picked?.ratioNote && (
-                                <div className="mt-1 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-800 italic">
-                                  ℹ️ {picked.ratioNote}
+                              {ratioOk && (
+                                <div className="mt-1 px-2 py-0.5 bg-blue-50 border border-blue-200 rounded text-[10px] text-blue-800 italic">
+                                  ℹ️ {picked.ratioUnites} pour {picked.ratioPanneaux} panneau{picked.ratioPanneaux > 1 ? 'x' : ''} — quantité auto-calculée (modifiable)
                                 </div>
                               )}
                             </>
@@ -15601,15 +15645,29 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       const variants = (prodInfo && Array.isArray(prodInfo.variants)) ? prodInfo.variants : [];
                       if (variants.length === 0) return null;
                       const picked = variants.find(v => v.id === p.variantId);
+                      const ratioOk = picked && Number(picked.ratioPanneaux) > 0 && Number(picked.ratioUnites) > 0;
+                      const handleVariantChange = (newVid) => {
+                        const updates = { variantId: newVid };
+                        const v = variants.find(x => x.id === newVid);
+                        // Auto-fill quantite si la variante a un ratio + qu'il
+                        // y a déjà des panneaux dans le dossier.
+                        if (v && Number(v.ratioPanneaux) > 0 && Number(v.ratioUnites) > 0 && !prodInfo.autoTarif) {
+                          const totalPanneaux = computeTotalPanneauxFromLines(d.produits, produits);
+                          if (totalPanneaux > 0) {
+                            updates.quantite = Math.ceil(totalPanneaux * Number(v.ratioUnites) / Number(v.ratioPanneaux));
+                          }
+                        }
+                        updateProduit(i, updates);
+                      };
                       return (
                         <>
-                          <select value={p.variantId || ''} onChange={(e) => updateProduit(i, { variantId: e.target.value })} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-semibold text-amber-700">
+                          <select value={p.variantId || ''} onChange={(e) => handleVariantChange(e.target.value)} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-semibold text-amber-700">
                             <option value="">— Choisir une marque/modèle —</option>
                             {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
                           </select>
-                          {picked?.ratioNote && (
-                            <div className="px-2 py-0.5 bg-amber-100 border border-amber-300 rounded text-[10px] text-amber-800 italic">
-                              ℹ️ {picked.ratioNote}
+                          {ratioOk && (
+                            <div className="px-2 py-0.5 bg-blue-100 border border-blue-300 rounded text-[10px] text-blue-800 italic">
+                              ℹ️ {picked.ratioUnites} pour {picked.ratioPanneaux} panneau{picked.ratioPanneaux > 1 ? 'x' : ''} — quantité auto-calculée (modifiable)
                             </div>
                           )}
                         </>
