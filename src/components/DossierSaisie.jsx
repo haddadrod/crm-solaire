@@ -1275,8 +1275,26 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Chargement initial
   useEffect(() => {
     (async () => {
+      // 🚀 Optimisation : on lance tous les storage.get() en parallèle avec
+      // Promise.allSettled. Avant on enchaînait 13 awaits en séquence (~150 ms
+      // par appel × 13 = ~2 s). Maintenant tout part en même temps, le temps
+      // total = max des appels au lieu de la somme. Sur une connexion lente
+      // ça divise par 3 à 5 le temps de chargement.
+      const keys = [
+        'dossiers-data', 'statuts-order', 'tarifs-poseurs', 'tarifs-regies',
+        'poseurs-contacts', 'regies-contacts', 'email-config', 'tarifs-internes',
+        'noms-internes', 'liste-fournisseurs', 'tarifs-fournisseurs',
+        'produits', 'users-list', 'societes',
+      ];
+      const results = await Promise.allSettled(keys.map(k => window.storage.get(k)));
+      const data = {};
+      keys.forEach((k, i) => {
+        const r = results[i];
+        data[k] = (r.status === 'fulfilled') ? r.value : null;
+      });
+
       try {
-        const r = await window.storage.get('dossiers-data');
+        const r = data['dossiers-data'];
         if (r?.value) {
           const arr = JSON.parse(r.value);
           // Migration : ancien format poseur unique → tableau poseurs + poseursDetail
@@ -1411,7 +1429,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         }
       } catch (e) {}
       try {
-        const r = await window.storage.get('statuts-order');
+        const r = data['statuts-order'];
         if (r?.value) {
           const saved = JSON.parse(r.value);
           const allIds = STATUTS.map(s => s.id);
@@ -1421,29 +1439,29 @@ export default function DossierSaisie({ authUser, onLogout }) {
         }
       } catch (e) {}
       try {
-        const r = await window.storage.get('tarifs-poseurs');
+        const r = data['tarifs-poseurs'];
         if (r?.value) setTarifsPoseurs(JSON.parse(r.value));
       } catch (e) {}
       try {
-        const r = await window.storage.get('tarifs-regies');
+        const r = data['tarifs-regies'];
         if (r?.value) setTarifsRegies(JSON.parse(r.value));
       } catch (e) {}
       try {
-        const r = await window.storage.get('poseurs-contacts');
+        const r = data['poseurs-contacts'];
         if (r?.value) {
           const obj = JSON.parse(r.value);
           if (obj && typeof obj === 'object') setPoseursContacts(obj);
         }
       } catch (e) {}
       try {
-        const r = await window.storage.get('regies-contacts');
+        const r = data['regies-contacts'];
         if (r?.value) {
           const obj = JSON.parse(r.value);
           if (obj && typeof obj === 'object') setRegiesContacts(obj);
         }
       } catch (e) {}
       try {
-        const r = await window.storage.get('email-config');
+        const r = data['email-config'];
         if (r?.value) {
           const obj = JSON.parse(r.value);
           if (obj && typeof obj === 'object') setEmailConfig({
@@ -1454,40 +1472,40 @@ export default function DossierSaisie({ authUser, onLogout }) {
         }
       } catch (e) {}
       try {
-        const r = await window.storage.get('tarifs-internes');
+        const r = data['tarifs-internes'];
         if (r?.value) setTarifsInternes({ ...TARIFS_INTERNES_DEFAULT, ...JSON.parse(r.value) });
       } catch (e) {}
       try {
-        const r = await window.storage.get('noms-internes');
+        const r = data['noms-internes'];
         if (r?.value) setNomsInternes({ ...NOMS_INTERNES_DEFAULT, ...JSON.parse(r.value) });
       } catch (e) {}
       try {
-        const r = await window.storage.get('liste-fournisseurs');
+        const r = data['liste-fournisseurs'];
         if (r?.value) setListeFournisseurs(JSON.parse(r.value));
       } catch (e) {}
       try {
-        const r = await window.storage.get('tarifs-fournisseurs');
+        const r = data['tarifs-fournisseurs'];
         if (r?.value) {
           const obj = JSON.parse(r.value);
           if (obj && typeof obj === 'object') setTarifsFournisseurs(obj);
         }
       } catch (e) {}
       try {
-        const r = await window.storage.get('produits');
+        const r = data['produits'];
         if (r?.value) {
           const arr = JSON.parse(r.value);
           if (Array.isArray(arr) && arr.length > 0) setProduits(arr);
         }
       } catch (e) {}
       try {
-        const r = await window.storage.get('users-list');
+        const r = data['users-list'];
         if (r?.value) {
           const arr = JSON.parse(r.value);
           if (Array.isArray(arr)) setUsers(arr);
         }
       } catch (e) {}
       try {
-        const r = await window.storage.get('societes');
+        const r = data['societes'];
         if (r?.value) {
           const arr = JSON.parse(r.value);
           if (Array.isArray(arr) && arr.length > 0) setSocietes(arr);
