@@ -1284,10 +1284,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Chargement initial
   useEffect(() => {
     (async () => {
-      // 📊 Mesures de perfs pour diagnostiquer la lenteur perçue. Visibles
-      // dans la console (F12). Sera retiré une fois le bottleneck identifié.
-      const T0 = performance.now();
-      const tlog = (label) => console.log(`[CRM perf] ${label} : ${Math.round(performance.now() - T0)} ms`);
 
       // 🚀 Priorité : afficher l'app dès que les dossiers sont prêts. Les
       // autres réglages (tarifs, contacts, sociétés) continuent de charger
@@ -1359,12 +1355,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
           window.storage.get('dossiers-data'),
           window.storage.get('societes'),
         ]);
-        tlog('Supabase fetch dossiers+societes');
         if (dossiersRes?.value) {
           const arr = JSON.parse(dossiersRes.value);
-          tlog(`JSON.parse dossiers (${arr.length} dossiers, ${(dossiersRes.value.length / 1024).toFixed(0)} Ko)`);
           const migrated = arr.map(migrateDossier);
-          tlog('Migration in-memory');
           setDossiers(migrated);
         }
         if (societesRes?.value) {
@@ -1373,7 +1366,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
         }
       } catch (e) {}
       setLoading(false);
-      tlog('setLoading(false) — UI dispo');
 
       // 🛠️ Phase 2 — non bloquant : tout le reste en parallèle, sans bloquer
       // l'affichage. Les setters mettent à jour l'état dès que chaque clé est
@@ -1667,35 +1659,64 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // pas de sync auto.
   useEffect(() => {
     if (loading) return;
-    const channel = supabase
-      .channel('dossiers-sync')
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'storage', filter: 'key=eq.dossiers-data' },
-        (payload) => {
-          const newValue = payload?.new?.value;
-          if (!newValue) return;
-          // Ignore les évènements qui matchent notre propre dernière écriture
-          // (sinon boucle infinie : on écrit → realtime → on relit → on écrit…)
-          if (newValue === lastWrittenDossiersJson.current) return;
-          try {
-            const parsed = JSON.parse(newValue);
-            if (!Array.isArray(parsed)) return;
-            lastWrittenDossiersJson.current = newValue;
-            setDossiers(parsed);
-          } catch (e) {
-            console.warn('[realtime dossiers] parse failed', e);
+    let channel = null;
+    let reconnectTimer = null;
+    let attempt = 0;
+    let cancelled = false;
+
+    const handlePayload = (payload) => {
+      const newValue = payload?.new?.value;
+      if (!newValue) return;
+      // Ignore les évènements qui matchent notre propre dernière écriture
+      // (sinon boucle infinie : on écrit → realtime → on relit → on écrit…)
+      if (newValue === lastWrittenDossiersJson.current) return;
+      try {
+        const parsed = JSON.parse(newValue);
+        if (!Array.isArray(parsed)) return;
+        lastWrittenDossiersJson.current = newValue;
+        setDossiers(parsed);
+      } catch (e) {
+        // parse échoué : on ignore silencieusement (donnée corrompue côté DB).
+      }
+    };
+
+    const subscribe = () => {
+      if (cancelled) return;
+      channel = supabase
+        .channel('dossiers-sync')
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'storage', filter: 'key=eq.dossiers-data' },
+          handlePayload
+        )
+        .subscribe((status) => {
+          // Reconnexion auto : Supabase coupe le websocket après une période
+          // d'inactivité (CHANNEL_ERROR / TIMED_OUT / CLOSED). Si on ne se
+          // reconnecte pas, la sync multi-device meurt silencieusement.
+          // Backoff exponentiel plafonné à 30 s pour ne pas marteler.
+          if (status === 'SUBSCRIBED') {
+            attempt = 0; // succès → on remet le compteur à zéro
+            return;
           }
-        }
-      )
-      .subscribe((status, err) => {
-        // Logge l'état de la connexion realtime — utile pour diagnostic
-        // quand la sync multi-device casse silencieusement.
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          console.warn(`[realtime dossiers] ${status}`, err || '');
-        }
-      });
-    return () => { try { supabase.removeChannel(channel); } catch (e) {} };
+          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+            if (cancelled) return;
+            try { supabase.removeChannel(channel); } catch (e) {}
+            channel = null;
+            attempt += 1;
+            const delay = Math.min(30000, 1000 * Math.pow(2, attempt - 1));
+            clearTimeout(reconnectTimer);
+            reconnectTimer = setTimeout(subscribe, delay);
+          }
+        });
+    };
+
+    subscribe();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(reconnectTimer);
+      try { if (channel) supabase.removeChannel(channel); } catch (e) {}
+    };
   }, [loading]);
 
   // 🔁 Rafraîchissement de secours — UNIQUEMENT quand l'utilisateur revient
