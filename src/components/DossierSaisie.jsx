@@ -10198,8 +10198,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                                   title={`${wU} W par unité`}
                                 />
                               </div>
-                              <div className="flex-1 min-w-[140px]">
-                                <label className="block text-[10px] font-semibold text-slate-500 mb-1">Puissance totale (auto)</label>
+                              <div className="w-28 flex-shrink-0">
+                                <label className="block text-[10px] font-semibold text-slate-500 mb-1">Puissance totale</label>
                                 <div className={inputCls + ' bg-slate-50 text-slate-700 font-bold'}>
                                   {prod.puissance ? `${prod.puissance} Wc` : '—'}
                                 </div>
