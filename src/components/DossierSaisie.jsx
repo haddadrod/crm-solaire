@@ -1581,7 +1581,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // par scan IA du BC ou saisis à la main.
     montantPret: '', reportMois: '', tauxDebiteur: '', taeg: '',
     nbEcheances: '', montantEcheance: '', periodicite: 'Mensuelle',
-    produits: [{ type: '', puissance: 0, description: '', quantite: 1 }],
+    produits: [{ type: '', variantId: '', puissance: 0, description: '', quantite: 1 }],
     puissance: 0, // Puissance totale (somme des puissances solaires) — calculée auto
 
     fournisseurs: [],
@@ -2645,7 +2645,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       nbEcheances: d.nbEcheances || '', montantEcheance: d.montantEcheance || '',
       periodicite: d.periodicite || 'Mensuelle',
       produits: d.produits?.length > 0
-        ? d.produits.map(p => ({ type: p.type, puissance: p.puissance || 0, description: p.description || '', quantite: p.quantite || 1 }))
+        ? d.produits.map(p => ({ type: p.type, variantId: p.variantId || '', puissance: p.puissance || 0, description: p.description || '', quantite: p.quantite || 1 }))
         : [{ type: d.produit || 'PANNEAU_SOLAIRE', puissance: d.puissance || 6000, description: '', quantite: 1 }],
       puissance: d.puissance || 6000,
       fournisseurs: d.fournisseurs?.length > 0
@@ -4860,7 +4860,9 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                   : p.type === 'ISOLATION'
                     ? `${qty} m² `
                     : (qty > 1 ? `${qty}× ` : '');
-                const mm = [prod.marque, prod.modele].filter(Boolean).join(' ');
+                // Lookup de la variante (marque/modèle) si le dossier en référence une
+                const variant = (Array.isArray(prod.variants) ? prod.variants : []).find(v => v.id === p.variantId);
+                const mm = variant ? [variant.marque, variant.modele].filter(Boolean).join(' ') : '';
                 const label = prod.autoTarif && p.puissance
                   ? `${prod.emoji} ${p.puissance} Wc${mm ? ' · ' + mm : ''}`
                   : `${qtyPrefix}${prod.emoji} ${prod.label}${mm ? ' · ' + mm : ''}${p.description ? ' · ' + p.description : ''}`;
@@ -9063,18 +9065,13 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [newEmoji, setNewEmoji] = useState('🔧');
-  const [newMarque, setNewMarque] = useState('');
-  const [newModele, setNewModele] = useState('');
 
   const slugify = (str) => str.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
 
   const add = () => {
     const label = newLabel.trim();
     if (!label) return;
-    // Slug basé sur label + marque + modèle pour éviter les collisions
-    // quand on a 3 panneaux différents (DualSun / Trina / etc.) en catalogue.
-    const slugBase = [label, newMarque.trim(), newModele.trim()].filter(Boolean).join(' ');
-    let id = slugify(slugBase) || `PRODUIT_${Date.now()}`;
+    let id = slugify(label) || `PRODUIT_${Date.now()}`;
     if (produits.find(p => p.id === id)) {
       id = `${id}_${Date.now().toString(36).slice(-4)}`;
     }
@@ -9083,10 +9080,9 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
       label,
       emoji: newEmoji.trim() || '🔧',
       autoTarif: false,
-      marque: newMarque.trim(),
-      modele: newModele.trim(),
+      variants: [], // catalogue marques/modèles vide à la création
     }]);
-    setNewLabel(''); setNewEmoji('🔧'); setNewMarque(''); setNewModele(''); setShowAdd(false);
+    setNewLabel(''); setNewEmoji('🔧'); setShowAdd(false);
   };
 
   const updateProduit = (id, updates) => {
@@ -9104,70 +9100,105 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
     setProduits(produits.filter(prod => prod.id !== p.id));
   };
 
+  // Helpers pour gérer le catalogue marques/modèles d'un type de produit.
+  // Chaque variant a un id stable (slug) pour qu'on puisse le référencer
+  // dans les dossiers sans dépendre de l'index dans le tableau.
+  const addVariant = (typeId) => {
+    setProduits(produits.map(p => {
+      if (p.id !== typeId) return p;
+      const variants = Array.isArray(p.variants) ? p.variants : [];
+      const vid = `v_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      return { ...p, variants: [...variants, { id: vid, marque: '', modele: '' }] };
+    }));
+  };
+  const updateVariant = (typeId, vid, patch) => {
+    setProduits(produits.map(p => {
+      if (p.id !== typeId) return p;
+      const variants = (p.variants || []).map(v => v.id === vid ? { ...v, ...patch } : v);
+      return { ...p, variants };
+    }));
+  };
+  const removeVariant = (typeId, vid) => {
+    const used = dossiers.filter(d => (d.produits || []).some(pp => pp.type === typeId && pp.variantId === vid)).length;
+    if (used > 0 && !window.confirm(`Cette variante est utilisée dans ${used} dossier(s). Supprimer quand même ? (les dossiers existants gardent la trace mais le menu n'affichera plus la variante)`)) return;
+    setProduits(produits.map(p => {
+      if (p.id !== typeId) return p;
+      return { ...p, variants: (p.variants || []).filter(v => v.id !== vid) };
+    }));
+  };
+
   return (
     <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
       <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-amber-50 to-yellow-50">
         <h2 className="text-lg font-bold text-slate-800">🛒 Produits que tu vends</h2>
-        <p className="text-xs text-slate-500 mt-1">Personnalise la liste — ajoute, renomme ou supprime tes produits. Tu peux préciser la <strong>marque</strong> et le <strong>modèle</strong> (ex : panneau DualSun Flash 425W, micro-onduleur Enphase IQ8+). ☀️ Panneaux solaires reste là, c'est lui qui utilise les tarifs auto par Wc.</p>
+        <p className="text-xs text-slate-500 mt-1">Chaque <strong>type</strong> (panneaux, pompe à chaleur…) a son propre <strong>catalogue marques/modèles</strong>. Tu peux en ajouter autant que tu veux par type (ex : 3 marques de panneaux). Au moment de saisir un dossier, tu choisis le type puis la variante. ☀️ Panneaux solaires reste là, c'est lui qui utilise les tarifs auto par Wc.</p>
       </div>
       <div className="p-4">
         <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
-          <div className="text-sm font-semibold text-slate-600">📋 {produits.length} produit{produits.length > 1 ? 's' : ''}</div>
+          <div className="text-sm font-semibold text-slate-600">📋 {produits.length} type{produits.length > 1 ? 's' : ''} de produit</div>
           {!showAdd ? (
             <button onClick={() => setShowAdd(true)} className="text-xs font-semibold text-violet-600 bg-violet-50 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-              <Plus className="w-3 h-3" />Ajouter un produit
+              <Plus className="w-3 h-3" />Ajouter un type
             </button>
           ) : (
-            <div className="w-full p-3 bg-violet-50 border border-violet-200 rounded-xl space-y-2">
-              <div className="grid grid-cols-1 md:grid-cols-[60px_1fr_1fr_1fr] gap-2">
-                <div>
-                  <label className="block text-[10px] font-semibold text-violet-700 mb-0.5">Emoji</label>
-                  <input type="text" value={newEmoji} onChange={(e) => setNewEmoji(e.target.value.slice(0, 4))} placeholder="🔧" className="w-full px-2 py-1.5 bg-white border border-violet-200 rounded-lg text-sm text-center" maxLength={4} />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold text-violet-700 mb-0.5">Type * <span className="text-slate-400 font-normal">(ex: Micro-onduleur)</span></label>
-                  <input type="text" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); if (e.key === 'Escape') { setShowAdd(false); setNewLabel(''); setNewMarque(''); setNewModele(''); } }} placeholder="Nom du produit" className="w-full px-3 py-1.5 bg-white border border-violet-200 rounded-lg text-sm" autoFocus />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold text-violet-700 mb-0.5">Marque <span className="text-slate-400 font-normal">(optionnel)</span></label>
-                  <input type="text" value={newMarque} onChange={(e) => setNewMarque(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} placeholder="Ex: Enphase, DualSun…" className="w-full px-3 py-1.5 bg-white border border-violet-200 rounded-lg text-sm" />
-                </div>
-                <div>
-                  <label className="block text-[10px] font-semibold text-violet-700 mb-0.5">Modèle <span className="text-slate-400 font-normal">(optionnel)</span></label>
-                  <input type="text" value={newModele} onChange={(e) => setNewModele(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); }} placeholder="Ex: IQ8+, Flash 425W…" className="w-full px-3 py-1.5 bg-white border border-violet-200 rounded-lg text-sm" />
-                </div>
-              </div>
-              <div className="flex justify-end gap-2">
-                <button onClick={() => { setShowAdd(false); setNewLabel(''); setNewMarque(''); setNewModele(''); }} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold">Annuler</button>
-                <button onClick={add} disabled={!newLabel.trim()} className="px-3 py-1.5 bg-violet-500 hover:bg-violet-600 text-white rounded-lg text-xs font-semibold disabled:opacity-40">Ajouter</button>
-              </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <input type="text" value={newEmoji} onChange={(e) => setNewEmoji(e.target.value.slice(0, 4))} placeholder="🔧" className="w-14 px-2 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm text-center" maxLength={4} />
+              <input type="text" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); if (e.key === 'Escape') { setShowAdd(false); setNewLabel(''); } }} placeholder="Nom du type (ex: Pompe à chaleur)" className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm" autoFocus />
+              <button onClick={add} className="px-3 py-1.5 bg-violet-500 text-white rounded-lg text-xs font-semibold">OK</button>
+              <button onClick={() => { setShowAdd(false); setNewLabel(''); }} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold">Annuler</button>
             </div>
           )}
         </div>
-        <div className="space-y-1.5">
+        <div className="space-y-2">
           {produits.map(p => {
             const used = dossiers.filter(d => (d.produits || []).some(pp => pp.type === p.id) || d.produit === p.id).length;
+            const variants = Array.isArray(p.variants) ? p.variants : [];
             return (
               <div key={p.id} className={`rounded-xl border p-2.5 ${p.autoTarif ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+                {/* Ligne du type lui-même */}
                 <div className="flex items-center gap-2 flex-wrap">
                   <input type="text" value={p.emoji} onChange={(e) => updateProduit(p.id, { emoji: e.target.value.slice(0, 4) })} className="w-12 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-center text-base" maxLength={4} />
-                  <input type="text" value={p.label} onChange={(e) => updateProduit(p.id, { label: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} placeholder="Type" className="flex-1 min-w-[140px] px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold" />
-                  <input type="text" value={p.marque || ''} onChange={(e) => updateProduit(p.id, { marque: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} placeholder="Marque" className="flex-1 min-w-[120px] px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm" />
-                  <input type="text" value={p.modele || ''} onChange={(e) => updateProduit(p.id, { modele: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} placeholder="Modèle" className="flex-1 min-w-[120px] px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm" />
+                  <input type="text" value={p.label} onChange={(e) => updateProduit(p.id, { label: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} placeholder="Type" className="flex-1 min-w-[200px] px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold" />
                   {p.autoTarif && (
                     <span className="text-[10px] font-bold px-2 py-1 bg-amber-200 text-amber-800 rounded-full whitespace-nowrap">⚡ Tarifs auto par Wc</span>
                   )}
                   <span className={`text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap ${used > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-400'}`}>{used} dossier{used > 1 ? 's' : ''}</span>
-                  <button onClick={() => del(p)} disabled={p.autoTarif} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed" title={p.autoTarif ? 'Produit système, non supprimable' : 'Supprimer'}>
+                  <button onClick={() => del(p)} disabled={p.autoTarif} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg disabled:opacity-30 disabled:cursor-not-allowed" title={p.autoTarif ? 'Type système, non supprimable' : 'Supprimer le type'}>
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
+                </div>
+
+                {/* Sous-catalogue marques/modèles pour ce type */}
+                <div className="mt-2 ml-6 pl-3 border-l-2 border-slate-200 space-y-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase">
+                      📦 Marques & modèles {variants.length > 0 ? `(${variants.length})` : ''}
+                    </div>
+                    <button onClick={() => addVariant(p.id)} className="text-[10px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-md flex items-center gap-1">
+                      <Plus className="w-2.5 h-2.5" />Ajouter une marque/modèle
+                    </button>
+                  </div>
+                  {variants.length === 0 ? (
+                    <div className="text-[10px] text-slate-400 italic">Aucune marque/modèle pour l'instant — le dossier proposera juste « {p.label} » sans variante.</div>
+                  ) : (
+                    variants.map(v => (
+                      <div key={v.id} className="flex items-center gap-1.5">
+                        <span className="text-slate-400 text-[10px] font-semibold">└─</span>
+                        <input type="text" value={v.marque || ''} onChange={(e) => updateVariant(p.id, v.id, { marque: e.target.value })} placeholder="Marque" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
+                        <input type="text" value={v.modele || ''} onChange={(e) => updateVariant(p.id, v.id, { modele: e.target.value })} placeholder="Modèle" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
+                        <button onClick={() => removeVariant(p.id, v.id)} className="p-1 text-rose-400 hover:bg-rose-100 rounded" title="Retirer cette variante">
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      </div>
+                    ))
+                  )}
                 </div>
               </div>
             );
           })}
         </div>
         <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700 leading-relaxed">
-          💡 <strong>Astuce</strong> : crée une entrée par marque/modèle que tu vends (ex : « ☀️ Panneau · DualSun · Flash 425W », « 📡 Micro-onduleur · Enphase · IQ8+ »). Au moment de saisir un dossier, le menu déroulant affichera <strong>type — marque modèle</strong> et tu n'auras qu'à cliquer.
+          💡 <strong>Exemple</strong> : sous « ☀️ Panneaux solaires », tu ajoutes 3 marques (DualSun Flash 425W, Trina Vertex 500W, Voltec Tarka 410W). Quand tu crées un dossier et que tu choisis « Panneaux solaires », un second menu apparaît pour choisir lequel.
         </div>
       </div>
     </div>
@@ -9923,7 +9954,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             <div className="space-y-2 mb-3">
               <div className="flex items-center justify-between">
                 <label className="text-xs font-semibold text-slate-600">Produits ({formData.produits.length}) — un client peut avoir plusieurs produits</label>
-                <button type="button" onClick={() => setFormData({ ...formData, produits: [...formData.produits, { type: '', puissance: 0, description: '', quantite: 1 }] })} className="text-xs font-semibold text-violet-600 bg-violet-50 px-2 py-1 rounded-lg flex items-center gap-1">
+                <button type="button" onClick={() => setFormData({ ...formData, produits: [...formData.produits, { type: '', variantId: '', puissance: 0, description: '', quantite: 1 }] })} className="text-xs font-semibold text-violet-600 bg-violet-50 px-2 py-1 rounded-lg flex items-center gap-1">
                   <Plus className="w-3 h-3" />Ajouter
                 </button>
               </div>
@@ -9937,17 +9968,23 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       <span className="flex-shrink-0 self-center text-xs font-bold rounded-full w-7 h-7 flex items-center justify-center bg-amber-100 text-amber-600">{idx + 1}</span>
                       <div className="flex-1 min-w-[200px]">
                         <label className="block text-[10px] font-semibold text-slate-500 mb-1">Type de produit</label>
-                        <select value={prod.type} onChange={(e) => updProd({ type: e.target.value })} className={inputCls + ' font-semibold'}>
+                        <select value={prod.type} onChange={(e) => updProd({ type: e.target.value, variantId: '' })} className={inputCls + ' font-semibold'}>
                           <option value="">— Choisir un produit —</option>
-                          {produits.map(p => {
-                            const suffix = [p.marque, p.modele].filter(Boolean).join(' ');
-                            return (
-                              <option key={p.id} value={p.id}>
-                                {p.emoji} {p.label}{suffix ? ` — ${suffix}` : ''}
-                              </option>
-                            );
-                          })}
+                          {produits.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>)}
                         </select>
+                        {/* Sélecteur de variante (marque/modèle) — visible si le
+                            type sélectionné a un catalogue non vide. */}
+                        {(() => {
+                          const t = produits.find(x => x.id === prod.type);
+                          const variants = (t && Array.isArray(t.variants)) ? t.variants : [];
+                          if (variants.length === 0) return null;
+                          return (
+                            <select value={prod.variantId || ''} onChange={(e) => updProd({ variantId: e.target.value })} className={inputCls + ' mt-1.5 text-xs'}>
+                              <option value="">— Choisir une marque/modèle —</option>
+                              {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
+                            </select>
+                          );
+                        })()}
                       </div>
                       {prodInfo.autoTarif ? (
                         <div className="flex-1 min-w-[140px]">
@@ -15400,20 +15437,24 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 return (
                   <div key={i} className="bg-amber-50 border border-amber-200 rounded-xl p-2 space-y-1.5">
                     <div className="flex items-center gap-1.5">
-                      <select value={p.type} onChange={(e) => updateProduit(i, { type: e.target.value })} className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-amber-200 rounded-lg text-xs font-bold text-amber-800">
-                        {produits.map(prod => {
-                          const suffix = [prod.marque, prod.modele].filter(Boolean).join(' ');
-                          return (
-                            <option key={prod.id} value={prod.id}>
-                              {prod.emoji} {prod.label}{suffix ? ` — ${suffix}` : ''}
-                            </option>
-                          );
-                        })}
+                      <select value={p.type} onChange={(e) => updateProduit(i, { type: e.target.value, variantId: '' })} className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-amber-200 rounded-lg text-xs font-bold text-amber-800">
+                        {produits.map(prod => <option key={prod.id} value={prod.id}>{prod.emoji} {prod.label}</option>)}
                       </select>
                       <button onClick={() => removeProduit(i)} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Retirer">
                         <Trash2 className="w-3 h-3" />
                       </button>
                     </div>
+                    {/* Sélecteur de variante marque/modèle si le type en a */}
+                    {(() => {
+                      const variants = (prodInfo && Array.isArray(prodInfo.variants)) ? prodInfo.variants : [];
+                      if (variants.length === 0) return null;
+                      return (
+                        <select value={p.variantId || ''} onChange={(e) => updateProduit(i, { variantId: e.target.value })} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-semibold text-amber-700">
+                          <option value="">— Choisir une marque/modèle —</option>
+                          {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
+                        </select>
+                      );
+                    })()}
                     {prodInfo.autoTarif ? (
                       <select value={p.puissance || 6000} onChange={(e) => updateProduit(i, { puissance: parseInt(e.target.value) })} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-semibold">
                         {PUISSANCES.map(pw => <option key={pw} value={pw}>{pw} Wc</option>)}
