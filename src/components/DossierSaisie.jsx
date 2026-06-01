@@ -6595,36 +6595,57 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
 
       {/* ACTIVITÉ PAR UTILISATEUR */}
       {(() => {
-        // Aggrège l'activité par utilisateur
+        // 📊 Agrégation par utilisateur — compte TOUS les types d'actions
+        // tracées (et pas seulement créations + statuts) pour refléter
+        // l'activité réelle de chaque personne : modifs, relances WhatsApp,
+        // notifs régies, emails IA. L'auto_statut est exclu (système).
         const userMap = {};
         const ensureUser = (name) => {
           const key = name || '(anonyme)';
-          if (!userMap[key]) userMap[key] = { name: key, created: 0, modified: 0, statusChanges: 0, ca: 0, lastActivity: null };
+          if (!userMap[key]) userMap[key] = { name: key, created: 0, modified: 0, statusChanges: 0, outreach: 0, ca: 0, lastActivity: null };
           return userMap[key];
         };
+        const touch = (u, date) => {
+          if (date && (!u.lastActivity || date > u.lastActivity)) u.lastActivity = date;
+        };
         dossiers.forEach(d => {
+          // Créations : on s'appuie sur le champ createdBy (plus fiable que
+          // l'historique pour les vieux dossiers où l'entrée création a pu
+          // être perdue lors de fusions).
           if (d.createdBy) {
             const u = ensureUser(d.createdBy);
             u.created++;
             u.ca += d.montantTotal || 0;
-            if (d.createdAt && (!u.lastActivity || d.createdAt > u.lastActivity)) u.lastActivity = d.createdAt;
+            touch(u, d.createdAt);
           }
-          if (d.modifiedBy && d.modifiedBy !== d.createdBy) {
-            const u = ensureUser(d.modifiedBy);
-            u.modified++;
-            if (d.modifiedAt && (!u.lastActivity || d.modifiedAt > u.lastActivity)) u.lastActivity = d.modifiedAt;
-          }
-          // Compte les changements de statut depuis l'historique
+          // Tout le reste : on lit l'historique. Chaque entrée = 1 action user.
           (d.historique || []).forEach(h => {
-            if (h.action === 'changement_statut' && h.user) {
-              const u = ensureUser(h.user);
-              u.statusChanges++;
-              if (h.date && (!u.lastActivity || h.date > u.lastActivity)) u.lastActivity = h.date;
+            if (!h.user) return;
+            const u = ensureUser(h.user);
+            switch (h.action) {
+              case 'modification':
+                u.modified++;
+                touch(u, h.date);
+                break;
+              case 'changement_statut':
+                u.statusChanges++;
+                touch(u, h.date);
+                break;
+              case 'relance_whatsapp':
+              case 'notif_regie_accord':
+              case 'email_ia':
+                u.outreach++;
+                touch(u, h.date);
+                break;
+              // 'création' déjà comptée via createdBy
+              // 'auto_statut' = action système, on ne crédite personne
+              default:
+                break;
             }
           });
         });
         const users = Object.values(userMap).sort((a, b) =>
-          (b.created + b.modified + b.statusChanges) - (a.created + a.modified + a.statusChanges)
+          (b.created + b.modified + b.statusChanges + b.outreach) - (a.created + a.modified + a.statusChanges + a.outreach)
         );
         if (users.length === 0) {
           // Pas encore d'activité tracée — affiche quand même le bloc avec un message
@@ -6668,7 +6689,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
           } catch (e) { return '—'; }
         };
 
-        const totalActions = users.reduce((s, u) => s + u.created + u.modified + u.statusChanges, 0);
+        const totalActions = users.reduce((s, u) => s + u.created + u.modified + u.statusChanges + u.outreach, 0);
 
         return (
           <div className="bg-white rounded-3xl shadow-md border border-cyan-100 overflow-hidden">
@@ -6676,11 +6697,11 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
               <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
                 👤 Activité par utilisateur
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">Qui crée et modifie les dossiers — {totalActions} action{totalActions > 1 ? 's' : ''} au total</p>
+              <p className="text-xs text-slate-500 mt-0.5">Qui travaille vraiment dans le CRM — {totalActions} action{totalActions > 1 ? 's' : ''} au total (créations, modifs, statuts, relances)</p>
             </div>
             <div className="divide-y divide-slate-100">
               {users.map((u, idx) => {
-                const totalUserActions = u.created + u.modified + u.statusChanges;
+                const totalUserActions = u.created + u.modified + u.statusChanges + u.outreach;
                 const pct = totalActions > 0 ? (totalUserActions / totalActions) * 100 : 0;
                 const isAnonymous = u.name === '(anonyme)';
                 return (
@@ -6698,9 +6719,10 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
                         </div>
                       </div>
                       <div className="flex items-center gap-3 flex-wrap">
-                        <span className="text-xs px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">✨ {u.created} créé{u.created > 1 ? 's' : ''}</span>
-                        {u.modified > 0 && <span className="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold">✏️ {u.modified} modif</span>}
+                        {u.created > 0 && <span className="text-xs px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">✨ {u.created} créé{u.created > 1 ? 's' : ''}</span>}
+                        {u.modified > 0 && <span className="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold">✏️ {u.modified} modif{u.modified > 1 ? 's' : ''}</span>}
                         {u.statusChanges > 0 && <span className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700 font-semibold">🔄 {u.statusChanges} statut{u.statusChanges > 1 ? 's' : ''}</span>}
+                        {u.outreach > 0 && <span className="text-xs px-2 py-1 rounded-full bg-fuchsia-50 text-fuchsia-700 font-semibold">📞 {u.outreach} relance{u.outreach > 1 ? 's' : ''}</span>}
                         {u.ca > 0 && <span className="text-xs px-2 py-1 rounded-full bg-violet-50 text-violet-700 font-semibold">💰 {formatEuro(u.ca)}</span>}
                       </div>
                     </div>
