@@ -3147,16 +3147,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsAEnvoyerBanque.sort((a, b) => b.jours - a.jours);
 
-    // Rappels À envoyer en pose — financement accordé mais aucune trace
-    // d'envoi en pose. Une "trace" = n'importe laquelle des 3 dates (envoi,
-    // visite client, ou pose réelle). Tant qu'aucune des 3 n'est posée, on
-    // est dans ce bucket. Dès qu'une l'est, on bascule en "Poseur à assigner"
-    // (si manque le poseur) ou en pose elle-même. Les 2 buckets s'excluent
-    // ainsi mutuellement.
+    // Rappels À envoyer en pose — financement accordé mais aucune date d'envoi
+    // en pose. C'est le 1er bucket : tu dois entrer une date depuis ici.
+    // Une fois dateEnvoiPose remplie, le dossier sort de ce bucket et,
+    // s'il n'a pas de poseur, bascule dans « Poseur à assigner ».
     const rappelsAEnvoyerPose = [];
     dossiersDash.forEach(d => {
       if (d.statutFin !== 'accepté') return; // pas accordé par banque
-      if (d.dateEnvoiPose || d.dateVisitePose || d.dateInsta) return; // déjà au moins amorcé en pose
+      if (d.dateEnvoiPose) return; // déjà envoyé en pose → on bascule sur l'autre bucket
       if (finalStatuses.includes(d.statut)) return;
       // Calcul depuis la date d'accord (ou date retour fin fallback)
       const ref = d.dateAccord || d.dateRetourFin || d.savedAt;
@@ -3183,9 +3181,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // d'un dossier encore au stade contrôle qualité.
       const financementBoucle = d.statutFin === 'accepté' || d.financement === 'COMPTANT';
       if (!financementBoucle) return;
-      // Une date de pose est-elle posée ? (envoi en pose, visite, ou pose)
-      const aUneDate = !!(d.dateEnvoiPose || d.dateVisitePose || d.dateInsta);
-      if (!aUneDate) return;
+      // La date d'envoi en pose est-elle posée ? C'est le déclencheur
+      // de ce bucket — tant qu'elle est vide, le dossier reste dans
+      // « À envoyer pose ». Une fois remplie, si pas de poseur on bascule
+      // ici. Les 2 buckets s'excluent ainsi sur le même pivot dateEnvoiPose.
+      if (!d.dateEnvoiPose) return;
       // Un poseur est-il assigné ?
       const poseurs = d.poseurs || [];
       const poseurAssigne = poseurs.some(p => p && p.nom && p.nom.trim());
