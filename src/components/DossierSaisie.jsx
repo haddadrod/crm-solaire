@@ -1233,7 +1233,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const initialTabFromHash = (typeof window !== 'undefined' && window.location.hash)
     ? window.location.hash.replace(/^#/, '').split('/')[0] || 'dossiers'
     : 'dossiers';
-  const VALID_TABS = ['dossiers', 'archives', 'kanban', 'calendrier', 'paiements', 'dashboard', 'reglages'];
+  const VALID_TABS = ['ajourd', 'dossiers', 'archives', 'kanban', 'calendrier', 'paiements', 'dashboard', 'reglages'];
   const [activeTab, setActiveTab] = useState(VALID_TABS.includes(initialTabFromHash) ? initialTabFromHash : 'dossiers');
   const [statutsOrder, setStatutsOrder] = useState(STATUTS.map(s => s.id));
   const [tarifsPoseurs, setTarifsPoseurs] = useState(TARIFS_POSEURS_DEFAULT);
@@ -4088,6 +4088,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
           {/* Onglets — selon permissions du rôle actif */}
           <div className="flex gap-2 mb-3 bg-white rounded-2xl p-1.5 shadow-sm border border-violet-100 w-fit flex-wrap">
+            {(() => {
+              // Compteur d'actions « Ma journée » pour le badge de l'onglet.
+              const canArgent = isAdmin || currentUserRole === 'compta' || currentUserRole === 'envoi_finance';
+              const baseKeys = ['rappelsClientRappel','rappelsControleQualite','rappelsAEnvoyerBanque','rappelsFinancement','rappelsManqueDoc','rappelsAEnvoyerPose','rappelsPoseurNonAssigne','rappelsPoseNonFinie','rappelsAEnvoyerMairie','rappelsAEnvoyerConsuel','rappelsAEnvoyerRaccordement','rappelsMaterielNonRendu','rappelsLitige','rappelsSav','rappelsStagnation'];
+              const argentKeys = ['rappelsOriginaux','rappelsControleLivraison','rappelsPaiement','rappelsRecupTva','rappelsFacturesManquantes'];
+              const keys = canArgent ? [...baseKeys, ...argentKeys] : baseKeys;
+              const cnt = keys.reduce((s, k) => s + ((dashboard[k] || []).length), 0);
+              return (
+                <TabButton active={activeTab === 'ajourd'} onClick={() => setActiveTab('ajourd')} icon={Flame} label="Ma journée" color="from-violet-500 to-fuchsia-500" badge={cnt > 0 ? `${cnt}` : null} badgeColor="bg-rose-100 text-rose-700" />
+              );
+            })()}
             <TabButton active={activeTab === 'dossiers'} onClick={() => setActiveTab('dossiers')} icon={FileText} label={`Dossiers (${nbActifs})`} color="from-violet-500 to-pink-500" />
             <TabButton active={activeTab === 'archives'} onClick={() => setActiveTab('archives')} icon={Check} label={`Archivés (${nbArchives})`} color="from-slate-500 to-gray-600" />
             <TabButton active={activeTab === 'kanban'} onClick={() => setActiveTab('kanban')} icon={LayoutGrid} label="Kanban" color="from-violet-500 to-fuchsia-500" />
@@ -4127,6 +4138,15 @@ export default function DossierSaisie({ authUser, onLogout }) {
         </div>
 
         {/* DOSSIERS / ARCHIVES — même vue, filtre auto */}
+        {activeTab === 'ajourd' && (
+          <MaJourneeView
+            dashboard={dashboard}
+            currentUserRole={currentUserRole}
+            isAdmin={isAdmin}
+            onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }}
+          />
+        )}
+
         {(activeTab === 'dossiers' || activeTab === 'archives') && (
           <>
             {/* RÉCAP POSEUR / RÉGIE — ce que l'entreprise lui doit / lui a payé */}
@@ -6647,6 +6667,124 @@ function PrestatairesPayerSection({ rappels, onShowQuick }) {
         <div className="text-[11px] text-center text-slate-500 mt-2 italic">{sorted.length - 30} autres non affichés</div>
       )}
     </>
+  );
+}
+
+// 🎯 « Ma journée » — centre d'actions priorisé. Agrège TOUS les rappels du
+// dashboard en une seule liste actionnable, triée par urgence (le plus en
+// retard en haut). Chaque action → clic ouvre le dossier sur la bonne section.
+// Transforme le CRM de « base qu'on consulte » en « assistant qui dit quoi faire ».
+function MaJourneeView({ dashboard, currentUserRole, isAdmin, onShowQuick }) {
+  // Mapping rappel → action concrète. scrollTo cible la section QuickView.
+  // adminCompta = action réservée admin/compta (argent, banque) — masquée
+  // pour les autres rôles pour ne pas noyer la secrétaire sous des items
+  // qui ne la concernent pas.
+  const SOURCES = [
+    { key: 'rappelsClientRappel',       emoji: '📞', label: 'Rappeler le client',                    scrollTo: 'rappel',        cat: 'Client' },
+    { key: 'rappelsControleQualite',    emoji: '📋', label: 'Faire le contrôle qualité',             scrollTo: 'cq',            cat: 'Qualité' },
+    { key: 'rappelsAEnvoyerBanque',     emoji: '🏦', label: 'Envoyer le dossier en banque',          scrollTo: 'financement',   cat: 'Banque' },
+    { key: 'rappelsFinancement',        emoji: '⏳', label: 'Relancer la banque (sans retour)',       scrollTo: 'financement',   cat: 'Banque' },
+    { key: 'rappelsManqueDoc',          emoji: '📄', label: 'Récupérer les docs réclamés par la banque', scrollTo: 'financement', cat: 'Banque' },
+    { key: 'rappelsAEnvoyerPose',       emoji: '📅', label: 'Programmer la pose',                     scrollTo: 'pose',          cat: 'Pose' },
+    { key: 'rappelsPoseurNonAssigne',   emoji: '🔧', label: 'Assigner un poseur',                     scrollTo: 'poseurs',       cat: 'Pose' },
+    { key: 'rappelsPoseNonFinie',       emoji: '🔧', label: 'Finaliser / confirmer la pose',          scrollTo: 'pose',          cat: 'Pose' },
+    { key: 'rappelsAEnvoyerMairie',     emoji: '🏛️', label: 'Envoyer la déclaration en mairie',       scrollTo: 'mairie',        cat: 'Démarches' },
+    { key: 'rappelsAEnvoyerConsuel',    emoji: '⚡', label: 'Envoyer le Consuel',                     scrollTo: 'consuel',       cat: 'Démarches' },
+    { key: 'rappelsAEnvoyerRaccordement', emoji: '🔌', label: 'Demander le raccordement Enedis',      scrollTo: 'raccordement',  cat: 'Démarches' },
+    { key: 'rappelsOriginaux',          emoji: '📨', label: 'Récupérer les originaux pour la banque', scrollTo: 'paiement',      cat: 'Banque', adminCompta: true },
+    { key: 'rappelsControleLivraison',  emoji: '✅', label: 'Faire le contrôle de livraison',         scrollTo: 'paiement',      cat: 'Banque', adminCompta: true },
+    { key: 'rappelsPaiement',           emoji: '💳', label: 'Encaisser / relancer le paiement',       scrollTo: 'paiement',      cat: 'Argent', adminCompta: true },
+    { key: 'rappelsRecupTva',           emoji: '🧾', label: 'Récupérer la TVA',                       scrollTo: 'paiement',      cat: 'Argent', adminCompta: true },
+    { key: 'rappelsFacturesManquantes', emoji: '🧾', label: 'Récupérer les factures prestataires',    scrollTo: 'poseurs',       cat: 'Argent', adminCompta: true },
+    { key: 'rappelsMaterielNonRendu',   emoji: '📦', label: 'Récupérer le matériel chez le poseur',   scrollTo: 'materielNonRendu', cat: 'Pose' },
+    { key: 'rappelsLitige',             emoji: '⚖️', label: 'Traiter le litige',                      scrollTo: 'litige',        cat: 'Litige' },
+    { key: 'rappelsSav',                emoji: '🛠️', label: 'Traiter le SAV',                         scrollTo: 'sav',           cat: 'SAV' },
+    { key: 'rappelsStagnation',         emoji: '🐌', label: 'Dossier bloqué trop longtemps — débloquer', scrollTo: null,         cat: 'Blocage' },
+  ];
+
+  const canSeeArgent = isAdmin || currentUserRole === 'compta' || currentUserRole === 'envoi_finance';
+
+  // Construit la liste plate des actions, dédupliquée par dossier+action.
+  const actions = [];
+  for (const src of SOURCES) {
+    if (src.adminCompta && !canSeeArgent) continue;
+    const items = dashboard?.[src.key] || [];
+    for (const it of items) {
+      const d = it.dossier || it;
+      if (!d || !d.localId) continue;
+      actions.push({
+        localId: d.localId,
+        nom: `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)',
+        ville: d.ville || '',
+        emoji: src.emoji,
+        label: src.label,
+        cat: src.cat,
+        scrollTo: src.scrollTo,
+        jours: typeof it.jours === 'number' ? it.jours : 0,
+        level: it.level || 'warn',
+      });
+    }
+  }
+  // Tri : critique d'abord, puis par jours décroissant (le plus vieux en haut).
+  const levelRank = { critical: 0, high: 1, warn: 2 };
+  actions.sort((a, b) => {
+    const lr = (levelRank[a.level] ?? 2) - (levelRank[b.level] ?? 2);
+    if (lr !== 0) return lr;
+    return (b.jours || 0) - (a.jours || 0);
+  });
+
+  const levelStyle = (level) => level === 'critical'
+    ? 'border-l-rose-500 bg-rose-50'
+    : level === 'high'
+      ? 'border-l-orange-400 bg-orange-50'
+      : 'border-l-amber-300 bg-amber-50';
+
+  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      <div className="bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-3xl p-5 mb-4 text-white shadow-lg">
+        <h2 className="text-xl font-bold flex items-center gap-2">🎯 Ma journée</h2>
+        <p className="text-sm text-white/90 mt-0.5 capitalize">{today}</p>
+        <p className="text-sm text-white/90 mt-1">
+          {actions.length === 0
+            ? '✨ Rien d\'urgent — tout est à jour !'
+            : `${actions.length} action${actions.length > 1 ? 's' : ''} à traiter, les plus urgentes en haut.`}
+        </p>
+      </div>
+
+      {actions.length === 0 ? (
+        <div className="bg-white rounded-3xl shadow-md border border-emerald-100 p-10 text-center">
+          <div className="text-5xl mb-3">🎉</div>
+          <h3 className="text-base font-bold text-slate-700 mb-1">Aucune action en attente</h3>
+          <p className="text-sm text-slate-500">Tous tes dossiers sont à jour. Profites-en !</p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {actions.map((a, i) => (
+            <button
+              key={`${a.localId}_${a.label}_${i}`}
+              onClick={() => onShowQuick && onShowQuick(a.localId, a.scrollTo)}
+              className={`w-full text-left flex items-center gap-3 p-3 rounded-xl border border-slate-100 border-l-4 ${levelStyle(a.level)} hover:shadow-md transition-all`}
+            >
+              <span className="text-xl flex-shrink-0">{a.emoji}</span>
+              <div className="flex-1 min-w-0">
+                <div className="font-bold text-slate-800 text-sm truncate">{a.label}</div>
+                <div className="text-xs text-slate-500 truncate">
+                  👤 {a.nom}{a.ville ? ` · ${a.ville}` : ''} · <span className="font-semibold text-slate-600">{a.cat}</span>
+                </div>
+              </div>
+              <div className="flex-shrink-0 text-right">
+                {a.jours > 0 && (
+                  <div className={`text-lg font-bold ${a.level === 'critical' ? 'text-rose-600' : a.level === 'high' ? 'text-orange-600' : 'text-amber-600'}`}>{a.jours}j</div>
+                )}
+                <div className="text-[9px] text-slate-400 uppercase">{a.level === 'critical' ? 'urgent' : a.level === 'high' ? 'à faire' : 'à voir'}</div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
