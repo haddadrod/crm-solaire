@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, Lock, Unlock, Shield, KeyRound, LayoutGrid } from 'lucide-react';
-import { supabase, uploadFileToBucket, getSignedUrl, deleteFileFromBucket, downloadFileFromBucket } from '../supabase.js';
+import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, LayoutGrid } from 'lucide-react';
+import { supabase, uploadFileToBucket, getSignedUrl, deleteFileFromBucket } from '../supabase.js';
 import { TEMPLATES_CATALOG } from '../pdfTemplates.js';
 
 // Listes par défaut — modifiables dans Réglages
@@ -4233,68 +4233,6 @@ function TabButton({ active, onClick, icon: Icon, label, color, badge, badgeColo
   );
 }
 
-function StatCard({ label, value, icon: Icon, color, small }) {
-  return (
-    <div className="bg-white rounded-2xl p-4 shadow-md border border-slate-100">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-xs font-semibold text-slate-500 uppercase">{label}</div>
-          <div className={`font-bold text-slate-800 truncate ${small ? 'text-base' : 'text-2xl'}`}>{value}</div>
-        </div>
-        <div className={`w-10 h-10 bg-gradient-to-br ${color} rounded-xl flex items-center justify-center flex-shrink-0`}>
-          <Icon className="w-5 h-5 text-white" />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function StatusBreakdown({ dossiers, STATUTS, onSelect, filterStatut }) {
-  const counts = STATUTS
-    .map(s => ({ ...s, count: dossiers.filter(d => d.statut === s.id).length }))
-    .filter(s => s.count > 0)
-    .sort((a, b) => b.count - a.count);
-
-  const isFiltering = filterStatut && filterStatut !== 'all';
-
-  return (
-    <div className="bg-white rounded-2xl p-4 shadow-md border border-slate-100 h-full flex flex-col">
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <div className="text-xs font-semibold text-slate-500 uppercase">Par statut</div>
-        {isFiltering ? (
-          <button onClick={() => onSelect && onSelect('all')} className="text-[10px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 px-2 py-0.5 rounded-full flex items-center gap-1">
-            <X className="w-2.5 h-2.5" />Effacer filtre
-          </button>
-        ) : (
-          <div className="text-[10px] font-bold text-slate-400">{counts.length} actif{counts.length > 1 ? 's' : ''}</div>
-        )}
-      </div>
-      {counts.length === 0 ? (
-        <div className="text-sm text-slate-400 italic">Aucun dossier</div>
-      ) : (
-        <div className="flex flex-wrap gap-1 content-start flex-1">
-          {counts.map(s => {
-            const sel = filterStatut === s.id;
-            return (
-              <button
-                key={s.id}
-                type="button"
-                onClick={() => onSelect && onSelect(sel ? 'all' : s.id)}
-                title={sel ? 'Cliquer pour effacer le filtre' : `Filtrer par ${s.label}`}
-                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold transition-all hover:scale-105 ${sel ? `bg-gradient-to-r ${s.color} text-white shadow-md scale-105` : `${s.bg} ${s.text}`}`}
-              >
-                <span>{s.emoji}</span>
-                <span>{s.label}</span>
-                <span className={`px-1 rounded-full text-[10px] font-bold min-w-[16px] text-center ${sel ? 'bg-white/30 text-white' : 'bg-white/80 text-slate-700'}`}>{s.count}</span>
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // 🏢 Map des classes Tailwind pour les badges société (statique pour pas
 // que le purger CSS les vire en prod).
 const SOCIETE_BADGE_CLASSES = {
@@ -7574,63 +7512,6 @@ function CommissionsInternesManager({ tarifs, setTarifs, noms, setNoms, dossiers
           💡 Les noms ajoutés ici apparaîtront dans le menu déroulant de chaque rôle quand tu remplis une fiche dossier. Tu peux aussi taper un nouveau nom à la volée — il sera automatiquement ajouté à la liste.
         </div>
       </div>
-    </div>
-  );
-}
-
-// Éditeur de contact (tél + email optionnel) avec brouillon local et
-// bouton 'Enregistrer' explicite. Évite les sauvegardes silencieuses qui
-// semblent ne pas marcher (perception utilisateur) — l'utilisateur clique,
-// voit "✓ Enregistré", il est sûr que c'est en base.
-function ContactRowEditor({ nom, currentTel, currentEmail, onSave, showEmail }) {
-  const [tel, setTel] = useState(currentTel || '');
-  const [email, setEmail] = useState(currentEmail || '');
-  const [savedFlash, setSavedFlash] = useState(false);
-
-  // Resync quand la prop change (autre device, reload), seulement si pas en cours d'édition
-  useEffect(() => { setTel(currentTel || ''); }, [currentTel]);
-  useEffect(() => { setEmail(currentEmail || ''); }, [currentEmail]);
-
-  const dirty = (tel || '') !== (currentTel || '') || (showEmail && (email || '') !== (currentEmail || ''));
-
-  const save = () => {
-    onSave(tel.trim(), email.trim());
-    setSavedFlash(true);
-    setTimeout(() => setSavedFlash(false), 2000);
-  };
-
-  return (
-    <div className="mt-1 space-y-1">
-      <input
-        type="tel"
-        value={tel}
-        onChange={(e) => setTel(e.target.value)}
-        onKeyDown={(e) => { if (e.key === 'Enter' && dirty) save(); }}
-        placeholder="📞 tél. (WhatsApp)"
-        className="w-full px-2 py-0.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
-      />
-      {showEmail && (
-        <input
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => { if (e.key === 'Enter' && dirty) save(); }}
-          placeholder="📧 email"
-          className="w-full px-2 py-0.5 bg-slate-50 border border-slate-200 rounded text-[10px] text-slate-600 focus:outline-none focus:ring-1 focus:ring-violet-400"
-        />
-      )}
-      {dirty && (
-        <button
-          type="button"
-          onClick={save}
-          className="w-full px-2 py-0.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
-        >
-          💾 Enregistrer
-        </button>
-      )}
-      {savedFlash && (
-        <div className="text-[9px] text-emerald-700 font-bold text-center">✓ Enregistré</div>
-      )}
     </div>
   );
 }
@@ -14922,8 +14803,6 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   const listeNoms = (nomsInternes && nomsInternes[role.key]) || [];
                   const valeurActuelle = d[nomKey] || '';
                   const valeurDansListe = !valeurActuelle || listeNoms.includes(valeurActuelle);
-                  const showRow = !!d[nomKey] || true; // toujours afficher les rôles pour pouvoir les renseigner
-                  if (!showRow) return null;
                   return (
                     <div key={role.key} className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-2 space-y-1">
                       <div className="text-[9px] font-bold text-fuchsia-700 uppercase">{role.emoji} {role.label}</div>

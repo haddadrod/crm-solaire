@@ -65,14 +65,3 @@ export async function deleteFileFromBucket(path) {
   const { error } = await supabase.storage.from(BUCKET).remove([path]);
   return { error };
 }
-
-/**
- * Télécharge le contenu d'un fichier du bucket sous forme de Blob (pour preview
- * inline dans un <iframe>/<img> sans dépendre de la signed URL).
- */
-export async function downloadFileFromBucket(path) {
-  if (!path) return { blob: null, error: new Error('Aucun chemin fourni') };
-  const { data, error } = await supabase.storage.from(BUCKET).download(path);
-  if (error) return { blob: null, error };
-  return { blob: data, error: null };
-}
