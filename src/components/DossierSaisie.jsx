@@ -361,6 +361,17 @@ const ROLES_INTERNES = [
 ];
 const TARIFS_INTERNES_DEFAULT = ROLES_INTERNES.reduce((acc, r) => ({ ...acc, [r.key]: r.defaultTarif }), {});
 const NOMS_INTERNES_DEFAULT = ROLES_INTERNES.reduce((acc, r) => ({ ...acc, [r.key]: [] }), {});
+
+// 💬 Modèles de messages réutilisables (relances WhatsApp/email). Les variables
+// {nom} {prenom} {client} {ville} {adresse} {datePose} {financement} {id}
+// {tel} {puissance} sont remplacées par les données du dossier au moment de
+// copier. L'utilisateur peut les éditer / en ajouter dans Réglages.
+const MESSAGE_TEMPLATES_DEFAULT = [
+  { id: 'relance_facture_poseur', label: '🔧 Relance facture poseur', body: "Bonjour,\n\nOn n'a pas encore reçu ta facture pour le chantier de {client} ({ville}) posé le {datePose}. Tu peux nous l'envoyer dès que possible ?\n\nMerci !" },
+  { id: 'accord_banque_regie', label: '🏦 Accord banque → régie', body: "🌞 Bonjour, accord financement reçu pour {client} ({financement}).\n\nDossier n° {id}\n📍 {adresse}\n☀️ {puissance} Wc\n\nTu peux programmer la pose, merci !" },
+  { id: 'rappel_consuel', label: '⚡ Relance Consuel', body: "Bonjour,\n\nPour le dossier {client} ({ville}), il nous manque le visa du Consuel. Peux-tu nous faire un point sur l'avancement ?\n\nMerci." },
+  { id: 'rdv_pose_client', label: '📅 Confirmation pose au client', body: "Bonjour {prenom},\n\nNous vous confirmons l'installation de vos panneaux solaires le {datePose}. Merci de prévoir un accès dégagé. À très bientôt !" },
+];
 const PUISSANCES = [2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 10000, 11000, 12000, 15000, 18000];
 const PUISSANCES_PRINCIPALES = [2000, 2500, 3000, 3500, 4000, 4500, 5000, 5500, 6000, 6500, 7000, 7500, 8000, 8500, 9000, 10000, 11000, 12000, 15000, 18000];
 
@@ -1272,6 +1283,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Auto-calcul du HT du dossier : tarif × puissance totale solaire.
   const [tarifsFournisseurs, setTarifsFournisseurs] = useState({});
   const [produits, setProduits] = useState(PRODUITS_DEFAULT);
+  const [messageTemplates, setMessageTemplates] = useState(MESSAGE_TEMPLATES_DEFAULT);
   const [users, setUsers] = useState([]);
   const [showDocsForId, setShowDocsForId] = useState(null); // 📎 modal documents
   const [showHistForId, setShowHistForId] = useState(null); // 📜 modal historique
@@ -1757,7 +1769,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         'statuts-order', 'tarifs-poseurs', 'tarifs-regies',
         'poseurs-contacts', 'regies-contacts', 'email-config', 'tarifs-internes',
         'noms-internes', 'liste-fournisseurs', 'tarifs-fournisseurs',
-        'produits', 'users-list', 'projexio-caps', 'chat-messages',
+        'produits', 'users-list', 'projexio-caps', 'chat-messages', 'message-templates',
       ];
       const bgResults = await Promise.allSettled(bgKeys.map(k => window.storage.get(k)));
       const bgData = {};
@@ -1832,6 +1844,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (r?.value) {
           const arr = JSON.parse(r.value);
           if (Array.isArray(arr) && arr.length > 0) setProduits(arr);
+        }
+      } catch (e) {}
+      try {
+        const r = bgData['message-templates'];
+        if (r?.value) {
+          const arr = JSON.parse(r.value);
+          if (Array.isArray(arr)) setMessageTemplates(arr);
         }
       } catch (e) {}
       try {
@@ -2198,7 +2217,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     saveAndTrack('email-config', emailConfig);
     saveAndTrack('societes', societes);
     saveAndTrack('projexio-caps', projexioCaps);
-  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, societes, projexioCaps, loading]);
+    saveAndTrack('message-templates', messageTemplates);
+  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, societes, projexioCaps, messageTemplates, loading]);
 
   // 💬 Save effect dédié au chat — séparé des réglages pour éviter qu'un
   // envoi de message ne re-sauvegarde TOUS les tarifs (et inversement).
@@ -2236,6 +2256,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       'liste-fournisseurs': setListeFournisseurs,
       'tarifs-fournisseurs': setTarifsFournisseurs,
       'produits': setProduits,
+      'message-templates': setMessageTemplates,
       'poseurs-contacts': setPoseursContacts,
       'regies-contacts': setRegiesContacts,
       'email-config': setEmailConfig,
@@ -4409,6 +4430,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             listeFournisseurs={listeFournisseurs} setListeFournisseurs={setListeFournisseurs}
             tarifsFournisseurs={tarifsFournisseurs} setTarifsFournisseurs={setTarifsFournisseurs}
             produits={produits} setProduits={setProduits}
+            messageTemplates={messageTemplates} setMessageTemplates={setMessageTemplates}
             users={users} setUsers={setUsers}
             poseursContacts={poseursContacts} setPoseursContacts={setPoseursContacts}
             regiesContacts={regiesContacts} setRegiesContacts={setRegiesContacts}
@@ -4559,6 +4581,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             emailConfig={emailConfig}
             gmailOAuth={gmailOAuth}
             societes={societes}
+            messageTemplates={messageTemplates}
           />
         )}
 
@@ -7481,7 +7504,7 @@ function PerfList({ titre, data, dossiers = [], onShowQuick, medal, border, head
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
   // Init depuis le hash URL pour qu'un refresh garde la sous-section.
   // Format : #reglages/utilisateurs → section = 'utilisateurs'
   const sectionFromHash = (typeof window !== 'undefined' && window.location.hash)
@@ -7509,6 +7532,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
     { id: 'regies',       label: 'Régies',       emoji: '🤝', color: 'from-purple-500 to-violet-500' },
     { id: 'commissions',  label: 'Équipe interne', emoji: '👥', color: 'from-fuchsia-500 to-pink-500' },
     { id: 'email',        label: 'Email d\'envoi', emoji: '📧', color: 'from-blue-500 to-indigo-500' },
+    { id: 'messages',     label: 'Modèles messages', emoji: '💬', color: 'from-cyan-500 to-blue-500' },
     { id: 'onoff',        label: 'ONOFF (CQ)',   emoji: '📞', color: 'from-purple-500 to-violet-500' },
   ];
 
@@ -7609,6 +7633,10 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
 
       {section === 'produits' && (
         <ProduitsManager produits={produits} setProduits={setProduits} dossiers={dossiers} />
+      )}
+
+      {section === 'messages' && (
+        <MessageTemplatesManager templates={messageTemplates} setTemplates={setMessageTemplates} />
       )}
 
       {section === 'poseurs' && (
@@ -9381,6 +9409,82 @@ function VariantRow({ variant, onSave, onRemove }) {
           </button>
         </div>
       )}
+    </div>
+  );
+}
+
+// 💬 Remplace les variables {nom} {prenom} {client} {ville} {adresse}
+// {datePose} {financement} {id} {tel} {puissance} d'un modèle par les
+// données réelles du dossier.
+function fillMessageTemplate(body, d) {
+  if (!body || !d) return body || '';
+  const datePose = d.dateInsta ? new Date(d.dateInsta).toLocaleDateString('fr-FR') : '';
+  const vars = {
+    nom: d.nom || '',
+    prenom: d.prenom || '',
+    client: `${d.nom || ''} ${d.prenom || ''}`.trim(),
+    ville: d.ville || '',
+    adresse: [d.adresse, d.codePostal, d.ville].filter(Boolean).join(', '),
+    datePose,
+    financement: d.financement || '',
+    id: d.id || '',
+    tel: d.telephone || '',
+    puissance: d.puissance ? `${d.puissance}` : '',
+  };
+  return body.replace(/\{(\w+)\}/g, (m, k) => (vars[k] != null ? vars[k] : m));
+}
+
+// 💬 Gestion des modèles de messages (Réglages). Brouillon local + bouton
+// Enregistrer (même pattern anti-bug que les variantes produit).
+function MessageTemplatesManager({ templates, setTemplates }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
+
+  const add = () => {
+    const label = newLabel.trim();
+    if (!label) return;
+    const id = `tpl_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    setTemplates([...(templates || []), { id, label, body: '' }]);
+    setNewLabel(''); setShowAdd(false);
+  };
+  const update = (id, patch) => setTemplates((templates || []).map(t => t.id === id ? { ...t, ...patch } : t));
+  const del = (id) => {
+    if (!window.confirm('Supprimer ce modèle ?')) return;
+    setTemplates((templates || []).filter(t => t.id !== id));
+  };
+
+  return (
+    <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
+      <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-blue-50">
+        <h2 className="text-lg font-bold text-slate-800">💬 Modèles de messages</h2>
+        <p className="text-xs text-slate-500 mt-1">Messages réutilisables pour tes relances (WhatsApp/email). Variables auto-remplies depuis le dossier : <code className="bg-slate-100 px-1 rounded">{'{client}'}</code> <code className="bg-slate-100 px-1 rounded">{'{prenom}'}</code> <code className="bg-slate-100 px-1 rounded">{'{ville}'}</code> <code className="bg-slate-100 px-1 rounded">{'{datePose}'}</code> <code className="bg-slate-100 px-1 rounded">{'{financement}'}</code> <code className="bg-slate-100 px-1 rounded">{'{id}'}</code> <code className="bg-slate-100 px-1 rounded">{'{tel}'}</code> <code className="bg-slate-100 px-1 rounded">{'{puissance}'}</code> <code className="bg-slate-100 px-1 rounded">{'{adresse}'}</code>. Depuis un dossier (aperçu), un bouton « 📋 Modèles » copie le message tout rempli.</p>
+      </div>
+      <div className="p-4 space-y-3">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="text-sm font-semibold text-slate-600">📋 {(templates || []).length} modèle{(templates || []).length > 1 ? 's' : ''}</div>
+          {!showAdd ? (
+            <button onClick={() => setShowAdd(true)} className="text-xs font-semibold text-violet-600 bg-violet-50 px-3 py-1.5 rounded-lg flex items-center gap-1.5"><Plus className="w-3 h-3" />Ajouter un modèle</button>
+          ) : (
+            <div className="flex items-center gap-2 flex-wrap">
+              <input type="text" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); if (e.key === 'Escape') { setShowAdd(false); setNewLabel(''); } }} placeholder="Nom du modèle (ex: Relance Consuel)" className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm" autoFocus />
+              <button onClick={add} className="px-3 py-1.5 bg-violet-500 text-white rounded-lg text-xs font-semibold">OK</button>
+              <button onClick={() => { setShowAdd(false); setNewLabel(''); }} className="px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg text-xs font-semibold">Annuler</button>
+            </div>
+          )}
+        </div>
+        {(templates || []).map(t => (
+          <div key={t.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-2">
+            <div className="flex items-center gap-2">
+              <input type="text" value={t.label} onChange={(e) => update(t.id, { label: e.target.value })} placeholder="Nom du modèle" className="flex-1 px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-bold" />
+              <button onClick={() => del(t.id)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded-lg" title="Supprimer"><Trash2 className="w-3.5 h-3.5" /></button>
+            </div>
+            <textarea value={t.body} onChange={(e) => update(t.id, { body: e.target.value })} rows={4} placeholder="Texte du message — utilise {client}, {datePose}, etc." className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-xs text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400 resize-y" />
+          </div>
+        ))}
+        {(templates || []).length === 0 && (
+          <div className="text-center py-6 text-slate-400 italic text-sm">Aucun modèle. Clique « Ajouter un modèle » pour commencer.</div>
+        )}
+      </div>
     </div>
   );
 }
@@ -13639,7 +13743,7 @@ function BLMaterielBlock({ d, onUpdate }) {
   );
 }
 
-function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth, societes = [] }) {
+function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth, societes = [], messageTemplates = [] }) {
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
   const canSeeMarges = isAdmin || permissions?.voirMarges === true;
@@ -13689,6 +13793,20 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   // (LITIGE / SAV / ANNULER) en 1 clic, plutôt que d'aller chercher dans la
   // dropdown statut qui mélange parcours + hors-parcours.
   const [showCreerAction, setShowCreerAction] = useState(false);
+  // 💬 Picker de modèles de messages + flash de confirmation de copie
+  const [showMsgPicker, setShowMsgPicker] = useState(false);
+  const [copiedTplId, setCopiedTplId] = useState(null);
+  const copyTemplate = async (tpl) => {
+    const text = fillMessageTemplate(tpl.body, dossier);
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedTplId(tpl.id);
+      setTimeout(() => setCopiedTplId(null), 1500);
+    } catch (e) {
+      // Fallback : sélection manuelle via prompt si clipboard refusé
+      window.prompt('Copie ce message :', text);
+    }
+  };
 
   // Scroll vers la section demandée à l'ouverture + déplie l'étape ciblée
   useEffect(() => {
@@ -13889,7 +14007,28 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             <button onClick={onEdit} className="flex-1 min-w-[80px] bg-white text-slate-800 px-2 py-1.5 rounded-lg font-bold text-[10px] flex items-center justify-center gap-1">
               <Edit3 className="w-3 h-3" />Tout éditer
             </button>
+            {(messageTemplates || []).length > 0 && (
+              <button onClick={() => setShowMsgPicker(v => !v)} className="flex-1 min-w-[80px] bg-white/20 hover:bg-white/30 text-white px-2 py-1.5 rounded-lg font-semibold text-[10px] flex items-center justify-center gap-1 backdrop-blur" title="Copier un message pré-rempli pour ce client">
+                💬 Modèles
+              </button>
+            )}
           </div>
+          {/* 💬 Picker de modèles — copie le message rempli dans le presse-papier */}
+          {showMsgPicker && (messageTemplates || []).length > 0 && (
+            <div className="mt-2 p-2 bg-white/15 border border-white/30 rounded-lg backdrop-blur space-y-1">
+              <div className="text-[9px] font-bold text-white/80 uppercase mb-1">💬 Copier un message pour {d.nom} {d.prenom || ''}</div>
+              {(messageTemplates || []).map(tpl => (
+                <button
+                  key={tpl.id}
+                  onClick={() => copyTemplate(tpl)}
+                  className="w-full text-left px-2 py-1.5 bg-white/90 hover:bg-white text-slate-800 rounded text-[11px] font-semibold flex items-center justify-between gap-2"
+                >
+                  <span className="truncate">{tpl.label}</span>
+                  <span className="flex-shrink-0 text-[10px] font-bold">{copiedTplId === tpl.id ? '✓ Copié !' : '📋 Copier'}</span>
+                </button>
+              ))}
+            </div>
+          )}
           {/* 🏢 Sélecteur société — clic pour assigner sans ouvrir le form complet */}
           {societes.length > 1 && (
             <div className="mt-2 px-2 py-1.5 bg-white/15 border border-white/30 rounded-lg backdrop-blur">
