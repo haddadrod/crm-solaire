@@ -68,6 +68,24 @@ export default async function handler(req, res) {
   const caller = await getCallerUser(req, admin);
   const isAdmin = !!(caller && caller.user_metadata?.role === 'admin');
 
+  // 👥 Roster d'équipe — liste LIGHT accessible à TOUT utilisateur connecté
+  // (pas seulement les admins). Sert au chat équipe pour afficher la liste
+  // des collègues. On ne renvoie QUE des champs non sensibles : nom affiché,
+  // emoji, rôle. Pas d'email, pas de téléphone, pas d'id. Court-circuite la
+  // garde admin ci-dessous.
+  if (req.method === 'GET' && req.query?.scope === 'roster') {
+    if (!caller) return json(res, 401, { error: 'JWT requis' });
+    const roster = allUsers.map(u => {
+      const m = u.user_metadata || {};
+      return {
+        name: m.display_name || (u.email ? u.email.split('@')[0] : '') || '(sans nom)',
+        emoji: m.emoji || '👤',
+        role: m.role || 'commercial',
+      };
+    }).filter(r => r.name && r.name !== '(sans nom)');
+    return json(res, 200, { roster });
+  }
+
   // Garde-fou : hors bootstrap, toute opération exige un admin.
   if (!isBootstrap && !isAdmin) {
     if (!caller) return json(res, 401, { error: 'JWT requis' });
