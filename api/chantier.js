@@ -12,19 +12,30 @@
 
 import { createClient } from '@supabase/supabase-js';
 
+// Variables d'env. Aligné sur les autres endpoints (send-email.js, users.js,
+// etc.) qui utilisent SUPABASE_SERVICE_KEY (et pas SUPABASE_SERVICE_ROLE_KEY).
 const SUPABASE_URL = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 const BUCKET = 'dossier-documents';
 
-const supabase = createClient(SUPABASE_URL, SERVICE_ROLE_KEY, {
-  auth: { persistSession: false, autoRefreshToken: false },
-});
+// Init paresseuse du client Supabase : on ne le crée qu'à la 1ère requête.
+// Si on l'instanciait au top-level avec une variable d'env manquante, le
+// chargement du module ferait planter le déploiement Vercel entier.
+let _supabase = null;
+function getSupabase() {
+  if (_supabase) return _supabase;
+  if (!SUPABASE_URL || !SERVICE_KEY) return null;
+  _supabase = createClient(SUPABASE_URL, SERVICE_KEY, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  return _supabase;
+}
 
 function bad(res, code, error) {
   return res.status(code).json({ error });
 }
 
-async function loadDossierByToken(token) {
+async function loadDossierByToken(supabase, token) {
   const { data, error } = await supabase
     .from('storage')
     .select('value')
@@ -38,7 +49,7 @@ async function loadDossierByToken(token) {
   return { list, idx };
 }
 
-async function saveDossiers(list) {
+async function saveDossiers(supabase, list) {
   const { error } = await supabase.from('storage').upsert({
     key: 'dossiers-data',
     value: JSON.stringify(list),
@@ -53,8 +64,9 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') return res.status(200).end();
 
-  if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
-    return bad(res, 500, 'Configuration serveur manquante');
+  const supabase = getSupabase();
+  if (!supabase) {
+    return bad(res, 500, 'Configuration serveur manquante (SUPABASE_URL / SUPABASE_SERVICE_KEY)');
   }
 
   const token = (req.query && req.query.token) || (req.body && req.body.token);
@@ -63,13 +75,11 @@ export default async function handler(req, res) {
   }
 
   try {
-    const { list, idx } = await loadDossierByToken(token);
+    const { list, idx } = await loadDossierByToken(supabase, token);
     if (idx === -1) return bad(res, 404, 'Lien introuvable ou expiré');
     const d = list[idx];
 
     if (req.method === 'GET') {
-      // Subset lecture seule envoyé au poseur. Pas de montants, pas de marges,
-      // pas de noms de prestataires, juste ce qu'il faut pour poser.
       return res.status(200).json({
         nom: d.nom || '',
         prenom: d.prenom || '',
@@ -120,7 +130,7 @@ export default async function handler(req, res) {
       };
       const updated = { ...d, photosChantier: [...(d.photosChantier || []), photo] };
       list[idx] = updated;
-      await saveDossiers(list);
+      await saveDossiers(supabase, list);
 
       return res.status(200).json({ ok: true, photosChantier: updated.photosChantier });
     }
