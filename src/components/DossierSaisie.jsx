@@ -1353,7 +1353,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (REMOVED_STATUSES.includes(dossier.statut)) {
           dossier = { ...dossier, statut: 'A_EN_COURS' };
         }
-        if (dossier.archived === true && !dossier.manualArchive && !isFullyPaid(dossier)) {
+        // ⚠️ Ne PAS auto-désarchiver les dossiers ANNULÉS : ils sont censés
+        // rester archivés (avec leur archivedAt d'origine). Sinon la ligne
+        // « auto-archive ANNULÉ » plus bas les ré-archive avec un new Date(),
+        // ce qui produit une migration NON idempotente → si 2 onglets sont
+        // ouverts, ils se renvoient chacun leur archivedAt différent en
+        // boucle via Realtime.
+        if (dossier.archived === true && !dossier.manualArchive && !isFullyPaid(dossier) && dossier.statut !== 'W2_ANNULER') {
           dossier = { ...dossier, archived: false, archivedAt: null, autoArchived: false };
         }
         if (!dossier.regies) {
@@ -1548,6 +1554,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
   useEffect(() => {
     if (isInitialMount.current) { if (!loading) isInitialMount.current = false; return; }
     const json = JSON.stringify(dossiers);
+    // 🛡️ Garde anti-echo : si l'état actuel produit le MÊME JSON que ce qu'on
+    // vient d'écrire (ou de recevoir via Realtime), inutile de réécrire. Sans
+    // cette garde, chaque évènement Realtime déclenche une réécriture inutile
+    // — et avec 2 onglets ouverts ça produit un ping-pong infini visible sous
+    // forme de compteurs/dates qui « bougent toutes les 2 secondes ».
+    if (json === lastWrittenDossiersJson.current) return;
     lastWrittenDossiersJson.current = json;
     (async () => {
       try {
