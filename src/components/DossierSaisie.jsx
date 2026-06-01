@@ -9094,46 +9094,68 @@ function VariantRow({ variant, onSave, onRemove }) {
       ? String(variant.puissanceUnitaire)
       : ''
   );
-  // Ratio panneaux (pour onduleurs principalement) : « X unités pour Y
-  // panneaux ». Si renseigné, la qté est auto-calculée dans le dossier.
-  const [ratioUnites, setRatioUnites] = useState(variant.ratioUnites ? String(variant.ratioUnites) : '');
-  const [ratioPanneaux, setRatioPanneaux] = useState(variant.ratioPanneaux ? String(variant.ratioPanneaux) : '');
+  // 📡 Micro-onduleur fourni AVEC la variante (typiquement un panneau).
+  // Le micro fait partie de la pose tout-en-un, il n'apparaît pas comme une
+  // ligne produit/poseur séparée — juste comme info attachée au panneau.
+  const [microMarque, setMicroMarque] = useState(variant.microMarque || '');
+  const [microModele, setMicroModele] = useState(variant.microModele || '');
+  const [microPanneaux, setMicroPanneaux] = useState(variant.microPanneaux ? String(variant.microPanneaux) : '');
+  const hasMicroData = !!(microMarque || microModele || microPanneaux);
+  const [showMicro, setShowMicro] = useState(hasMicroData);
   const dirty =
     marque.trim() !== (variant.marque || '') ||
     modele.trim() !== (variant.modele || '') ||
     String(puissanceU).trim() !== (variant.puissanceUnitaire != null ? String(variant.puissanceUnitaire) : '') ||
-    String(ratioUnites).trim() !== (variant.ratioUnites ? String(variant.ratioUnites) : '') ||
-    String(ratioPanneaux).trim() !== (variant.ratioPanneaux ? String(variant.ratioPanneaux) : '');
+    microMarque.trim() !== (variant.microMarque || '') ||
+    microModele.trim() !== (variant.microModele || '') ||
+    String(microPanneaux).trim() !== (variant.microPanneaux ? String(variant.microPanneaux) : '');
   const save = () => {
     onSave({
       marque: marque.trim(),
       modele: modele.trim(),
       puissanceUnitaire: puissanceU !== '' ? Number(puissanceU) || 0 : 0,
-      ratioUnites: ratioUnites !== '' ? Number(ratioUnites) || 0 : 0,
-      ratioPanneaux: ratioPanneaux !== '' ? Number(ratioPanneaux) || 0 : 0,
+      microMarque: microMarque.trim(),
+      microModele: microModele.trim(),
+      microPanneaux: microPanneaux !== '' ? Number(microPanneaux) || 0 : 0,
     });
   };
   const onKey = (e) => { if (e.key === 'Enter' && dirty) { e.preventDefault(); save(); } };
   return (
-    <div className="flex items-center gap-1.5 flex-wrap">
-      <span className="text-slate-400 text-[10px] font-semibold">└─</span>
-      <input type="text" value={marque} onChange={(e) => setMarque(e.target.value)} onKeyDown={onKey} placeholder="Marque" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
-      <input type="text" value={modele} onChange={(e) => setModele(e.target.value)} onKeyDown={onKey} placeholder="Modèle" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
-      <input type="number" min="0" step="1" value={puissanceU} onChange={(e) => setPuissanceU(e.target.value)} onKeyDown={onKey} placeholder="W/u" title="Puissance unitaire en Watts (ex: 500 pour un panneau 500W). Sert au calcul auto Quantité × W = total." className="w-20 px-2 py-1 bg-white border border-slate-200 rounded text-xs text-center" />
-      <div className="flex items-center gap-1 px-2 py-1 bg-blue-50 border border-blue-200 rounded text-xs" title="Ratio : X de ces unités pour Y panneaux. Si renseigné, la quantité est calculée auto dans le dossier (modifiable).">
-        <input type="number" min="0" step="0.5" value={ratioUnites} onChange={(e) => setRatioUnites(e.target.value)} onKeyDown={onKey} placeholder="—" className="w-10 px-1 py-0.5 bg-white border border-blue-200 rounded text-[10px] text-center" />
-        <span className="text-[10px] text-blue-700 font-semibold">pour</span>
-        <input type="number" min="0" step="0.5" value={ratioPanneaux} onChange={(e) => setRatioPanneaux(e.target.value)} onKeyDown={onKey} placeholder="—" className="w-10 px-1 py-0.5 bg-white border border-blue-200 rounded text-[10px] text-center" />
-        <span className="text-[10px] text-blue-700 font-semibold">panneaux</span>
+    <div className="space-y-1">
+      {/* Ligne principale : marque, modèle, W/u, save, delete */}
+      <div className="flex items-center gap-1.5 flex-wrap">
+        <span className="text-slate-400 text-[10px] font-semibold">└─</span>
+        <input type="text" value={marque} onChange={(e) => setMarque(e.target.value)} onKeyDown={onKey} placeholder="Marque" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
+        <input type="text" value={modele} onChange={(e) => setModele(e.target.value)} onKeyDown={onKey} placeholder="Modèle" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
+        <input type="number" min="0" step="1" value={puissanceU} onChange={(e) => setPuissanceU(e.target.value)} onKeyDown={onKey} placeholder="W/u" title="Puissance unitaire en Watts (ex: 500 pour un panneau 500W). Sert au calcul auto Quantité × W = total." className="w-20 px-2 py-1 bg-white border border-slate-200 rounded text-xs text-center" />
+        {!showMicro && (
+          <button type="button" onClick={() => setShowMicro(true)} className="px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded text-[10px] font-semibold whitespace-nowrap" title="Ajouter un micro-onduleur fourni avec ce produit (fait partie de la pose)">
+            + 📡 Micro fourni
+          </button>
+        )}
+        {dirty ? (
+          <button onClick={save} title="Enregistrer cette variante" className="px-2 py-1 bg-violet-500 hover:bg-violet-600 text-white rounded text-[10px] font-bold whitespace-nowrap">💾 Enregistrer</button>
+        ) : (
+          <span className="px-2 py-1 text-emerald-600 text-[10px] font-bold whitespace-nowrap">✓</span>
+        )}
+        <button onClick={onRemove} className="p-1 text-rose-400 hover:bg-rose-100 rounded" title="Retirer cette variante">
+          <Trash2 className="w-3 h-3" />
+        </button>
       </div>
-      {dirty ? (
-        <button onClick={save} title="Enregistrer cette variante" className="px-2 py-1 bg-violet-500 hover:bg-violet-600 text-white rounded text-[10px] font-bold whitespace-nowrap">💾 Enregistrer</button>
-      ) : (
-        <span className="px-2 py-1 text-emerald-600 text-[10px] font-bold whitespace-nowrap">✓</span>
+      {/* Sous-ligne micro-onduleur fourni (option) */}
+      {showMicro && (
+        <div className="ml-6 pl-3 flex items-center gap-1.5 flex-wrap bg-amber-50 border border-amber-200 rounded p-1.5">
+          <span className="text-[10px] font-bold text-amber-700 whitespace-nowrap">📡 Micro fourni :</span>
+          <input type="text" value={microMarque} onChange={(e) => setMicroMarque(e.target.value)} onKeyDown={onKey} placeholder="Marque (ex: Hoymiles)" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-amber-200 rounded text-xs" />
+          <input type="text" value={microModele} onChange={(e) => setMicroModele(e.target.value)} onKeyDown={onKey} placeholder="Modèle (ex: HMS-1000)" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-amber-200 rounded text-xs" />
+          <span className="text-[10px] text-amber-700 font-semibold whitespace-nowrap">1 pour</span>
+          <input type="number" min="0" step="0.5" value={microPanneaux} onChange={(e) => setMicroPanneaux(e.target.value)} onKeyDown={onKey} placeholder="—" title="Combien de panneaux couvre 1 micro-onduleur (ex: 2 pour Hoymiles HMS-1000). Pour les bi-onduleurs (2 micros par panneau) utilise 0.5." className="w-12 px-1 py-1 bg-white border border-amber-200 rounded text-xs text-center" />
+          <span className="text-[10px] text-amber-700 font-semibold whitespace-nowrap">panneau(x)</span>
+          <button type="button" onClick={() => { setMicroMarque(''); setMicroModele(''); setMicroPanneaux(''); setShowMicro(false); }} className="p-1 text-amber-400 hover:bg-amber-100 rounded" title="Retirer le micro-onduleur">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
       )}
-      <button onClick={onRemove} className="p-1 text-rose-400 hover:bg-rose-100 rounded" title="Retirer cette variante">
-        <Trash2 className="w-3 h-3" />
-      </button>
     </div>
   );
 }
@@ -10116,30 +10138,21 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           const variants = (t && Array.isArray(t.variants)) ? t.variants : [];
                           if (variants.length === 0) return null;
                           const picked = variants.find(v => v.id === prod.variantId);
-                          const ratioOk = picked && Number(picked.ratioPanneaux) > 0 && Number(picked.ratioUnites) > 0;
-                          const handleVariantChange = (newVid) => {
-                            const updates = { variantId: newVid };
-                            const v = variants.find(x => x.id === newVid);
-                            // Auto-fill quantite si la variante a un ratio + qu'on
-                            // a déjà des panneaux dans le dossier. L'user peut
-                            // toujours modifier la quantité après.
-                            if (v && Number(v.ratioPanneaux) > 0 && Number(v.ratioUnites) > 0 && !t.autoTarif) {
-                              const totalPanneaux = computeTotalPanneauxFromLines(formData.produits, produits);
-                              if (totalPanneaux > 0) {
-                                updates.quantite = Math.ceil(totalPanneaux * Number(v.ratioUnites) / Number(v.ratioPanneaux));
-                              }
-                            }
-                            updProd(updates);
-                          };
+                          // Micro-onduleur fourni avec ce panneau (calcule la qté
+                          // affichée à partir du nombre de panneaux du dossier)
+                          const hasMicro = picked && picked.microMarque && Number(picked.microPanneaux) > 0;
+                          const microQty = hasMicro ? Math.ceil(
+                            computeTotalPanneauxFromLines(formData.produits, produits) / Number(picked.microPanneaux)
+                          ) : 0;
                           return (
                             <>
-                              <select value={prod.variantId || ''} onChange={(e) => handleVariantChange(e.target.value)} className={inputCls + ' mt-1.5 text-xs'}>
+                              <select value={prod.variantId || ''} onChange={(e) => updProd({ variantId: e.target.value })} className={inputCls + ' mt-1.5 text-xs'}>
                                 <option value="">— Choisir une marque/modèle —</option>
                                 {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
                               </select>
-                              {ratioOk && (
-                                <div className="mt-1 px-2 py-0.5 bg-blue-50 border border-blue-200 rounded text-[10px] text-blue-800 italic">
-                                  ℹ️ {picked.ratioUnites} pour {picked.ratioPanneaux} panneau{picked.ratioPanneaux > 1 ? 'x' : ''} — quantité auto-calculée (modifiable)
+                              {hasMicro && microQty > 0 && (
+                                <div className="mt-1 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-800">
+                                  📡 <strong>{microQty} micro-onduleur{microQty > 1 ? 's' : ''}</strong> {[picked.microMarque, picked.microModele].filter(Boolean).join(' ')} <span className="text-amber-600">(1 pour {picked.microPanneaux} panneau{picked.microPanneaux > 1 ? 'x' : ''}, inclus dans la pose)</span>
                                 </div>
                               )}
                             </>
@@ -15645,29 +15658,20 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       const variants = (prodInfo && Array.isArray(prodInfo.variants)) ? prodInfo.variants : [];
                       if (variants.length === 0) return null;
                       const picked = variants.find(v => v.id === p.variantId);
-                      const ratioOk = picked && Number(picked.ratioPanneaux) > 0 && Number(picked.ratioUnites) > 0;
-                      const handleVariantChange = (newVid) => {
-                        const updates = { variantId: newVid };
-                        const v = variants.find(x => x.id === newVid);
-                        // Auto-fill quantite si la variante a un ratio + qu'il
-                        // y a déjà des panneaux dans le dossier.
-                        if (v && Number(v.ratioPanneaux) > 0 && Number(v.ratioUnites) > 0 && !prodInfo.autoTarif) {
-                          const totalPanneaux = computeTotalPanneauxFromLines(d.produits, produits);
-                          if (totalPanneaux > 0) {
-                            updates.quantite = Math.ceil(totalPanneaux * Number(v.ratioUnites) / Number(v.ratioPanneaux));
-                          }
-                        }
-                        updateProduit(i, updates);
-                      };
+                      // Micro-onduleur fourni avec ce panneau (qté calculée)
+                      const hasMicro = picked && picked.microMarque && Number(picked.microPanneaux) > 0;
+                      const microQty = hasMicro ? Math.ceil(
+                        computeTotalPanneauxFromLines(d.produits, produits) / Number(picked.microPanneaux)
+                      ) : 0;
                       return (
                         <>
-                          <select value={p.variantId || ''} onChange={(e) => handleVariantChange(e.target.value)} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-semibold text-amber-700">
+                          <select value={p.variantId || ''} onChange={(e) => updateProduit(i, { variantId: e.target.value })} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-semibold text-amber-700">
                             <option value="">— Choisir une marque/modèle —</option>
                             {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
                           </select>
-                          {ratioOk && (
-                            <div className="px-2 py-0.5 bg-blue-100 border border-blue-300 rounded text-[10px] text-blue-800 italic">
-                              ℹ️ {picked.ratioUnites} pour {picked.ratioPanneaux} panneau{picked.ratioPanneaux > 1 ? 'x' : ''} — quantité auto-calculée (modifiable)
+                          {hasMicro && microQty > 0 && (
+                            <div className="px-2 py-1 bg-amber-100 border border-amber-300 rounded text-[10px] text-amber-800">
+                              📡 <strong>{microQty} micro-onduleur{microQty > 1 ? 's' : ''}</strong> {[picked.microMarque, picked.microModele].filter(Boolean).join(' ')} <span className="text-amber-700">(1 pour {picked.microPanneaux} panneau{picked.microPanneaux > 1 ? 'x' : ''}, inclus dans la pose)</span>
                             </div>
                           )}
                         </>
