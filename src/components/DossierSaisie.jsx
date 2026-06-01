@@ -4486,6 +4486,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
             nomsInternes={nomsInternes} setNomsInternes={setNomsInternes}
             produits={produits}
             societes={societes}
+            projexioMoisCourant={dashboard.projexioMoisCourant}
+            projexioCaps={projexioCaps}
             currentUser={currentUser}
             onClose={resetForm} onSubmit={handleSubmit} isAdmin={isAdmin}
           />
@@ -9868,7 +9870,7 @@ function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
   );
 }
 
-function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], currentUser, onClose, onSubmit, isAdmin }) {
+function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], projexioMoisCourant = { parSociete: {} }, projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, currentUser, onClose, onSubmit, isAdmin }) {
   const inputCls = "w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-violet-400 text-sm";
 
   // Sous-étapes du "Process du dossier" dépliables (comme dans la QuickView).
@@ -10712,6 +10714,32 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   <option value="">— Choisir un financement —</option>
                   {FINANCEMENTS.map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
+                {/* 🏦 Plafond Projexio en temps réel : si l'user choisit
+                    PROJEXIO, on lui montre où il en est sur la société active
+                    avant qu'il envoie le dossier en banque. Évite de découvrir
+                    le dépassement dans le dashboard une fois trop tard. */}
+                {formData.financement === 'PROJEXIO' && formData.societe && (() => {
+                  const cap = (projexioCaps && projexioCaps[formData.societe]) || 0;
+                  const used = (projexioMoisCourant?.parSociete?.[formData.societe]?.total) || 0;
+                  const montant = parseFloat(formData.montantTotal) || 0;
+                  const usedAfter = used + montant;
+                  const pct = cap > 0 ? (usedAfter / cap) * 100 : 0;
+                  const soc = societes.find(s => s.id === formData.societe);
+                  const socLabel = soc?.label || formData.societe;
+                  const overflow = cap > 0 && usedAfter > cap;
+                  const warning = cap > 0 && pct >= 80 && !overflow;
+                  return (
+                    <div className={`mt-1.5 px-2 py-1.5 rounded-lg border text-[11px] ${overflow ? 'bg-rose-50 border-rose-300 text-rose-800' : warning ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+                      <div className="font-bold">
+                        {overflow ? '⚠️ Plafond dépassé' : warning ? '⚠️ Plafond presque atteint' : '🏦 Plafond Projexio'} — {socLabel}
+                      </div>
+                      <div className="text-[10px] mt-0.5">
+                        Consommé : <strong>{formatEuro(used)}</strong> {montant > 0 && <>+ ce dossier ({formatEuro(montant)}) = <strong>{formatEuro(usedAfter)}</strong></>} / plafond <strong>{formatEuro(cap)}</strong>
+                        {cap > 0 && <> ({pct.toFixed(0)}%)</>}
+                      </div>
+                    </div>
+                  );
+                })()}
               </Field>
               <Field label="🧮 Taux de TVA">
                 <div className="grid grid-cols-3 gap-1">
