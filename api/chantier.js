@@ -95,11 +95,41 @@ export default async function handler(req, res) {
         orientationPanneaux: d.orientationPanneaux || '',
         instructionsPose: d.instructionsPose || '',
         photosChantier: d.photosChantier || [],
+        poseSignature: d.poseSignature || null,
       });
     }
 
     if (req.method === 'POST') {
-      const { name, dataUrl } = req.body || {};
+      const body = req.body || {};
+
+      // ✍️ Signature client (PV de réception de pose). On stocke l'image PNG
+      // de la signature dans le bucket + un objet poseSignature sur le dossier
+      // (nom du signataire, date, IP approximative pour traçabilité légère).
+      if (body.action === 'signature') {
+        const { dataUrl, signerName } = body;
+        if (!dataUrl) return bad(res, 400, 'Signature manquante');
+        const sm = String(dataUrl).match(/^data:(image\/[^;]+);base64,(.+)$/);
+        if (!sm) return bad(res, 400, 'Format de signature invalide');
+        const sigBuffer = Buffer.from(sm[2], 'base64');
+        if (sigBuffer.length > 2 * 1024 * 1024) return bad(res, 413, 'Signature trop lourde');
+        const sigPath = `chantier-signatures/${token}/${Date.now()}-pv.png`;
+        const { error: sigErr } = await supabase.storage.from(BUCKET).upload(sigPath, sigBuffer, {
+          contentType: sm[1],
+          upsert: false,
+        });
+        if (sigErr) return bad(res, 500, 'Upload signature : ' + sigErr.message);
+        const poseSignature = {
+          path: sigPath,
+          signerName: String(signerName || `${d.nom || ''} ${d.prenom || ''}`).trim().slice(0, 120),
+          signedAt: new Date().toISOString(),
+          signedFrom: 'lien-poseur',
+        };
+        list[idx] = { ...d, poseSignature };
+        await saveDossiers(supabase, list);
+        return res.status(200).json({ ok: true, poseSignature });
+      }
+
+      const { name, dataUrl } = body;
       if (!name || !dataUrl) return bad(res, 400, 'Photo manquante');
       const m = String(dataUrl).match(/^data:([^;]+);base64,(.+)$/);
       if (!m) return bad(res, 400, 'Format de photo invalide');

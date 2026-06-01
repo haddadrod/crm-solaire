@@ -15337,6 +15337,27 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {d.statutPose === 'visite_ok' && d.dateInsta && (
                 <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ Posé le {new Date(d.dateInsta).toLocaleDateString('fr-FR')} — passe au Consuel ↓</div>
               )}
+
+              {/* ✍️ PV de réception signé par le client via le lien poseur */}
+              {d.poseSignature && d.poseSignature.path && (
+                <div className="mt-1.5 px-2 py-1.5 bg-violet-50 border border-violet-200 rounded text-[10px] text-violet-800 flex items-center justify-between gap-2">
+                  <span>
+                    ✍️ <strong>PV signé</strong>{d.poseSignature.signerName ? ` par ${d.poseSignature.signerName}` : ''}
+                    {d.poseSignature.signedAt ? ` le ${new Date(d.poseSignature.signedAt).toLocaleDateString('fr-FR')}` : ''}
+                  </span>
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { url } = await getSignedUrl(d.poseSignature.path, 3600);
+                        if (url) window.open(url, '_blank');
+                      } catch (e) {}
+                    }}
+                    className="flex-shrink-0 px-2 py-0.5 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded font-bold whitespace-nowrap"
+                  >
+                    👁️ Voir
+                  </button>
+                </div>
+              )}
               </>)}
             </div>
 
