@@ -159,6 +159,46 @@ function applyAutoStatut(d) {
   return { ...d, statut: auto };
 }
 
+// Normalise une chaîne ISO YYYY-MM-DD dont l'année a été paddée avec des
+// zéros (« 0026-05-27 ») en ajoutant 2000 pour obtenir l'année réelle
+// (« 2026-05-27 »). Cause : HTML5 date input qui pad quand l'utilisateur ne
+// tape que 2 chiffres dans l'année. Renvoie la valeur inchangée si ce n'est
+// pas une date ou si l'année est déjà ≥ 100.
+function fixDateYear(s) {
+  if (typeof s !== 'string') return s;
+  const m = s.match(/^(\d{4})(-\d{2}-\d{2}.*)$/);
+  if (!m) return s;
+  const year = parseInt(m[1], 10);
+  if (year >= 0 && year < 100) {
+    return `${String(year + 2000).padStart(4, '0')}${m[2]}`;
+  }
+  return s;
+}
+
+// Applique fixDateYear à tous les champs string d'un dossier (top-level
+// uniquement — pas de récursion dans les sous-objets pour rester O(n) et
+// éviter les surprises de structure).
+function normalizeDossierDates(d) {
+  if (!d || typeof d !== 'object') return d;
+  let changed = false;
+  const out = { ...d };
+  for (const k of Object.keys(out)) {
+    const v = out[k];
+    const fixed = fixDateYear(v);
+    if (fixed !== v) { out[k] = fixed; changed = true; }
+  }
+  return changed ? out : d;
+}
+
+// Normalise toutes les dates d'une liste de dossiers. Appliqué à tous les
+// chemins qui rapatrient l'état depuis Supabase : chargement initial, sync
+// Realtime, focus pull. Évite que la donnée brute (avec « 0026 ») écrase
+// notre état déjà nettoyé.
+function normalizeDossiers(list) {
+  if (!Array.isArray(list)) return list;
+  return list.map(normalizeDossierDates);
+}
+
 // Date métier rattachée à un changement de statut workflow, pour l'afficher
 // directement dans la timeline de l'historique ("Refusé le 19/05/2026").
 // Snapshotée au moment du changement (les dates du dossier évoluent ensuite,
@@ -1304,31 +1344,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (ROLES_KEYS.some(k => d[k] && !d[k + 'Paye'])) return false;
         return true;
       };
-      // Normalise les dates avec année < 100 (bug HTML5 date input : taper
-      // « 26 » dans l'année stocke « 0026-MM-DD »). On ajoute 2000 pour
-      // retrouver l'année correcte. Appliqué à TOUS les champs string du
-      // dossier qui ressemblent à une date ISO YYYY-MM-DD.
-      const fixDateYear = (s) => {
-        if (typeof s !== 'string') return s;
-        const m = s.match(/^(\d{4})(-\d{2}-\d{2}.*)$/);
-        if (!m) return s;
-        const year = parseInt(m[1], 10);
-        if (year >= 0 && year < 100) {
-          return `${String(year + 2000).padStart(4, '0')}${m[2]}`;
-        }
-        return s;
-      };
-      const normalizeDossierDates = (d) => {
-        if (!d || typeof d !== 'object') return d;
-        const out = { ...d };
-        let changed = false;
-        for (const k of Object.keys(out)) {
-          const v = out[k];
-          const fixed = fixDateYear(v);
-          if (fixed !== v) { out[k] = fixed; changed = true; }
-        }
-        return changed ? out : d;
-      };
       const migrateDossier = (d) => {
         let dossier = normalizeDossierDates(d);
         if (dossier.statut && RENAMED_STATUSES[dossier.statut]) {
@@ -1705,7 +1720,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
             const parsed = JSON.parse(newValue);
             if (!Array.isArray(parsed)) return;
             lastWrittenDossiersJson.current = newValue;
-            setDossiers(parsed);
+            // Normalise les dates avant d'écraser l'état local — sinon les
+            // dossiers cassés (« 0026-… ») d'un autre device reviennent.
+            setDossiers(normalizeDossiers(parsed));
           } catch (e) {
             // parse échoué : on ignore (donnée corrompue côté DB).
           }
@@ -1743,7 +1760,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         const parsed = JSON.parse(v);
         if (!Array.isArray(parsed)) return;
         lastWrittenDossiersJson.current = v;
-        setDossiers(parsed);
+        setDossiers(normalizeDossiers(parsed));
       } catch (e) {
         // Silencieux
       }
