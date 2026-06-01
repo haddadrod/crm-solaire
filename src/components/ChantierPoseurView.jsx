@@ -84,6 +84,70 @@ export default function ChantierPoseurView({ token }) {
 
   useEffect(() => { fetchInfo(); }, [token]);
 
+  // ✍️ Signature client (PV de réception)
+  const sigCanvasRef = useRef(null);
+  const sigDrawing = useRef(false);
+  const sigHasInk = useRef(false);
+  const [signerName, setSignerName] = useState('');
+  const [signing, setSigning] = useState(false);
+  const [signError, setSignError] = useState(null);
+
+  const sigPos = (e) => {
+    const canvas = sigCanvasRef.current;
+    const rect = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] : e;
+    return {
+      x: (t.clientX - rect.left) * (canvas.width / rect.width),
+      y: (t.clientY - rect.top) * (canvas.height / rect.height),
+    };
+  };
+  const sigStart = (e) => {
+    e.preventDefault();
+    sigDrawing.current = true;
+    const ctx = sigCanvasRef.current.getContext('2d');
+    const { x, y } = sigPos(e);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+  const sigMove = (e) => {
+    if (!sigDrawing.current) return;
+    e.preventDefault();
+    const ctx = sigCanvasRef.current.getContext('2d');
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = '#1e293b';
+    const { x, y } = sigPos(e);
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    sigHasInk.current = true;
+  };
+  const sigEnd = () => { sigDrawing.current = false; };
+  const sigClear = () => {
+    const canvas = sigCanvasRef.current;
+    if (canvas) canvas.getContext('2d').clearRect(0, 0, canvas.width, canvas.height);
+    sigHasInk.current = false;
+  };
+  const submitSignature = async () => {
+    if (!sigHasInk.current) { setSignError('Merci de signer dans le cadre.'); return; }
+    setSigning(true);
+    setSignError(null);
+    try {
+      const dataUrl = sigCanvasRef.current.toDataURL('image/png');
+      const r = await fetch(`/api/chantier?token=${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'signature', dataUrl, signerName }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data.error || 'Envoi signature échoué');
+      setInfo(prev => ({ ...prev, poseSignature: data.poseSignature }));
+    } catch (e) {
+      setSignError(e.message);
+    } finally {
+      setSigning(false);
+    }
+  };
+
   const handleFiles = async (fileList) => {
     const files = Array.from(fileList || []);
     if (files.length === 0) return;
@@ -282,6 +346,52 @@ export default function ChantierPoseurView({ token }) {
               ❌ {uploadError}
             </div>
           )}
+
+          {/* ✍️ PV DE RÉCEPTION — signature client en fin de pose */}
+          <div className="mt-5 pt-4 border-t border-slate-200">
+            <div className="text-[11px] font-bold text-slate-700 uppercase mb-1">✍️ Signature du client (PV de réception)</div>
+            {info.poseSignature ? (
+              <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-sm text-emerald-800">
+                ✅ Pose réceptionnée et signée
+                {info.poseSignature.signerName ? ` par ${info.poseSignature.signerName}` : ''}
+                {info.poseSignature.signedAt ? ` le ${new Date(info.poseSignature.signedAt).toLocaleDateString('fr-FR')} à ${new Date(info.poseSignature.signedAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}` : ''}.
+              </div>
+            ) : (
+              <>
+                <p className="text-xs text-slate-500 mb-2">Le client confirme que l'installation a été réalisée et qu'il en est satisfait.</p>
+                <input
+                  type="text"
+                  value={signerName}
+                  onChange={(e) => setSignerName(e.target.value)}
+                  placeholder="Nom du client signataire"
+                  className="w-full px-3 py-2 mb-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+                />
+                <div className="rounded-xl border-2 border-dashed border-slate-300 bg-white overflow-hidden">
+                  <canvas
+                    ref={sigCanvasRef}
+                    width={600}
+                    height={200}
+                    className="w-full touch-none block"
+                    style={{ height: '160px' }}
+                    onMouseDown={sigStart}
+                    onMouseMove={sigMove}
+                    onMouseUp={sigEnd}
+                    onMouseLeave={sigEnd}
+                    onTouchStart={sigStart}
+                    onTouchMove={sigMove}
+                    onTouchEnd={sigEnd}
+                  />
+                </div>
+                {signError && <div className="mt-2 text-xs text-rose-600 font-semibold">❌ {signError}</div>}
+                <div className="flex gap-2 mt-2">
+                  <button onClick={sigClear} disabled={signing} className="flex-1 px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-sm font-semibold">Effacer</button>
+                  <button onClick={submitSignature} disabled={signing} className="flex-[2] px-3 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-sm font-bold disabled:opacity-50">
+                    {signing ? '⏳ Envoi…' : '✅ Valider la signature'}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
 
           {photos.length > 0 && (
             <div className="mt-4">
