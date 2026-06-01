@@ -9061,6 +9061,50 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
   );
 }
 
+// 📦 Ligne de variante (marque/modèle/W-unité) avec brouillon local.
+// Sans ce brouillon, chaque keystroke déclenche setProduits → save → sync
+// Realtime, et un écho retardé peut écraser une lettre qu'on vient de taper
+// (« j'écris une lettre et elle s'efface »). Ici on tape dans l'état local
+// du composant, sans toucher au global. L'utilisateur clique
+// « 💾 Enregistrer » pour pousser. Save aussi sur Entrée par confort.
+function VariantRow({ variant, onSave, onRemove }) {
+  const [marque, setMarque] = useState(variant.marque || '');
+  const [modele, setModele] = useState(variant.modele || '');
+  const [puissanceU, setPuissanceU] = useState(
+    variant.puissanceUnitaire != null && variant.puissanceUnitaire !== ''
+      ? String(variant.puissanceUnitaire)
+      : ''
+  );
+  const dirty =
+    marque.trim() !== (variant.marque || '') ||
+    modele.trim() !== (variant.modele || '') ||
+    String(puissanceU).trim() !== (variant.puissanceUnitaire != null ? String(variant.puissanceUnitaire) : '');
+  const save = () => {
+    onSave({
+      marque: marque.trim(),
+      modele: modele.trim(),
+      puissanceUnitaire: puissanceU !== '' ? Number(puissanceU) || 0 : 0,
+    });
+  };
+  const onKey = (e) => { if (e.key === 'Enter' && dirty) { e.preventDefault(); save(); } };
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-slate-400 text-[10px] font-semibold">└─</span>
+      <input type="text" value={marque} onChange={(e) => setMarque(e.target.value)} onKeyDown={onKey} placeholder="Marque" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
+      <input type="text" value={modele} onChange={(e) => setModele(e.target.value)} onKeyDown={onKey} placeholder="Modèle" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
+      <input type="number" min="0" step="1" value={puissanceU} onChange={(e) => setPuissanceU(e.target.value)} onKeyDown={onKey} placeholder="W/u" title="Puissance unitaire en Watts (ex: 500 pour un panneau 500W). Sert au calcul auto Quantité × W = total." className="w-20 px-2 py-1 bg-white border border-slate-200 rounded text-xs text-center" />
+      {dirty ? (
+        <button onClick={save} title="Enregistrer cette variante" className="px-2 py-1 bg-violet-500 hover:bg-violet-600 text-white rounded text-[10px] font-bold whitespace-nowrap">💾 Enregistrer</button>
+      ) : (
+        <span className="px-2 py-1 text-emerald-600 text-[10px] font-bold whitespace-nowrap">✓</span>
+      )}
+      <button onClick={onRemove} className="p-1 text-rose-400 hover:bg-rose-100 rounded" title="Retirer cette variante">
+        <Trash2 className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
 function ProduitsManager({ produits, setProduits, dossiers }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newLabel, setNewLabel] = useState('');
@@ -9182,14 +9226,12 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
                     <div className="text-[10px] text-slate-400 italic">Aucune marque/modèle pour l'instant — le dossier proposera juste « {p.label} » sans variante.</div>
                   ) : (
                     variants.map(v => (
-                      <div key={v.id} className="flex items-center gap-1.5">
-                        <span className="text-slate-400 text-[10px] font-semibold">└─</span>
-                        <input type="text" value={v.marque || ''} onChange={(e) => updateVariant(p.id, v.id, { marque: e.target.value })} placeholder="Marque" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
-                        <input type="text" value={v.modele || ''} onChange={(e) => updateVariant(p.id, v.id, { modele: e.target.value })} placeholder="Modèle" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
-                        <button onClick={() => removeVariant(p.id, v.id)} className="p-1 text-rose-400 hover:bg-rose-100 rounded" title="Retirer cette variante">
-                          <Trash2 className="w-3 h-3" />
-                        </button>
-                      </div>
+                      <VariantRow
+                        key={v.id}
+                        variant={v}
+                        onSave={(patch) => updateVariant(p.id, v.id, patch)}
+                        onRemove={() => removeVariant(p.id, v.id)}
+                      />
                     ))
                   )}
                 </div>
@@ -9986,15 +10028,51 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           );
                         })()}
                       </div>
-                      {prodInfo.autoTarif ? (
-                        <div className="flex-1 min-w-[140px]">
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Puissance (Wc)</label>
-                          <select value={prod.puissance || ''} onChange={(e) => updProd({ puissance: parseInt(e.target.value) || 0 })} className={inputCls}>
-                            <option value="">— Choisir —</option>
-                            {PUISSANCES.map(p => <option key={p} value={p}>{p} Wc</option>)}
-                          </select>
-                        </div>
-                      ) : (
+                      {prodInfo.autoTarif ? (() => {
+                        // Si la variante a une puissance unitaire renseignée,
+                        // on bascule en mode « Quantité × W = Total » (plus
+                        // intuitif que le dropdown). Sinon on garde le dropdown.
+                        const variants = Array.isArray(prodInfo.variants) ? prodInfo.variants : [];
+                        const variant = variants.find(v => v.id === prod.variantId);
+                        const wU = variant && Number(variant.puissanceUnitaire) > 0 ? Number(variant.puissanceUnitaire) : 0;
+                        if (wU > 0) {
+                          const qty = prod.puissance && wU ? Math.round(prod.puissance / wU) : 0;
+                          return (
+                            <>
+                              <div className="w-24 flex-shrink-0">
+                                <label className="block text-[10px] font-semibold text-slate-500 mb-1">Quantité</label>
+                                <input
+                                  type="number"
+                                  min="1"
+                                  step="1"
+                                  value={qty || ''}
+                                  onChange={(e) => {
+                                    const q = parseInt(e.target.value) || 0;
+                                    updProd({ puissance: q * wU });
+                                  }}
+                                  className={inputCls + ' text-center font-semibold'}
+                                  title={`${wU} W par unité`}
+                                />
+                              </div>
+                              <div className="flex-1 min-w-[140px]">
+                                <label className="block text-[10px] font-semibold text-slate-500 mb-1">Puissance totale (auto)</label>
+                                <div className={inputCls + ' bg-slate-50 text-slate-700 font-bold'}>
+                                  {prod.puissance ? `${prod.puissance} Wc` : '—'}
+                                </div>
+                              </div>
+                            </>
+                          );
+                        }
+                        return (
+                          <div className="flex-1 min-w-[140px]">
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Puissance (Wc)</label>
+                            <select value={prod.puissance || ''} onChange={(e) => updProd({ puissance: parseInt(e.target.value) || 0 })} className={inputCls}>
+                              <option value="">— Choisir —</option>
+                              {PUISSANCES.map(p => <option key={p} value={p}>{p} Wc</option>)}
+                            </select>
+                          </div>
+                        );
+                      })() : (
                         <>
                           <div className={(prod.type === 'ISOLATION' ? 'w-28' : 'w-20') + ' flex-shrink-0'}>
                             <label className="block text-[10px] font-semibold text-slate-500 mb-1">
@@ -15455,11 +15533,39 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         </select>
                       );
                     })()}
-                    {prodInfo.autoTarif ? (
-                      <select value={p.puissance || 6000} onChange={(e) => updateProduit(i, { puissance: parseInt(e.target.value) })} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-semibold">
-                        {PUISSANCES.map(pw => <option key={pw} value={pw}>{pw} Wc</option>)}
-                      </select>
-                    ) : (
+                    {prodInfo.autoTarif ? (() => {
+                      // Si variante avec puissanceUnitaire : Quantité × W → total
+                      const variants = Array.isArray(prodInfo.variants) ? prodInfo.variants : [];
+                      const variant = variants.find(v => v.id === p.variantId);
+                      const wU = variant && Number(variant.puissanceUnitaire) > 0 ? Number(variant.puissanceUnitaire) : 0;
+                      if (wU > 0) {
+                        const qty = p.puissance && wU ? Math.round(p.puissance / wU) : 0;
+                        return (
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="number"
+                              min="1"
+                              step="1"
+                              value={qty || ''}
+                              onChange={(e) => {
+                                const q = parseInt(e.target.value) || 0;
+                                updateProduit(i, { puissance: q * wU });
+                              }}
+                              placeholder="Qté"
+                              title={`${wU} W par unité`}
+                              className="w-14 px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-bold text-center"
+                            />
+                            <span className="text-[10px] text-slate-500">× {wU} W = </span>
+                            <span className="flex-1 px-2 py-1 bg-slate-50 border border-amber-200 rounded-lg text-[11px] font-bold text-amber-800">{p.puissance ? `${p.puissance} Wc` : '—'}</span>
+                          </div>
+                        );
+                      }
+                      return (
+                        <select value={p.puissance || 6000} onChange={(e) => updateProduit(i, { puissance: parseInt(e.target.value) })} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-semibold">
+                          {PUISSANCES.map(pw => <option key={pw} value={pw}>{pw} Wc</option>)}
+                        </select>
+                      );
+                    })() : (
                       <div className="flex gap-1.5">
                         <input
                           type="number"
