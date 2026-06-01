@@ -1863,15 +1863,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
             lastWrittenSettings.current[key] = newValue;
             setter(parsed);
           } catch (e) {
-            console.warn(`[realtime settings] parse failed for ${key}`, e);
+            // parse échoué : on ignore (donnée corrompue côté DB).
           }
         }
       )
-      .subscribe((status, err) => {
-        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-          console.warn(`[realtime settings] ${status}`, err || '');
-        }
-      });
+      .subscribe();
     return () => { try { supabase.removeChannel(channel); } catch (e) {} };
   }, [loading]);
 
