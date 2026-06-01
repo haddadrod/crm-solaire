@@ -1531,10 +1531,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dateNotifRegie: '', // date à laquelle on a prévenu la régie (qu'elle réclame au client)
     // 📦 Bon de livraison matériel remis au poseur — utile pour tracer ce
     // qu'il a en stock quand le client refuse/annule la pose et qu'il faut
-    // récupérer le matériel.
+    // récupérer le matériel. Le PDF du BL est uploadé dans le bucket
+    // dossier-documents, on stocke le path + nom d'origine pour réouverture.
     blMaterielPoseur: false,
     blMaterielDate: '',
-    blMaterielNote: '', // description libre du matériel livré
+    blMaterielStoragePath: '',
+    blMaterielFileName: '',
     materielRendu: false,
     materielRenduDate: '',
     dateRecuRegie: '',  // date à laquelle la régie nous a renvoyé le doc du client
@@ -2598,7 +2600,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       dateRecuRegie: d.dateRecuRegie || '',
       blMaterielPoseur: !!d.blMaterielPoseur,
       blMaterielDate: d.blMaterielDate || '',
-      blMaterielNote: d.blMaterielNote || '',
+      blMaterielStoragePath: d.blMaterielStoragePath || '',
+      blMaterielFileName: d.blMaterielFileName || '',
       materielRendu: !!d.materielRendu,
       materielRenduDate: d.materielRenduDate || '',
       dateRenvoiDocs: d.dateRenvoiDocs || '',
@@ -12924,6 +12927,155 @@ function PdfGeneratorPanel({ dossier }) {
   );
 }
 
+// 📦 Bloc « BL matériel remis au poseur » — affiché dans la section
+// POSEURS de la QuickView. Coche du BL + date, upload du PDF, et toggle
+// « matériel rendu » qui apparaît quand le dossier est annulé/refusé.
+// Le PDF est stocké dans le bucket Supabase (dossier-documents), on garde
+// juste le path + le nom du fichier sur le dossier (blMaterielStoragePath,
+// blMaterielFileName) pour pouvoir le rouvrir / le remplacer / le retirer.
+function BLMaterielBlock({ d, onUpdate }) {
+  const [uploading, setUploading] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState(null);
+  const inputRef = useRef(null);
+
+  // Résout l'URL signée du PDF actuel (1 h de validité, largement assez).
+  useEffect(() => {
+    let cancelled = false;
+    setPdfUrl(null);
+    const path = d.blMaterielStoragePath;
+    if (!path) return;
+    (async () => {
+      try {
+        const { url } = await getSignedUrl(path, 3600);
+        if (!cancelled) setPdfUrl(url || null);
+      } catch (e) {}
+    })();
+    return () => { cancelled = true; };
+  }, [d.blMaterielStoragePath]);
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.type !== 'application/pdf' && !/\.pdf$/i.test(file.name)) {
+      alert('❌ Choisis un fichier PDF.');
+      return;
+    }
+    setUploading(true);
+    try {
+      const fileId = `bl_materiel_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const { path, error: upErr } = await uploadFileToBucket(file, fileId);
+      if (upErr || !path) {
+        alert(`❌ Upload échoué : ${upErr?.message || 'erreur inconnue'}`);
+        return;
+      }
+      // Supprime l'ancien fichier du bucket si on remplace
+      if (d.blMaterielStoragePath) {
+        try { await deleteFileFromBucket(d.blMaterielStoragePath); } catch (er) {}
+      }
+      onUpdate({
+        blMaterielStoragePath: path,
+        blMaterielFileName: file.name,
+      });
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const removeFile = async () => {
+    if (!window.confirm('Retirer le PDF du BL matériel ?')) return;
+    if (d.blMaterielStoragePath) {
+      try { await deleteFileFromBucket(d.blMaterielStoragePath); } catch (e) {}
+    }
+    onUpdate({ blMaterielStoragePath: '', blMaterielFileName: '' });
+  };
+
+  return (
+    <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+      <label className="flex items-center gap-1.5 text-[10px] font-bold text-orange-700 cursor-pointer">
+        <input
+          type="checkbox"
+          checked={!!d.blMaterielPoseur}
+          onChange={(e) => {
+            const checked = e.target.checked;
+            onUpdate({
+              blMaterielPoseur: checked,
+              blMaterielDate: checked ? (d.blMaterielDate || new Date().toISOString().split('T')[0]) : '',
+              ...(checked ? {} : { materielRendu: false, materielRenduDate: '' }),
+            });
+          }}
+          className="w-3.5 h-3.5 accent-orange-600"
+        />
+        📦 BL (bon de livraison) matériel remis au poseur
+      </label>
+      {d.blMaterielPoseur && (
+        <div className="mt-1.5 space-y-1.5">
+          <div className="grid grid-cols-2 gap-1.5">
+            <div>
+              <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📅 Date du BL</label>
+              <input type="date" min="2000-01-01" max="2100-12-31" value={d.blMaterielDate || ''} onChange={(e) => onUpdate({ blMaterielDate: e.target.value })} className="w-full px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+            </div>
+            <div>
+              <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📄 PDF du BL</label>
+              <input ref={inputRef} type="file" accept="application/pdf" onChange={handleFile} className="hidden" />
+              {d.blMaterielStoragePath ? (
+                <div className="flex items-center gap-1">
+                  {pdfUrl ? (
+                    <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px] text-orange-700 font-bold truncate hover:bg-orange-100" title={d.blMaterielFileName || 'BL.pdf'}>
+                      📄 {d.blMaterielFileName || 'BL.pdf'}
+                    </a>
+                  ) : (
+                    <span className="flex-1 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px] text-slate-400 italic truncate">Chargement…</span>
+                  )}
+                  <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} title="Remplacer le PDF" className="flex-shrink-0 p-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded">
+                    <RotateCcw className="w-3 h-3" />
+                  </button>
+                  <button type="button" onClick={removeFile} disabled={uploading} title="Retirer le PDF" className="flex-shrink-0 p-1 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded">
+                    <Trash2 className="w-3 h-3" />
+                  </button>
+                </div>
+              ) : (
+                <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className="w-full flex items-center justify-center gap-1 px-1.5 py-1 bg-white hover:bg-orange-100 border border-dashed border-orange-300 rounded text-[10px] font-semibold text-orange-700 disabled:opacity-50">
+                  {uploading ? '⏳ Upload…' : <><Upload className="w-3 h-3" /> Insérer le PDF</>}
+                </button>
+              )}
+            </div>
+          </div>
+          {/* Toggle « rendu » : pertinent uniquement après annulation/refus.
+              Visible si dossier annulé OU tentative pose ratée OU si déjà coché. */}
+          {(d.statut === 'W2_ANNULER' || d.statut === 'ANNULER' || (d.tentativesPose || []).length > 0 || d.materielRendu) && (
+            <div className={`p-1.5 rounded border-2 ${d.materielRendu ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
+              <label className="flex items-center gap-1.5 text-[10px] font-bold cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={!!d.materielRendu}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    onUpdate({
+                      materielRendu: checked,
+                      materielRenduDate: checked ? (d.materielRenduDate || new Date().toISOString().split('T')[0]) : '',
+                    });
+                  }}
+                  className={`w-3.5 h-3.5 ${d.materielRendu ? 'accent-emerald-600' : 'accent-rose-600'}`}
+                />
+                <span className={d.materielRendu ? 'text-emerald-700' : 'text-rose-700'}>
+                  {d.materielRendu ? '✅ Matériel rendu à l\'entrepôt' : '⚠️ Matériel non rendu (toujours chez le poseur)'}
+                </span>
+              </label>
+              {d.materielRendu && (
+                <div className="mt-1 flex items-center gap-1">
+                  <label className="text-[9px] font-semibold text-emerald-600 whitespace-nowrap">📅 Le</label>
+                  <input type="date" min="2000-01-01" max="2100-12-31" value={d.materielRenduDate || ''} onChange={(e) => onUpdate({ materielRenduDate: e.target.value })} className="flex-1 px-1.5 py-0.5 bg-white border border-emerald-200 rounded text-[10px]" />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth, societes = [] }) {
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
@@ -12983,7 +13135,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       cq: 'cq', controleQualite: 'cq',
       mairie: 'mairie', envoiMairie: 'mairie',
       financement: 'fin', envoiBanque: 'fin',
-      pose: 'pose', envoiPose: 'pose', poseurs: null, materielNonRendu: 'pose',
+      pose: 'pose', envoiPose: 'pose', poseurs: null, materielNonRendu: null,
       consuel: 'consuel', envoiConsuel: 'consuel',
       raccordement: 'raccordement', envoiRaccordement: 'raccordement', aEnvoyerRaccordement: 'raccordement',
       paiement: 'paiement', controleLivraison: 'paiement', originaux: 'paiement', tva: 'paiement', recupTva: 'paiement',
@@ -13003,7 +13155,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       else if (scrollTo === 'cq' || scrollTo === 'controleQualite') target = refCQ.current;
       else if (scrollTo === 'mairie' || scrollTo === 'envoiMairie') target = refMairie.current;
       else if (scrollTo === 'financement' || scrollTo === 'envoiBanque') target = refFinancement.current;
-      else if (scrollTo === 'pose' || scrollTo === 'envoiPose' || scrollTo === 'materielNonRendu') target = refPose.current;
+      else if (scrollTo === 'pose' || scrollTo === 'envoiPose') target = refPose.current;
+      else if (scrollTo === 'materielNonRendu') {
+        // Le BL matériel vit dans la section POSEURS, pas POSE.
+        setFoldedSteps(prev => ({ ...prev, poseurs: false }));
+        target = refPoseurs.current;
+      }
       else if (scrollTo === 'consuel' || scrollTo === 'envoiConsuel') target = refConsuel.current;
       else if (scrollTo === 'raccordement' || scrollTo === 'envoiRaccordement' || scrollTo === 'aEnvoyerRaccordement') target = refRaccordement.current;
       else if (scrollTo === 'rappel' || scrollTo === 'clientRappel') target = refRappel.current;
@@ -14478,74 +14635,6 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {d.statutPose === 'visite_ok' && d.dateInsta && (
                 <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ Posé le {new Date(d.dateInsta).toLocaleDateString('fr-FR')} — passe au Consuel ↓</div>
               )}
-
-              {/* 📦 Récupération matériel par poseur — pour tracer ce qu'il a
-                  en stock quand le client annule/refuse. Toujours visible
-                  pour pouvoir cocher le BL AVANT la pose. La case « rendu »
-                  apparaît une fois le BL coché. */}
-              <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
-                <label className="flex items-center gap-1.5 text-[10px] font-bold text-orange-700 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={!!d.blMaterielPoseur}
-                    onChange={(e) => {
-                      const checked = e.target.checked;
-                      onUpdate({
-                        blMaterielPoseur: checked,
-                        blMaterielDate: checked ? (d.blMaterielDate || new Date().toISOString().split('T')[0]) : '',
-                        // Reset retour si on décoche le BL
-                        ...(checked ? {} : { materielRendu: false, materielRenduDate: '' }),
-                      });
-                    }}
-                    className="w-3.5 h-3.5 accent-orange-600"
-                  />
-                  📦 BL (bon de livraison) matériel remis au poseur
-                </label>
-                {d.blMaterielPoseur && (
-                  <div className="mt-1.5 space-y-1.5">
-                    <div className="grid grid-cols-2 gap-1.5">
-                      <div>
-                        <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📅 Date du BL</label>
-                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.blMaterielDate || ''} onChange={(e) => onUpdate({ blMaterielDate: e.target.value })} className="w-full px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
-                      </div>
-                      <div>
-                        <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📝 Matériel (description)</label>
-                        <input type="text" value={d.blMaterielNote || ''} onChange={(e) => onUpdate({ blMaterielNote: e.target.value })} placeholder="Ex: 12 panneaux + onduleur" className="w-full px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
-                      </div>
-                    </div>
-                    {/* Toggle « rendu » : pertinent seulement après annulation/refus.
-                        On le montre quand même si dossier annulé OU pose ratée
-                        OU si l'user a déjà coché (au cas où). */}
-                    {(d.statut === 'W2_ANNULER' || d.statut === 'ANNULER' || (d.tentativesPose || []).length > 0 || d.materielRendu) && (
-                      <div className={`p-1.5 rounded border-2 ${d.materielRendu ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
-                        <label className="flex items-center gap-1.5 text-[10px] font-bold cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={!!d.materielRendu}
-                            onChange={(e) => {
-                              const checked = e.target.checked;
-                              onUpdate({
-                                materielRendu: checked,
-                                materielRenduDate: checked ? (d.materielRenduDate || new Date().toISOString().split('T')[0]) : '',
-                              });
-                            }}
-                            className={`w-3.5 h-3.5 ${d.materielRendu ? 'accent-emerald-600' : 'accent-rose-600'}`}
-                          />
-                          <span className={d.materielRendu ? 'text-emerald-700' : 'text-rose-700'}>
-                            {d.materielRendu ? '✅ Matériel rendu à l\'entrepôt' : '⚠️ Matériel non rendu (toujours chez le poseur)'}
-                          </span>
-                        </label>
-                        {d.materielRendu && (
-                          <div className="mt-1 flex items-center gap-1">
-                            <label className="text-[9px] font-semibold text-emerald-600 whitespace-nowrap">📅 Le</label>
-                            <input type="date" min="2000-01-01" max="2100-12-31" value={d.materielRenduDate || ''} onChange={(e) => onUpdate({ materielRenduDate: e.target.value })} className="flex-1 px-1.5 py-0.5 bg-white border border-emerald-200 rounded text-[10px]" />
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-              </div>
               </>)}
             </div>
 
@@ -15775,6 +15864,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {(d.poseurs || []).length === 0 && (
                 <div className="text-center py-2 text-slate-400 italic text-[11px] bg-slate-50 rounded-xl">Aucun poseur</div>
               )}
+              {/* 📦 BL matériel remis au poseur — toggle + date + PDF upload.
+                  Toggle « rendu » apparaît si dossier annulé/refusé. */}
+              <BLMaterielBlock d={d} onUpdate={onUpdate} />
             </div>
             )}
           </div>
@@ -18066,7 +18158,7 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
     },
     materielNonRendu: {
       title: '📦 Matériel non rendu',
-      subtitle: 'Dossiers annulés/refusés où le poseur a encore le matériel livré via BL. Coche « Matériel rendu » dans la section POSE du dossier quand il l\'a rapporté.',
+      subtitle: 'Dossiers annulés/refusés où le poseur a encore le matériel livré via BL. Coche « Matériel rendu » dans la section POSEURS du dossier quand il l\'a rapporté.',
       items: dashboard.rappelsMaterielNonRendu || [],
       gradient: 'from-orange-500 to-red-500',
       bgHeader: 'from-orange-50 to-red-50',
@@ -18075,7 +18167,7 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
         const parts = [];
         if (r.poseurNom) parts.push(`🔧 ${r.poseurNom}`);
         if (d.blMaterielDate) parts.push(`📅 BL ${new Date(d.blMaterielDate).toLocaleDateString('fr-FR')}`);
-        if (d.blMaterielNote) parts.push(d.blMaterielNote.length > 40 ? d.blMaterielNote.slice(0, 40) + '…' : d.blMaterielNote);
+        if (d.blMaterielFileName) parts.push(`📄 ${d.blMaterielFileName.length > 30 ? d.blMaterielFileName.slice(0, 30) + '…' : d.blMaterielFileName}`);
         return parts.length ? parts.join(' · ') : 'BL matériel à récupérer';
       },
       suffixLabel: 'sans retour',
