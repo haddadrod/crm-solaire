@@ -1304,8 +1304,33 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (ROLES_KEYS.some(k => d[k] && !d[k + 'Paye'])) return false;
         return true;
       };
+      // Normalise les dates avec année < 100 (bug HTML5 date input : taper
+      // « 26 » dans l'année stocke « 0026-MM-DD »). On ajoute 2000 pour
+      // retrouver l'année correcte. Appliqué à TOUS les champs string du
+      // dossier qui ressemblent à une date ISO YYYY-MM-DD.
+      const fixDateYear = (s) => {
+        if (typeof s !== 'string') return s;
+        const m = s.match(/^(\d{4})(-\d{2}-\d{2}.*)$/);
+        if (!m) return s;
+        const year = parseInt(m[1], 10);
+        if (year >= 0 && year < 100) {
+          return `${String(year + 2000).padStart(4, '0')}${m[2]}`;
+        }
+        return s;
+      };
+      const normalizeDossierDates = (d) => {
+        if (!d || typeof d !== 'object') return d;
+        const out = { ...d };
+        let changed = false;
+        for (const k of Object.keys(out)) {
+          const v = out[k];
+          const fixed = fixDateYear(v);
+          if (fixed !== v) { out[k] = fixed; changed = true; }
+        }
+        return changed ? out : d;
+      };
       const migrateDossier = (d) => {
-        let dossier = d;
+        let dossier = normalizeDossierDates(d);
         if (dossier.statut && RENAMED_STATUSES[dossier.statut]) {
           dossier = { ...dossier, statut: RENAMED_STATUSES[dossier.statut] };
         }
@@ -5730,6 +5755,8 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
               <div className="flex gap-1">
                 <input
                   type="date"
+                  min="2000-01-01"
+                  max="2100-12-31"
                   value={doc.datePiece || ''}
                   onChange={(e) => onUpdateMeta({ datePiece: e.target.value || null })}
                   className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
@@ -10218,7 +10245,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <div>
                 <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Date contrôle qualité (appel client)</label>
                 <div className="flex gap-1">
-                  <input type="date" value={formData.dateControleQualite || ''} onChange={(e) => setFormData({ ...formData, dateControleQualite: e.target.value })} className={inputCls} />
+                  <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateControleQualite || ''} onChange={(e) => setFormData({ ...formData, dateControleQualite: e.target.value })} className={inputCls} />
                   <button type="button" onClick={() => setFormData({ ...formData, dateControleQualite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                 </div>
               </div>
@@ -10392,21 +10419,21 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Envoi mairie</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateEnvoiMairie || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiMairie: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateEnvoiMairie || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiMairie: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📨 Récépissé reçu</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateRecepisseMairie || ''} onChange={(e) => setFormData({ ...formData, dateRecepisseMairie: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateRecepisseMairie || ''} onChange={(e) => setFormData({ ...formData, dateRecepisseMairie: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateRecepisseMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Accord reçu</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateAccordMairie || ''} onChange={(e) => setFormData({ ...formData, dateAccordMairie: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateAccordMairie || ''} onChange={(e) => setFormData({ ...formData, dateAccordMairie: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateAccordMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
@@ -10498,21 +10525,21 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date envoi</label>
                             <div className="flex gap-1">
-                              <input type="date" value={e.dateEnvoi || ''} onChange={(ev) => updE({ dateEnvoi: ev.target.value })} className={inputCls} />
+                              <input type="date" min="2000-01-01" max="2100-12-31" value={e.dateEnvoi || ''} onChange={(ev) => updE({ dateEnvoi: ev.target.value })} className={inputCls} />
                               <button type="button" onClick={() => updE({ dateEnvoi: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date récépissé</label>
                             <div className="flex gap-1">
-                              <input type="date" value={e.dateRecepisse || ''} onChange={(ev) => updE({ dateRecepisse: ev.target.value })} className={inputCls} />
+                              <input type="date" min="2000-01-01" max="2100-12-31" value={e.dateRecepisse || ''} onChange={(ev) => updE({ dateRecepisse: ev.target.value })} className={inputCls} />
                               <button type="button" onClick={() => updE({ dateRecepisse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date réponse</label>
                             <div className="flex gap-1">
-                              <input type="date" value={e.dateReponse || ''} onChange={(ev) => updE({ dateReponse: ev.target.value })} className={inputCls} />
+                              <input type="date" min="2000-01-01" max="2100-12-31" value={e.dateReponse || ''} onChange={(ev) => updE({ dateReponse: ev.target.value })} className={inputCls} />
                               <button type="button" onClick={() => updE({ dateReponse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
@@ -10591,21 +10618,21 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Envoi banque</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateEnvoiFin || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiFin: e.target.value, statutFin: e.target.value && !formData.statutFin ? 'envoyé' : formData.statutFin })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateEnvoiFin || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiFin: e.target.value, statutFin: e.target.value && !formData.statutFin ? 'envoyé' : formData.statutFin })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiFin: new Date().toISOString().split('T')[0], statutFin: formData.statutFin || 'envoyé' })} className="flex-shrink-0 px-2 py-1 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📥 Retour banque</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateRetourFin || ''} onChange={(e) => setFormData({ ...formData, dateRetourFin: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateRetourFin || ''} onChange={(e) => setFormData({ ...formData, dateRetourFin: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateRetourFin: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Accord banque</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateAccord || ''} onChange={(e) => setFormData({ ...formData, dateAccord: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateAccord || ''} onChange={(e) => setFormData({ ...formData, dateAccord: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateAccord: new Date().toISOString().split('T')[0], statutFin: 'accepté' })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
@@ -10665,7 +10692,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <div>
                       <label className="block text-[11px] font-bold text-orange-700 mb-1">2️⃣ 🤝 Régie prévenue le</label>
                       <div className="flex gap-1">
-                        <input type="date" value={formData.dateNotifRegie || ''} onChange={(e) => setFormData({ ...formData, dateNotifRegie: e.target.value })} className={inputCls + ' text-xs'} />
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateNotifRegie || ''} onChange={(e) => setFormData({ ...formData, dateNotifRegie: e.target.value })} className={inputCls + ' text-xs'} />
                         <button type="button" onClick={() => setFormData({ ...formData, dateNotifRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                       <p className="text-[10px] text-orange-700/80 mt-1">→ La régie doit ensuite récupérer le(s) doc(s) auprès du client.</p>
@@ -10675,7 +10702,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <div>
                       <label className="block text-[11px] font-bold text-orange-700 mb-1">3️⃣ 📥 Docs reçus de la régie le</label>
                       <div className="flex gap-1">
-                        <input type="date" value={formData.dateRecuRegie || ''} onChange={(e) => setFormData({ ...formData, dateRecuRegie: e.target.value })} className={inputCls + ' text-xs'} />
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateRecuRegie || ''} onChange={(e) => setFormData({ ...formData, dateRecuRegie: e.target.value })} className={inputCls + ' text-xs'} />
                         <button type="button" onClick={() => setFormData({ ...formData, dateRecuRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
@@ -10684,7 +10711,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <div>
                       <label className="block text-[11px] font-bold text-orange-700 mb-1">4️⃣ 📤 Docs renvoyés à {formData.financement || 'la banque'} le</label>
                       <div className="flex gap-1">
-                        <input type="date" value={formData.dateRenvoiDocs || ''} onChange={(e) => setFormData({ ...formData, dateRenvoiDocs: e.target.value })} className={inputCls + ' text-xs'} />
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateRenvoiDocs || ''} onChange={(e) => setFormData({ ...formData, dateRenvoiDocs: e.target.value })} className={inputCls + ' text-xs'} />
                         <button type="button" onClick={() => setFormData({ ...formData, dateRenvoiDocs: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
@@ -10805,21 +10832,21 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📅 Date de pose</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateEnvoiPose || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiPose: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateEnvoiPose || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiPose: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: formData.statutPose || 'envoyé' })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Visite client</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateVisitePose || ''} onChange={(e) => setFormData({ ...formData, dateVisitePose: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateVisitePose || ''} onChange={(e) => setFormData({ ...formData, dateVisitePose: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateVisitePose: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Posé le</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.statutPose === 'visite_ok' ? (formData.dateInsta || '') : ''} onChange={(e) => setFormData({ ...formData, dateInsta: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.statutPose === 'visite_ok' ? (formData.dateInsta || '') : ''} onChange={(e) => setFormData({ ...formData, dateInsta: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
@@ -10878,14 +10905,14 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Envoi Consuel</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateEnvoiConsuel || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiConsuel: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateEnvoiConsuel || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiConsuel: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiConsuel: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Accord reçu</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateConsuel || ''} onChange={(e) => setFormData({ ...formData, dateConsuel: e.target.value, consuel: !!e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateConsuel || ''} onChange={(e) => setFormData({ ...formData, dateConsuel: e.target.value, consuel: !!e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateConsuel: new Date().toISOString().split('T')[0], consuel: true })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
@@ -10985,7 +11012,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           <div>
                             <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date visite</label>
                             <div className="flex gap-1">
-                              <input type="date" value={v.date || ''} onChange={(e) => updateV({ date: e.target.value })} className={inputCls} />
+                              <input type="date" min="2000-01-01" max="2100-12-31" value={v.date || ''} onChange={(e) => updateV({ date: e.target.value })} className={inputCls} />
                               <button type="button" onClick={() => updateV({ date: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
@@ -11004,7 +11031,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             <div>
                               <label className="block text-[9px] font-semibold text-amber-700 mb-0.5">📅 Date de la contre-visite</label>
                               <div className="flex gap-1">
-                                <input type="date" value="" onChange={(e) => {
+                                <input type="date" min="2000-01-01" max="2100-12-31" value="" onChange={(e) => {
                                   if (!e.target.value) return;
                                   setFormData({ ...formData, visitesConsuel: [...formData.visitesConsuel, { date: e.target.value, resultat: '', note: '', type: 'contre_visite' }] });
                                 }} className={inputCls} />
@@ -11047,14 +11074,14 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Demande envoyée</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateEnvoiRaccordement || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiRaccordement: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateEnvoiRaccordement || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiRaccordement: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiRaccordement: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Raccordement effectué</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateAccordRaccordement || ''} onChange={(e) => setFormData({ ...formData, dateAccordRaccordement: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateAccordRaccordement || ''} onChange={(e) => setFormData({ ...formData, dateAccordRaccordement: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateAccordRaccordement: new Date().toISOString().split('T')[0], statutRaccordement: 'accepté' })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
@@ -11097,7 +11124,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     const verrou = bloque && !formData.dateControleLivraison;
                     return (<>
                       <div className="flex gap-1">
-                        <input type="date" disabled={verrou} value={formData.dateControleLivraison || ''} onChange={(e) => setFormData({ ...formData, dateControleLivraison: e.target.value })} className={`${inputCls}${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
+                        <input type="date" min="2000-01-01" max="2100-12-31" disabled={verrou} value={formData.dateControleLivraison || ''} onChange={(e) => setFormData({ ...formData, dateControleLivraison: e.target.value })} className={`${inputCls}${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
                         <button type="button" disabled={verrou} onClick={() => setFormData({ ...formData, dateControleLivraison: new Date().toISOString().split('T')[0] })} className={`flex-shrink-0 px-2 py-1 rounded-xl text-[10px] font-bold whitespace-nowrap ${verrou ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'}`}>Auj.</button>
                       </div>
                       {verrou && (
@@ -11111,14 +11138,14 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Appel banque (banque → client)</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateAppelBanque || ''} onChange={(e) => setFormData({ ...formData, dateAppelBanque: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateAppelBanque || ''} onChange={(e) => setFormData({ ...formData, dateAppelBanque: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateAppelBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">💰 Paiement reçu</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.datePaiementBanque || ''} onChange={(e) => setFormData({ ...formData, datePaiementBanque: e.target.value })} className={inputCls} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.datePaiementBanque || ''} onChange={(e) => setFormData({ ...formData, datePaiementBanque: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => {
                       const today = new Date().toISOString().split('T')[0];
                       setFormData({
@@ -11272,6 +11299,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       <div className="flex gap-1">
                         <input
                           type="date"
+                          min="2000-01-01"
+                          max="2100-12-31"
                           value={formData.litigeDateCourrierRecommande}
                           onChange={(e) => setFormData({ ...formData, litigeDateCourrierRecommande: e.target.value })}
                           className={inputCls}
@@ -11285,6 +11314,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <div className="flex gap-1">
                           <input
                             type="date"
+                            min="2000-01-01"
+                            max="2100-12-31"
                             value={formData.litigeDateCloture}
                             onChange={(e) => setFormData({ ...formData, litigeDateCloture: e.target.value })}
                             className={inputCls}
@@ -11387,6 +11418,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <div className="flex gap-1">
                           <input
                             type="date"
+                            min="2000-01-01"
+                            max="2100-12-31"
                             value={formData.litigeDateRembourse}
                             onChange={(e) => setFormData({ ...formData, litigeDateRembourse: e.target.value })}
                             className={inputCls}
@@ -11453,6 +11486,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       <div className="flex gap-1">
                         <input
                           type="date"
+                          min="2000-01-01"
+                          max="2100-12-31"
                           value={formData.savDateOuverture}
                           onChange={(e) => setFormData({ ...formData, savDateOuverture: e.target.value })}
                           className={inputCls}
@@ -11466,6 +11501,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <div className="flex gap-1">
                           <input
                             type="date"
+                            min="2000-01-01"
+                            max="2100-12-31"
                             value={formData.savDateCloture}
                             onChange={(e) => setFormData({ ...formData, savDateCloture: e.target.value })}
                             className={inputCls}
@@ -11526,6 +11563,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <div className="flex gap-1">
                       <input
                         type="date"
+                        min="2000-01-01"
+                        max="2100-12-31"
                         value={formData.savDateInterventionPrevue}
                         onChange={(e) => setFormData({ ...formData, savDateInterventionPrevue: e.target.value })}
                         className={inputCls}
@@ -11538,6 +11577,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <div className="flex gap-1">
                       <input
                         type="date"
+                        min="2000-01-01"
+                        max="2100-12-31"
                         value={formData.savDateInterventionFaite}
                         onChange={(e) => setFormData({ ...formData, savDateInterventionFaite: e.target.value })}
                         className={inputCls}
@@ -12993,7 +13034,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {!foldedSteps.cq && (<>
               <div className="flex items-center gap-1 mb-1.5">
                 <span className="text-[10px] font-semibold text-purple-600 uppercase w-16 flex-shrink-0">📞 CQ</span>
-                <input type="date" value={d.dateControleQualite || ''} onChange={(e) => onUpdate({ dateControleQualite: e.target.value })} className={inputCls} />
+                <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateControleQualite || ''} onChange={(e) => onUpdate({ dateControleQualite: e.target.value })} className={inputCls} />
                 <button onClick={() => onUpdate({ dateControleQualite: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded text-[9px] font-bold">Auj.</button>
               </div>
 
@@ -13222,21 +13263,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   <div>
                     <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
                     <div className="flex gap-1">
-                      <input type="date" value={d.dateEnvoiMairie || ''} onChange={(e) => onUpdate({ dateEnvoiMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
+                      <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiMairie || ''} onChange={(e) => onUpdate({ dateEnvoiMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
                       <button onClick={() => onUpdate({ dateEnvoiMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
                   <div>
                     <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📨 Récépissé</label>
                     <div className="flex gap-1">
-                      <input type="date" value={d.dateRecepisseMairie || ''} onChange={(e) => onUpdate({ dateRecepisseMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
+                      <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecepisseMairie || ''} onChange={(e) => onUpdate({ dateRecepisseMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
                       <button onClick={() => onUpdate({ dateRecepisseMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
                   <div>
                     <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Accord</label>
                     <div className="flex gap-1">
-                      <input type="date" value={d.dateAccordMairie || ''} onChange={(e) => onUpdate({ dateAccordMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
+                      <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAccordMairie || ''} onChange={(e) => onUpdate({ dateAccordMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
                       <button onClick={() => onUpdate({ dateAccordMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
@@ -13344,21 +13385,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateEnvoiFin || ''} onChange={(e) => onUpdate({ dateEnvoiFin: e.target.value, statutFin: e.target.value && !d.statutFin ? 'envoyé' : d.statutFin })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiFin || ''} onChange={(e) => onUpdate({ dateEnvoiFin: e.target.value, statutFin: e.target.value && !d.statutFin ? 'envoyé' : d.statutFin })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[10px]" />
                     <button onClick={() => onUpdate({ dateEnvoiFin: new Date().toISOString().split('T')[0], statutFin: d.statutFin || 'envoyé' })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📥 Retour</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateRetourFin || ''} onChange={(e) => onUpdate({ dateRetourFin: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRetourFin || ''} onChange={(e) => onUpdate({ dateRetourFin: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[10px]" />
                     <button onClick={() => onUpdate({ dateRetourFin: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Accord</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateAccord || ''} onChange={(e) => onUpdate({ dateAccord: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAccord || ''} onChange={(e) => onUpdate({ dateAccord: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[10px]" />
                     <button onClick={() => onUpdate({ dateAccord: new Date().toISOString().split('T')[0], statutFin: 'accepté' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
@@ -13419,7 +13460,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <div>
                       <div className="text-[10px] font-bold text-orange-700 mb-0.5">2️⃣ 🤝 Régie prévenue le</div>
                       <div className="flex gap-1">
-                        <input type="date" value={d.dateNotifRegie || ''} onChange={(e) => onUpdate({ dateNotifRegie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateNotifRegie || ''} onChange={(e) => onUpdate({ dateNotifRegie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
                         <button onClick={() => onUpdate({ dateNotifRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
@@ -13427,7 +13468,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <div>
                       <div className="text-[10px] font-bold text-orange-700 mb-0.5">3️⃣ 📥 Docs reçus de la régie le</div>
                       <div className="flex gap-1">
-                        <input type="date" value={d.dateRecuRegie || ''} onChange={(e) => onUpdate({ dateRecuRegie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecuRegie || ''} onChange={(e) => onUpdate({ dateRecuRegie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
                         <button onClick={() => onUpdate({ dateRecuRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
@@ -13435,7 +13476,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <div>
                       <div className="text-[10px] font-bold text-orange-700 mb-0.5">4️⃣ 📤 Renvoi à {d.financement || 'la banque'} le</div>
                       <div className="flex gap-1">
-                        <input type="date" value={d.dateRenvoiDocs || ''} onChange={(e) => onUpdate({ dateRenvoiDocs: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRenvoiDocs || ''} onChange={(e) => onUpdate({ dateRenvoiDocs: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
                         <button onClick={() => onUpdate({ dateRenvoiDocs: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
@@ -13811,21 +13852,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📅 Date pose</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateEnvoiPose || ''} onChange={(e) => onUpdate({ dateEnvoiPose: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiPose || ''} onChange={(e) => onUpdate({ dateEnvoiPose: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
                     <button onClick={() => onUpdate({ dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: d.statutPose || 'envoyé' })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📞 Visite</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateVisitePose || ''} onChange={(e) => onUpdate({ dateVisitePose: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateVisitePose || ''} onChange={(e) => onUpdate({ dateVisitePose: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
                     <button onClick={() => onUpdate({ dateVisitePose: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Posé le</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.statutPose === 'visite_ok' ? (d.dateInsta || '') : ''} onChange={(e) => onUpdate({ dateInsta: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.statutPose === 'visite_ok' ? (d.dateInsta || '') : ''} onChange={(e) => onUpdate({ dateInsta: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
                     <button onClick={() => onUpdate({ dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
@@ -13981,14 +14022,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateEnvoiConsuel || ''} onChange={(e) => onUpdate({ dateEnvoiConsuel: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-cyan-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiConsuel || ''} onChange={(e) => onUpdate({ dateEnvoiConsuel: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-cyan-200 rounded text-[10px]" />
                     <button onClick={() => onUpdate({ dateEnvoiConsuel: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Accord</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateConsuel || ''} onChange={(e) => onUpdate({ dateConsuel: e.target.value, consuel: !!e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-cyan-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateConsuel || ''} onChange={(e) => onUpdate({ dateConsuel: e.target.value, consuel: !!e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-cyan-200 rounded text-[10px]" />
                     <button onClick={() => onUpdate({ dateConsuel: new Date().toISOString().split('T')[0], consuel: true })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
@@ -14081,7 +14122,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             </button>
                           </div>
                           <div className="flex items-center gap-1 mb-1">
-                            <input type="date" value={v.date || ''} onChange={(e) => updateV({ date: e.target.value })} className="flex-1 px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px]" />
+                            <input type="date" min="2000-01-01" max="2100-12-31" value={v.date || ''} onChange={(e) => updateV({ date: e.target.value })} className="flex-1 px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px]" />
                             <button onClick={() => updateV({ date: new Date().toISOString().split('T')[0] })} className="px-1 py-0.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[9px] font-bold">Auj.</button>
                           </div>
                           <div className="grid grid-cols-2 gap-1 mb-1">
@@ -14095,7 +14136,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               <div>
                                 <label className="block text-[8px] font-semibold text-amber-700 mb-0.5">📅 Date de la contre-visite</label>
                                 <div className="flex gap-1">
-                                  <input type="date" value="" onChange={(e) => {
+                                  <input type="date" min="2000-01-01" max="2100-12-31" value="" onChange={(e) => {
                                     if (!e.target.value) return;
                                     onUpdate({ visitesConsuel: [...d.visitesConsuel, { date: e.target.value, resultat: '', note: '', type: 'contre_visite' }] });
                                   }} className="flex-1 px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[10px]" />
@@ -14140,14 +14181,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Demande envoyée</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateEnvoiRaccordement || ''} onChange={(e) => onUpdate({ dateEnvoiRaccordement: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-sky-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiRaccordement || ''} onChange={(e) => onUpdate({ dateEnvoiRaccordement: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-sky-200 rounded text-[10px]" />
                     <button onClick={() => onUpdate({ dateEnvoiRaccordement: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Effectué</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateAccordRaccordement || ''} onChange={(e) => onUpdate({ dateAccordRaccordement: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-sky-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAccordRaccordement || ''} onChange={(e) => onUpdate({ dateAccordRaccordement: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-sky-200 rounded text-[10px]" />
                     <button onClick={() => onUpdate({ dateAccordRaccordement: new Date().toISOString().split('T')[0], statutRaccordement: 'accepté' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
@@ -14198,21 +14239,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <div>
                       <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📥 Du poseur</label>
                       <div className="flex gap-1">
-                        <input type="date" value={d.dateRecusOriginauxPoseur || ''} onChange={(e) => onUpdate({ dateRecusOriginauxPoseur: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecusOriginauxPoseur || ''} onChange={(e) => onUpdate({ dateRecusOriginauxPoseur: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
                         <button onClick={() => onUpdate({ dateRecusOriginauxPoseur: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
                     <div>
                       <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 → Banque</label>
                       <div className="flex gap-1">
-                        <input type="date" value={d.dateEnvoiOriginauxBanque || ''} onChange={(e) => onUpdate({ dateEnvoiOriginauxBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiOriginauxBanque || ''} onChange={(e) => onUpdate({ dateEnvoiOriginauxBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
                         <button onClick={() => onUpdate({ dateEnvoiOriginauxBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
                     <div>
                       <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Reçus banque</label>
                       <div className="flex gap-1">
-                        <input type="date" value={d.dateRecusOriginauxBanque || ''} onChange={(e) => onUpdate({ dateRecusOriginauxBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecusOriginauxBanque || ''} onChange={(e) => onUpdate({ dateRecusOriginauxBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
                         <button onClick={() => onUpdate({ dateRecusOriginauxBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
@@ -14241,21 +14282,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5" title="Toi qui appelles le client">📞 Ctrl liv.</label>
                   <div className="flex gap-1">
-                    <input type="date" disabled={verrou} value={d.dateControleLivraison || ''} onChange={(e) => onUpdate({ dateControleLivraison: e.target.value })} className={`flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
+                    <input type="date" min="2000-01-01" max="2100-12-31" disabled={verrou} value={d.dateControleLivraison || ''} onChange={(e) => onUpdate({ dateControleLivraison: e.target.value })} className={`flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
                     <button disabled={verrou} onClick={() => onUpdate({ dateControleLivraison: new Date().toISOString().split('T')[0] })} className={`flex-shrink-0 px-1.5 py-1 rounded text-[9px] font-bold whitespace-nowrap ${verrou ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'}`}>Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5" title="Banque appelle le client">📞 Banque</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateAppelBanque || ''} onChange={(e) => onUpdate({ dateAppelBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAppelBanque || ''} onChange={(e) => onUpdate({ dateAppelBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
                     <button onClick={() => onUpdate({ dateAppelBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">💰 Payé</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.datePaiementBanque || ''} onChange={(e) => onUpdate({ datePaiementBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.datePaiementBanque || ''} onChange={(e) => onUpdate({ datePaiementBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
                     <button onClick={() => {
                       const today = new Date().toISOString().split('T')[0];
                       onUpdate({ datePaiementBanque: today, payeClient: true, payeClientDate: d.payeClientDate || today });
@@ -14408,7 +14449,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           <div>
                             <label className="block text-[9px] font-bold text-rose-700 uppercase mb-0.5">📨 Recommandé reçu le</label>
                             <div className="flex gap-1">
-                              <input type="date" value={d.litigeDateCourrierRecommande || ''} onChange={(e) => onUpdate({ litigeDateCourrierRecommande: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                              <input type="date" min="2000-01-01" max="2100-12-31" value={d.litigeDateCourrierRecommande || ''} onChange={(e) => onUpdate({ litigeDateCourrierRecommande: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
                               <button type="button" onClick={() => onUpdate({ litigeDateCourrierRecommande: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
@@ -14416,7 +14457,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             <div>
                               <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Clos le</label>
                               <div className="flex gap-1">
-                                <input type="date" value={d.litigeDateCloture || ''} onChange={(e) => onUpdate({ litigeDateCloture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                                <input type="date" min="2000-01-01" max="2100-12-31" value={d.litigeDateCloture || ''} onChange={(e) => onUpdate({ litigeDateCloture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
                                 <button type="button" onClick={() => onUpdate({ litigeDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                               </div>
                             </div>
@@ -14474,7 +14515,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       {d.litigeRegieRembourse && (
                         <div className="grid grid-cols-2 gap-2">
                           <div className="flex gap-1">
-                            <input type="date" value={d.litigeDateRembourse || ''} onChange={(e) => onUpdate({ litigeDateRembourse: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                            <input type="date" min="2000-01-01" max="2100-12-31" value={d.litigeDateRembourse || ''} onChange={(e) => onUpdate({ litigeDateRembourse: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
                             <button type="button" onClick={() => onUpdate({ litigeDateRembourse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                           </div>
                           <input type="text" value={d.litigeFactureNo || ''} onChange={(e) => onUpdate({ litigeFactureNo: e.target.value })} placeholder="N° facture régie" className={inputCls} />
@@ -14524,7 +14565,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           <div>
                             <label className="block text-[9px] font-bold text-yellow-700 uppercase mb-0.5">📅 Ouvert le</label>
                             <div className="flex gap-1">
-                              <input type="date" value={d.savDateOuverture || ''} onChange={(e) => onUpdate({ savDateOuverture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                              <input type="date" min="2000-01-01" max="2100-12-31" value={d.savDateOuverture || ''} onChange={(e) => onUpdate({ savDateOuverture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
                               <button type="button" onClick={() => onUpdate({ savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
@@ -14532,7 +14573,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             <div>
                               <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Clos le</label>
                               <div className="flex gap-1">
-                                <input type="date" value={d.savDateCloture || ''} onChange={(e) => onUpdate({ savDateCloture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                                <input type="date" min="2000-01-01" max="2100-12-31" value={d.savDateCloture || ''} onChange={(e) => onUpdate({ savDateCloture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
                                 <button type="button" onClick={() => onUpdate({ savDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                               </div>
                             </div>
@@ -14553,11 +14594,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <div className="grid grid-cols-3 gap-2">
                         <input type="text" value={d.savIntervenant || ''} onChange={(e) => onUpdate({ savIntervenant: e.target.value })} placeholder="👤 Intervenant" className={inputCls} />
                         <div className="flex gap-1">
-                          <input type="date" value={d.savDateInterventionPrevue || ''} onChange={(e) => onUpdate({ savDateInterventionPrevue: e.target.value })} title="Intervention prévue" className={inputCls + ' flex-1 min-w-0'} />
+                          <input type="date" min="2000-01-01" max="2100-12-31" value={d.savDateInterventionPrevue || ''} onChange={(e) => onUpdate({ savDateInterventionPrevue: e.target.value })} title="Intervention prévue" className={inputCls + ' flex-1 min-w-0'} />
                           <button type="button" onClick={() => onUpdate({ savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                         </div>
                         <div className="flex gap-1">
-                          <input type="date" value={d.savDateInterventionFaite || ''} onChange={(e) => onUpdate({ savDateInterventionFaite: e.target.value })} title="Intervention faite" className={inputCls + ' flex-1 min-w-0'} />
+                          <input type="date" min="2000-01-01" max="2100-12-31" value={d.savDateInterventionFaite || ''} onChange={(e) => onUpdate({ savDateInterventionFaite: e.target.value })} title="Intervention faite" className={inputCls + ' flex-1 min-w-0'} />
                           <button type="button" onClick={() => onUpdate({ savDateInterventionFaite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                         </div>
                       </div>
@@ -14605,7 +14646,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           <div>
                             <label className="block text-[9px] font-bold text-blue-700 uppercase mb-0.5">📅 Rappeler le</label>
                             <div className="flex gap-1">
-                              <input type="date" value={d.rappelDate || ''} onChange={(e) => onUpdate({ rappelDate: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                              <input type="date" min="2000-01-01" max="2100-12-31" value={d.rappelDate || ''} onChange={(e) => onUpdate({ rappelDate: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
                               <button type="button" onClick={() => onUpdate({ rappelDate: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
@@ -14613,7 +14654,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             <div>
                               <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Rappelé le</label>
                               <div className="flex gap-1">
-                                <input type="date" value={d.rappelDateFait || ''} onChange={(e) => onUpdate({ rappelDateFait: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
+                                <input type="date" min="2000-01-01" max="2100-12-31" value={d.rappelDateFait || ''} onChange={(e) => onUpdate({ rappelDateFait: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
                                 <button type="button" onClick={() => onUpdate({ rappelDateFait: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                               </div>
                             </div>
