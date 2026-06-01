@@ -1659,64 +1659,35 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // pas de sync auto.
   useEffect(() => {
     if (loading) return;
-    let channel = null;
-    let reconnectTimer = null;
-    let attempt = 0;
-    let cancelled = false;
-
-    const handlePayload = (payload) => {
-      const newValue = payload?.new?.value;
-      if (!newValue) return;
-      // Ignore les évènements qui matchent notre propre dernière écriture
-      // (sinon boucle infinie : on écrit → realtime → on relit → on écrit…)
-      if (newValue === lastWrittenDossiersJson.current) return;
-      try {
-        const parsed = JSON.parse(newValue);
-        if (!Array.isArray(parsed)) return;
-        lastWrittenDossiersJson.current = newValue;
-        setDossiers(parsed);
-      } catch (e) {
-        // parse échoué : on ignore silencieusement (donnée corrompue côté DB).
-      }
-    };
-
-    const subscribe = () => {
-      if (cancelled) return;
-      channel = supabase
-        .channel('dossiers-sync')
-        .on(
-          'postgres_changes',
-          { event: '*', schema: 'public', table: 'storage', filter: 'key=eq.dossiers-data' },
-          handlePayload
-        )
-        .subscribe((status) => {
-          // Reconnexion auto : Supabase coupe le websocket après une période
-          // d'inactivité (CHANNEL_ERROR / TIMED_OUT / CLOSED). Si on ne se
-          // reconnecte pas, la sync multi-device meurt silencieusement.
-          // Backoff exponentiel plafonné à 30 s pour ne pas marteler.
-          if (status === 'SUBSCRIBED') {
-            attempt = 0; // succès → on remet le compteur à zéro
-            return;
+    // La sync Realtime de Supabase gère elle-même la reconnexion du
+    // transport websocket. Inutile de la doubler côté code : la version
+    // précédente créait une boucle infinie de souscriptions qui finissait
+    // en "Maximum call stack size exceeded" dans la lib (filterBindings →
+    // trigger → filterBindings → …). On reste sur l'abonnement simple,
+    // et le focus pull en dessous rattrape les coupures longues.
+    const channel = supabase
+      .channel('dossiers-sync')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'storage', filter: 'key=eq.dossiers-data' },
+        (payload) => {
+          const newValue = payload?.new?.value;
+          if (!newValue) return;
+          // Ignore les évènements qui matchent notre propre dernière écriture
+          // (sinon boucle infinie : on écrit → realtime → on relit → on écrit…)
+          if (newValue === lastWrittenDossiersJson.current) return;
+          try {
+            const parsed = JSON.parse(newValue);
+            if (!Array.isArray(parsed)) return;
+            lastWrittenDossiersJson.current = newValue;
+            setDossiers(parsed);
+          } catch (e) {
+            // parse échoué : on ignore (donnée corrompue côté DB).
           }
-          if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
-            if (cancelled) return;
-            try { supabase.removeChannel(channel); } catch (e) {}
-            channel = null;
-            attempt += 1;
-            const delay = Math.min(30000, 1000 * Math.pow(2, attempt - 1));
-            clearTimeout(reconnectTimer);
-            reconnectTimer = setTimeout(subscribe, delay);
-          }
-        });
-    };
-
-    subscribe();
-
-    return () => {
-      cancelled = true;
-      clearTimeout(reconnectTimer);
-      try { if (channel) supabase.removeChannel(channel); } catch (e) {}
-    };
+        }
+      )
+      .subscribe();
+    return () => { try { supabase.removeChannel(channel); } catch (e) {} };
   }, [loading]);
 
   // 🔁 Rafraîchissement de secours — UNIQUEMENT quand l'utilisateur revient
