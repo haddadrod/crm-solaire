@@ -9075,24 +9075,28 @@ function VariantRow({ variant, onSave, onRemove }) {
       ? String(variant.puissanceUnitaire)
       : ''
   );
+  const [ratioNote, setRatioNote] = useState(variant.ratioNote || '');
   const dirty =
     marque.trim() !== (variant.marque || '') ||
     modele.trim() !== (variant.modele || '') ||
-    String(puissanceU).trim() !== (variant.puissanceUnitaire != null ? String(variant.puissanceUnitaire) : '');
+    String(puissanceU).trim() !== (variant.puissanceUnitaire != null ? String(variant.puissanceUnitaire) : '') ||
+    ratioNote.trim() !== (variant.ratioNote || '');
   const save = () => {
     onSave({
       marque: marque.trim(),
       modele: modele.trim(),
       puissanceUnitaire: puissanceU !== '' ? Number(puissanceU) || 0 : 0,
+      ratioNote: ratioNote.trim(),
     });
   };
   const onKey = (e) => { if (e.key === 'Enter' && dirty) { e.preventDefault(); save(); } };
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5 flex-wrap">
       <span className="text-slate-400 text-[10px] font-semibold">└─</span>
       <input type="text" value={marque} onChange={(e) => setMarque(e.target.value)} onKeyDown={onKey} placeholder="Marque" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
       <input type="text" value={modele} onChange={(e) => setModele(e.target.value)} onKeyDown={onKey} placeholder="Modèle" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
       <input type="number" min="0" step="1" value={puissanceU} onChange={(e) => setPuissanceU(e.target.value)} onKeyDown={onKey} placeholder="W/u" title="Puissance unitaire en Watts (ex: 500 pour un panneau 500W). Sert au calcul auto Quantité × W = total." className="w-20 px-2 py-1 bg-white border border-slate-200 rounded text-xs text-center" />
+      <input type="text" value={ratioNote} onChange={(e) => setRatioNote(e.target.value)} onKeyDown={onKey} placeholder="Note (ex: 1 pour 2 panneaux)" title="Aide-mémoire affiché dans le dossier quand on choisit cette variante. Utile pour les ratios onduleurs/panneaux variables." className="flex-1 min-w-[140px] px-2 py-1 bg-white border border-slate-200 rounded text-xs italic" />
       {dirty ? (
         <button onClick={save} title="Enregistrer cette variante" className="px-2 py-1 bg-violet-500 hover:bg-violet-600 text-white rounded text-[10px] font-bold whitespace-nowrap">💾 Enregistrer</button>
       ) : (
@@ -10082,11 +10086,19 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           const t = produits.find(x => x.id === prod.type);
                           const variants = (t && Array.isArray(t.variants)) ? t.variants : [];
                           if (variants.length === 0) return null;
+                          const picked = variants.find(v => v.id === prod.variantId);
                           return (
-                            <select value={prod.variantId || ''} onChange={(e) => updProd({ variantId: e.target.value })} className={inputCls + ' mt-1.5 text-xs'}>
-                              <option value="">— Choisir une marque/modèle —</option>
-                              {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
-                            </select>
+                            <>
+                              <select value={prod.variantId || ''} onChange={(e) => updProd({ variantId: e.target.value })} className={inputCls + ' mt-1.5 text-xs'}>
+                                <option value="">— Choisir une marque/modèle —</option>
+                                {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
+                              </select>
+                              {picked?.ratioNote && (
+                                <div className="mt-1 px-2 py-0.5 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-800 italic">
+                                  ℹ️ {picked.ratioNote}
+                                </div>
+                              )}
+                            </>
                           );
                         })()}
                       </div>
@@ -15588,11 +15600,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     {(() => {
                       const variants = (prodInfo && Array.isArray(prodInfo.variants)) ? prodInfo.variants : [];
                       if (variants.length === 0) return null;
+                      const picked = variants.find(v => v.id === p.variantId);
                       return (
-                        <select value={p.variantId || ''} onChange={(e) => updateProduit(i, { variantId: e.target.value })} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-semibold text-amber-700">
-                          <option value="">— Choisir une marque/modèle —</option>
-                          {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
-                        </select>
+                        <>
+                          <select value={p.variantId || ''} onChange={(e) => updateProduit(i, { variantId: e.target.value })} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-semibold text-amber-700">
+                            <option value="">— Choisir une marque/modèle —</option>
+                            {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
+                          </select>
+                          {picked?.ratioNote && (
+                            <div className="px-2 py-0.5 bg-amber-100 border border-amber-300 rounded text-[10px] text-amber-800 italic">
+                              ℹ️ {picked.ratioNote}
+                            </div>
+                          )}
+                        </>
                       );
                     })()}
                     {prodInfo.autoTarif ? (() => {
