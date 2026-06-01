@@ -1312,6 +1312,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // tableau global dans la clé 'chat-messages' (Supabase storage), synced
   // via Realtime. Cap FIFO à 2000 messages pour rester sous la limite ~3.7Mo.
   const [chatMessages, setChatMessages] = useState([]);
+  // 👥 Roster d'équipe pour le chat — liste light (nom/emoji/rôle) chargée
+  // depuis /api/users?scope=roster au démarrage. Accessible à TOUS les
+  // utilisateurs connectés (pas seulement les admins), contrairement à la
+  // liste `users` complète qui n'est peuplée qu'en ouvrant Réglages.
+  const [teamRoster, setTeamRoster] = useState([]);
 
   const POSEURS = useMemo(() => Object.keys(tarifsPoseurs), [tarifsPoseurs]);
   const REGIES = useMemo(() => Object.keys(tarifsRegies), [tarifsRegies]);
@@ -1849,6 +1854,24 @@ export default function DossierSaisie({ authUser, onLogout }) {
           const arr = JSON.parse(r.value);
           if (Array.isArray(arr)) setChatMessages(arr);
         }
+      } catch (e) {}
+    })();
+  }, []);
+
+  // 👥 Charge le roster d'équipe (liste light pour le chat) au démarrage.
+  // Accessible à tous les utilisateurs connectés, donc le chat affiche les
+  // collègues même pour les non-admins / sans ouvrir Réglages → Utilisateurs.
+  useEffect(() => {
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.access_token) return;
+        const res = await fetch('/api/users?scope=roster', {
+          headers: { Authorization: `Bearer ${session.access_token}` },
+        });
+        if (!res.ok) return;
+        const payload = await res.json();
+        if (Array.isArray(payload?.roster)) setTeamRoster(payload.roster);
       } catch (e) {}
     })();
   }, []);
@@ -4556,7 +4579,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         <TeamChat
           currentUser={currentUser}
           currentUserEmoji={currentUserEmoji}
-          users={users}
+          users={[...(users || []), ...teamRoster]}
           messages={chatMessages}
           setMessages={setChatMessages}
         />
