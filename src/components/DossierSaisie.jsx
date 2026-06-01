@@ -204,6 +204,11 @@ const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM
 // son propre quota négocié avec Projexio ; au-delà du plafond ils ne
 // traitent plus les dossiers du mois pour cette société.
 // Clés alignées sur l'id des sociétés (cf state `societes`).
+// ⚠️ Ces valeurs ne sont QUE les défauts au premier démarrage. Une fois la
+// clé 'projexio-caps' présente dans Supabase, c'est elle qui pilote (et
+// l'utilisateur l'édite directement depuis le dashboard). La banque peut
+// renégocier ces plafonds du jour au lendemain — d'où le besoin d'édition
+// inline.
 const PROJEXIO_CAP_MENSUEL_PAR_SOCIETE = {
   yolico: 1_000_000,
   elsun:  2_500_000,
@@ -892,6 +897,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // /api/gmail-oauth (GET) au mount + après retour du callback OAuth.
   const [gmailOAuth, setGmailOAuth] = useState({ connected: false, email: null, connectedAt: null });
   const [tarifsRegies, setTarifsRegies] = useState(TARIFS_REGIES_DEFAULT);
+  // 🏦 Plafond mensuel Projexio par société — éditable depuis le dashboard,
+  // persisté dans Supabase. Au premier démarrage on prend les défauts du
+  // const PROJEXIO_CAP_MENSUEL_PAR_SOCIETE.
+  const [projexioCaps, setProjexioCaps] = useState(PROJEXIO_CAP_MENSUEL_PAR_SOCIETE);
   const [tarifsInternes, setTarifsInternes] = useState(TARIFS_INTERNES_DEFAULT);
   const [nomsInternes, setNomsInternes] = useState(NOMS_INTERNES_DEFAULT);
   const [listeFournisseurs, setListeFournisseurs] = useState(FOURNISSEURS_DEFAULT);
@@ -1375,7 +1384,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         'statuts-order', 'tarifs-poseurs', 'tarifs-regies',
         'poseurs-contacts', 'regies-contacts', 'email-config', 'tarifs-internes',
         'noms-internes', 'liste-fournisseurs', 'tarifs-fournisseurs',
-        'produits', 'users-list',
+        'produits', 'users-list', 'projexio-caps',
       ];
       const bgResults = await Promise.allSettled(bgKeys.map(k => window.storage.get(k)));
       const bgData = {};
@@ -1457,6 +1466,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (r?.value) {
           const arr = JSON.parse(r.value);
           if (Array.isArray(arr)) setUsers(arr);
+        }
+      } catch (e) {}
+      try {
+        const r = bgData['projexio-caps'];
+        if (r?.value) {
+          const obj = JSON.parse(r.value);
+          if (obj && typeof obj === 'object') setProjexioCaps({ ...PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, ...obj });
         }
       } catch (e) {}
     })();
@@ -1777,7 +1793,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     saveAndTrack('regies-contacts', regiesContacts);
     saveAndTrack('email-config', emailConfig);
     saveAndTrack('societes', societes);
-  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, societes, loading]);
+    saveAndTrack('projexio-caps', projexioCaps);
+  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, societes, projexioCaps, loading]);
 
   // 🔄 Sync Realtime sur les clés de réglages (contacts régies/poseurs,
   // tarifs, email config, etc.). Évite qu'un device avec un état stale
@@ -3861,7 +3878,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         />}
 
         {/* DASHBOARD */}
-        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
+        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
 
         {activeTab === 'calendrier' && (
           <CalendrierView
@@ -6214,7 +6231,7 @@ function PrestatairesPayerSection({ rappels, onShowQuick }) {
   );
 }
 
-function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', onCreate, onShowQuick }) {
+function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, setProjexioCaps, isAdmin = false, onCreate, onShowQuick }) {
   // Vue restreinte pour le rôle « Envoi finance » : seules les sections
   // Plafond Projexio + Financements en attente de retour sont affichées.
   // Les tuiles CA/marge/évolution et tous les autres rappels sont masqués.
@@ -6222,6 +6239,17 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
   // Société dont la liste de dossiers Projexio est dépliée (cliquable depuis
   // le bandeau du plafond). null = tout replié.
   const [projOpenSocId, setProjOpenSocId] = useState(null);
+  // Édition du plafond Projexio par société (admin uniquement). null = aucun
+  // en édition. Sinon { socId, value: '... en cours de frappe' }.
+  const [projEditing, setProjEditing] = useState(null);
+  const saveProjCap = (socId, raw) => {
+    const n = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+    if (!isFinite(n) || n <= 0) { setProjEditing(null); return; }
+    if (typeof setProjexioCaps === 'function') {
+      setProjexioCaps({ ...projexioCaps, [socId]: Math.round(n) });
+    }
+    setProjEditing(null);
+  };
   if (dossiers.length === 0) {
     return (
       <div className="bg-white rounded-3xl p-12 text-center shadow-md border border-violet-100">
@@ -6244,12 +6272,12 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
     critical: { bg: 'from-orange-500 to-rose-500',   hint: '🚨 Plus que 10 % de marge' },
     over:     { bg: 'from-rose-600 to-red-700',      hint: '⛔ Plafond dépassé — Projexio ne traite plus' },
   };
-  const societesAvecPlafond = Object.keys(PROJEXIO_CAP_MENSUEL_PAR_SOCIETE);
+  const societesAvecPlafond = Object.keys(projexioCaps);
   const societesAAfficher = activeSociete
     ? (societesAvecPlafond.includes(activeSociete) ? [activeSociete] : [])
     : societesAvecPlafond;
   const projBars = societesAAfficher.map(socId => {
-    const cap = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE[socId];
+    const cap = projexioCaps[socId];
     const data = projParSociete[socId] || { total: 0, count: 0, dossiers: [] };
     const pct = Math.min(100, (data.total / cap) * 100);
     const over = data.total > cap;
@@ -6283,7 +6311,39 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
             </div>
             <div className="text-right">
               <div className="text-2xl font-bold">{formatEuro(b.data.total)}</div>
-              <div className="text-[11px] opacity-90">/ {formatEuro(b.cap)} ({b.pct.toFixed(0)} %)</div>
+              <div className="text-[11px] opacity-90 flex items-center gap-1 justify-end">
+                <span>/</span>
+                {projEditing && projEditing.socId === b.socId ? (
+                  <>
+                    <input
+                      type="text"
+                      autoFocus
+                      value={projEditing.value}
+                      onChange={(e) => setProjEditing({ socId: b.socId, value: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveProjCap(b.socId, projEditing.value);
+                        if (e.key === 'Escape') setProjEditing(null);
+                      }}
+                      onBlur={() => saveProjCap(b.socId, projEditing.value)}
+                      className="w-28 px-1.5 py-0.5 bg-white/90 text-slate-800 font-bold rounded text-xs text-right"
+                    />
+                    <span>€</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{formatEuro(b.cap)} ({b.pct.toFixed(0)} %)</span>
+                    {isAdmin && typeof setProjexioCaps === 'function' && (
+                      <button
+                        onClick={() => setProjEditing({ socId: b.socId, value: String(b.cap) })}
+                        className="ml-1 px-1 py-0.5 rounded bg-white/20 hover:bg-white/35 text-[10px] font-semibold"
+                        title="Modifier le plafond (la banque peut le renégocier)"
+                      >
+                        ✏️
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
             </div>
           </div>
           <div className="h-2 bg-black/25 rounded-full overflow-hidden">
