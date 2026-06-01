@@ -13818,6 +13818,166 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <button onClick={() => setPoseRateeForm({ ...poseRateeForm, visible: !poseRateeForm.visible })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${poseRateeForm.visible ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
               </div>
 
+              {/* 📞 Prévenir / relancer la régie pour programmer la pose.
+                  Anciennement disponible UNIQUEMENT dans la section FINANCEMENT
+                  (et le CTA disparaissait dès le 1er clic via regiesNotifiedAccord).
+                  Ici on n'auto-cache pas → l'utilisateur peut relancer autant de
+                  fois qu'il veut. Chaque clic logue dans l'historique
+                  (action: 'relance_whatsapp', motif: 'relance_pose'). Reste
+                  visible tant que la pose n'est pas posée + dossier non annulé. */}
+              {!d.dateInsta && d.statutPose !== 'visite_ok' && d.statut !== 'W2_ANNULER' && (() => {
+                const regiesDuDossier = (d.regies || []).filter(r => r.nom);
+                if (regiesDuDossier.length === 0) return null;
+                const adresseLignes = [d.adresse, [d.codePostal, d.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+                const message = [
+                  `🌞 Bonjour, on a besoin de programmer la pose pour ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''}${d.financement ? ` (${d.financement})` : ''}.`,
+                  '',
+                  d.id ? `Dossier n° ${d.id}` : null,
+                  adresseLignes ? `📍 ${adresseLignes}` : null,
+                  d.telephone ? `📞 ${d.telephone}` : null,
+                  d.puissance ? `☀️ ${d.puissance} Wc` : null,
+                  d.dateEnvoiPose ? `📅 Date prévue : ${new Date(d.dateEnvoiPose).toLocaleDateString('fr-FR')}` : null,
+                  '',
+                  'Peux-tu confirmer la programmation ? Merci !',
+                ].filter(v => v != null).join('\n');
+                const mailSubject = `Pose à programmer — ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''}`;
+                const defaultFromEmail = emailConfig?.smtpUser || gmailOAuth?.email || '';
+                const gmailCompose = (to) => {
+                  const params = new URLSearchParams({ view: 'cm', fs: '1', to, su: mailSubject, body: message });
+                  if (defaultFromEmail) params.set('authuser', defaultFromEmail);
+                  return `https://mail.google.com/mail/?${params.toString()}`;
+                };
+                const logRelance = (regieNom, channel) => {
+                  const now = new Date().toISOString();
+                  const histEntry = {
+                    date: now,
+                    action: 'relance_whatsapp', // type uniforme avec les autres relances
+                    cible_kind: 'regie',
+                    cible_nom: regieNom,
+                    channel, // 'whatsapp' | 'email_oauth' | 'email_smtp' | 'gmail_compose'
+                    motif: 'relance_pose',
+                  };
+                  onUpdate({ historique: [...(d.historique || []), histEntry] });
+                };
+                return (
+                  <div className="mt-2 p-2 bg-blue-50 border-2 border-blue-300 rounded-lg">
+                    <div className="text-[10px] font-bold text-blue-700 mb-1.5">📞 Prévenir / relancer la régie pour programmer la pose</div>
+                    <div className="space-y-1.5">
+                      {regiesDuDossier.map((r, idx) => {
+                        const contact = (regiesContacts || {})[r.nom];
+                        const tel = contact && (typeof contact === 'string' ? contact : contact.tel);
+                        const email = contact && typeof contact === 'object' ? contact.email : '';
+                        const hasContact = tel || email;
+                        return (
+                          <div key={idx} className="bg-white border border-blue-200 rounded p-1.5">
+                            <div className="text-[10px] font-bold text-slate-700 mb-1">🤝 {r.nom}</div>
+                            {hasContact ? (
+                              <div className="grid grid-cols-2 gap-1">
+                                {tel ? (
+                                  <a
+                                    href={buildWhatsAppLink(tel, message)}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    onClick={() => logRelance(r.nom, 'whatsapp')}
+                                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[10px] font-bold"
+                                    title={`WhatsApp ${r.nom} (${tel})`}
+                                  >
+                                    📲 WhatsApp
+                                  </a>
+                                ) : (
+                                  <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📲 Pas de tél.</span>
+                                )}
+                                {email ? (
+                                  gmailOAuth?.connected ? (
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          const { data: { session } } = await supabase.auth.getSession();
+                                          const headers = { 'Content-Type': 'application/json' };
+                                          if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                                          const res = await fetch('/api/send-email', {
+                                            method: 'POST',
+                                            headers,
+                                            body: JSON.stringify({
+                                              provider: 'gmail-oauth',
+                                              to: email,
+                                              subject: mailSubject,
+                                              text: message,
+                                              fromName: emailConfig?.fromName || 'CRM Solaire',
+                                            }),
+                                          });
+                                          const payload = await res.json().catch(() => ({}));
+                                          if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+                                          logRelance(r.nom, 'email_oauth');
+                                          alert(`✅ Email envoyé à ${r.nom} (${email}) depuis ${gmailOAuth.email}`);
+                                        } catch (e) {
+                                          alert(`❌ Envoi email : ${e.message}`);
+                                        }
+                                      }}
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      title={`Envoie l'email automatiquement à ${r.nom} (${email}) depuis ${gmailOAuth.email}`}
+                                    >
+                                      📧 Envoyer
+                                    </button>
+                                  ) : emailConfig?.smtpUser && emailConfig?.smtpPass ? (
+                                    <button
+                                      onClick={async () => {
+                                        try {
+                                          const { data: { session } } = await supabase.auth.getSession();
+                                          const headers = { 'Content-Type': 'application/json' };
+                                          if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                                          const res = await fetch('/api/send-email', {
+                                            method: 'POST',
+                                            headers,
+                                            body: JSON.stringify({
+                                              to: email,
+                                              subject: mailSubject,
+                                              text: message,
+                                              smtpUser: emailConfig.smtpUser,
+                                              smtpPass: emailConfig.smtpPass,
+                                              fromName: emailConfig.fromName || 'CRM Solaire',
+                                            }),
+                                          });
+                                          const payload = await res.json().catch(() => ({}));
+                                          if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+                                          logRelance(r.nom, 'email_smtp');
+                                          alert(`✅ Email envoyé à ${r.nom} (${email})`);
+                                        } catch (e) {
+                                          alert(`❌ Envoi email : ${e.message}`);
+                                        }
+                                      }}
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      title={`Envoie l'email via SMTP app password depuis ${emailConfig.smtpUser}`}
+                                    >
+                                      📧 Envoyer
+                                    </button>
+                                  ) : (
+                                    <a
+                                      href={gmailCompose(email)}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      onClick={() => logRelance(r.nom, 'gmail_compose')}
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      title={`Ouvre Gmail (configure Réglages → Email d'envoi pour un envoi auto)`}
+                                    >
+                                      📧 Gmail
+                                    </a>
+                                  )
+                                ) : (
+                                  <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📧 Pas d'email</span>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="text-[9px] text-amber-600 italic">⚠️ Ajoute le tél/email du compte rattaché à {r.nom} dans Réglages → Utilisateurs pour pouvoir prévenir en 1 clic</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {poseRateeForm.visible && (
                 <div className="mt-2 p-2 bg-rose-50 border-2 border-rose-300 rounded-lg space-y-2">
                   <div className="text-[10px] font-bold text-rose-700 uppercase">Pose ratée — pénalité régie</div>
