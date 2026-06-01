@@ -1661,6 +1661,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     rappelMotif: '', // 📝 pourquoi rappeler
     rappelFait: false, // toggle : rappel effectué ?
     rappelDateFait: '', // date à laquelle le rappel a été fait
+    // 💤 Snooze d'actions Ma journée — masque temporairement une catégorie
+    // d'alerte sur ce dossier (ex: { rappelsClientRappel: '2026-06-02T08:00:00Z' }
+    // = ne plus afficher l'action « À rappeler » jusqu'à demain matin).
+    snoozedActions: {},
     historique: [],
     createdBy: '', createdAt: '', modifiedBy: '', modifiedAt: '',
     scannedBon: null, // {dataUrl, name, type, size} si scan IA réussi, sinon null
@@ -2755,6 +2759,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       rappelMotif: d.rappelMotif || '',
       rappelFait: !!d.rappelFait,
       rappelDateFait: d.rappelDateFait || '',
+      snoozedActions: (d.snoozedActions && typeof d.snoozedActions === 'object') ? d.snoozedActions : {},
       savDateOuverture: d.savDateOuverture || '',
       savMotif: d.savMotif || '',
       savIntervenant: d.savIntervenant || '',
@@ -4185,6 +4190,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
             isAdmin={isAdmin}
             onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }}
             onCopilot={(action, dossier) => setCopilotCtx({ action, dossier })}
+            onSnoozeAction={(action, dossier) => {
+              // Reporte de 24h : on stocke snoozedActions[srcKey] = maintenant + 24h
+              const until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+              setDossiers(prev => prev.map(d => d.localId === dossier.localId
+                ? { ...d, snoozedActions: { ...(d.snoozedActions || {}), [action.srcKey]: until } }
+                : d
+              ));
+            }}
           />
         )}
 
@@ -6785,7 +6798,7 @@ function PrestatairesPayerSection({ rappels, onShowQuick }) {
 // dashboard en une seule liste actionnable, triée par urgence (le plus en
 // retard en haut). Chaque action → clic ouvre le dossier sur la bonne section.
 // Transforme le CRM de « base qu'on consulte » en « assistant qui dit quoi faire ».
-function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onShowQuick, onCopilot }) {
+function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onShowQuick, onCopilot, onSnoozeAction }) {
   const dossierById = useMemo(() => {
     const m = new Map();
     (dossiers || []).forEach(d => m.set(d.localId, d));
@@ -6819,8 +6832,11 @@ function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onS
   ];
 
   const canSeeArgent = isAdmin || currentUserRole === 'compta' || currentUserRole === 'envoi_finance';
+  const nowIso = new Date().toISOString();
 
-  // Construit la liste plate des actions, dédupliquée par dossier+action.
+  // Construit la liste plate des actions. Filtre :
+  //   - snooze actif (snoozedActions[srcKey] > maintenant) → on cache l'action
+  //     temporairement sans toucher au dossier (le snooze expire tout seul).
   const actions = [];
   for (const src of SOURCES) {
     if (src.adminCompta && !canSeeArgent) continue;
@@ -6828,8 +6844,11 @@ function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onS
     for (const it of items) {
       const d = it.dossier || it;
       if (!d || !d.localId) continue;
+      const snoozeUntil = d.snoozedActions && d.snoozedActions[src.key];
+      if (snoozeUntil && snoozeUntil > nowIso) continue;
       actions.push({
         localId: d.localId,
+        srcKey: src.key,
         nom: `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)',
         ville: d.ville || '',
         emoji: src.emoji,
@@ -6911,6 +6930,16 @@ function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onS
                     className="flex-shrink-0 px-3 flex items-center justify-center bg-violet-100 hover:bg-violet-200 text-violet-700 border-l border-slate-200 transition-colors"
                   >
                     🤖
+                  </button>
+                )}
+                {/* 💤 Reporter à demain — masque l'action pendant 24h sans toucher au dossier */}
+                {dossier && onSnoozeAction && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onSnoozeAction(a, dossier); }}
+                    title="Reporter cette action à demain (masquer 24h)"
+                    className="flex-shrink-0 px-3 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 border-l border-slate-200 transition-colors"
+                  >
+                    💤
                   </button>
                 )}
               </div>
