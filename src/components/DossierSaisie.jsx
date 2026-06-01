@@ -17913,7 +17913,7 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
     },
     {
       type: 'materielNonRendu',
-      label: 'Matériel non rendu',
+      label: 'Matériel à rendre',
       emoji: '📦',
       count: (rappelsMaterielNonRendu || []).length,
       adminOnly: false,
@@ -17921,7 +17921,7 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBg: 'bg-orange-50',
       colorBorder: 'border-orange-200',
       colorText: 'text-orange-700',
-      tooltip: 'Dossiers annulés/refusés où le poseur a encore le matériel livré via BL',
+      tooltip: 'Dossiers annulés/refusés où le poseur a encore le matériel livré via BL — à récupérer',
     },
   ];
 
@@ -18195,7 +18195,7 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
       suffixLabel: 'de retard',
     },
     materielNonRendu: {
-      title: '📦 Matériel non rendu',
+      title: '📦 Matériel à rendre',
       subtitle: 'Dossiers annulés/refusés où le poseur a encore le matériel livré via BL. Coche « Matériel rendu » dans la section POSEURS du dossier quand il l\'a rapporté.',
       items: dashboard.rappelsMaterielNonRendu || [],
       gradient: 'from-orange-500 to-red-500',
