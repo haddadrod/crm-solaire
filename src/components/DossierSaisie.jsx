@@ -909,6 +909,42 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
   const [activePeer, setActivePeer] = useState(null); // nom du collègue actif
   const [draft, setDraft] = useState('');
   const scrollRef = useRef(null);
+  // 🟢 Présence en ligne : Set des noms d'utilisateurs actuellement connectés
+  // (au moins 1 tab ouvert). Alimenté par le channel Realtime 'online-users'
+  // via l'API Presence de Supabase. Pas de DB, tout est éphémère côté serveur
+  // Realtime — quand quelqu'un ferme son tab, sa présence disparaît auto.
+  const [onlineUsers, setOnlineUsers] = useState(() => new Set());
+  const prevPresenceSig = useRef('');
+
+  // 🛰️ Subscribe à la présence dès qu'on a une identité. Track une entrée
+  // unique par session (sessionId aléatoire) → multi-tabs du même user = 1
+  // seule personne « en ligne » côté UI (dédupliqué par nom).
+  useEffect(() => {
+    if (!currentUser) return;
+    const sessionId = `${currentUser}_${Math.random().toString(36).slice(2, 10)}`;
+    const channel = supabase.channel('online-users', {
+      config: { presence: { key: sessionId } },
+    });
+    channel.on('presence', { event: 'sync' }, () => {
+      const state = channel.presenceState();
+      const set = new Set();
+      Object.values(state).forEach(arr => {
+        (arr || []).forEach(p => { if (p && p.user) set.add(p.user); });
+      });
+      // Évite les re-renders inutiles quand la signature n'a pas changé
+      // (Presence sync fire à chaque join/leave/heartbeat de N'IMPORTE QUI).
+      const sig = [...set].sort().join('|');
+      if (sig === prevPresenceSig.current) return;
+      prevPresenceSig.current = sig;
+      setOnlineUsers(set);
+    });
+    channel.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') {
+        try { await channel.track({ user: currentUser, online_at: new Date().toISOString() }); } catch (e) {}
+      }
+    });
+    return () => { try { supabase.removeChannel(channel); } catch (e) {} };
+  }, [currentUser]);
 
   // Liste des collègues (sans soi-même), dédupliquée par nom.
   const colleagues = useMemo(() => {
@@ -1051,7 +1087,14 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
                     return `${c?.emoji || '👤'} ${activePeer}`;
                   })() : '💬 Chat équipe'}
                 </div>
-                {!activePeer && <div className="text-[10px] opacity-90 truncate">Connecté(e) : {currentUserEmoji} {currentUser}</div>}
+                {activePeer ? (
+                  <div className="text-[10px] opacity-90 flex items-center gap-1">
+                    <span className={`inline-block w-1.5 h-1.5 rounded-full ${onlineUsers.has(activePeer) ? 'bg-emerald-300' : 'bg-slate-300'}`} />
+                    {onlineUsers.has(activePeer) ? 'En ligne' : 'Hors ligne'}
+                  </div>
+                ) : (
+                  <div className="text-[10px] opacity-90 truncate">Connecté(e) : {currentUserEmoji} {currentUser}</div>
+                )}
               </div>
             </div>
             <button onClick={() => setOpen(false)} title="Fermer" className="hover:bg-white/20 rounded p-0.5 flex-shrink-0">
@@ -1072,14 +1115,22 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
                   {sortedColleagues.map(c => {
                     const conv = conversationsByPeer[c.name] || {};
                     const lastMsg = conv.messages && conv.messages[conv.messages.length - 1];
+                    const isOnline = onlineUsers.has(c.name);
                     return (
                       <button
                         key={c.name}
                         onClick={() => setActivePeer(c.name)}
                         className="w-full p-3 text-left hover:bg-slate-50 flex items-center gap-2"
                       >
-                        <div className="w-10 h-10 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0">
-                          {c.emoji}
+                        <div className="relative flex-shrink-0">
+                          <div className="w-10 h-10 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center text-lg">
+                            {c.emoji}
+                          </div>
+                          {/* 🟢 Pastille en ligne (coin bas-droit de l'avatar) */}
+                          <span
+                            title={isOnline ? 'En ligne' : 'Hors ligne'}
+                            className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 border-white ${isOnline ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                          />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
@@ -1139,7 +1190,7 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
                     value={draft}
                     onChange={(e) => setDraft(e.target.value)}
                     onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
-                    placeholder={`Écrire à ${activePeer}…`}
+                    placeholder={onlineUsers.has(activePeer) ? `Écrire à ${activePeer}…` : `Écrire à ${activePeer} (hors ligne, lira plus tard)…`}
                     className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
                   />
                   <button
