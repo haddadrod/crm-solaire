@@ -1529,12 +1529,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
     motifManqueDoc: '', // texte libre : quels documents la banque réclame (ex : "Bulletin paie + RIB")
     // Workflow Manque docs : banque → régie → client → régie → nous → banque
     dateNotifRegie: '', // date à laquelle on a prévenu la régie (qu'elle réclame au client)
-    // 📦 Récupération matériel par le poseur (BdC avec récup) — utile pour
-    // tracer ce qu'il a en stock quand le client refuse/annule la pose et
-    // qu'il faut récupérer le matériel.
-    bdcMaterielPoseur: false,
-    bdcMaterielDate: '',
-    bdcMaterielNote: '', // description libre du matériel récupéré
+    // 📦 Bon de livraison matériel remis au poseur — utile pour tracer ce
+    // qu'il a en stock quand le client refuse/annule la pose et qu'il faut
+    // récupérer le matériel.
+    blMaterielPoseur: false,
+    blMaterielDate: '',
+    blMaterielNote: '', // description libre du matériel livré
     materielRendu: false,
     materielRenduDate: '',
     dateRecuRegie: '',  // date à laquelle la régie nous a renvoyé le doc du client
@@ -2596,9 +2596,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
       motifManqueDoc: d.motifManqueDoc || '',
       dateNotifRegie: d.dateNotifRegie || '',
       dateRecuRegie: d.dateRecuRegie || '',
-      bdcMaterielPoseur: !!d.bdcMaterielPoseur,
-      bdcMaterielDate: d.bdcMaterielDate || '',
-      bdcMaterielNote: d.bdcMaterielNote || '',
+      blMaterielPoseur: !!d.blMaterielPoseur,
+      blMaterielDate: d.blMaterielDate || '',
+      blMaterielNote: d.blMaterielNote || '',
       materielRendu: !!d.materielRendu,
       materielRenduDate: d.materielRenduDate || '',
       dateRenvoiDocs: d.dateRenvoiDocs || '',
@@ -3775,21 +3775,21 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
-    // 📦 Matériel non rendu — quand on a donné un BdC avec récup matériel au
+    // 📦 Matériel non rendu — quand on a donné un BL avec récup matériel au
     // poseur et que la pose a été annulée/refusée (W2_ANNULER ou tentative
     // ratée), il se retrouve avec du matériel à nous rapporter. Tant qu'il
     // ne l'a pas rendu, ça reste dans cette liste pour qu'on ne l'oublie pas.
     const rappelsMaterielNonRendu = [];
     dossiersDash.forEach(d => {
-      if (!d.bdcMaterielPoseur) return; // pas de BdC matériel → rien à tracer
+      if (!d.blMaterielPoseur) return; // pas de BL matériel → rien à tracer
       if (d.materielRendu) return; // déjà rendu → OK
       // On déclenche l'alerte uniquement quand la pose ne se fera pas (ou n'a
       // pas eu lieu) : dossier annulé OU au moins 1 tentative ratée.
       const annule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
       const tentativeRatee = Array.isArray(d.tentativesPose) && d.tentativesPose.length > 0;
       if (!annule && !tentativeRatee) return;
-      // Combien de jours depuis l'évènement déclencheur (= date du BdC à défaut).
-      const ref = (annule ? (d.archivedAt || d.bdcMaterielDate) : (d.tentativesPose[d.tentativesPose.length - 1]?.date)) || d.bdcMaterielDate || d.savedAt;
+      // Combien de jours depuis l'évènement déclencheur (= date du BL à défaut).
+      const ref = (annule ? (d.archivedAt || d.blMaterielDate) : (d.tentativesPose[d.tentativesPose.length - 1]?.date)) || d.blMaterielDate || d.savedAt;
       const jours = ref ? joursEcoules(ref) : 0;
       let level = 'warn';
       if (jours >= 14) level = 'critical';
@@ -14481,36 +14481,36 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
               {/* 📦 Récupération matériel par poseur — pour tracer ce qu'il a
                   en stock quand le client annule/refuse. Toujours visible
-                  pour pouvoir cocher le BdC AVANT la pose. La case « rendu »
-                  apparaît une fois le BdC coché. */}
+                  pour pouvoir cocher le BL AVANT la pose. La case « rendu »
+                  apparaît une fois le BL coché. */}
               <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
                 <label className="flex items-center gap-1.5 text-[10px] font-bold text-orange-700 cursor-pointer">
                   <input
                     type="checkbox"
-                    checked={!!d.bdcMaterielPoseur}
+                    checked={!!d.blMaterielPoseur}
                     onChange={(e) => {
                       const checked = e.target.checked;
                       onUpdate({
-                        bdcMaterielPoseur: checked,
-                        bdcMaterielDate: checked ? (d.bdcMaterielDate || new Date().toISOString().split('T')[0]) : '',
-                        // Reset retour si on décoche le BdC
+                        blMaterielPoseur: checked,
+                        blMaterielDate: checked ? (d.blMaterielDate || new Date().toISOString().split('T')[0]) : '',
+                        // Reset retour si on décoche le BL
                         ...(checked ? {} : { materielRendu: false, materielRenduDate: '' }),
                       });
                     }}
                     className="w-3.5 h-3.5 accent-orange-600"
                   />
-                  📦 BdC avec récupération matériel par le poseur
+                  📦 BL (bon de livraison) matériel remis au poseur
                 </label>
-                {d.bdcMaterielPoseur && (
+                {d.blMaterielPoseur && (
                   <div className="mt-1.5 space-y-1.5">
                     <div className="grid grid-cols-2 gap-1.5">
                       <div>
-                        <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📅 Date du BdC</label>
-                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.bdcMaterielDate || ''} onChange={(e) => onUpdate({ bdcMaterielDate: e.target.value })} className="w-full px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                        <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📅 Date du BL</label>
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.blMaterielDate || ''} onChange={(e) => onUpdate({ blMaterielDate: e.target.value })} className="w-full px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
                       </div>
                       <div>
                         <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📝 Matériel (description)</label>
-                        <input type="text" value={d.bdcMaterielNote || ''} onChange={(e) => onUpdate({ bdcMaterielNote: e.target.value })} placeholder="Ex: 12 panneaux + onduleur" className="w-full px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                        <input type="text" value={d.blMaterielNote || ''} onChange={(e) => onUpdate({ blMaterielNote: e.target.value })} placeholder="Ex: 12 panneaux + onduleur" className="w-full px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
                       </div>
                     </div>
                     {/* Toggle « rendu » : pertinent seulement après annulation/refus.
@@ -17791,7 +17791,7 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBg: 'bg-orange-50',
       colorBorder: 'border-orange-200',
       colorText: 'text-orange-700',
-      tooltip: 'Dossiers annulés/refusés où le poseur a encore le matériel (BdC avec récupération)',
+      tooltip: 'Dossiers annulés/refusés où le poseur a encore le matériel livré via BL',
     },
   ];
 
@@ -18066,7 +18066,7 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
     },
     materielNonRendu: {
       title: '📦 Matériel non rendu',
-      subtitle: 'Dossiers annulés/refusés où le poseur a encore le matériel (BdC avec récupération). Coche « Matériel rendu » dans la section POSE du dossier quand il l\'a rapporté.',
+      subtitle: 'Dossiers annulés/refusés où le poseur a encore le matériel livré via BL. Coche « Matériel rendu » dans la section POSE du dossier quand il l\'a rapporté.',
       items: dashboard.rappelsMaterielNonRendu || [],
       gradient: 'from-orange-500 to-red-500',
       bgHeader: 'from-orange-50 to-red-50',
@@ -18074,9 +18074,9 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
       lineLabel: (d, r) => {
         const parts = [];
         if (r.poseurNom) parts.push(`🔧 ${r.poseurNom}`);
-        if (d.bdcMaterielDate) parts.push(`📅 BdC ${new Date(d.bdcMaterielDate).toLocaleDateString('fr-FR')}`);
-        if (d.bdcMaterielNote) parts.push(d.bdcMaterielNote.length > 40 ? d.bdcMaterielNote.slice(0, 40) + '…' : d.bdcMaterielNote);
-        return parts.length ? parts.join(' · ') : 'BdC matériel à récupérer';
+        if (d.blMaterielDate) parts.push(`📅 BL ${new Date(d.blMaterielDate).toLocaleDateString('fr-FR')}`);
+        if (d.blMaterielNote) parts.push(d.blMaterielNote.length > 40 ? d.blMaterielNote.slice(0, 40) + '…' : d.blMaterielNote);
+        return parts.length ? parts.join(' · ') : 'BL matériel à récupérer';
       },
       suffixLabel: 'sans retour',
     },
