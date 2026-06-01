@@ -10140,7 +10140,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           const variants = (t && Array.isArray(t.variants)) ? t.variants : [];
                           if (variants.length === 0) return null;
                           return (
-                            <select value={prod.variantId || ''} onChange={(e) => updProd({ variantId: e.target.value })} className={inputCls + ' mt-1.5 text-xs'}>
+                            <select value={prod.variantId || ''} onChange={(e) => updProd({ variantId: e.target.value })} className={inputCls + ' mt-1.5 text-xs font-bold'}>
                               <option value="">— Choisir une marque/modèle —</option>
                               {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
                             </select>
