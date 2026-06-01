@@ -10132,30 +10132,18 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           {produits.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>)}
                         </select>
                         {/* Sélecteur de variante (marque/modèle) — visible si le
-                            type sélectionné a un catalogue non vide. */}
+                            type sélectionné a un catalogue non vide. La bannière
+                            micro-onduleur est rendue en pleine largeur sous la
+                            ligne (voir plus bas). */}
                         {(() => {
                           const t = produits.find(x => x.id === prod.type);
                           const variants = (t && Array.isArray(t.variants)) ? t.variants : [];
                           if (variants.length === 0) return null;
-                          const picked = variants.find(v => v.id === prod.variantId);
-                          // Micro-onduleur fourni avec ce panneau (calcule la qté
-                          // affichée à partir du nombre de panneaux du dossier)
-                          const hasMicro = picked && picked.microMarque && Number(picked.microPanneaux) > 0;
-                          const microQty = hasMicro ? Math.ceil(
-                            computeTotalPanneauxFromLines(formData.produits, produits) / Number(picked.microPanneaux)
-                          ) : 0;
                           return (
-                            <>
-                              <select value={prod.variantId || ''} onChange={(e) => updProd({ variantId: e.target.value })} className={inputCls + ' mt-1.5 text-xs'}>
-                                <option value="">— Choisir une marque/modèle —</option>
-                                {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
-                              </select>
-                              {hasMicro && microQty > 0 && (
-                                <div className="mt-1 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-800">
-                                  📡 <strong>{microQty} micro-onduleur{microQty > 1 ? 's' : ''}</strong> {[picked.microMarque, picked.microModele].filter(Boolean).join(' ')} <span className="text-amber-600">(1 pour {picked.microPanneaux} panneau{picked.microPanneaux > 1 ? 'x' : ''}, inclus dans la pose)</span>
-                                </div>
-                              )}
-                            </>
+                            <select value={prod.variantId || ''} onChange={(e) => updProd({ variantId: e.target.value })} className={inputCls + ' mt-1.5 text-xs'}>
+                              <option value="">— Choisir une marque/modèle —</option>
+                              {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
+                            </select>
                           );
                         })()}
                       </div>
@@ -10232,6 +10220,28 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>
+                    {/* 📡 Bannière micro-onduleur fourni — pleine largeur sous la
+                        ligne, pour ne pas tasser la colonne de gauche. */}
+                    {(() => {
+                      const t = produits.find(x => x.id === prod.type);
+                      const variants = (t && Array.isArray(t.variants)) ? t.variants : [];
+                      const picked = variants.find(v => v.id === prod.variantId);
+                      const hasMicro = picked && picked.microMarque && Number(picked.microPanneaux) > 0;
+                      if (!hasMicro) return null;
+                      const microQty = Math.ceil(
+                        computeTotalPanneauxFromLines(formData.produits, produits) / Number(picked.microPanneaux)
+                      );
+                      if (microQty <= 0) return null;
+                      return (
+                        <div className="mt-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-center gap-2">
+                          <span className="text-base">📡</span>
+                          <span>
+                            <strong>{microQty} micro-onduleur{microQty > 1 ? 's' : ''}</strong> {[picked.microMarque, picked.microModele].filter(Boolean).join(' ')}
+                            <span className="text-amber-600"> — 1 pour {picked.microPanneaux} panneau{picked.microPanneaux > 1 ? 'x' : ''}, inclus dans la pose</span>
+                          </span>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
