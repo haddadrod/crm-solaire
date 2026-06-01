@@ -1529,6 +1529,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
     motifManqueDoc: '', // texte libre : quels documents la banque réclame (ex : "Bulletin paie + RIB")
     // Workflow Manque docs : banque → régie → client → régie → nous → banque
     dateNotifRegie: '', // date à laquelle on a prévenu la régie (qu'elle réclame au client)
+    // 📦 Récupération matériel par le poseur (BdC avec récup) — utile pour
+    // tracer ce qu'il a en stock quand le client refuse/annule la pose et
+    // qu'il faut récupérer le matériel.
+    bdcMaterielPoseur: false,
+    bdcMaterielDate: '',
+    bdcMaterielNote: '', // description libre du matériel récupéré
+    materielRendu: false,
+    materielRenduDate: '',
     dateRecuRegie: '',  // date à laquelle la régie nous a renvoyé le doc du client
     dateRenvoiDocs: '', // date à laquelle on a renvoyé les docs à la banque
     envoisHistorique: [], // [{financeur, dateEnvoi, dateRetour, statut, note}]
@@ -2588,6 +2596,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
       motifManqueDoc: d.motifManqueDoc || '',
       dateNotifRegie: d.dateNotifRegie || '',
       dateRecuRegie: d.dateRecuRegie || '',
+      bdcMaterielPoseur: !!d.bdcMaterielPoseur,
+      bdcMaterielDate: d.bdcMaterielDate || '',
+      bdcMaterielNote: d.bdcMaterielNote || '',
+      materielRendu: !!d.materielRendu,
+      materielRenduDate: d.materielRenduDate || '',
       dateRenvoiDocs: d.dateRenvoiDocs || '',
       envoisHistorique: d.envoisHistorique || [],
       dateEnvoiPose: d.dateEnvoiPose || '', dateVisitePose: d.dateVisitePose || '',
@@ -3762,7 +3775,31 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsCommerciaux, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige, rappelsSav, rappelsClientRappel };
+    // 📦 Matériel non rendu — quand on a donné un BdC avec récup matériel au
+    // poseur et que la pose a été annulée/refusée (W2_ANNULER ou tentative
+    // ratée), il se retrouve avec du matériel à nous rapporter. Tant qu'il
+    // ne l'a pas rendu, ça reste dans cette liste pour qu'on ne l'oublie pas.
+    const rappelsMaterielNonRendu = [];
+    dossiersDash.forEach(d => {
+      if (!d.bdcMaterielPoseur) return; // pas de BdC matériel → rien à tracer
+      if (d.materielRendu) return; // déjà rendu → OK
+      // On déclenche l'alerte uniquement quand la pose ne se fera pas (ou n'a
+      // pas eu lieu) : dossier annulé OU au moins 1 tentative ratée.
+      const annule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
+      const tentativeRatee = Array.isArray(d.tentativesPose) && d.tentativesPose.length > 0;
+      if (!annule && !tentativeRatee) return;
+      // Combien de jours depuis l'évènement déclencheur (= date du BdC à défaut).
+      const ref = (annule ? (d.archivedAt || d.bdcMaterielDate) : (d.tentativesPose[d.tentativesPose.length - 1]?.date)) || d.bdcMaterielDate || d.savedAt;
+      const jours = ref ? joursEcoules(ref) : 0;
+      let level = 'warn';
+      if (jours >= 14) level = 'critical';
+      else if (jours >= 7) level = 'high';
+      const poseurNom = (d.poseurs || []).map(p => p?.nom).filter(Boolean).join(', ') || '(poseur non assigné)';
+      rappelsMaterielNonRendu.push({ dossier: d, jours, level, poseurNom });
+    });
+    rappelsMaterielNonRendu.sort((a, b) => b.jours - a.jours);
+
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsCommerciaux, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -4047,6 +4084,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsStagnation={dashboard.rappelsStagnation || []}
             rappelsRecupTva={dashboard.rappelsRecupTva || []}
             rappelsFacturesManquantes={dashboard.rappelsFacturesManquantes || []}
+            rappelsMaterielNonRendu={dashboard.rappelsMaterielNonRendu || []}
             rappelsLitige={dashboard.rappelsLitige || []}
             rappelsSav={dashboard.rappelsSav || []}
             rappelsClientRappel={dashboard.rappelsClientRappel || []}
@@ -12945,7 +12983,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       cq: 'cq', controleQualite: 'cq',
       mairie: 'mairie', envoiMairie: 'mairie',
       financement: 'fin', envoiBanque: 'fin',
-      pose: 'pose', envoiPose: 'pose', poseurs: null,
+      pose: 'pose', envoiPose: 'pose', poseurs: null, materielNonRendu: 'pose',
       consuel: 'consuel', envoiConsuel: 'consuel',
       raccordement: 'raccordement', envoiRaccordement: 'raccordement', aEnvoyerRaccordement: 'raccordement',
       paiement: 'paiement', controleLivraison: 'paiement', originaux: 'paiement', tva: 'paiement', recupTva: 'paiement',
@@ -12965,7 +13003,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       else if (scrollTo === 'cq' || scrollTo === 'controleQualite') target = refCQ.current;
       else if (scrollTo === 'mairie' || scrollTo === 'envoiMairie') target = refMairie.current;
       else if (scrollTo === 'financement' || scrollTo === 'envoiBanque') target = refFinancement.current;
-      else if (scrollTo === 'pose' || scrollTo === 'envoiPose') target = refPose.current;
+      else if (scrollTo === 'pose' || scrollTo === 'envoiPose' || scrollTo === 'materielNonRendu') target = refPose.current;
       else if (scrollTo === 'consuel' || scrollTo === 'envoiConsuel') target = refConsuel.current;
       else if (scrollTo === 'raccordement' || scrollTo === 'envoiRaccordement' || scrollTo === 'aEnvoyerRaccordement') target = refRaccordement.current;
       else if (scrollTo === 'rappel' || scrollTo === 'clientRappel') target = refRappel.current;
@@ -14440,6 +14478,74 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {d.statutPose === 'visite_ok' && d.dateInsta && (
                 <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ Posé le {new Date(d.dateInsta).toLocaleDateString('fr-FR')} — passe au Consuel ↓</div>
               )}
+
+              {/* 📦 Récupération matériel par poseur — pour tracer ce qu'il a
+                  en stock quand le client annule/refuse. Toujours visible
+                  pour pouvoir cocher le BdC AVANT la pose. La case « rendu »
+                  apparaît une fois le BdC coché. */}
+              <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
+                <label className="flex items-center gap-1.5 text-[10px] font-bold text-orange-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={!!d.bdcMaterielPoseur}
+                    onChange={(e) => {
+                      const checked = e.target.checked;
+                      onUpdate({
+                        bdcMaterielPoseur: checked,
+                        bdcMaterielDate: checked ? (d.bdcMaterielDate || new Date().toISOString().split('T')[0]) : '',
+                        // Reset retour si on décoche le BdC
+                        ...(checked ? {} : { materielRendu: false, materielRenduDate: '' }),
+                      });
+                    }}
+                    className="w-3.5 h-3.5 accent-orange-600"
+                  />
+                  📦 BdC avec récupération matériel par le poseur
+                </label>
+                {d.bdcMaterielPoseur && (
+                  <div className="mt-1.5 space-y-1.5">
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <div>
+                        <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📅 Date du BdC</label>
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.bdcMaterielDate || ''} onChange={(e) => onUpdate({ bdcMaterielDate: e.target.value })} className="w-full px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                      </div>
+                      <div>
+                        <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📝 Matériel (description)</label>
+                        <input type="text" value={d.bdcMaterielNote || ''} onChange={(e) => onUpdate({ bdcMaterielNote: e.target.value })} placeholder="Ex: 12 panneaux + onduleur" className="w-full px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                      </div>
+                    </div>
+                    {/* Toggle « rendu » : pertinent seulement après annulation/refus.
+                        On le montre quand même si dossier annulé OU pose ratée
+                        OU si l'user a déjà coché (au cas où). */}
+                    {(d.statut === 'W2_ANNULER' || d.statut === 'ANNULER' || (d.tentativesPose || []).length > 0 || d.materielRendu) && (
+                      <div className={`p-1.5 rounded border-2 ${d.materielRendu ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
+                        <label className="flex items-center gap-1.5 text-[10px] font-bold cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={!!d.materielRendu}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              onUpdate({
+                                materielRendu: checked,
+                                materielRenduDate: checked ? (d.materielRenduDate || new Date().toISOString().split('T')[0]) : '',
+                              });
+                            }}
+                            className={`w-3.5 h-3.5 ${d.materielRendu ? 'accent-emerald-600' : 'accent-rose-600'}`}
+                          />
+                          <span className={d.materielRendu ? 'text-emerald-700' : 'text-rose-700'}>
+                            {d.materielRendu ? '✅ Matériel rendu à l\'entrepôt' : '⚠️ Matériel non rendu (toujours chez le poseur)'}
+                          </span>
+                        </label>
+                        {d.materielRendu && (
+                          <div className="mt-1 flex items-center gap-1">
+                            <label className="text-[9px] font-semibold text-emerald-600 whitespace-nowrap">📅 Le</label>
+                            <input type="date" min="2000-01-01" max="2100-12-31" value={d.materielRenduDate || ''} onChange={(e) => onUpdate({ materielRenduDate: e.target.value })} className="flex-1 px-1.5 py-0.5 bg-white border border-emerald-200 rounded text-[10px]" />
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
               </>)}
             </div>
 
@@ -17442,7 +17548,7 @@ function ChantierPhotosPanel({ photos }) {
   );
 }
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsMaterielNonRendu = [], rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], isAdmin, currentUserRole, onClick }) {
   // showAll : si true, on affiche aussi les alertes à 0 (déplié via la flèche).
   const [showAll, setShowAll] = useState(false);
   // Définition des badges
@@ -17674,6 +17780,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-fuchsia-200',
       colorText: 'text-fuchsia-700',
       tooltip: 'Pose terminée mais factures poseur/régie/fournisseur pas encore reçues',
+    },
+    {
+      type: 'materielNonRendu',
+      label: 'Matériel non rendu',
+      emoji: '📦',
+      count: (rappelsMaterielNonRendu || []).length,
+      adminOnly: false,
+      color: 'from-orange-500 to-red-500',
+      colorBg: 'bg-orange-50',
+      colorBorder: 'border-orange-200',
+      colorText: 'text-orange-700',
+      tooltip: 'Dossiers annulés/refusés où le poseur a encore le matériel (BdC avec récupération)',
     },
   ];
 
@@ -17945,6 +18063,22 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
         return parts.length ? parts.join(' · ') : 'À rappeler';
       },
       suffixLabel: 'de retard',
+    },
+    materielNonRendu: {
+      title: '📦 Matériel non rendu',
+      subtitle: 'Dossiers annulés/refusés où le poseur a encore le matériel (BdC avec récupération). Coche « Matériel rendu » dans la section POSE du dossier quand il l\'a rapporté.',
+      items: dashboard.rappelsMaterielNonRendu || [],
+      gradient: 'from-orange-500 to-red-500',
+      bgHeader: 'from-orange-50 to-red-50',
+      borderColor: 'border-orange-200',
+      lineLabel: (d, r) => {
+        const parts = [];
+        if (r.poseurNom) parts.push(`🔧 ${r.poseurNom}`);
+        if (d.bdcMaterielDate) parts.push(`📅 BdC ${new Date(d.bdcMaterielDate).toLocaleDateString('fr-FR')}`);
+        if (d.bdcMaterielNote) parts.push(d.bdcMaterielNote.length > 40 ? d.bdcMaterielNote.slice(0, 40) + '…' : d.bdcMaterielNote);
+        return parts.length ? parts.join(' · ') : 'BdC matériel à récupérer';
+      },
+      suffixLabel: 'sans retour',
     },
     facturesManquantes: {
       title: '🧾 Factures manquantes (compta)',
