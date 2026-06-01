@@ -10709,7 +10709,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Posé le</label>
                   <div className="flex gap-1">
-                    <input type="date" value={formData.dateInsta || ''} onChange={(e) => setFormData({ ...formData, dateInsta: e.target.value })} className={inputCls} />
+                    <input type="date" value={formData.statutPose === 'visite_ok' ? (formData.dateInsta || '') : ''} onChange={(e) => setFormData({ ...formData, dateInsta: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => setFormData({ ...formData, dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
@@ -13664,7 +13664,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <span className="flex items-center gap-1.5">
                   <span className="text-amber-600 text-[9px]">{foldedSteps.pose ? '▶' : '▼'}</span>
                   <span>3️⃣ 🔧 Pose</span>
-                  {foldedSteps.pose && d.dateInsta && (
+                  {foldedSteps.pose && d.dateInsta && d.statutPose === 'visite_ok' && (
                     <span className="text-amber-500 font-normal normal-case ml-1">— {new Date(d.dateInsta).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
                   )}
                 </span>
@@ -13697,7 +13697,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div>
                   <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Posé le</label>
                   <div className="flex gap-1">
-                    <input type="date" value={d.dateInsta || ''} onChange={(e) => onUpdate({ dateInsta: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                    <input type="date" value={d.statutPose === 'visite_ok' ? (d.dateInsta || '') : ''} onChange={(e) => onUpdate({ dateInsta: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
                     <button onClick={() => onUpdate({ dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
