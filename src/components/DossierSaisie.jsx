@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, LayoutGrid } from 'lucide-react';
+import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, LayoutGrid, MessageCircle } from 'lucide-react';
 import { supabase, uploadFileToBucket, getSignedUrl, deleteFileFromBucket } from '../supabase.js';
 import { TEMPLATES_CATALOG } from '../pdfTemplates.js';
 
@@ -901,6 +901,265 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
   };
 };
 
+// 💬 Chat équipe — bulle flottante bottom-right + panneau DM 1-à-1.
+// Stocké dans la clé 'chat-messages' (Supabase storage), synced via Realtime.
+// Le merge anti-perte est géré côté setChatMessages dans DossierSaisie.
+function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages }) {
+  const [open, setOpen] = useState(false);
+  const [activePeer, setActivePeer] = useState(null); // nom du collègue actif
+  const [draft, setDraft] = useState('');
+  const scrollRef = useRef(null);
+
+  // Liste des collègues (sans soi-même), dédupliquée par nom.
+  const colleagues = useMemo(() => {
+    const seen = new Set();
+    const out = [];
+    (users || []).forEach(u => {
+      const meta = u.user_metadata || {};
+      const name = (meta.display_name || u.name || (u.email ? u.email.split('@')[0] : '') || '').toString().trim();
+      if (!name || name === currentUser || seen.has(name)) return;
+      seen.add(name);
+      out.push({
+        name,
+        emoji: meta.emoji || u.emoji || '👤',
+        role: meta.role || u.role || '',
+      });
+    });
+    return out;
+  }, [users, currentUser]);
+
+  // Messages dont je suis impliqué (from ou to).
+  const myMessages = useMemo(
+    () => (messages || []).filter(m => m && (m.from === currentUser || m.to === currentUser)),
+    [messages, currentUser]
+  );
+
+  // Récap par collègue : tous les msgs, lastAt, unread.
+  const conversationsByPeer = useMemo(() => {
+    const map = {};
+    myMessages.forEach(m => {
+      const peer = m.from === currentUser ? m.to : m.from;
+      if (!peer) return;
+      if (!map[peer]) map[peer] = { messages: [], unread: 0, lastAt: null };
+      map[peer].messages.push(m);
+      if (m.to === currentUser && !(m.readBy || {})[currentUser]) map[peer].unread++;
+      if (!map[peer].lastAt || m.sentAt > map[peer].lastAt) map[peer].lastAt = m.sentAt;
+    });
+    // Tri chronologique des messages dans chaque conv.
+    Object.values(map).forEach(c => c.messages.sort((a, b) => (a.sentAt || '').localeCompare(b.sentAt || '')));
+    return map;
+  }, [myMessages, currentUser]);
+
+  const totalUnread = Object.values(conversationsByPeer).reduce((s, c) => s + c.unread, 0);
+  const activeMessages = activePeer ? (conversationsByPeer[activePeer]?.messages || []) : [];
+
+  // Marque comme lus les msgs du peer actif quand on ouvre la conversation.
+  useEffect(() => {
+    if (!open || !activePeer) return;
+    const unread = activeMessages.filter(m => m.to === currentUser && !(m.readBy || {})[currentUser]);
+    if (unread.length === 0) return;
+    const now = new Date().toISOString();
+    const ids = new Set(unread.map(m => m.id));
+    setMessages(prev => prev.map(m =>
+      ids.has(m.id)
+        ? { ...m, readBy: { ...(m.readBy || {}), [currentUser]: now } }
+        : m
+    ));
+  }, [open, activePeer, activeMessages, currentUser, setMessages]);
+
+  // Auto-scroll en bas quand la conv s'ouvre ou qu'un msg arrive.
+  useEffect(() => {
+    if (scrollRef.current) scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+  }, [activeMessages.length, activePeer]);
+
+  const send = () => {
+    const body = draft.trim();
+    if (!body || !activePeer) return;
+    const now = new Date().toISOString();
+    const msg = {
+      id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      from: currentUser,
+      to: activePeer,
+      body,
+      sentAt: now,
+      readBy: { [currentUser]: now }, // l'expéditeur a déjà "lu" son propre msg
+    };
+    // FIFO cap à 2000 msgs globaux pour rester sous la limite ~3.7Mo de la cellule.
+    setMessages(prev => {
+      const next = [...prev, msg];
+      return next.length > 2000 ? next.slice(-2000) : next;
+    });
+    setDraft('');
+  };
+
+  const formatTime = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      const today = new Date();
+      const sameDay = d.toDateString() === today.toDateString();
+      if (sameDay) return d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      const yesterday = new Date(today); yesterday.setDate(today.getDate() - 1);
+      if (d.toDateString() === yesterday.toDateString()) return `hier ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+      return `${d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })} ${d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`;
+    } catch (e) { return ''; }
+  };
+
+  // Tri collègues : unread en haut, puis dernière activité, puis alphabétique.
+  const sortedColleagues = useMemo(() => {
+    return [...colleagues].sort((a, b) => {
+      const ca = conversationsByPeer[a.name] || {};
+      const cb = conversationsByPeer[b.name] || {};
+      if ((cb.unread || 0) !== (ca.unread || 0)) return (cb.unread || 0) - (ca.unread || 0);
+      if (ca.lastAt && cb.lastAt) return (cb.lastAt || '').localeCompare(ca.lastAt || '');
+      if (ca.lastAt) return -1;
+      if (cb.lastAt) return 1;
+      return a.name.localeCompare(b.name);
+    });
+  }, [colleagues, conversationsByPeer]);
+
+  if (!currentUser) return null;
+
+  return (
+    <>
+      {/* Bulle bouton (au-dessus du bouton Assistant IA) */}
+      <button
+        onClick={() => setOpen(o => !o)}
+        title={`Chat équipe${totalUnread > 0 ? ` — ${totalUnread} non lu${totalUnread > 1 ? 's' : ''}` : ''}`}
+        className="fixed bottom-24 right-6 z-40 w-14 h-14 bg-gradient-to-br from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
+      >
+        <MessageCircle className="w-6 h-6" />
+        {totalUnread > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+            {totalUnread > 9 ? '9+' : totalUnread}
+          </span>
+        )}
+      </button>
+
+      {open && (
+        <div className="fixed bottom-40 right-6 z-50 w-[360px] max-w-[calc(100vw-3rem)] h-[540px] max-h-[calc(100vh-12rem)] bg-white rounded-2xl shadow-2xl border-2 border-blue-200 flex flex-col overflow-hidden">
+          {/* Header du panneau */}
+          <div className="px-3 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              {activePeer && (
+                <button onClick={() => setActivePeer(null)} title="Retour à la liste" className="hover:bg-white/20 rounded p-0.5 flex-shrink-0">←</button>
+              )}
+              <div className="min-w-0">
+                <div className="font-bold text-sm truncate">
+                  {activePeer ? (() => {
+                    const c = colleagues.find(x => x.name === activePeer);
+                    return `${c?.emoji || '👤'} ${activePeer}`;
+                  })() : '💬 Chat équipe'}
+                </div>
+                {!activePeer && <div className="text-[10px] opacity-90 truncate">Connecté(e) : {currentUserEmoji} {currentUser}</div>}
+              </div>
+            </div>
+            <button onClick={() => setOpen(false)} title="Fermer" className="hover:bg-white/20 rounded p-0.5 flex-shrink-0">
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Vue liste OU conversation */}
+          {!activePeer ? (
+            <div className="flex-1 overflow-y-auto">
+              {sortedColleagues.length === 0 ? (
+                <div className="p-6 text-center text-sm text-slate-500">
+                  Aucun autre collègue pour l'instant.<br />
+                  <span className="text-xs">Demande à l'admin d'ajouter des comptes dans Réglages → Utilisateurs.</span>
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {sortedColleagues.map(c => {
+                    const conv = conversationsByPeer[c.name] || {};
+                    const lastMsg = conv.messages && conv.messages[conv.messages.length - 1];
+                    return (
+                      <button
+                        key={c.name}
+                        onClick={() => setActivePeer(c.name)}
+                        className="w-full p-3 text-left hover:bg-slate-50 flex items-center gap-2"
+                      >
+                        <div className="w-10 h-10 bg-gradient-to-br from-slate-100 to-slate-200 rounded-full flex items-center justify-center text-lg flex-shrink-0">
+                          {c.emoji}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center justify-between gap-1">
+                            <div className={`font-bold text-sm truncate ${conv.unread ? 'text-blue-700' : 'text-slate-800'}`}>{c.name}</div>
+                            {lastMsg && <div className="text-[10px] text-slate-400 flex-shrink-0">{formatTime(lastMsg.sentAt)}</div>}
+                          </div>
+                          <div className="flex items-center justify-between gap-1">
+                            <div className="text-xs text-slate-500 truncate">
+                              {lastMsg ? (
+                                <>
+                                  {lastMsg.from === currentUser && <span className="text-slate-400">Toi : </span>}
+                                  {lastMsg.body}
+                                </>
+                              ) : (
+                                <span className="italic text-slate-400">Pas encore de message</span>
+                              )}
+                            </div>
+                            {conv.unread > 0 && (
+                              <span className="ml-1 min-w-[18px] h-4 px-1 bg-blue-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0">{conv.unread}</span>
+                            )}
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          ) : (
+            <>
+              <div ref={scrollRef} className="flex-1 overflow-y-auto p-3 space-y-1.5 bg-slate-50">
+                {activeMessages.length === 0 ? (
+                  <div className="text-center text-xs text-slate-400 italic py-6">
+                    Aucun message. Écris quelque chose 👇
+                  </div>
+                ) : (
+                  activeMessages.map(m => {
+                    const mine = m.from === currentUser;
+                    return (
+                      <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                        <div className={`max-w-[80%] px-3 py-1.5 rounded-2xl text-sm ${mine ? 'bg-blue-500 text-white rounded-br-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-sm'}`}>
+                          <div className="whitespace-pre-wrap break-words">{m.body}</div>
+                          <div className={`text-[9px] mt-0.5 ${mine ? 'text-blue-100' : 'text-slate-400'} text-right`}>
+                            {formatTime(m.sentAt)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+
+              <div className="p-2 border-t border-slate-200 bg-white">
+                <div className="flex gap-1.5">
+                  <input
+                    type="text"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }}
+                    placeholder={`Écrire à ${activePeer}…`}
+                    className="flex-1 px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-full text-sm focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  />
+                  <button
+                    onClick={send}
+                    disabled={!draft.trim()}
+                    className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-full text-sm font-bold transition-colors"
+                    title="Envoyer (Entrée)"
+                  >
+                    ➤
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
 export default function DossierSaisie({ authUser, onLogout }) {
   const [dossiers, setDossiers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -996,6 +1255,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const lastWrittenSettings = useRef({});
   const isInitialOrder = useRef(true);
   const isInitialTarifs = useRef(true);
+  const isInitialChat = useRef(true);
+
+  // 💬 Chat équipe (DM 1-à-1 entre collaborateurs). Stocké comme un seul
+  // tableau global dans la clé 'chat-messages' (Supabase storage), synced
+  // via Realtime. Cap FIFO à 2000 messages pour rester sous la limite ~3.7Mo.
+  const [chatMessages, setChatMessages] = useState([]);
 
   const POSEURS = useMemo(() => Object.keys(tarifsPoseurs), [tarifsPoseurs]);
   const REGIES = useMemo(() => Object.keys(tarifsRegies), [tarifsRegies]);
@@ -1423,7 +1688,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         'statuts-order', 'tarifs-poseurs', 'tarifs-regies',
         'poseurs-contacts', 'regies-contacts', 'email-config', 'tarifs-internes',
         'noms-internes', 'liste-fournisseurs', 'tarifs-fournisseurs',
-        'produits', 'users-list', 'projexio-caps',
+        'produits', 'users-list', 'projexio-caps', 'chat-messages',
       ];
       const bgResults = await Promise.allSettled(bgKeys.map(k => window.storage.get(k)));
       const bgData = {};
@@ -1512,6 +1777,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (r?.value) {
           const obj = JSON.parse(r.value);
           if (obj && typeof obj === 'object') setProjexioCaps({ ...PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, ...obj });
+        }
+      } catch (e) {}
+      try {
+        const r = bgData['chat-messages'];
+        if (r?.value) {
+          const arr = JSON.parse(r.value);
+          if (Array.isArray(arr)) setChatMessages(arr);
         }
       } catch (e) {}
     })();
@@ -1841,11 +2113,34 @@ export default function DossierSaisie({ authUser, onLogout }) {
     saveAndTrack('projexio-caps', projexioCaps);
   }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, societes, projexioCaps, loading]);
 
+  // 💬 Save effect dédié au chat — séparé des réglages pour éviter qu'un
+  // envoi de message ne re-sauvegarde TOUS les tarifs (et inversement).
+  // Skip écho via lastWrittenSettings['chat-messages'].
+  useEffect(() => {
+    if (isInitialChat.current) { if (!loading) isInitialChat.current = false; return; }
+    const json = JSON.stringify(chatMessages);
+    if (json === lastWrittenSettings.current['chat-messages']) return;
+    lastWrittenSettings.current['chat-messages'] = json;
+    window.storage.set('chat-messages', json).catch(() => {});
+  }, [chatMessages, loading]);
+
   // 🔄 Sync Realtime sur les clés de réglages (contacts régies/poseurs,
   // tarifs, email config, etc.). Évite qu'un device avec un état stale
   // écrase silencieusement les modifs faites depuis un autre device.
   useEffect(() => {
     if (loading) return;
+    // 💬 Merger spécial pour le chat : on NE remplace PAS l'état local par
+    // l'arrivée Realtime, on MERGE par id. Sinon, si 2 personnes envoient
+    // un message simultanément, le dernier writer écrase le message de
+    // l'autre. Avec merge par id, les 2 messages survivent.
+    const mergeChatMessages = (incoming) => {
+      if (!Array.isArray(incoming)) return;
+      setChatMessages(prev => {
+        const incomingIds = new Set(incoming.map(m => m && m.id));
+        const localOnly = prev.filter(m => m && !incomingIds.has(m.id));
+        return [...incoming, ...localOnly].sort((a, b) => (a.sentAt || '').localeCompare(b.sentAt || ''));
+      });
+    };
     const SYNCED_KEYS = {
       'tarifs-poseurs': setTarifsPoseurs,
       'tarifs-regies': setTarifsRegies,
@@ -1857,6 +2152,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       'poseurs-contacts': setPoseursContacts,
       'regies-contacts': setRegiesContacts,
       'email-config': setEmailConfig,
+      'chat-messages': mergeChatMessages,
     };
     const channel = supabase
       .channel('settings-sync')
@@ -4157,6 +4453,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
             }}
           />
         )}
+
+        {/* 💬 Chat équipe — bulle flottante DM 1-à-1, au-dessus du bouton
+            Assistant IA pour ne pas se marcher dessus. */}
+        <TeamChat
+          currentUser={currentUser}
+          currentUserEmoji={currentUserEmoji}
+          users={users}
+          messages={chatMessages}
+          setMessages={setChatMessages}
+        />
 
         {/* Bouton flottant 🤖 Assistant IA — accessible partout, comme une
             secrétaire toujours dispo. Bottom-right pour ne pas gêner les
