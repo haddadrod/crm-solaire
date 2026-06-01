@@ -3147,11 +3147,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsAEnvoyerBanque.sort((a, b) => b.jours - a.jours);
 
-    // Rappels À envoyer en pose — financement accordé mais pas encore envoyé en pose
+    // Rappels À envoyer en pose — financement accordé mais aucune trace
+    // d'envoi en pose. Une "trace" = n'importe laquelle des 3 dates (envoi,
+    // visite client, ou pose réelle). Tant qu'aucune des 3 n'est posée, on
+    // est dans ce bucket. Dès qu'une l'est, on bascule en "Poseur à assigner"
+    // (si manque le poseur) ou en pose elle-même. Les 2 buckets s'excluent
+    // ainsi mutuellement.
     const rappelsAEnvoyerPose = [];
     dossiersDash.forEach(d => {
       if (d.statutFin !== 'accepté') return; // pas accordé par banque
-      if (d.dateEnvoiPose) return; // déjà envoyé en pose
+      if (d.dateEnvoiPose || d.dateVisitePose || d.dateInsta) return; // déjà au moins amorcé en pose
       if (finalStatuses.includes(d.statut)) return;
       // Calcul depuis la date d'accord (ou date retour fin fallback)
       const ref = d.dateAccord || d.dateRetourFin || d.savedAt;
