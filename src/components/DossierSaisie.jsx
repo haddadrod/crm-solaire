@@ -9109,6 +9109,16 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
   const [showAdd, setShowAdd] = useState(false);
   const [newLabel, setNewLabel] = useState('');
   const [newEmoji, setNewEmoji] = useState('🔧');
+  // Pliage par type : tout fermé par défaut → l'écran reste lisible avec
+  // beaucoup de types. Clic sur le chevron du type → ouvre/ferme le
+  // sous-catalogue marques/modèles.
+  const [expandedTypeIds, setExpandedTypeIds] = useState(() => new Set());
+  const toggleExpand = (id) => setExpandedTypeIds(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id);
+    else next.add(id);
+    return next;
+  });
 
   const slugify = (str) => str.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '');
 
@@ -9154,6 +9164,12 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
       const vid = `v_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
       return { ...p, variants: [...variants, { id: vid, marque: '', modele: '' }] };
     }));
+    // Auto-déplie le type pour que l'user voie la nouvelle ligne tout de suite
+    setExpandedTypeIds(prev => {
+      const next = new Set(prev);
+      next.add(typeId);
+      return next;
+    });
   };
   const updateVariant = (typeId, vid, patch) => {
     setProduits(produits.map(p => {
@@ -9197,12 +9213,30 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
           {produits.map(p => {
             const used = dossiers.filter(d => (d.produits || []).some(pp => pp.type === p.id) || d.produit === p.id).length;
             const variants = Array.isArray(p.variants) ? p.variants : [];
+            const expanded = expandedTypeIds.has(p.id);
             return (
-              <div key={p.id} className={`rounded-xl border p-2.5 ${p.autoTarif ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
-                {/* Ligne du type lui-même */}
-                <div className="flex items-center gap-2 flex-wrap">
+              <div key={p.id} className={`rounded-xl border ${p.autoTarif ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
+                {/* Ligne du type — clic sur le chevron OU le label déplie */}
+                <div className="flex items-center gap-2 flex-wrap p-2.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand(p.id)}
+                    className={`flex items-center justify-center w-7 h-7 rounded-lg text-sm font-bold transition-transform ${expanded ? 'bg-violet-100 text-violet-700' : 'bg-white border border-slate-200 text-slate-500 hover:bg-violet-50'}`}
+                    title={expanded ? 'Replier' : 'Ouvrir le catalogue marques/modèles'}
+                  >
+                    {expanded ? '▼' : '▶'}
+                  </button>
                   <input type="text" value={p.emoji} onChange={(e) => updateProduit(p.id, { emoji: e.target.value.slice(0, 4) })} className="w-12 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-center text-base" maxLength={4} />
                   <input type="text" value={p.label} onChange={(e) => updateProduit(p.id, { label: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} placeholder="Type" className="flex-1 min-w-[200px] px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold" />
+                  {/* Compteur de variantes — discoverability quand c'est replié */}
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand(p.id)}
+                    className={`text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap ${variants.length > 0 ? 'bg-violet-100 text-violet-700 hover:bg-violet-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    title={expanded ? 'Replier' : 'Ouvrir'}
+                  >
+                    📦 {variants.length} marque{variants.length > 1 ? 's' : ''}/modèle{variants.length > 1 ? 's' : ''}
+                  </button>
                   {p.autoTarif && (
                     <span className="text-[10px] font-bold px-2 py-1 bg-amber-200 text-amber-800 rounded-full whitespace-nowrap">⚡ Tarifs auto par Wc</span>
                   )}
@@ -9212,29 +9246,33 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
                   </button>
                 </div>
 
-                {/* Sous-catalogue marques/modèles pour ce type */}
-                <div className="mt-2 ml-6 pl-3 border-l-2 border-slate-200 space-y-1.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="text-[10px] font-bold text-slate-500 uppercase">
-                      📦 Marques & modèles {variants.length > 0 ? `(${variants.length})` : ''}
+                {/* Sous-catalogue marques/modèles — visible uniquement quand expanded */}
+                {expanded && (
+                  <div className="px-2.5 pb-2.5">
+                    <div className="ml-6 pl-3 border-l-2 border-slate-200 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="text-[10px] font-bold text-slate-500 uppercase">
+                          📦 Marques & modèles {variants.length > 0 ? `(${variants.length})` : ''}
+                        </div>
+                        <button onClick={() => addVariant(p.id)} className="text-[10px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-md flex items-center gap-1">
+                          <Plus className="w-2.5 h-2.5" />Ajouter une marque/modèle
+                        </button>
+                      </div>
+                      {variants.length === 0 ? (
+                        <div className="text-[10px] text-slate-400 italic">Aucune marque/modèle pour l'instant — le dossier proposera juste « {p.label} » sans variante.</div>
+                      ) : (
+                        variants.map(v => (
+                          <VariantRow
+                            key={v.id}
+                            variant={v}
+                            onSave={(patch) => updateVariant(p.id, v.id, patch)}
+                            onRemove={() => removeVariant(p.id, v.id)}
+                          />
+                        ))
+                      )}
                     </div>
-                    <button onClick={() => addVariant(p.id)} className="text-[10px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-md flex items-center gap-1">
-                      <Plus className="w-2.5 h-2.5" />Ajouter une marque/modèle
-                    </button>
                   </div>
-                  {variants.length === 0 ? (
-                    <div className="text-[10px] text-slate-400 italic">Aucune marque/modèle pour l'instant — le dossier proposera juste « {p.label} » sans variante.</div>
-                  ) : (
-                    variants.map(v => (
-                      <VariantRow
-                        key={v.id}
-                        variant={v}
-                        onSave={(patch) => updateVariant(p.id, v.id, patch)}
-                        onRemove={() => removeVariant(p.id, v.id)}
-                      />
-                    ))
-                  )}
-                </div>
+                )}
               </div>
             );
           })}
