@@ -1,6 +1,12 @@
 // Fonction serverless Vercel : pousse une facture prestataire (fournisseur,
 // poseur, régie) vers Pennylane via leur API REST v2.
 //
+// Multi-société : la clé Pennylane est choisie en fonction du champ
+// `societe` envoyé dans le body. Convention env Vercel :
+//   PENNYLANE_API_KEY_YOLICO  → société Yolico
+//   PENNYLANE_API_KEY_ELSUN   → société Elsun
+//   PENNYLANE_API_KEY         → fallback générique (compat ancienne config)
+//
 // Workflow :
 //   1. Cherche le fournisseur par nom dans Pennylane (GET /suppliers)
 //   2. Upload le PDF de la facture (POST /file_attachments, multipart)
@@ -8,16 +14,30 @@
 //      file_attachment_id + supplier_id + montants
 //
 // Variables d'environnement requises côté Vercel :
-//   - PENNYLANE_API_KEY     : clé Bearer générée dans Pennylane → Réglages → API
+//   - PENNYLANE_API_KEY_YOLICO / PENNYLANE_API_KEY_ELSUN / PENNYLANE_API_KEY
 //   - SUPABASE_URL          : pour valider le JWT appelant
 //   - SUPABASE_SERVICE_KEY  : clé service_role Supabase
 
 import { createClient } from '@supabase/supabase-js';
 
-const PENNYLANE_API_KEY = process.env.PENNYLANE_API_KEY;
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 const PL_BASE = 'https://app.pennylane.com/api/external/v2';
+
+// Choisit la clé Pennylane en fonction de la société émettrice du dossier.
+// Convention : PENNYLANE_API_KEY_<SOCIETE>. Fallback sur PENNYLANE_API_KEY
+// pour ne pas casser les pousses existantes le temps que la config Vercel
+// soit mise à jour.
+function pickApiKey(societe) {
+  const norm = String(societe || '').toUpperCase().trim();
+  if (norm) {
+    const specific = process.env[`PENNYLANE_API_KEY_${norm}`];
+    if (specific) return { key: specific, source: `PENNYLANE_API_KEY_${norm}` };
+  }
+  const generic = process.env.PENNYLANE_API_KEY;
+  if (generic) return { key: generic, source: 'PENNYLANE_API_KEY (fallback)' };
+  return { key: null, source: null };
+}
 
 function json(res, status, body) {
   res.status(status).setHeader('Content-Type', 'application/json');
@@ -52,12 +72,14 @@ function vatRateCode(tauxTva) {
   return 'FR_200'; // fallback raisonnable
 }
 
-// Helper : appel HTTP authentifié à l'API Pennylane
-async function plFetch(path, options = {}) {
+// Helper : appel HTTP authentifié à l'API Pennylane.
+// La clé est passée explicitement (multi-société) pour éviter une variable
+// globale qui se ferait écraser entre 2 invocations Vercel concurrentes.
+async function plFetch(apiKey, path, options = {}) {
   const res = await fetch(`${PL_BASE}${path}`, {
     ...options,
     headers: {
-      Authorization: `Bearer ${PENNYLANE_API_KEY}`,
+      Authorization: `Bearer ${apiKey}`,
       ...(options.headers || {}),
     },
   });
@@ -67,12 +89,11 @@ async function plFetch(path, options = {}) {
 }
 
 // Cherche un fournisseur par nom (insensitive). Renvoie son id ou null.
-async function findSupplierByName(name) {
+async function findSupplierByName(apiKey, name) {
   const target = String(name || '').trim().toLowerCase();
   if (!target) return null;
-  // Pagination simple — on parcourt les pages jusqu'à trouver
   for (let page = 1; page <= 10; page++) {
-    const { ok, status, payload } = await plFetch(`/suppliers?page=${page}&per_page=100`);
+    const { ok, status, payload } = await plFetch(apiKey, `/suppliers?page=${page}&per_page=100`);
     if (!ok) throw new Error(`Pennylane GET /suppliers ${status} : ${JSON.stringify(payload)}`);
     const items = payload?.items || payload?.data || payload?.suppliers || (Array.isArray(payload) ? payload : []);
     if (!items || items.length === 0) return null;
@@ -84,14 +105,14 @@ async function findSupplierByName(name) {
 }
 
 // Upload un PDF en multipart vers /file_attachments → renvoie l'id du fichier.
-async function uploadPdfAttachment(base64, fileName) {
+async function uploadPdfAttachment(apiKey, base64, fileName) {
   const bytes = Buffer.from(base64, 'base64');
   const form = new FormData();
   const blob = new Blob([bytes], { type: 'application/pdf' });
   form.append('file', blob, fileName || 'facture.pdf');
   const res = await fetch(`${PL_BASE}/file_attachments`, {
     method: 'POST',
-    headers: { Authorization: `Bearer ${PENNYLANE_API_KEY}` },
+    headers: { Authorization: `Bearer ${apiKey}` },
     body: form,
   });
   let payload = null;
@@ -107,14 +128,13 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'POST');
     return json(res, 405, { error: 'Method Not Allowed' });
   }
-  if (!PENNYLANE_API_KEY) {
-    return json(res, 503, { error: "Pennylane non configuré : ajoute la variable PENNYLANE_API_KEY dans Vercel." });
-  }
+
   const caller = await getCaller(req);
   if (!caller) return json(res, 401, { error: 'Connexion requise.' });
 
   const body = req.body || {};
   const {
+    societe,
     supplierName,
     factureNo,
     dateFacture,
@@ -125,6 +145,16 @@ export default async function handler(req, res) {
     fileName,
     storagePath,
   } = body;
+
+  // Sélection de la clé selon la société émettrice
+  const { key: apiKey, source: keySource } = pickApiKey(societe);
+  if (!apiKey) {
+    return json(res, 503, {
+      error: societe
+        ? `Pennylane non configuré pour la société "${societe}" : ajoute PENNYLANE_API_KEY_${String(societe).toUpperCase()} dans Vercel (ou PENNYLANE_API_KEY générique).`
+        : 'Pennylane non configuré : ajoute PENNYLANE_API_KEY dans Vercel.',
+    });
+  }
 
   if (!supplierName) return json(res, 400, { error: 'supplierName requis.' });
   if (!factureNo) return json(res, 400, { error: 'factureNo requis (N° de la facture).' });
@@ -148,16 +178,16 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Cherche le fournisseur Pennylane par nom
-    const supplierId = await findSupplierByName(supplierName);
+    // 1. Cherche le fournisseur Pennylane par nom (dans le compte de la société)
+    const supplierId = await findSupplierByName(apiKey, supplierName);
     if (!supplierId) {
       return json(res, 404, {
-        error: `Fournisseur "${supplierName}" introuvable dans Pennylane. Crée-le d'abord dans Pennylane (avec son nom exact) puis réessaie.`,
+        error: `Fournisseur "${supplierName}" introuvable dans Pennylane${societe ? ` (compte ${societe})` : ''}. Crée-le d'abord dans Pennylane (avec son nom exact) puis réessaie.`,
       });
     }
 
     // 2. Upload le PDF
-    const fileAttachmentId = await uploadPdfAttachment(pdfBase64, fileName || `${factureNo}.pdf`);
+    const fileAttachmentId = await uploadPdfAttachment(apiKey, pdfBase64, fileName || `${factureNo}.pdf`);
 
     // 3. Crée la facture fournisseur. La somme des invoice_lines doit
     //    correspondre au currency_amount sinon Pennylane renvoie 422.
@@ -192,7 +222,7 @@ export default async function handler(req, res) {
       ],
     };
 
-    const { ok, status, payload } = await plFetch(`/supplier_invoices/import`, {
+    const { ok, status, payload } = await plFetch(apiKey, `/supplier_invoices/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(invoiceBody),
@@ -208,6 +238,7 @@ export default async function handler(req, res) {
         pennylaneInvoiceId: invoiceId,
         pennylaneSupplierId: supplierId,
         pennylaneStatus: payload?.status || 'imported',
+        pennylaneAccount: keySource, // utile pour vérifier qu'on a tapé sur le bon compte
       },
     });
   } catch (e) {

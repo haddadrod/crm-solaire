@@ -665,6 +665,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
         method: 'POST',
         headers,
         body: JSON.stringify({
+          societe: pennylaneInfo.societe || '',
           supplierName: pennylaneInfo.supplierName,
           factureNo: pennylaneInfo.factureNo,
           dateFacture: pennylaneInfo.dateFacture,
@@ -14869,6 +14870,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 if (Object.keys(upd).length > 0) updateRegie(i, upd);
                               }}
                               pennylaneInfo={{
+                                societe: d.societe || '',
                                 supplierName: r.nom,
                                 factureNo: r.factureNo,
                                 dateFacture: r.dateFacture || new Date().toISOString().slice(0, 10),
@@ -15217,6 +15219,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           if (Object.keys(upd).length > 0) updatePoseur(i, upd);
                         }}
                         pennylaneInfo={{
+                          societe: d.societe || '',
                           supplierName: p.nom,
                           factureNo: p.factureNo,
                           dateFacture: p.dateFacture || new Date().toISOString().slice(0, 10),
@@ -15339,6 +15342,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           if (Object.keys(upd).length > 0) updateFournisseur(i, upd);
                         }}
                         pennylaneInfo={{
+                          societe: d.societe || '',
                           supplierName: f.nom,
                           factureNo: f.factureNo,
                           dateFacture: f.dateFacture || new Date().toISOString().slice(0, 10),
