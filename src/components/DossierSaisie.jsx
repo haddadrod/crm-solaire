@@ -2750,7 +2750,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (!parSociete[soc]) parSociete[soc] = { total: 0, count: 0, dossiers: [] };
         parSociete[soc].total += m;
         parSociete[soc].count += 1;
-        parSociete[soc].dossiers.push({ localId: d.localId, nom: d.nom, prenom: d.prenom, montant: m, statut: d.statut });
+        parSociete[soc].dossiers.push({ localId: d.localId, nom: d.nom, prenom: d.prenom, montant: m, statut: d.statut, dateEnvoiFin: d.dateEnvoiFin });
       });
       return { parSociete };
     })();
@@ -6307,16 +6307,28 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
           )}
           {isOpen && dossiersOfMonth.length > 0 && (
             <div className="mt-2 bg-white/15 rounded-xl p-2 space-y-1 max-h-72 overflow-y-auto">
-              {dossiersOfMonth.map((d, i) => {
+              {/* Tri par date d'envoi banque décroissante : le dernier envoyé
+                  apparaît en haut — c'est la date pertinente pour le plafond. */}
+              {[...dossiersOfMonth]
+                .sort((a, b) => (b.dateEnvoiFin || '').localeCompare(a.dateEnvoiFin || ''))
+                .map((d, i) => {
                 const statut = STATUTS.find(s => s.id === d.statut);
+                const envoiLabel = d.dateEnvoiFin
+                  ? new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+                  : null;
                 return (
                   <button
                     key={d.localId || i}
                     onClick={() => onShowQuick && onShowQuick(d.localId)}
                     className="w-full text-left bg-white/10 hover:bg-white/25 rounded-lg px-2.5 py-1.5 transition-colors flex items-center justify-between gap-2"
                   >
-                    <span className="flex items-center gap-2 min-w-0 flex-1">
+                    <span className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
                       <span className="font-bold text-sm truncate">{(d.nom || '').toUpperCase()} {d.prenom || ''}</span>
+                      {envoiLabel && (
+                        <span className="text-[9px] font-bold bg-black/25 px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap">
+                          🏦 Envoyé banque {envoiLabel}
+                        </span>
+                      )}
                       {statut && (
                         <span className="text-[9px] font-bold bg-white/25 px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap">
                           {statut.emoji} {statut.label}
