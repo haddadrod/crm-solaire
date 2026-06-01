@@ -1516,6 +1516,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     if (isInitialMount.current) { if (!loading) isInitialMount.current = false; return; }
     const json = JSON.stringify(dossiers);
     lastWrittenDossiersJson.current = json;
+    // 🔎 DIAGNOSTIC TEMPORAIRE — voir d'où viennent les bascules de state.
+    console.log('[CRM save] write dossiers-data', { size: json.length, n: dossiers.length });
     (async () => {
       try {
         await window.storage.set('dossiers-data', json);
@@ -1677,12 +1679,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
           if (!newValue) return;
           // Ignore les évènements qui matchent notre propre dernière écriture
           // (sinon boucle infinie : on écrit → realtime → on relit → on écrit…)
-          if (newValue === lastWrittenDossiersJson.current) return;
+          if (newValue === lastWrittenDossiersJson.current) {
+            console.log('[CRM realtime] echo ignored (same as last write)');
+            return;
+          }
           try {
             const parsed = JSON.parse(newValue);
             if (!Array.isArray(parsed)) return;
-            // Met à jour notre état avec ce que l'autre device vient d'écrire.
-            // On marque ce JSON comme 'déjà écrit' pour pas le réécrire en boucle.
+            // 🔎 DIAGNOSTIC TEMPORAIRE — c'est ici qu'on rapatrie l'état d'un
+            // autre device. Si tu vois ce log SANS avoir un autre onglet/PC
+            // ouvert, c'est un faux positif à creuser.
+            console.warn('[CRM realtime] applying external update', { size: newValue.length, n: parsed.length });
             lastWrittenDossiersJson.current = newValue;
             setDossiers(parsed);
           } catch (e) {
@@ -1727,6 +1734,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (!v || v === lastWrittenDossiersJson.current) return;
         const parsed = JSON.parse(v);
         if (!Array.isArray(parsed)) return;
+        console.warn('[CRM focus pull] applying refresh', { size: v.length, n: parsed.length });
         lastWrittenDossiersJson.current = v;
         setDossiers(parsed);
       } catch (e) {
