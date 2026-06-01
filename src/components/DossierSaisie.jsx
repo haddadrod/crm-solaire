@@ -6219,6 +6219,9 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
   // Plafond Projexio + Financements en attente de retour sont affichées.
   // Les tuiles CA/marge/évolution et tous les autres rappels sont masqués.
   const isRestricted = currentUserRole === 'envoi_finance';
+  // Société dont la liste de dossiers Projexio est dépliée (cliquable depuis
+  // le bandeau du plafond). null = tout replié.
+  const [projOpenSocId, setProjOpenSocId] = useState(null);
   if (dossiers.length === 0) {
     return (
       <div className="bg-white rounded-3xl p-12 text-center shadow-md border border-violet-100">
@@ -6247,7 +6250,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
     : societesAvecPlafond;
   const projBars = societesAAfficher.map(socId => {
     const cap = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE[socId];
-    const data = projParSociete[socId] || { total: 0, count: 0 };
+    const data = projParSociete[socId] || { total: 0, count: 0, dossiers: [] };
     const pct = Math.min(100, (data.total / cap) * 100);
     const over = data.total > cap;
     const reste = Math.max(0, cap - data.total);
@@ -6265,7 +6268,10 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
   return (
     <div className="space-y-4">
       {/* 🏦 PROJEXIO — un bandeau de plafond par société émettrice */}
-      {projBars.map(b => (
+      {projBars.map(b => {
+        const isOpen = projOpenSocId === b.socId;
+        const dossiersOfMonth = b.data.dossiers || [];
+        return (
         <div key={b.socId} className={`bg-gradient-to-r ${b.colors.bg} rounded-2xl p-4 text-white shadow-md`}>
           <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
             <div className="flex items-center gap-2">
@@ -6291,8 +6297,41 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
                 : `Reste : ${formatEuro(b.reste)}`}
             </span>
           </div>
+          {dossiersOfMonth.length > 0 && (
+            <button
+              onClick={() => setProjOpenSocId(isOpen ? null : b.socId)}
+              className="mt-2 text-[11px] font-semibold opacity-90 hover:opacity-100 underline-offset-2 hover:underline"
+            >
+              {isOpen ? '▼ Masquer' : '▶ Voir les'} {dossiersOfMonth.length} dossier{dossiersOfMonth.length > 1 ? 's' : ''} en cours
+            </button>
+          )}
+          {isOpen && dossiersOfMonth.length > 0 && (
+            <div className="mt-2 bg-white/15 rounded-xl p-2 space-y-1 max-h-72 overflow-y-auto">
+              {dossiersOfMonth.map((d, i) => {
+                const statut = STATUTS.find(s => s.id === d.statut);
+                return (
+                  <button
+                    key={d.localId || i}
+                    onClick={() => onShowQuick && onShowQuick(d.localId)}
+                    className="w-full text-left bg-white/10 hover:bg-white/25 rounded-lg px-2.5 py-1.5 transition-colors flex items-center justify-between gap-2"
+                  >
+                    <span className="flex items-center gap-2 min-w-0 flex-1">
+                      <span className="font-bold text-sm truncate">{(d.nom || '').toUpperCase()} {d.prenom || ''}</span>
+                      {statut && (
+                        <span className="text-[9px] font-bold bg-white/25 px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap">
+                          {statut.emoji} {statut.label}
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-bold text-sm whitespace-nowrap">{formatEuro(d.montant)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
-      ))}
+        );
+      })}
 
       {!isRestricted && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
