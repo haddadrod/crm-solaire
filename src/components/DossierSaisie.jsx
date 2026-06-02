@@ -18852,10 +18852,10 @@ function KanbanCard({ d, societes = [], onShowQuick, isAdmin }) {
     : joursAttente >= 7 ? 'high'
     : joursAttente >= 3 ? 'warn'
     : 'ok';
-  const waitClasses = waitLevel === 'critical' ? 'bg-rose-100 text-rose-700 border-rose-300'
-    : waitLevel === 'high' ? 'bg-orange-100 text-orange-700 border-orange-300'
-    : waitLevel === 'warn' ? 'bg-amber-100 text-amber-700 border-amber-300'
-    : 'bg-slate-100 text-slate-500 border-slate-200';
+  const waitTextColor = waitLevel === 'critical' ? 'text-rose-600'
+    : waitLevel === 'high' ? 'text-orange-500'
+    : waitLevel === 'warn' ? 'text-amber-500'
+    : 'text-slate-400';
   const stagne = waitLevel === 'critical' || waitLevel === 'high';
 
   return (
@@ -18870,11 +18870,18 @@ function KanbanCard({ d, societes = [], onShowQuick, isAdmin }) {
         <div className="font-bold text-sm text-slate-800 truncate flex-1 leading-tight">
           {d.nom} {d.prenom && <span className="font-normal text-slate-500">{d.prenom}</span>}
         </div>
-        {d.id && (
+        {/* ⏱ Nombre de jours en GROS à droite (l'info la plus parlante d'un
+            coup d'œil). Le libellé « sans retour » passe en discret dessous. */}
+        {joursAttente !== null && joursAttente >= 3 ? (
+          <div className="flex-shrink-0 text-right leading-none" title={`${joursAttente} jour${joursAttente > 1 ? 's' : ''} ${dateInfo.waitLabel}`}>
+            <div className={`text-2xl font-extrabold ${waitTextColor}`}>{joursAttente}<span className="text-sm font-bold">j</span></div>
+            {dateInfo.waitLabel && <div className="text-[8px] text-slate-400 uppercase tracking-tight">{dateInfo.waitLabel}</div>}
+          </div>
+        ) : d.id ? (
           <span className="text-[9px] font-mono bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded flex-shrink-0">
             #{d.id}
           </span>
-        )}
+        ) : null}
       </div>
       {isAdmin && d.montantTotal > 0 && (
         <div className="text-[11px] font-bold text-violet-700 mb-1.5">
@@ -18886,11 +18893,6 @@ function KanbanCard({ d, societes = [], onShowQuick, isAdmin }) {
           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-700">
             <Calendar className="w-2.5 h-2.5" />
             {dateInfo.label} {formatDateForSheet(dateInfo.date)}
-          </span>
-        )}
-        {joursAttente !== null && joursAttente >= 3 && (
-          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${waitClasses}`} title={`${joursAttente} jour${joursAttente > 1 ? 's' : ''} ${dateInfo.waitLabel}`}>
-            ⏱ {joursAttente}j {dateInfo.waitLabel}
           </span>
         )}
         {d.hasLitige && <span className="text-[9px] font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">⚠️ Litige</span>}
