@@ -7508,6 +7508,13 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, meda
     (societes || []).forEach(s => m.set(s.id, s));
     return m;
   }, [societes]);
+  // 📊 Total de dossiers par nom (toutes sociétés confondues) pour calculer la
+  // répartition « ce qui va chez Yolico vs Elsun » sur chaque ligne.
+  const totalByNom = useMemo(() => {
+    const m = new Map();
+    (data || []).forEach(p => m.set(p.nom, (m.get(p.nom) || 0) + (p.count || 0)));
+    return m;
+  }, [data]);
   // Index localId → dossier pour résoudre rapidement les dossiers d'une ligne.
   const dossierByLocalId = useMemo(() => {
     const m = new Map();
@@ -7556,7 +7563,18 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, meda
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 italic">sans société</span>
                         )}
                       </div>
-                      <div className="text-xs text-slate-500">{p.count} dossier{p.count > 1 ? 's' : ''}</div>
+                      <div className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
+                        <span>{p.count} dossier{p.count > 1 ? 's' : ''}</span>
+                        {/* Pourcentage de répartition entre sociétés : ce que CETTE
+                            ligne représente dans le total de cette personne. Utile
+                            quand on regarde un même nom dupliqué Yolico/Elsun. */}
+                        {(() => {
+                          const total = totalByNom.get(p.nom) || 0;
+                          if (total <= p.count) return null; // pas de split, juste 1 société → pas pertinent
+                          const pct = Math.round((p.count / total) * 100);
+                          return <span className="font-bold text-violet-600" title={`${p.count} sur ${total} dossiers ${p.nom} tous sociétés confondues`}>· {pct}% de {p.nom}</span>;
+                        })()}
+                      </div>
                       {/* Stats avancées : transfo, refus banque, annulés, posés, durée moy */}
                       {(p.count > 0) && (() => {
                         const tauxTransfo = Math.round((p.nbPayes / p.count) * 100);
