@@ -104,6 +104,25 @@ async function findSupplierByName(apiKey, name) {
   return null;
 }
 
+// Crée un fournisseur dans Pennylane (compte de la société) → renvoie son id.
+// Appelé quand le fournisseur n'existe pas encore. Pennylane exige au minimum
+// un `name` ; on envoie aussi un pays par défaut (FR) pour éviter les rejets.
+async function createSupplier(apiKey, name) {
+  const supplierBody = {
+    name: String(name || '').trim(),
+    country_alpha2: 'FR',
+  };
+  const { ok, status, payload } = await plFetch(apiKey, `/suppliers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(supplierBody),
+  });
+  if (!ok) throw new Error(`Pennylane POST /suppliers ${status} : ${JSON.stringify(payload)}`);
+  const id = payload?.id || payload?.supplier?.id || payload?.data?.id;
+  if (!id) throw new Error(`Pennylane : id fournisseur manquant après création`);
+  return id;
+}
+
 // Upload un PDF en multipart vers /file_attachments → renvoie l'id du fichier.
 async function uploadPdfAttachment(apiKey, base64, fileName) {
   const bytes = Buffer.from(base64, 'base64');
@@ -178,12 +197,13 @@ export default async function handler(req, res) {
   }
 
   try {
-    // 1. Cherche le fournisseur Pennylane par nom (dans le compte de la société)
-    const supplierId = await findSupplierByName(apiKey, supplierName);
+    // 1. Cherche le fournisseur Pennylane par nom (dans le compte de la société).
+    //    S'il n'existe pas, on le crée automatiquement avec ce nom.
+    let supplierId = await findSupplierByName(apiKey, supplierName);
+    let supplierCreated = false;
     if (!supplierId) {
-      return json(res, 404, {
-        error: `Fournisseur "${supplierName}" introuvable dans Pennylane${societe ? ` (compte ${societe})` : ''}. Crée-le d'abord dans Pennylane (avec son nom exact) puis réessaie.`,
-      });
+      supplierId = await createSupplier(apiKey, supplierName);
+      supplierCreated = true;
     }
 
     // 2. Upload le PDF
@@ -237,6 +257,7 @@ export default async function handler(req, res) {
       data: {
         pennylaneInvoiceId: invoiceId,
         pennylaneSupplierId: supplierId,
+        pennylaneSupplierCreated: supplierCreated, // true si on l'a créé à la volée
         pennylaneStatus: payload?.status || 'imported',
         pennylaneAccount: keySource, // utile pour vérifier qu'on a tapé sur le bon compte
       },
