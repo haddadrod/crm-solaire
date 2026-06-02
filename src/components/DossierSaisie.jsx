@@ -240,6 +240,42 @@ function statutMilestoneLabel(fromStatut, toStatut) {
 
 const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM', 'FINANCO', 'FRANFINANCE'];
 
+// 🏷️ Libellés humains des champs de dossier — pour afficher « Date pose »
+// au lieu de « dateInsta » dans l'historique des modifications. Partagé
+// entre la modale Historique et le panneau « Activité par utilisateur ».
+const FIELD_LABELS = {
+  nom: 'Nom', prenom: 'Prénom', adresse: 'Adresse', codePostal: 'Code postal', ville: 'Ville',
+  telephone: 'Téléphone', email: 'Email', dateSignature: 'Date BC', dateInsta: 'Date pose',
+  financement: 'Financement', payeClient: 'Payé par financeur',
+  dateEnvoiFin: 'Envoi banque', dateRetourFin: 'Retour banque', dateAccord: 'Accord banque',
+  statutFin: 'Statut banque', motifManqueDoc: 'Docs demandés banque',
+  dateNotifRegie: 'Date régie prévenue', dateRecuRegie: 'Date docs reçus régie',
+  dateRenvoiDocs: 'Date renvoi banque',
+  dateControleQualite: 'Date CQ', statutControleQualite: 'Statut CQ', vocalCQUrl: 'Vocal CQ',
+  dateEnvoiPose: 'Date pose', statutPose: 'Statut pose',
+  dateEnvoiMairie: 'Envoi mairie', dateAccordMairie: 'Accord mairie', statutMairie: 'Statut mairie',
+  dateEnvoiConsuel: 'Envoi Consuel', dateAccordConsuel: 'Accord Consuel', statutConsuel: 'Statut Consuel',
+  societe: 'Société', id: 'N° BC', notes: 'Notes',
+  montantPret: 'Montant prêt', reportMois: 'Report mois', tauxDebiteur: 'Taux débiteur',
+  taeg: 'TAEG', nbEcheances: 'Nb échéances', montantEcheance: 'Mensualité', periodicite: 'Périodicité',
+  typeToiture: 'Type toiture', orientationPanneaux: 'Orientation panneaux',
+  montantTotal: 'Prix de vente', payeClientDate: 'Date paiement',
+  dateControleLivraison: 'Contrôle livraison', datePaiementBanque: 'Paiement banque',
+};
+// Formate une valeur de champ pour l'historique (date FR, bool ✓/✗, etc.).
+function fmtFieldVal(v) {
+  if (v === '' || v == null) return 'vide';
+  if (v === true) return '✓';
+  if (v === false) return '✗';
+  if (Array.isArray(v)) return `${v.length} élément${v.length > 1 ? 's' : ''}`;
+  if (typeof v === 'object') return JSON.stringify(v).slice(0, 40);
+  const s = String(v);
+  if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+    try { return new Date(s).toLocaleDateString('fr-FR'); } catch (e) {}
+  }
+  return s.length > 40 ? s.slice(0, 40) + '…' : s;
+}
+
 // 🏦 Plafonds mensuels Projexio par société émettrice. Chaque société a
 // son propre quota négocié avec Projexio ; au-delà du plafond ils ne
 // traitent plus les dossiers du mois pour cette société.
@@ -7328,157 +7364,200 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
         <BanquePerfList data={dashboard.statsBanques} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} />
       )}
 
-      {/* ACTIVITÉ PAR UTILISATEUR */}
-      {(() => {
-        // 📊 Agrégation par utilisateur — compte TOUS les types d'actions
-        // tracées (et pas seulement créations + statuts) pour refléter
-        // l'activité réelle de chaque personne : modifs, relances WhatsApp,
-        // notifs régies, emails IA. L'auto_statut est exclu (système).
-        const userMap = {};
-        const ensureUser = (name) => {
-          const key = name || '(anonyme)';
-          if (!userMap[key]) userMap[key] = { name: key, created: 0, modified: 0, statusChanges: 0, outreach: 0, ca: 0, lastActivity: null };
-          return userMap[key];
-        };
-        const touch = (u, date) => {
-          if (date && (!u.lastActivity || date > u.lastActivity)) u.lastActivity = date;
-        };
-        dossiers.forEach(d => {
-          // Créations : on s'appuie sur le champ createdBy (plus fiable que
-          // l'historique pour les vieux dossiers où l'entrée création a pu
-          // être perdue lors de fusions).
-          if (d.createdBy) {
-            const u = ensureUser(d.createdBy);
-            u.created++;
-            u.ca += d.montantTotal || 0;
-            touch(u, d.createdAt);
-          }
-          // Tout le reste : on lit l'historique. Chaque entrée = 1 action user.
-          (d.historique || []).forEach(h => {
-            if (!h.user) return;
-            const u = ensureUser(h.user);
-            switch (h.action) {
-              case 'modification':
-                u.modified++;
-                touch(u, h.date);
-                break;
-              case 'changement_statut':
-                u.statusChanges++;
-                touch(u, h.date);
-                break;
-              case 'relance_whatsapp':
-              case 'notif_regie_accord':
-              case 'email_ia':
-                u.outreach++;
-                touch(u, h.date);
-                break;
-              // 'création' déjà comptée via createdBy
-              // 'auto_statut' = action système, on ne crédite personne
-              default:
-                break;
-            }
-          });
-        });
-        const users = Object.values(userMap).sort((a, b) =>
-          (b.created + b.modified + b.statusChanges + b.outreach) - (a.created + a.modified + a.statusChanges + a.outreach)
-        );
-        if (users.length === 0) {
-          // Pas encore d'activité tracée — affiche quand même le bloc avec un message
-          return (
-            <div className="bg-white rounded-3xl shadow-md border border-cyan-100 overflow-hidden">
-              <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-blue-50">
-                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                  👤 Activité par utilisateur
-                </h2>
-              </div>
-              <div className="p-8 text-center">
-                <div className="text-5xl mb-3">📭</div>
-                <h3 className="text-base font-bold text-slate-700 mb-2">Aucune activité tracée pour le moment</h3>
-                <p className="text-sm text-slate-500 leading-relaxed max-w-md mx-auto">
-                  Le suivi par utilisateur démarre à partir de maintenant.<br />
-                  <strong>Ce que tu dois faire :</strong>
-                </p>
-                <ol className="text-xs text-slate-600 mt-3 inline-block text-left space-y-1">
-                  <li>1. Clique sur <strong>"👤 Mon nom"</strong> dans le header (en haut à droite)</li>
-                  <li>2. Tape ton nom (ex: "Théo")</li>
-                  <li>3. <strong>Modifie un dossier existant</strong> ou crée-en un nouveau</li>
-                  <li>4. L'activité apparaîtra ici 🎉</li>
-                </ol>
-                <p className="text-[10px] text-slate-400 italic mt-4">
-                  Note : les anciens dossiers ne sont pas tagués rétroactivement (info pas connue).
-                </p>
-              </div>
-            </div>
-          );
+      {/* ACTIVITÉ PAR UTILISATEUR — cliquer une ligne déroule le détail */}
+      <ActiviteParUtilisateur dossiers={dossiers} onShowQuick={onShowQuick} />
+
+      </>)}
+    </div>
+  );
+}
+
+// 👤 Activité par utilisateur — qui fait quoi dans le CRM. Chaque ligne est
+// dépliable : clic → détail des dernières actions (quel champ modifié sur
+// quel dossier, changement de statut, relance…). Répond à « je veux voir
+// CE qu'ils ont modifié », pas juste le compteur.
+function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
+  const [expandedUser, setExpandedUser] = useState(null);
+
+  // Agrégation : compteurs + journal détaillé par utilisateur.
+  const { users, totalActions } = useMemo(() => {
+    const userMap = {};
+    const ensureUser = (name) => {
+      const key = name || '(anonyme)';
+      if (!userMap[key]) userMap[key] = { name: key, created: 0, modified: 0, statusChanges: 0, outreach: 0, ca: 0, lastActivity: null, entries: [] };
+      return userMap[key];
+    };
+    const touch = (u, date) => { if (date && (!u.lastActivity || date > u.lastActivity)) u.lastActivity = date; };
+    const clientLabel = (d) => `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)';
+
+    (dossiers || []).forEach(d => {
+      if (d.createdBy) {
+        const u = ensureUser(d.createdBy);
+        u.created++;
+        u.ca += d.montantTotal || 0;
+        touch(u, d.createdAt);
+        u.entries.push({ date: d.createdAt, type: 'création', localId: d.localId, client: clientLabel(d) });
+      }
+      (d.historique || []).forEach(h => {
+        if (!h.user) return;
+        const u = ensureUser(h.user);
+        switch (h.action) {
+          case 'modification':
+            u.modified++; touch(u, h.date);
+            u.entries.push({ date: h.date, type: 'modification', localId: d.localId, client: clientLabel(d), changes: h.changes || [] });
+            break;
+          case 'changement_statut':
+            u.statusChanges++; touch(u, h.date);
+            u.entries.push({ date: h.date, type: 'statut', localId: d.localId, client: clientLabel(d), from: h.from, to: h.to });
+            break;
+          case 'relance_whatsapp':
+          case 'notif_regie_accord':
+          case 'email_ia':
+            u.outreach++; touch(u, h.date);
+            u.entries.push({ date: h.date, type: 'relance', localId: d.localId, client: clientLabel(d), channel: h.channel, motif: h.motif });
+            break;
+          default: break;
         }
+      });
+    });
+    // Tri du journal (plus récent en haut) + cap à 60 entrées par user
+    Object.values(userMap).forEach(u => {
+      u.entries.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+      u.entries = u.entries.slice(0, 60);
+    });
+    const list = Object.values(userMap).sort((a, b) =>
+      (b.created + b.modified + b.statusChanges + b.outreach) - (a.created + a.modified + a.statusChanges + a.outreach)
+    );
+    const total = list.reduce((s, u) => s + u.created + u.modified + u.statusChanges + u.outreach, 0);
+    return { users: list, totalActions: total };
+  }, [dossiers]);
 
-        const formatLast = (iso) => {
-          if (!iso) return '—';
-          try {
-            const d = new Date(iso);
-            const days = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
-            if (days === 0) return "aujourd'hui";
-            if (days === 1) return "hier";
-            if (days < 7) return `il y a ${days}j`;
-            return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
-          } catch (e) { return '—'; }
-        };
+  const formatLast = (iso) => {
+    if (!iso) return '—';
+    try {
+      const d = new Date(iso);
+      const days = Math.floor((Date.now() - d.getTime()) / 86400000);
+      if (days === 0) return "aujourd'hui";
+      if (days === 1) return "hier";
+      if (days < 7) return `il y a ${days}j`;
+      return d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' });
+    } catch (e) { return '—'; }
+  };
+  const formatEntryDate = (iso) => {
+    if (!iso) return '';
+    try { return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }); }
+    catch (e) { return ''; }
+  };
 
-        const totalActions = users.reduce((s, u) => s + u.created + u.modified + u.statusChanges + u.outreach, 0);
+  if (users.length === 0) {
+    return (
+      <div className="bg-white rounded-3xl shadow-md border border-cyan-100 overflow-hidden">
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-blue-50">
+          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">👤 Activité par utilisateur</h2>
+        </div>
+        <div className="p-8 text-center text-sm text-slate-500">Aucune activité tracée pour le moment.</div>
+      </div>
+    );
+  }
 
-        return (
-          <div className="bg-white rounded-3xl shadow-md border border-cyan-100 overflow-hidden">
-            <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-blue-50">
-              <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-                👤 Activité par utilisateur
-              </h2>
-              <p className="text-xs text-slate-500 mt-0.5">Qui travaille vraiment dans le CRM — {totalActions} action{totalActions > 1 ? 's' : ''} au total (créations, modifs, statuts, relances)</p>
-            </div>
-            <div className="divide-y divide-slate-100">
-              {users.map((u, idx) => {
-                const totalUserActions = u.created + u.modified + u.statusChanges + u.outreach;
-                const pct = totalActions > 0 ? (totalUserActions / totalActions) * 100 : 0;
-                const isAnonymous = u.name === '(anonyme)';
-                return (
-                  <div key={u.name} className="p-4 hover:bg-slate-50">
-                    <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className={`text-base font-bold w-8 h-8 rounded-full flex items-center justify-center ${idx === 0 ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-white' : idx === 1 ? 'bg-gradient-to-br from-slate-400 to-slate-500 text-white' : idx === 2 ? 'bg-gradient-to-br from-amber-700 to-orange-700 text-white' : 'bg-slate-100 text-slate-500'}`}>
-                          {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
-                        </span>
-                        <div>
-                          <div className={`font-bold ${isAnonymous ? 'text-rose-700 italic' : 'text-slate-800'}`}>
-                            {isAnonymous ? '⚠️ ' : '👤 '}{u.name}
-                          </div>
-                          <div className="text-[10px] text-slate-500">Dernière activité : {formatLast(u.lastActivity)}</div>
-                        </div>
+  return (
+    <div className="bg-white rounded-3xl shadow-md border border-cyan-100 overflow-hidden">
+      <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-cyan-50 to-blue-50">
+        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">👤 Activité par utilisateur</h2>
+        <p className="text-xs text-slate-500 mt-0.5">Qui travaille vraiment dans le CRM — {totalActions} action{totalActions > 1 ? 's' : ''} au total. <strong>Clique une personne</strong> pour voir le détail de ce qu'elle a fait.</p>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {users.map((u, idx) => {
+          const totalUserActions = u.created + u.modified + u.statusChanges + u.outreach;
+          const pct = totalActions > 0 ? (totalUserActions / totalActions) * 100 : 0;
+          const isAnonymous = u.name === '(anonyme)';
+          const isExpanded = expandedUser === u.name;
+          return (
+            <div key={u.name}>
+              <button onClick={() => setExpandedUser(isExpanded ? null : u.name)} className="w-full p-4 hover:bg-slate-50 text-left transition-colors">
+                <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className={`text-base font-bold w-8 h-8 rounded-full flex items-center justify-center ${idx === 0 ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-white' : idx === 1 ? 'bg-gradient-to-br from-slate-400 to-slate-500 text-white' : idx === 2 ? 'bg-gradient-to-br from-amber-700 to-orange-700 text-white' : 'bg-slate-100 text-slate-500'}`}>
+                      {idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : idx + 1}
+                    </span>
+                    <div>
+                      <div className={`font-bold flex items-center gap-1 ${isAnonymous ? 'text-rose-700 italic' : 'text-slate-800'}`}>
+                        <span className="text-slate-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
+                        {isAnonymous ? '⚠️ ' : '👤 '}{u.name}
                       </div>
-                      <div className="flex items-center gap-3 flex-wrap">
-                        {u.created > 0 && <span className="text-xs px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">✨ {u.created} créé{u.created > 1 ? 's' : ''}</span>}
-                        {u.modified > 0 && <span className="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold">✏️ {u.modified} modif{u.modified > 1 ? 's' : ''}</span>}
-                        {u.statusChanges > 0 && <span className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700 font-semibold">🔄 {u.statusChanges} statut{u.statusChanges > 1 ? 's' : ''}</span>}
-                        {u.outreach > 0 && <span className="text-xs px-2 py-1 rounded-full bg-fuchsia-50 text-fuchsia-700 font-semibold">📞 {u.outreach} relance{u.outreach > 1 ? 's' : ''}</span>}
-                        {u.ca > 0 && <span className="text-xs px-2 py-1 rounded-full bg-violet-50 text-violet-700 font-semibold">💰 {formatEuro(u.ca)}</span>}
-                      </div>
+                      <div className="text-[10px] text-slate-500">Dernière activité : {formatLast(u.lastActivity)}</div>
                     </div>
-                    <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
-                      <div className={`h-full rounded-full ${isAnonymous ? 'bg-rose-400' : 'bg-gradient-to-r from-cyan-400 to-blue-500'}`} style={{ width: `${pct}%` }}></div>
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1">{pct.toFixed(0)}% de l'activité totale</div>
                   </div>
-                );
-              })}
-              {users.find(u => u.name === '(anonyme)') && (
-                <div className="p-3 bg-rose-50 border-t border-rose-100 text-xs text-rose-700">
-                  ⚠️ Les actions <strong>(anonyme)</strong> ont été faites sans nom défini. Demande à ton équipe de cliquer sur <strong>"👤 Mon nom"</strong> dans le header pour identifier leurs actions.
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {u.created > 0 && <span className="text-xs px-2 py-1 rounded-full bg-emerald-50 text-emerald-700 font-semibold">✨ {u.created} créé{u.created > 1 ? 's' : ''}</span>}
+                    {u.modified > 0 && <span className="text-xs px-2 py-1 rounded-full bg-blue-50 text-blue-700 font-semibold">✏️ {u.modified} modif{u.modified > 1 ? 's' : ''}</span>}
+                    {u.statusChanges > 0 && <span className="text-xs px-2 py-1 rounded-full bg-amber-50 text-amber-700 font-semibold">🔄 {u.statusChanges} statut{u.statusChanges > 1 ? 's' : ''}</span>}
+                    {u.outreach > 0 && <span className="text-xs px-2 py-1 rounded-full bg-fuchsia-50 text-fuchsia-700 font-semibold">📞 {u.outreach} relance{u.outreach > 1 ? 's' : ''}</span>}
+                    {u.ca > 0 && <span className="text-xs px-2 py-1 rounded-full bg-violet-50 text-violet-700 font-semibold">💰 {formatEuro(u.ca)}</span>}
+                  </div>
+                </div>
+                <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                  <div className={`h-full rounded-full ${isAnonymous ? 'bg-rose-400' : 'bg-gradient-to-r from-cyan-400 to-blue-500'}`} style={{ width: `${pct}%` }}></div>
+                </div>
+                <div className="text-[10px] text-slate-400 mt-1">{pct.toFixed(0)}% de l'activité totale</div>
+              </button>
+              {isExpanded && (
+                <div className="px-4 pb-3 bg-slate-50">
+                  <div className="text-[10px] font-bold text-slate-500 uppercase mb-1.5 mt-1">📜 Détail des dernières actions</div>
+                  {u.entries.length === 0 ? (
+                    <div className="text-xs text-slate-400 italic py-2">Aucun détail (anciens dossiers non tracés).</div>
+                  ) : (
+                    <div className="space-y-1 max-h-[360px] overflow-y-auto">
+                      {u.entries.map((e, j) => (
+                        <button
+                          key={j}
+                          type="button"
+                          onClick={(ev) => { ev.stopPropagation(); onShowQuick && onShowQuick(e.localId); }}
+                          className="w-full text-left bg-white hover:bg-violet-50 border border-slate-100 rounded-lg p-2 transition-colors"
+                        >
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <span className="text-[11px] font-bold text-slate-700 truncate">
+                              {e.type === 'création' ? '✨ Créé' : e.type === 'modification' ? '✏️ Modifié' : e.type === 'statut' ? '🔄 Statut' : '📞 Relance'} · {e.client}
+                            </span>
+                            <span className="text-[9px] text-slate-400 flex-shrink-0">{formatEntryDate(e.date)}</span>
+                          </div>
+                          {/* Détail selon le type */}
+                          {e.type === 'modification' && Array.isArray(e.changes) && e.changes.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {e.changes.slice(0, 6).map((c, k) => (
+                                <span key={k} className="text-[10px] bg-slate-100 rounded px-1.5 py-0.5 text-slate-600">
+                                  <strong className="text-slate-700">{FIELD_LABELS[c.field] || c.field}</strong>
+                                  {': '}{fmtFieldVal(c.from)} → <span className="text-emerald-700 font-semibold">{fmtFieldVal(c.to)}</span>
+                                </span>
+                              ))}
+                              {e.changes.length > 6 && <span className="text-[10px] text-slate-400">+{e.changes.length - 6} autres</span>}
+                            </div>
+                          )}
+                          {e.type === 'statut' && (
+                            <div className="mt-0.5 text-[10px] text-slate-500">
+                              {e.from ? `${e.from} → ` : ''}<span className="font-semibold text-amber-700">{e.to}</span>
+                            </div>
+                          )}
+                          {e.type === 'relance' && (
+                            <div className="mt-0.5 text-[10px] text-slate-500">
+                              {e.channel === 'whatsapp' ? '📲 WhatsApp' : e.channel?.startsWith('email') ? '📧 Email' : '✉️ Message'}{e.motif ? ` · ${e.motif}` : ''}
+                            </div>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
               )}
             </div>
+          );
+        })}
+        {users.find(u => u.name === '(anonyme)') && (
+          <div className="p-3 bg-rose-50 border-t border-rose-100 text-xs text-rose-700">
+            ⚠️ Les actions <strong>(anonyme)</strong> ont été faites sans nom défini. Demande à ton équipe de se connecter avec son compte.
           </div>
-        );
-      })()}
-
-      </>)}
+        )}
+      </div>
     </div>
   );
 }
