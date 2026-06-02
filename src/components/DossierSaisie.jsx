@@ -7566,11 +7566,11 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, meda
                       <div className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
                         <span>{p.count} dossier{p.count > 1 ? 's' : ''}</span>
                         {/* Pourcentage de répartition entre sociétés : ce que CETTE
-                            ligne représente dans le total de cette personne. Utile
-                            quand on regarde un même nom dupliqué Yolico/Elsun. */}
+                            ligne représente dans le total de cette personne. Affiché
+                            même quand 100% (= mono-société) pour cohérence visuelle. */}
                         {(() => {
-                          const total = totalByNom.get(p.nom) || 0;
-                          if (total <= p.count) return null; // pas de split, juste 1 société → pas pertinent
+                          const total = totalByNom.get(p.nom) || p.count || 0;
+                          if (total <= 0) return null;
                           const pct = Math.round((p.count / total) * 100);
                           return <span className="font-bold text-violet-600" title={`${p.count} sur ${total} dossiers ${p.nom} tous sociétés confondues`}>· {pct}% de {p.nom}</span>;
                         })()}
