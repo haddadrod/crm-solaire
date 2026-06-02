@@ -18986,7 +18986,7 @@ function KanbanCard({ d, societes = [], onShowQuick, isAdmin }) {
         </div>
         {/* ⏱ Nombre de jours en GROS à droite (l'info la plus parlante d'un
             coup d'œil). Le libellé « sans retour » passe en discret dessous. */}
-        {joursAttente !== null && joursAttente >= 3 ? (
+        {joursAttente !== null ? (
           <div className="flex-shrink-0 text-right leading-none" title={`${joursAttente} jour${joursAttente > 1 ? 's' : ''} ${dateInfo.waitLabel}`}>
             <div className={`text-2xl font-extrabold ${waitTextColor}`}>{joursAttente}<span className="text-sm font-bold">j</span></div>
             {dateInfo.waitLabel && <div className="text-[8px] text-slate-400 uppercase tracking-tight">{dateInfo.waitLabel}</div>}
