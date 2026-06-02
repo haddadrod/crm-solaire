@@ -4048,6 +4048,34 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
 
+    // 📤 À envoyer à Pennylane — pour la compta : dossiers PAYÉS par le
+    // financeur (payeClient) où au moins une facture prestataire est déjà
+    // uploadée (factureFile) mais pas encore poussée vers Pennylane
+    // (pas de pennylaneInvoiceId). On n'envoie en compta qu'une fois payé,
+    // d'où la condition payeClient. Les factures sans PDF ne comptent pas
+    // (elles relèvent de "factures manquantes" ci-dessus).
+    const rappelsPennylaneAEnvoyer = [];
+    dossiersDash.forEach(d => {
+      // Condition métier : on ne pousse à Pennylane qu'une fois encaissé.
+      const paye = !!(d.payeClient || d.datePaiementBanque);
+      if (!paye) return;
+      // Annulés : plus de compta à faire.
+      if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') return;
+      const prets = [];
+      (d.poseurs || []).forEach(p => { if (p.nom && p.factureFile && !p.pennylaneInvoiceId) prets.push({ type: 'Poseur', nom: p.nom }); });
+      (d.regies || []).forEach(r => { if (r.nom && r.factureFile && !r.pennylaneInvoiceId) prets.push({ type: 'Régie', nom: r.nom }); });
+      (d.fournisseurs || []).forEach(f => { if (f.nom && f.factureFile && !f.pennylaneInvoiceId) prets.push({ type: 'Fournisseur', nom: f.nom }); });
+      if (prets.length === 0) return;
+      // Ancienneté depuis le paiement (les plus vieux d'abord = plus urgents).
+      const ref = d.payeClientDate || d.datePaiementBanque || d.savedAt;
+      const jours = ref ? joursEcoules(ref) : 0;
+      let level = 'warn';
+      if (jours >= 21) level = 'critical';
+      else if (jours >= 7) level = 'high';
+      rappelsPennylaneAEnvoyer.push({ dossier: d, jours, level, prestataires: prets, total: prets.length });
+    });
+    rappelsPennylaneAEnvoyer.sort((a, b) => b.jours - a.jours);
+
     // 📦 Matériel non rendu — quand on a donné un BL avec récup matériel au
     // poseur et que la pose a été annulée/refusée (W2_ANNULER ou tentative
     // ratée), il se retrouve avec du matériel à nous rapporter. Tant qu'il
@@ -4072,7 +4100,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsMaterielNonRendu.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsCommerciaux, statsBanques, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsCommerciaux, statsBanques, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -4334,7 +4362,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
               // Compteur d'actions « Ma journée » pour le badge de l'onglet.
               const canArgent = isAdmin || currentUserRole === 'compta' || currentUserRole === 'envoi_finance';
               const baseKeys = ['rappelsClientRappel','rappelsControleQualite','rappelsAEnvoyerBanque','rappelsFinancement','rappelsManqueDoc','rappelsAEnvoyerPose','rappelsPoseurNonAssigne','rappelsPoseNonFinie','rappelsAEnvoyerMairie','rappelsAEnvoyerConsuel','rappelsAEnvoyerRaccordement','rappelsMaterielNonRendu','rappelsLitige','rappelsSav','rappelsStagnation'];
-              const argentKeys = ['rappelsOriginaux','rappelsControleLivraison','rappelsPaiement','rappelsRecupTva','rappelsFacturesManquantes'];
+              const argentKeys = ['rappelsOriginaux','rappelsControleLivraison','rappelsPaiement','rappelsRecupTva','rappelsFacturesManquantes','rappelsPennylaneAEnvoyer'];
               const keys = canArgent ? [...baseKeys, ...argentKeys] : baseKeys;
               const cnt = keys.reduce((s, k) => s + ((dashboard[k] || []).length), 0);
               return (
@@ -4368,6 +4396,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsStagnation={dashboard.rappelsStagnation || []}
             rappelsRecupTva={dashboard.rappelsRecupTva || []}
             rappelsFacturesManquantes={dashboard.rappelsFacturesManquantes || []}
+            rappelsPennylaneAEnvoyer={dashboard.rappelsPennylaneAEnvoyer || []}
             rappelsMaterielNonRendu={dashboard.rappelsMaterielNonRendu || []}
             rappelsLitige={dashboard.rappelsLitige || []}
             rappelsSav={dashboard.rappelsSav || []}
@@ -4925,6 +4954,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 aEnvoyerConsuel: 'consuel',
                 aEnvoyerRaccordement: 'raccordement',
                 facturesManquantes: 'poseurs',
+                pennylaneAEnvoyer: 'poseurs',
                 originaux: 'paiement',
                 controle: 'paiement',
                 paiement: 'paiement',
@@ -7026,6 +7056,7 @@ function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onS
     { key: 'rappelsPaiement',           emoji: '💳', label: 'Encaisser / relancer le paiement',       scrollTo: 'paiement',      cat: 'Argent', adminCompta: true },
     { key: 'rappelsRecupTva',           emoji: '🧾', label: 'Récupérer la TVA',                       scrollTo: 'paiement',      cat: 'Argent', adminCompta: true },
     { key: 'rappelsFacturesManquantes', emoji: '🧾', label: 'Récupérer les factures prestataires',    scrollTo: 'poseurs',       cat: 'Argent', adminCompta: true },
+    { key: 'rappelsPennylaneAEnvoyer',  emoji: '📤', label: 'Envoyer les factures à Pennylane (compta)', scrollTo: 'poseurs',     cat: 'Argent', adminCompta: true },
     { key: 'rappelsMaterielNonRendu',   emoji: '📦', label: 'Récupérer le matériel chez le poseur',   scrollTo: 'materielNonRendu', cat: 'Pose' },
     { key: 'rappelsLitige',             emoji: '⚖️', label: 'Traiter le litige',                      scrollTo: 'litige',        cat: 'Litige' },
     { key: 'rappelsSav',                emoji: '🛠️', label: 'Traiter le SAV',                         scrollTo: 'sav',           cat: 'SAV' },
@@ -19117,7 +19148,7 @@ function KanbanCard({ d, societes = [], onShowQuick, isAdmin }) {
 // non adminOnly (comportement par défaut).
 const ALERTES_PAR_ROLE = {
   envoi_finance: ['controleQualite', 'aEnvoyerBanque', 'financement', 'manqueDoc', 'originaux'],
-  compta: ['facturesManquantes'], // la compta ne suit que les factures manquantes
+  compta: ['facturesManquantes', 'pennylaneAEnvoyer'], // factures à récupérer + à pousser sur Pennylane
   // l'administratif suit les démarches : mairie, Consuel, raccordement, récup. TVA
   administratif: ['aEnvoyerMairie', 'aEnvoyerConsuel', 'aEnvoyerRaccordement', 'recup_tva'],
   poseur: [], // le poseur ne voit aucune alerte
@@ -19186,7 +19217,7 @@ function ChantierPhotosPanel({ photos }) {
   );
 }
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsMaterielNonRendu = [], rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer = [], rappelsMaterielNonRendu = [], rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], isAdmin, currentUserRole, onClick }) {
   // showAll : si true, on affiche aussi les alertes à 0 (déplié via la flèche).
   const [showAll, setShowAll] = useState(false);
   // Définition des badges
@@ -19408,6 +19439,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-fuchsia-200',
       colorText: 'text-fuchsia-700',
       tooltip: 'Pose terminée mais factures poseur/régie/fournisseur pas encore reçues',
+    },
+    {
+      type: 'pennylaneAEnvoyer',
+      label: 'À envoyer Pennylane',
+      emoji: '📤',
+      count: (rappelsPennylaneAEnvoyer || []).length,
+      adminOnly: false,
+      color: 'from-violet-500 to-purple-500',
+      colorBg: 'bg-violet-50',
+      colorBorder: 'border-violet-200',
+      colorText: 'text-violet-700',
+      tooltip: 'Dossier payé : factures prestataires à pousser vers Pennylane (compta)',
     },
     {
       type: 'materielNonRendu',
@@ -19764,6 +19807,24 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
         return <div className="flex items-center gap-1 flex-wrap">{chips}</div>;
       },
       suffixLabel: 'depuis pose',
+    },
+    pennylaneAEnvoyer: {
+      title: '📤 À envoyer à Pennylane (compta)',
+      subtitle: 'Dossiers payés par le financeur : les factures prestataires sont uploadées mais pas encore poussées vers Pennylane. Ouvre le dossier (section POSEURS/RÉGIES/FOURNISSEURS) et clique « 📤 Pennylane » sur chaque facture.',
+      items: dashboard.rappelsPennylaneAEnvoyer || [],
+      gradient: 'from-violet-500 to-purple-500',
+      bgHeader: 'from-violet-50 to-purple-50',
+      borderColor: 'border-violet-200',
+      lineLabel: (d, r) => {
+        const emojiFor = (t) => t === 'Poseur' ? '🔧' : t === 'Régie' ? '🤝' : '📦';
+        const chips = (r.prestataires || []).map((p, idx) => (
+          <span key={`${p.type}:${p.nom}:${idx}`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-[10px] font-semibold">
+            {emojiFor(p.type)} {p.nom}
+          </span>
+        ));
+        return <div className="flex items-center gap-1 flex-wrap">{chips}</div>;
+      },
+      suffixLabel: 'depuis paiement',
     },
     recup_tva: {
       title: '💰 Récupération TVA — démarches à faire',
