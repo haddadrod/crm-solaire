@@ -3368,6 +3368,42 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     const statsCommerciaux = Object.values(commercialMap).sort((a, b) => b.count - a.count);
 
+    // 🏦 Performance des maisons de financement (Projexio / Sofinco / etc.),
+    // splittée par société comme les régies/poseurs/commerciaux. Pour chaque
+    // banque × société : nb dossiers envoyés, accordés, refusés, manque docs,
+    // en attente (= envoyé mais pas encore de réponse), CA payé, durée moy.
+    const banqueMap = {};
+    dossiersDash.forEach(d => {
+      const fin = (d.financement || '').trim();
+      if (!fin || fin === 'COMPTANT') return;       // Compte que les financements bancaires
+      if (!d.dateEnvoiFin) return;                  // Pas envoyé en banque → pas dans les stats
+      const soc = d.societe || '';
+      const key = `${fin}::${soc}`;
+      if (!banqueMap[key]) banqueMap[key] = {
+        nom: fin, societe: soc, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [],
+        nbAccordes: 0, nbRefus: 0, nbManqueDoc: 0, nbAttente: 0, nbAnnules: 0, nbPayes: 0,
+        nbPoses: 0, nbRefusBanque: 0,
+        dureeTotale: 0, dureeCount: 0,
+      };
+      const m = banqueMap[key];
+      m.count += 1;
+      m.dossierIds.push(d.localId);
+      if (d.statutFin === 'accepté') m.nbAccordes += 1;
+      else if (d.statutFin === 'refusé') { m.nbRefus += 1; m.nbRefusBanque += 1; }
+      else if (d.statutFin === 'manque_doc') m.nbManqueDoc += 1;
+      else if (d.statutFin === 'envoyé' && !d.dateRetourFin) m.nbAttente += 1;
+      if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') m.nbAnnules += 1;
+      if (d.statutPose === 'visite_ok') m.nbPoses += 1;
+      if (d.payeClient) {
+        m.nbPayes += 1;
+        m.ca += d.montantTotal || 0;
+        m.margeApportee += d.margeTtc || 0;
+      }
+      const dj = dureeJours(d);
+      if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
+    });
+    const statsBanques = Object.values(banqueMap).sort((a, b) => b.count - a.count);
+
     const today = new Date(); today.setHours(0, 0, 0, 0);
     // Nombre de jours pleins écoulés depuis une date passée. On normalise la
     // référence à minuit AVANT de comparer : sans ça, un dossier créé
@@ -3894,7 +3930,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsMaterielNonRendu.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsCommerciaux, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsCommerciaux, statsBanques, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -7189,68 +7225,11 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
           Affiché aussi pour le rôle Envoi finance (vue restreinte).
           UNE CARTE INDÉPENDANTE PAR SOCIÉTÉ — chacune avec son propre scroll
           interne pour pouvoir scroller dans Yolico sans bouger Elsun. */}
-      {dashboard.rappelsFinancement && dashboard.rappelsFinancement.length > 0 && (() => {
-        const groupes = {};
-        dashboard.rappelsFinancement.forEach(r => {
-          const soc = r.dossier.societe || '';
-          if (!groupes[soc]) groupes[soc] = [];
-          groupes[soc].push(r);
-        });
-        const ordreSocietes = societes.map(s => s.id).filter(id => groupes[id]);
-        const orphelins = Object.keys(groupes).filter(id => !ordreSocietes.includes(id));
-        const ordreFinal = [...ordreSocietes, ...orphelins];
-
-        return ordreFinal.map(socId => {
-          const rappels = groupes[socId];
-          const socMeta = societes.find(s => s.id === socId);
-          const socLabel = socMeta?.label || (socId ? socId.toUpperCase() : 'Sans société');
-          const socEmoji = socMeta?.emoji || '🏢';
-          return (
-            <div key={socId || 'sans-societe'} className="bg-white rounded-3xl shadow-md border-2 border-blue-200 overflow-hidden">
-              <div className="p-5 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-cyan-50">
-                <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2 flex-wrap">
-                  <span className="text-xl">{socEmoji}</span>
-                  💳 Financements en attente — {socLabel}
-                  <span className="ml-auto text-xs font-semibold bg-blue-100 text-blue-700 px-2 py-1 rounded-full">{rappels.length} dossier{rappels.length > 1 ? 's' : ''}</span>
-                </h2>
-                <p className="text-xs text-slate-600 mt-1">Dossiers envoyés au financeur depuis +2 jours sans réponse — pense à relancer.</p>
-              </div>
-              <div className="divide-y divide-slate-100 max-h-[400px] overflow-y-auto">
-                {rappels.map((r) => {
-                  const d = r.dossier;
-                  const statut = STATUTS.find(s => s.id === d.statut);
-                  const levelStyle = r.level === 'critical' ? 'text-rose-600' : r.level === 'high' ? 'text-orange-600' : 'text-amber-600';
-                  const levelBg = r.level === 'critical' ? 'bg-rose-50' : r.level === 'high' ? 'bg-orange-50' : 'bg-amber-50';
-                  return (
-                    <button
-                      key={d.localId}
-                      onClick={() => onShowQuick && onShowQuick(d.localId)}
-                      className={`w-full px-4 py-2.5 hover:${levelBg} flex items-center gap-3 text-left transition-colors border-l-4 border-transparent hover:border-blue-400`}
-                    >
-                      <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-sm bg-gradient-to-br ${statut?.color || 'from-slate-400 to-slate-500'} text-white shadow-sm`}>
-                        {statut?.emoji || '📄'}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-slate-800 text-sm truncate">{d.nom} {d.prenom}</span>
-                          <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">💳 {d.financement}</span>
-                        </div>
-                        <div className="text-[11px] text-slate-500">
-                          Envoyé le {d.dateEnvoiFin && new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR')}
-                        </div>
-                      </div>
-                      <div className="flex-shrink-0 text-right">
-                        <div className={`text-base font-bold ${levelStyle}`}>{r.jours}j</div>
-                        <div className="text-[9px] text-slate-400">sans retour</div>
-                      </div>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          );
-        });
-      })()}
+      {/* La liste « Financements en attente » a été retirée d'ici — elle
+          doublonnait avec le Kanban (chaque carte affiche déjà « ⏱ Xj sans
+          retour »). À la place, un panneau « Performance des banques »
+          plus bas dans cette vue donne les stats agrégées (accordés, refusés,
+          en attente, CA, durée moyenne d'accord) avec split par société. */}
 
       {/* Tous les blocs ci-dessous sont masqués pour le rôle Envoi finance
           (vue restreinte au plafond Projexio + financements en attente). */}
@@ -7344,6 +7323,9 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
       <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
       {(dashboard.statsCommerciaux || []).length > 0 && (
         <PerfList titre="💼 Performance des commerciaux" data={dashboard.statsCommerciaux} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="💼" border="border-blue-100" header="from-blue-50 to-cyan-50" iconColor="text-blue-500" hideCoutMarge />
+      )}
+      {(dashboard.statsBanques || []).length > 0 && (
+        <BanquePerfList data={dashboard.statsBanques} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} />
       )}
 
       {/* ACTIVITÉ PAR UTILISATEUR */}
@@ -7630,6 +7612,138 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, meda
                         <span className="text-[11px] text-slate-500 flex-shrink-0">
                           {formatEuro(d.montantTotal || 0)}
                           {d.dateInsta && <span className="ml-2">📅 {new Date(d.dateInsta).toLocaleDateString('fr-FR')}</span>}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// 🏦 Performance des banques (maisons de financement) — agrégats par
+// banque × société pour répondre à « où Projexio refuse-t-il le plus ? »
+// ou « combien d'argent attend chez Sofinco ? ». Volontairement séparé
+// de PerfList car les compteurs sont spécifiques (% accordés / refusés /
+// manque docs / en attente vs % payés / posés / refus pour les régies).
+function BanquePerfList({ data, dossiers = [], societes = [], onShowQuick }) {
+  const [expandedKey, setExpandedKey] = useState(null);
+  const societeById = useMemo(() => {
+    const m = new Map();
+    (societes || []).forEach(s => m.set(s.id, s));
+    return m;
+  }, [societes]);
+  const dossierByLocalId = useMemo(() => {
+    const m = new Map();
+    (dossiers || []).forEach(d => m.set(d.localId, d));
+    return m;
+  }, [dossiers]);
+  // Total dossiers par banque (toutes sociétés) pour calculer la répartition
+  const totalByNom = useMemo(() => {
+    const m = new Map();
+    (data || []).forEach(p => m.set(p.nom, (m.get(p.nom) || 0) + (p.count || 0)));
+    return m;
+  }, [data]);
+
+  return (
+    <div className="bg-white rounded-3xl shadow-md border border-blue-100 overflow-hidden">
+      <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-blue-50 to-cyan-50">
+        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+          <Award className="w-5 h-5 text-blue-500" />🏦 Performance des banques
+        </h2>
+        <p className="text-xs text-slate-500 mt-0.5">Stats par maison de financement × société. Inclut uniquement les dossiers envoyés en banque (pas COMPTANT).</p>
+      </div>
+      <div className="divide-y divide-slate-100">
+        {data.map((p, idx) => {
+          const medal = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : '🏦';
+          const rowKey = `${p.nom}::${p.societe || ''}`;
+          const isExpanded = expandedKey === rowKey;
+          const soc = p.societe ? societeById.get(p.societe) : null;
+          const ids = p.dossierIds || [];
+          const tauxAccord = p.count > 0 ? Math.round((p.nbAccordes / p.count) * 100) : 0;
+          const tauxRefus = p.count > 0 ? Math.round((p.nbRefus / p.count) * 100) : 0;
+          const tauxManqueDoc = p.count > 0 ? Math.round((p.nbManqueDoc / p.count) * 100) : 0;
+          const tauxAttente = p.count > 0 ? Math.round((p.nbAttente / p.count) * 100) : 0;
+          const tauxAnnules = p.count > 0 ? Math.round(((p.nbAnnules || 0) / p.count) * 100) : 0;
+          const dureeMoy = p.dureeCount > 0 ? Math.round(p.dureeTotale / p.dureeCount) : null;
+          const total = totalByNom.get(p.nom) || p.count || 0;
+          const pctSoc = total > 0 ? Math.round((p.count / total) * 100) : 100;
+          return (
+            <div key={rowKey}>
+              <button
+                type="button"
+                onClick={() => setExpandedKey(isExpanded ? null : rowKey)}
+                className="w-full p-4 hover:bg-slate-50 text-left transition-colors"
+                title="Cliquer pour voir les dossiers envoyés"
+              >
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div className="flex items-center gap-3 flex-1 min-w-0">
+                    <span className="text-xl">{medal}</span>
+                    <div className="min-w-0">
+                      <div className="font-bold text-slate-800 truncate flex items-center gap-1.5 flex-wrap">
+                        <span className="text-slate-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
+                        💳 {p.nom}
+                        {soc ? <SocieteBadge societe={soc} variant="inline" /> :
+                          p.societe ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{p.societe}</span> :
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 italic">sans société</span>}
+                      </div>
+                      <div className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
+                        <span>{p.count} envoyé{p.count > 1 ? 's' : ''}</span>
+                        <span className="font-bold text-violet-600" title={`${p.count} sur ${total} dossiers ${p.nom} toutes sociétés confondues`}>· {pctSoc}% de {p.nom}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                        <span className="text-emerald-600 font-semibold" title={`${p.nbAccordes} dossier(s) accordé(s) sur ${p.count}`}>✅ {tauxAccord}% accordés</span>
+                        {p.nbAttente > 0 && (
+                          <span className="text-blue-600 font-semibold" title={`${p.nbAttente} dossier(s) envoyé(s) sans retour`}>⏳ {tauxAttente}% en attente</span>
+                        )}
+                        {p.nbManqueDoc > 0 && (
+                          <span className="text-amber-600 font-semibold" title={`${p.nbManqueDoc} dossier(s) où la banque réclame des docs`}>📄 {tauxManqueDoc}% manque docs</span>
+                        )}
+                        {p.nbRefus > 0 && (
+                          <span className="text-rose-600 font-semibold" title={`${p.nbRefus} dossier(s) refusé(s) par la banque`}>🚫 {tauxRefus}% refus</span>
+                        )}
+                        {(p.nbAnnules || 0) > 0 && (
+                          <span className="text-slate-600 font-semibold" title={`${p.nbAnnules} dossier(s) annulé(s) sur ${p.count}`}>❌ {tauxAnnules}% annulés</span>
+                        )}
+                        {dureeMoy !== null && (
+                          <span className="text-purple-600 font-semibold" title="Durée moyenne entre la signature et le paiement client">⏱ {dureeMoy}j moy.</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex gap-3 text-xs" title="CA basé UNIQUEMENT sur les dossiers payés par la banque">
+                    <SmallStat label="CA payé" value={formatEuro(p.ca)} color="text-blue-600" />
+                  </div>
+                </div>
+              </button>
+              {isExpanded && (
+                <div className="px-4 pb-3 bg-slate-50 divide-y divide-slate-200">
+                  {ids.length === 0 && (
+                    <div className="text-xs text-slate-500 italic py-2">Aucun dossier trouvé.</div>
+                  )}
+                  {ids.map((lid) => {
+                    const d = dossierByLocalId.get(lid);
+                    if (!d) return null;
+                    return (
+                      <button
+                        key={lid}
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); onShowQuick && onShowQuick(lid); }}
+                        className="w-full flex items-center justify-between gap-2 py-1.5 text-left hover:bg-white rounded px-2 transition-colors"
+                      >
+                        <span className="text-xs font-semibold text-slate-700 truncate">
+                          {d.nom} {d.prenom}
+                          {d.id && <span className="text-[10px] text-slate-400 ml-1">· #{d.id}</span>}
+                          {d.statutFin && <span className={`ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded ${d.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' : d.statutFin === 'refusé' ? 'bg-rose-100 text-rose-700' : d.statutFin === 'manque_doc' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{d.statutFin}</span>}
+                        </span>
+                        <span className="text-[11px] text-slate-500 flex-shrink-0">
+                          {formatEuro(d.montantTotal || 0)}
+                          {d.dateEnvoiFin && <span className="ml-2">📤 {new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR')}</span>}
                         </span>
                       </button>
                     );
