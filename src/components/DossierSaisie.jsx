@@ -4368,7 +4368,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           </div>
 
           {/* Onglets — selon permissions du rôle actif */}
-          <div className="flex gap-2 mb-3 bg-white rounded-2xl p-1.5 shadow-sm border border-violet-100 w-fit flex-wrap">
+          <div className="flex gap-2 mb-3 bg-white rounded-2xl p-1.5 shadow-sm border border-violet-100 max-w-full flex-nowrap overflow-x-auto">
             {(() => {
               // Compteur d'actions « Ma journée » pour le badge de l'onglet.
               const canArgent = isAdmin || currentUserRole === 'compta' || currentUserRole === 'envoi_finance';
@@ -4991,7 +4991,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
 function TabButton({ active, onClick, icon: Icon, label, color, badge, badgeColor }) {
   return (
-    <button onClick={onClick} className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 ${active ? `bg-gradient-to-r ${color} text-white shadow-md` : 'text-slate-600 hover:bg-slate-50'}`}>
+    <button onClick={onClick} className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 shrink-0 whitespace-nowrap ${active ? `bg-gradient-to-r ${color} text-white shadow-md` : 'text-slate-600 hover:bg-slate-50'}`}>
       <Icon className="w-4 h-4" />{label}
       {badge && <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] ${active ? 'bg-white/30' : badgeColor}`}>{badge}</span>}
     </button>
