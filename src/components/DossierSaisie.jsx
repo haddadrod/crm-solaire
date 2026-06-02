@@ -3269,9 +3269,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // attribués (info utile pour voir qui en gère combien).
     const poseurMap = {};
     dossiersDash.forEach(d => {
+      const soc = d.societe || '';
+      const isAnnule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
+      const isPose = d.statutPose === 'visite_ok';
       (d.poseursDetail || []).forEach(p => {
-        if (!poseurMap[p.nom]) poseurMap[p.nom] = { nom: p.nom, count: 0, ca: 0, coutTotal: 0, puissanceTotale: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, dureeTotale: 0, dureeCount: 0 };
-        const m = poseurMap[p.nom];
+        const key = `${p.nom}::${soc}`;
+        if (!poseurMap[key]) poseurMap[key] = { nom: p.nom, societe: soc, count: 0, ca: 0, coutTotal: 0, puissanceTotale: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 };
+        const m = poseurMap[key];
         m.count += 1;
         m.puissanceTotale += d.puissance || 0;
         m.dossierIds.push(d.localId);
@@ -3282,6 +3286,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
           m.margeApportee += d.margeTtc || 0;
         }
         if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
+        if (isAnnule) m.nbAnnules += 1;
+        if (isPose) m.nbPoses += 1;
         const dj = dureeJours(d);
         if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
       });
@@ -3293,34 +3299,42 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const regiesArr = d.regiesDetail || [];
       const dj = dureeJours(d);
       const isPaid = !!d.payeClient;
+      const isAnnule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
+      const isPose = d.statutPose === 'visite_ok';
+      const soc = d.societe || '';
       const bumpAdvanced = (m) => {
         if (isPaid) m.nbPayes += 1;
         if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
+        if (isAnnule) m.nbAnnules += 1;
+        if (isPose) m.nbPoses += 1;
         if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
       };
+      const makeEntry = (nom) => ({ nom, societe: soc, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 });
       if (regiesArr.length === 0) {
-        const r = 'Sans régie';
-        if (!regieMap[r]) regieMap[r] = { nom: r, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, dureeTotale: 0, dureeCount: 0 };
-        regieMap[r].count += 1;
-        regieMap[r].dossierIds.push(d.localId);
+        const nom = 'Sans régie';
+        const key = `${nom}::${soc}`;
+        if (!regieMap[key]) regieMap[key] = makeEntry(nom);
+        regieMap[key].count += 1;
+        regieMap[key].dossierIds.push(d.localId);
         if (isPaid) {
-          regieMap[r].ca += d.montantTotal || 0;
-          regieMap[r].margeApportee += d.margeTtc || 0;
+          regieMap[key].ca += d.montantTotal || 0;
+          regieMap[key].margeApportee += d.margeTtc || 0;
         }
-        bumpAdvanced(regieMap[r]);
+        bumpAdvanced(regieMap[key]);
       } else {
         const totalCout = regiesArr.reduce((s, r) => s + r.ttc, 0);
         regiesArr.forEach(reg => {
-          const r = reg.nom || 'Inconnu';
-          if (!regieMap[r]) regieMap[r] = { nom: r, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, dureeTotale: 0, dureeCount: 0 };
-          regieMap[r].count += 1;
-          regieMap[r].dossierIds.push(d.localId);
+          const nom = reg.nom || 'Inconnu';
+          const key = `${nom}::${soc}`;
+          if (!regieMap[key]) regieMap[key] = makeEntry(nom);
+          regieMap[key].count += 1;
+          regieMap[key].dossierIds.push(d.localId);
           if (isPaid) {
-            regieMap[r].ca += d.montantTotal || 0;
-            regieMap[r].coutTotal += reg.ttc || 0;
-            regieMap[r].margeApportee += (d.margeTtc || 0) * (totalCout > 0 ? reg.ttc / totalCout : 1);
+            regieMap[key].ca += d.montantTotal || 0;
+            regieMap[key].coutTotal += reg.ttc || 0;
+            regieMap[key].margeApportee += (d.margeTtc || 0) * (totalCout > 0 ? reg.ttc / totalCout : 1);
           }
-          bumpAdvanced(regieMap[r]);
+          bumpAdvanced(regieMap[key]);
         });
       }
     });
@@ -3333,8 +3347,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dossiersDash.forEach(d => {
       const nom = (d.commercial || '').trim();
       if (!nom) return; // pas d'attribution commercial → on saute
-      if (!commercialMap[nom]) commercialMap[nom] = { nom, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, dureeTotale: 0, dureeCount: 0 };
-      const m = commercialMap[nom];
+      const soc = d.societe || '';
+      const isAnnule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
+      const isPose = d.statutPose === 'visite_ok';
+      const key = `${nom}::${soc}`;
+      if (!commercialMap[key]) commercialMap[key] = { nom, societe: soc, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 };
+      const m = commercialMap[key];
       m.count += 1;
       m.dossierIds.push(d.localId);
       if (d.payeClient) {
@@ -3343,6 +3361,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
         m.margeApportee += d.margeTtc || 0;
       }
       if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
+      if (isAnnule) m.nbAnnules += 1;
+      if (isPose) m.nbPoses += 1;
       const dj = dureeJours(d);
       if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
     });
@@ -7320,10 +7340,10 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
         </div>
       )}
 
-      <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} onShowQuick={onShowQuick} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
-      <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} onShowQuick={onShowQuick} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
+      <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
+      <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
       {(dashboard.statsCommerciaux || []).length > 0 && (
-        <PerfList titre="💼 Performance des commerciaux" data={dashboard.statsCommerciaux} dossiers={dossiers} onShowQuick={onShowQuick} medal="💼" border="border-blue-100" header="from-blue-50 to-cyan-50" iconColor="text-blue-500" hideCoutMarge />
+        <PerfList titre="💼 Performance des commerciaux" data={dashboard.statsCommerciaux} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="💼" border="border-blue-100" header="from-blue-50 to-cyan-50" iconColor="text-blue-500" hideCoutMarge />
       )}
 
       {/* ACTIVITÉ PAR UTILISATEUR */}
@@ -7481,8 +7501,13 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
   );
 }
 
-function PerfList({ titre, data, dossiers = [], onShowQuick, medal, border, header, iconColor, hideCoutMarge = false }) {
+function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, medal, border, header, iconColor, hideCoutMarge = false }) {
   const [expandedNom, setExpandedNom] = useState(null);
+  const societeById = useMemo(() => {
+    const m = new Map();
+    (societes || []).forEach(s => m.set(s.id, s));
+    return m;
+  }, [societes]);
   // Index localId → dossier pour résoudre rapidement les dossiers d'une ligne.
   const dossierByLocalId = useMemo(() => {
     const m = new Map();
@@ -7501,13 +7526,17 @@ function PerfList({ titre, data, dossiers = [], onShowQuick, medal, border, head
         {data.map((p, idx) => {
           const margePct = p.ca > 0 ? (p.margeApportee / p.ca) * 100 : 0;
           const m = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : medal;
-          const isExpanded = expandedNom === p.nom;
+          // Clé unique : nom + société pour éviter collision quand le même
+          // nom apparaît sur plusieurs sociétés (ex: OREN · Yolico et OREN · Elsun).
+          const rowKey = `${p.nom}::${p.societe || ''}`;
+          const isExpanded = expandedNom === rowKey;
           const ids = p.dossierIds || [];
+          const soc = p.societe ? societeById.get(p.societe) : null;
           return (
-            <div key={p.nom}>
+            <div key={rowKey}>
               <button
                 type="button"
-                onClick={() => setExpandedNom(isExpanded ? null : p.nom)}
+                onClick={() => setExpandedNom(isExpanded ? null : rowKey)}
                 className="w-full p-4 hover:bg-slate-50 text-left transition-colors"
                 title="Cliquer pour voir les dossiers"
               >
@@ -7515,21 +7544,35 @@ function PerfList({ titre, data, dossiers = [], onShowQuick, medal, border, head
                   <div className="flex items-center gap-3 flex-1 min-w-0">
                     <span className="text-xl">{m}</span>
                     <div className="min-w-0">
-                      <div className="font-bold text-slate-800 truncate flex items-center gap-1">
+                      <div className="font-bold text-slate-800 truncate flex items-center gap-1.5 flex-wrap">
                         <span className="text-slate-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
                         {p.nom}
+                        {/* 🏢 Badge société pour différencier les lignes avec même nom */}
+                        {soc ? (
+                          <SocieteBadge societe={soc} variant="inline" />
+                        ) : p.societe ? (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{p.societe}</span>
+                        ) : (
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 italic">sans société</span>
+                        )}
                       </div>
                       <div className="text-xs text-slate-500">{p.count} dossier{p.count > 1 ? 's' : ''}</div>
-                      {/* Stats avancées : taux de transfo, refus banque, durée moyenne signature→paiement */}
-                      {(p.count > 0 && (p.nbPayes !== undefined || p.nbRefusBanque !== undefined || p.dureeCount !== undefined)) && (() => {
-                        const tauxTransfo = p.count > 0 ? Math.round((p.nbPayes / p.count) * 100) : 0;
-                        const tauxRefus = p.count > 0 ? Math.round((p.nbRefusBanque / p.count) * 100) : 0;
+                      {/* Stats avancées : transfo, refus banque, annulés, posés, durée moy */}
+                      {(p.count > 0) && (() => {
+                        const tauxTransfo = Math.round((p.nbPayes / p.count) * 100);
+                        const tauxRefus = Math.round((p.nbRefusBanque / p.count) * 100);
+                        const tauxAnnules = Math.round(((p.nbAnnules || 0) / p.count) * 100);
+                        const tauxPoses = Math.round(((p.nbPoses || 0) / p.count) * 100);
                         const dureeMoy = p.dureeCount > 0 ? Math.round(p.dureeTotale / p.dureeCount) : null;
                         return (
                           <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
                             <span className="text-emerald-600 font-semibold" title={`${p.nbPayes} dossier(s) payé(s) sur ${p.count}`}>✅ {tauxTransfo}% payés</span>
+                            <span className="text-amber-600 font-semibold" title={`${p.nbPoses || 0} dossier(s) posé(s) sur ${p.count}`}>🔧 {tauxPoses}% posés</span>
                             {p.nbRefusBanque > 0 && (
                               <span className="text-rose-600 font-semibold" title={`${p.nbRefusBanque} refus banque sur ${p.count}`}>🚫 {tauxRefus}% refus</span>
+                            )}
+                            {(p.nbAnnules || 0) > 0 && (
+                              <span className="text-slate-600 font-semibold" title={`${p.nbAnnules} dossier(s) annulé(s) sur ${p.count}`}>❌ {tauxAnnules}% annulés</span>
                             )}
                             {dureeMoy !== null && (
                               <span className="text-blue-600 font-semibold" title="Durée moyenne entre la signature et le paiement client">⏱ {dureeMoy}j moy.</span>
