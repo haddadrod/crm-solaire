@@ -18693,40 +18693,56 @@ function KanbanView({ dossiers, STATUTS, onShowQuick, isAdmin, societes = [] }) 
 
 function KanbanCard({ d, societes = [], onShowQuick, isAdmin }) {
   const soc = societes.find(s => s.id === d.societe);
-  // Date pertinente selon le statut
+  // Date pertinente selon le statut + libellé du « jours d'attente »
+  // (ex: en financement → « 6j sans retour banque »).
   const dateInfo = (() => {
     switch (d.statut) {
       case 'A_EN_COURS':
+        return { label: 'Signé', date: d.dateSignature, waitDate: d.dateSignature, waitLabel: 'sans CQ' };
       case 'A1_CONTROLE_QUALITE':
+        return { label: 'CQ', date: d.dateControleQualite, waitDate: d.dateControleQualite, waitLabel: 'à statuer' };
       case 'B_A_ENVOYER_BANQUE':
-        return { label: 'Signé', date: d.dateSignature };
+        return { label: 'CQ OK', date: d.dateControleQualite, waitDate: d.dateControleQualite, waitLabel: 'à envoyer' };
       case 'B1_EN_COURS_FINANCEMENT':
+        return { label: 'Banque', date: d.dateEnvoiFin, waitDate: d.dateEnvoiFin, waitLabel: 'sans retour' };
       case 'B1_MANQUE_DOC':
+        return { label: 'Manque', date: d.dateRetourFin, waitDate: d.dateRetourFin, waitLabel: 'sans renvoi' };
       case 'B3_REFUS_FINANCEMENT':
-        return { label: 'Banque', date: d.dateEnvoiBanque };
+        return { label: 'Refus', date: d.dateRetourFin, waitDate: null, waitLabel: '' };
       case 'B2_A_ENVOYER_POSE':
-        return { label: 'Accord', date: d.dateAccord };
+        return { label: 'Accord', date: d.dateAccord, waitDate: d.dateAccord, waitLabel: 'à programmer' };
       case 'B4_EN_COURS_POSE':
-        return { label: 'Pose', date: d.dateInsta };
+        return { label: 'Pose', date: d.dateEnvoiPose, waitDate: d.dateEnvoiPose, waitLabel: 'à confirmer' };
       case 'G_ATTENTE_ACCORD_DEF':
+        return { label: 'Posé', date: d.dateInsta, waitDate: d.dateInsta, waitLabel: 'sans accord def' };
       case 'F1_CONTROLE_LIV_BANQUE':
+        return { label: 'Posé', date: d.dateInsta, waitDate: d.dateRecusOriginauxBanque || d.dateInsta, waitLabel: 'sans CL' };
       case 'F_ATTENTE_DEBLOCAGE':
-        return { label: 'Posé', date: d.dateInsta };
+        return { label: 'CL OK', date: d.dateControleLivraison, waitDate: d.dateControleLivraison, waitLabel: 'sans déblocage' };
       case 'W_DOSSIER_PAYER':
-        return { label: 'Payé', date: d.datePaiementClient };
+        return { label: 'Payé', date: d.datePaiementBanque || d.payeClientDate, waitDate: null, waitLabel: '' };
       default:
-        return { label: 'Maj', date: d.modifiedAt };
+        return { label: 'Maj', date: d.modifiedAt, waitDate: null, waitLabel: '' };
     }
   })();
-  // Jours depuis dernière modif → badge "stagne" si > 10 j
-  const joursDepuisMaj = (() => {
-    const iso = d.modifiedAt || d.createdAt;
-    if (!iso) return null;
-    const ms = Date.now() - new Date(iso).getTime();
-    if (ms < 0) return null;
+  // Jours en attente sur l'étape courante (la vraie info utile, pas modifiedAt).
+  const joursAttente = (() => {
+    if (!dateInfo.waitDate) return null;
+    const ms = Date.now() - new Date(dateInfo.waitDate).getTime();
+    if (isNaN(ms) || ms < 0) return null;
     return Math.floor(ms / 86400000);
   })();
-  const stagne = joursDepuisMaj !== null && joursDepuisMaj >= 10;
+  // Gradient de couleur selon l'ancienneté (warn → critical)
+  const waitLevel = joursAttente === null ? null
+    : joursAttente >= 14 ? 'critical'
+    : joursAttente >= 7 ? 'high'
+    : joursAttente >= 3 ? 'warn'
+    : 'ok';
+  const waitClasses = waitLevel === 'critical' ? 'bg-rose-100 text-rose-700 border-rose-300'
+    : waitLevel === 'high' ? 'bg-orange-100 text-orange-700 border-orange-300'
+    : waitLevel === 'warn' ? 'bg-amber-100 text-amber-700 border-amber-300'
+    : 'bg-slate-100 text-slate-500 border-slate-200';
+  const stagne = waitLevel === 'critical' || waitLevel === 'high';
 
   return (
     <button
@@ -18758,9 +18774,9 @@ function KanbanCard({ d, societes = [], onShowQuick, isAdmin }) {
             {dateInfo.label} {formatDateForSheet(dateInfo.date)}
           </span>
         )}
-        {stagne && (
-          <span className="text-[9px] font-bold bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded border border-amber-300" title="Aucune modification depuis 10 jours">
-            ⏱ {joursDepuisMaj}j
+        {joursAttente !== null && joursAttente >= 3 && (
+          <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded border ${waitClasses}`} title={`${joursAttente} jour${joursAttente > 1 ? 's' : ''} ${dateInfo.waitLabel}`}>
+            ⏱ {joursAttente}j {dateInfo.waitLabel}
           </span>
         )}
         {d.hasLitige && <span className="text-[9px] font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">⚠️ Litige</span>}
