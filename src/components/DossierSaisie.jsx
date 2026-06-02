@@ -790,11 +790,20 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
   // la data URL base64 en Blob → objectURL : ouvrir directement une data URL
   // PDF fait planter / remplace l'onglet courant sur Safari & mobile. Le blob
   // s'ouvre proprement dans un nouvel onglet sans toucher au CRM.
-  const handleView = async () => {
+  const handleView = async (ev) => {
+    if (ev?.preventDefault) ev.preventDefault();
+    if (ev?.stopPropagation) ev.stopPropagation();
     if (!fileId) return;
+    // ⚠️ window.open DOIT être appelé synchrone, dans le geste utilisateur.
+    // Si on l'appelle après un await, Safari/iOS le considère hors-gesture,
+    // bloque le popup, et finit par naviguer l'onglet CRM courant.
+    const win = window.open('about:blank', '_blank');
+    if (win) {
+      try { win.document.write('<title>Chargement…</title><p style="font-family:sans-serif;color:#666;padding:24px">Chargement de la facture…</p>'); } catch (_) {}
+    }
     try {
       const r = await window.storage.get(`file:${fileId}`);
-      if (!r?.value) { alert('❌ Fichier introuvable.'); return; }
+      if (!r?.value) { if (win) try { win.close(); } catch (_) {} alert('❌ Fichier introuvable.'); return; }
       const data = JSON.parse(r.value);
       const dataUrl = data.dataUrl || '';
       const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -805,18 +814,22 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
         for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
         const blob = new Blob([arr], { type: mime });
         const url = URL.createObjectURL(blob);
-        const win = window.open(url, '_blank', 'noopener,noreferrer');
-        // Si le navigateur bloque le popup, fallback sur l'aperçu overlay.
-        if (!win) {
+        if (win && !win.closed) {
+          win.location.href = url;
+        } else {
+          // Popup bloqué (rare car on l'ouvre dans le geste) → fallback overlay.
           setPreview({ doc: { name: data.name || 'facture.pdf', size: data.size || 0 }, dataUrl, type: mime });
         }
-        // Révoque l'objectURL après un délai (le temps que l'onglet charge).
-        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 60000);
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
         return;
       }
       // Pas une data URL base64 (cas rare) → aperçu overlay classique.
+      if (win) try { win.close(); } catch (_) {}
       setPreview({ doc: { name: data.name || 'facture.pdf', size: data.size || 0 }, dataUrl, type: data.type || 'application/pdf' });
-    } catch (e) { alert('Erreur : ' + e.message); }
+    } catch (e) {
+      if (win) try { win.close(); } catch (_) {}
+      alert('Erreur : ' + e.message);
+    }
   };
   const handleDownload = () => {
     if (!preview) return;
