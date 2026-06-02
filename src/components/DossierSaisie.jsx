@@ -240,6 +240,13 @@ function statutMilestoneLabel(fromStatut, toStatut) {
 
 const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM', 'FINANCO', 'FRANFINANCE'];
 
+// 🛡️ Clés de réglages dont on garde un snapshot quotidien (1 par jour, upsert)
+// pour pouvoir restaurer en cas d'écrasement accidentel. Ex : produits-bk-20260602.
+const BACKED_UP_SETTINGS = new Set([
+  'produits', 'tarifs-poseurs', 'tarifs-regies', 'tarifs-internes',
+  'noms-internes', 'liste-fournisseurs', 'tarifs-fournisseurs', 'societes',
+]);
+
 // 🏷️ Libellés humains des champs de dossier — pour afficher « Date pose »
 // au lieu de « dateInsta » dans l'historique des modifications. Partagé
 // entre la modale Historique et le panneau « Activité par utilisateur ».
@@ -1887,6 +1894,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
           if (Array.isArray(arr) && arr.length > 0) setProduits(arr);
         }
       } catch (e) {}
+      // 🛡️ Initialise lastWrittenSettings avec les valeurs chargées pour que
+      // la garde anti-écrasement du save effect fonctionne dès la 1ère modif
+      // (sinon le 1er changement réécrit toutes les clés avec l'état chargé).
+      try {
+        const syncedKeys = ['tarifs-poseurs','tarifs-regies','tarifs-internes','noms-internes','liste-fournisseurs','tarifs-fournisseurs','produits','poseurs-contacts','regies-contacts','email-config','projexio-caps','message-templates'];
+        syncedKeys.forEach(k => {
+          const v = bgData[k]?.value;
+          if (typeof v === 'string') lastWrittenSettings.current[k] = v;
+        });
+      } catch (e) {}
       try {
         const r = bgData['message-templates'];
         if (r?.value) {
@@ -2241,10 +2258,28 @@ export default function DossierSaisie({ authUser, onLogout }) {
     if (isInitialTarifs.current) { if (!loading) isInitialTarifs.current = false; return; }
     // Sauve chaque clé en mémorisant le JSON écrit, pour qu'on puisse ignorer
     // notre propre écho via la subscription Realtime ci-dessous.
+    // 🛡️ GARDE ANTI-ÉCRASEMENT : on ne réécrit une clé QUE si son JSON a
+    // réellement changé depuis la dernière écriture/réception. Sans ça, un
+    // onglet resté ouvert avec un état périmé (ex: produits sans les marques
+    // ajoutées ailleurs) réécrivait TOUTES les clés dès qu'on touchait UN
+    // tarif → écrasement silencieux des données récentes faites sur un autre
+    // device. C'est ce qui a effacé les marques/modèles produits.
     const saveAndTrack = (key, value) => {
       const json = JSON.stringify(value);
+      if (json === lastWrittenSettings.current[key]) return; // inchangé → on ne touche pas
       lastWrittenSettings.current[key] = json;
       window.storage.set(key, json).catch(() => {});
+      // 🛡️ Backup snapshot quotidien des réglages critiques (produits, tarifs,
+      // contacts…) — 1 clé par jour (upsert). Filet de sécurité contre un
+      // écrasement : on peut restaurer la version d'hier depuis Supabase.
+      if (BACKED_UP_SETTINGS.has(key)) {
+        try {
+          const now = new Date();
+          const pad = (n) => String(n).padStart(2, '0');
+          const day = `${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}`;
+          window.storage.set(`${key}-bk-${day}`, json).catch(() => {});
+        } catch (e) {}
+      }
     };
     saveAndTrack('tarifs-poseurs', tarifsPoseurs);
     saveAndTrack('tarifs-regies', tarifsRegies);
