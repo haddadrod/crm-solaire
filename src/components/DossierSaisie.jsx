@@ -17361,15 +17361,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         const baseHt = detail?.baseHt || 0;
                         const netHt = detail?.ht ?? (baseHt - avoirsHt);
                         return (
-                          <div className="mt-1 rounded-lg border border-rose-200 bg-rose-50/60 p-1.5 space-y-1">
-                            <div className="flex items-center justify-between">
-                              <span className="text-[9px] font-bold text-rose-700 uppercase">🧾 Avoirs (déduction){avoirsHt > 0 ? ` — ${formatEuro(avoirsHt)}` : ''}</span>
-                              <button onClick={() => addAvoirFournisseur(i)} className="text-[9px] font-bold text-rose-600 bg-white border border-rose-200 hover:bg-rose-100 px-1.5 py-0.5 rounded flex items-center gap-0.5">
-                                <Plus className="w-2.5 h-2.5" />Avoir
+                          <div className="mt-1.5 rounded-xl border-2 border-rose-300 bg-rose-50 p-2 space-y-1.5">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] font-extrabold text-rose-700 uppercase flex items-center gap-1">🧾 Avoirs / notes de crédit{avoirsHt > 0 ? ` · −${formatEuro(avoirsHt)}` : ''}</span>
+                              <button onClick={() => addAvoirFournisseur(i)} className="text-[10px] font-extrabold text-white bg-rose-500 hover:bg-rose-600 px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm whitespace-nowrap">
+                                <Plus className="w-3 h-3" />Ajouter un avoir
                               </button>
                             </div>
                             {avoirsHt > 0 && (
-                              <div className="text-[9px] text-rose-700/80">Coût net : {formatEuro(baseHt)} − {formatEuro(avoirsHt)} = <span className="font-bold">{formatEuro(netHt)}</span> HT</div>
+                              <div className="text-[10px] text-rose-700 font-semibold">Coût net : {formatEuro(baseHt)} − {formatEuro(avoirsHt)} = <span className="font-extrabold">{formatEuro(netHt)}</span> HT</div>
                             )}
                             {avoirs.map((a, aIdx) => {
                               const montant = parseFloat(a.montantHt) || 0;
@@ -17408,7 +17408,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               );
                             })}
                             {avoirs.length === 0 && (
-                              <div className="text-[9px] text-rose-400 italic">Aucun avoir. Clique « + Avoir » si le fournisseur t'a fait une note de crédit.</div>
+                              <div className="text-[9px] text-rose-500 italic">Matériel rendu au fournisseur ? Clique « Ajouter un avoir » pour saisir la note de crédit (déduite du coût).</div>
                             )}
                           </div>
                         );
