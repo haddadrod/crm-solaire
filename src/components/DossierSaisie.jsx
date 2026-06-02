@@ -730,14 +730,20 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
     if (!pennylaneInfo.supplierName) missing.push('le nom du fournisseur');
     if (!pennylaneInfo.factureNo) missing.push('le N° de facture');
     if (!pennylaneInfo.dateFacture) missing.push('la date de facture');
-    const montantManquant = (!pennylaneInfo.montantHt || pennylaneInfo.montantHt <= 0)
-      || (!pennylaneInfo.montantTtc || pennylaneInfo.montantTtc <= 0);
+    // Un avoir (note de crédit) a des montants négatifs → on teste la valeur
+    // absolue. Une facture normale doit être strictement positive.
+    const isAvoir = pennylaneInfo.kind === 'avoir';
+    const montantManquant = isAvoir
+      ? (Math.abs(pennylaneInfo.montantHt || 0) === 0 || Math.abs(pennylaneInfo.montantTtc || 0) === 0)
+      : ((!pennylaneInfo.montantHt || pennylaneInfo.montantHt <= 0) || (!pennylaneInfo.montantTtc || pennylaneInfo.montantTtc <= 0));
     if (montantManquant) {
       // Cas le plus fréquent : le prestataire n'a pas de tarif → montant à 0.
       // Message actionnable plutôt qu'un « manque montant HT/TTC » cryptique.
       alert(
         `Impossible d'envoyer à Pennylane : le montant de « ${pennylaneInfo.supplierName || 'ce prestataire'} » est à 0 €.\n\n` +
-        `👉 Renseigne le montant HT sur la ligne (champ « HT »), ou configure son tarif dans Réglages → ${pennylaneInfo.tauxTva === 0 ? 'Poseurs' : 'Régies'}, puis réessaie.`
+        (isAvoir
+          ? `👉 Renseigne le montant HT de l'avoir, puis réessaie.`
+          : `👉 Renseigne le montant HT sur la ligne (champ « HT »), ou configure son tarif dans Réglages → ${pennylaneInfo.tauxTva === 0 ? 'Poseurs' : 'Régies'}, puis réessaie.`)
       );
       return;
     }
@@ -774,7 +780,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       if (onPennylaneSuccess && payload.data?.pennylaneInvoiceId) {
         onPennylaneSuccess(payload.data.pennylaneInvoiceId);
       }
-      alert(`✅ Facture envoyée à Pennylane (ID ${payload.data?.pennylaneInvoiceId || '?'})`);
+      alert(`✅ ${label === 'avoir' ? 'Avoir envoyé' : 'Facture envoyée'} à Pennylane (ID ${payload.data?.pennylaneInvoiceId || '?'})`);
     } catch (e) {
       alert(`Envoi Pennylane : ${e.message}`);
     } finally {
@@ -971,8 +977,11 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
     // Tarif auto : €/Wc × puissance solaire totale du dossier
     const tarifWc = parseFloat(tarifsFournisseurs[f.nom]) || 0;
     const autoHt = tarifWc > 0 && totalPuissance > 0 ? tarifWc * totalPuissance : 0;
-    const ht = (f.htCustom !== '' && f.htCustom !== undefined && f.htCustom !== null) ? (parseFloat(f.htCustom) || 0) : autoHt;
-    return { nom: f.nom, ht, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
+    const baseHt = (f.htCustom !== '' && f.htCustom !== undefined && f.htCustom !== null) ? (parseFloat(f.htCustom) || 0) : autoHt;
+    // Avoirs (notes de crédit) → déduction du coût HT du fournisseur.
+    const avoirsHt = (f.avoirs || []).reduce((s, a) => s + (parseFloat(a.montantHt) || 0), 0);
+    const ht = baseHt - avoirsHt;
+    return { nom: f.nom, ht, baseHt, avoirsHt, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
   });
   const fournisseurHt = fournisseursDetail.reduce((s, f) => s + f.ht, 0);
   const fournisseurTtc = fournisseursDetail.reduce((s, f) => s + f.ttc, 0);
@@ -2510,8 +2519,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const fournisseursDetail = (formData.fournisseurs || []).map(f => {
       const tarifWc = parseFloat(tarifsFournisseurs?.[f.nom]) || 0;
       const autoHt = tarifWc > 0 && totalPuissance > 0 ? tarifWc * totalPuissance : 0;
-      const ht = (f.htCustom !== '' && f.htCustom !== undefined && f.htCustom !== null) ? (parseFloat(f.htCustom) || 0) : autoHt;
-      return { nom: f.nom, ht, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
+      const baseHt = (f.htCustom !== '' && f.htCustom !== undefined && f.htCustom !== null) ? (parseFloat(f.htCustom) || 0) : autoHt;
+      const avoirsHt = (f.avoirs || []).reduce((s, a) => s + (parseFloat(a.montantHt) || 0), 0);
+      const ht = baseHt - avoirsHt;
+      return { nom: f.nom, ht, baseHt, avoirsHt, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
     });
     const fournisseurHt = fournisseursDetail.reduce((s, f) => s + f.ht, 0);
     const fournisseurTtc = fournisseursDetail.reduce((s, f) => s + f.ttc, 0);
@@ -2840,7 +2851,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         : [{ type: d.produit || 'PANNEAU_SOLAIRE', puissance: d.puissance || 6000, description: '', quantite: 1 }],
       puissance: d.puissance || 6000,
       fournisseurs: d.fournisseurs?.length > 0
-        ? d.fournisseurs.map(f => ({ nom: f.nom, htCustom: f.htCustom || '', paye: f.paye || false, datePaye: f.datePaye || '', bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' }))
+        ? d.fournisseurs.map(f => ({ ...f, nom: f.nom, htCustom: f.htCustom || '', paye: f.paye || false, datePaye: f.datePaye || '', bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '', avoirs: f.avoirs || [] }))
         : [],
       regie: d.regie || '', regieHtCustom: d.regieHtCustom || '',
       regies: (d.regies && d.regies.length > 0)
@@ -14479,6 +14490,31 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const removeFournisseur = (idx) => {
     onUpdate({ fournisseurs: (d.fournisseurs || []).filter((_, i) => i !== idx) });
   };
+  // Avoirs fournisseur (notes de crédit) — imbriqués dans chaque fournisseur.
+  // Un avoir vient en déduction du coût HT du fournisseur (ex : matériel
+  // récupéré chez le poseur puis rendu au fournisseur). Plusieurs possibles.
+  const addAvoirFournisseur = (idx) => {
+    const list = [...(d.fournisseurs || [])];
+    const f = list[idx]; if (!f) return;
+    const avoirs = [...(f.avoirs || []), { montantHt: '', avoirNo: '', date: new Date().toISOString().slice(0, 10), file: '' }];
+    list[idx] = { ...f, avoirs };
+    onUpdate({ fournisseurs: list });
+  };
+  const updateAvoirFournisseur = (idx, aIdx, updates) => {
+    const list = [...(d.fournisseurs || [])];
+    const f = list[idx]; if (!f) return;
+    const avoirs = [...(f.avoirs || [])];
+    avoirs[aIdx] = { ...avoirs[aIdx], ...updates };
+    list[idx] = { ...f, avoirs };
+    onUpdate({ fournisseurs: list });
+  };
+  const removeAvoirFournisseur = (idx, aIdx) => {
+    const list = [...(d.fournisseurs || [])];
+    const f = list[idx]; if (!f) return;
+    const avoirs = (f.avoirs || []).filter((_, i) => i !== aIdx);
+    list[idx] = { ...f, avoirs };
+    onUpdate({ fournisseurs: list });
+  };
 
   return (
     <>
@@ -17314,6 +17350,69 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         }}
                         onPennylaneSuccess={(id) => updateFournisseur(i, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
                       />
+                      {/* 🧾 Avoirs (notes de crédit) — viennent en déduction du coût
+                          fournisseur. Ex : matériel récupéré chez le poseur puis
+                          rendu au fournisseur. Plusieurs possibles. Gated sous
+                          canSeeMarges car ça expose des montants de coût. */}
+                      {canSeeMarges && (() => {
+                        const avoirs = f.avoirs || [];
+                        const detail = d.fournisseursDetail?.[i];
+                        const avoirsHt = detail?.avoirsHt || 0;
+                        const baseHt = detail?.baseHt || 0;
+                        const netHt = detail?.ht ?? (baseHt - avoirsHt);
+                        return (
+                          <div className="mt-1 rounded-lg border border-rose-200 bg-rose-50/60 p-1.5 space-y-1">
+                            <div className="flex items-center justify-between">
+                              <span className="text-[9px] font-bold text-rose-700 uppercase">🧾 Avoirs (déduction){avoirsHt > 0 ? ` — ${formatEuro(avoirsHt)}` : ''}</span>
+                              <button onClick={() => addAvoirFournisseur(i)} className="text-[9px] font-bold text-rose-600 bg-white border border-rose-200 hover:bg-rose-100 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                                <Plus className="w-2.5 h-2.5" />Avoir
+                              </button>
+                            </div>
+                            {avoirsHt > 0 && (
+                              <div className="text-[9px] text-rose-700/80">Coût net : {formatEuro(baseHt)} − {formatEuro(avoirsHt)} = <span className="font-bold">{formatEuro(netHt)}</span> HT</div>
+                            )}
+                            {avoirs.map((a, aIdx) => {
+                              const montant = parseFloat(a.montantHt) || 0;
+                              const ttcAvoir = computeTtcPresta(montant, !!f.sansTva, f.tauxTva);
+                              return (
+                                <div key={aIdx} className="rounded-lg border border-rose-200 bg-white p-1.5 space-y-1">
+                                  <div className="grid grid-cols-[1fr_1fr_auto] gap-1 items-center">
+                                    <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { montantHt: e.target.value })} placeholder="Montant HT" className="px-2 py-1 bg-white border border-rose-200 rounded text-[10px]" />
+                                    <input type="text" value={a.avoirNo || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { avoirNo: e.target.value })} placeholder="N° avoir" className="px-2 py-1 bg-white border border-rose-200 rounded text-[10px]" />
+                                    <button onClick={() => removeAvoirFournisseur(i, aIdx)} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                  <input type="date" value={a.date || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { date: e.target.value })} className="w-full px-2 py-1 bg-white border border-rose-200 rounded text-[10px] text-rose-700" />
+                                  <FactureFileInput
+                                    fileId={a.file || ''}
+                                    onChange={(id) => updateAvoirFournisseur(i, aIdx, { file: id })}
+                                    color="purple"
+                                    label="avoir"
+                                    autoExtract={false}
+                                    pennylaneInfo={{
+                                      societe: d.societe || '',
+                                      supplierName: f.nom,
+                                      factureNo: a.avoirNo || `AVOIR-${f.factureNo || ''}`,
+                                      dateFacture: a.date || new Date().toISOString().slice(0, 10),
+                                      // Montants NÉGATIFS = note de crédit côté Pennylane.
+                                      montantHt: -Math.abs(montant),
+                                      montantTtc: -Math.abs(ttcAvoir),
+                                      tauxTva: f.sansTva ? 0 : 20,
+                                      kind: 'avoir',
+                                      pushedId: a.pennylaneInvoiceId,
+                                    }}
+                                    onPennylaneSuccess={(id) => updateAvoirFournisseur(i, aIdx, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                                  />
+                                </div>
+                              );
+                            })}
+                            {avoirs.length === 0 && (
+                              <div className="text-[9px] text-rose-400 italic">Aucun avoir. Clique « + Avoir » si le fournisseur t'a fait une note de crédit.</div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                   {canCheckPaiements && f.nom && (
