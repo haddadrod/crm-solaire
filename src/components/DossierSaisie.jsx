@@ -3239,13 +3239,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const poseFinie = d.statutPose === 'visite_ok';
       if (!poseFinie && !d.payeClient) return;
 
-      const fin = d.financement || 'AUTRE';
       const soc = d.societe || '';
-      // Banque × société = clé unique. Projexio peut nous devoir 30k sur Yolico
-      // ET 20k sur Elsun — deux dettes distinctes à recouvrer séparément.
-      const key = `${fin}::${soc}`;
+      // 🏢 Sous-traitance : l'argent à recevoir est regroupé PAR SOCIÉTÉ
+      // donneuse d'ordre (c'est elle qui nous paie), et non plus par banque.
+      const key = soc || '__sans__';
       const m = d.montantTotal || 0;
-      if (!encaissMap[key]) encaissMap[key] = { nom: fin, societe: soc, totalAttendu: 0, totalRecu: 0, totalRestant: 0, lignes: [] };
+      if (!encaissMap[key]) encaissMap[key] = { nom: soc, societe: soc, totalAttendu: 0, totalRecu: 0, totalRestant: 0, lignes: [] };
       encaissMap[key].totalAttendu += m;
       if (d.payeClient) encaissMap[key].totalRecu += m;
       else encaissMap[key].totalRestant += m;
@@ -6525,7 +6524,7 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
     <div className="space-y-4">
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
         <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-5 text-white shadow-lg">
-          <div className="text-xs font-semibold opacity-90 uppercase">✅ Reçu des financeurs</div>
+          <div className="text-xs font-semibold opacity-90 uppercase">✅ Reçu des sociétés</div>
           <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalEncaisseClient)}</div>
           <div className="text-sm opacity-90 mt-2">À recevoir : {formatEuro(rapportPaiements.totalAEncaisserClient)}</div>
         </div>
@@ -6591,11 +6590,11 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
       <div className="bg-white rounded-3xl shadow-md border border-emerald-100 overflow-hidden">
         <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-teal-50">
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <Euro className="w-5 h-5 text-emerald-500" />Argent à recevoir par financeur
+            <Euro className="w-5 h-5 text-emerald-500" />Argent à recevoir par société
           </h2>
         </div>
         {rapportPaiements.encaissList.length === 0 ? (
-          <div className="p-12 text-center text-slate-500">Aucun financement enregistré.</div>
+          <div className="p-12 text-center text-slate-500">Aucun montant à recevoir.</div>
         ) : (
           <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-3">
             {rapportPaiements.encaissList.map((e, idx) => {
@@ -6607,8 +6606,8 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
                   <div className={`p-4 ${restant ? 'bg-gradient-to-r from-amber-500 to-orange-500' : 'bg-gradient-to-r from-emerald-500 to-teal-500'} text-white`}>
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div>
-                        <div className="text-xs opacity-90 uppercase">💳 Financeur</div>
-                        <div className="text-xl font-bold flex items-center flex-wrap">{e.nom}{renderSocieteBadge(e.societe)}</div>
+                        <div className="text-xs opacity-90 uppercase">🏢 Société</div>
+                        <div className="text-xl font-bold flex items-center flex-wrap">{societes.find(s => s.id === e.societe)?.label || 'Sans société'}</div>
                       </div>
                       {restant ? (
                         <div className="text-right">
@@ -6687,7 +6686,7 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-violet-500" />Détail par prestataire
           </h2>
-          <p className="text-xs text-slate-500 mt-1">💡 Vous payez seulement quand le financeur a payé</p>
+          <p className="text-xs text-slate-500 mt-1">💡 Vous payez seulement quand la société a payé</p>
         </div>
 
         {(rapportPaiements.totalAPayerMaintenant > 0 || rapportPaiements.totalEnAttenteFinanceur > 0 || rapportPaiements.totalPayeAvance > 0) && (
@@ -6743,7 +6742,7 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
                         paye: { bg: 'bg-emerald-50 border-emerald-200', icon: 'bg-emerald-500', label: '✓ Payé', labelBg: 'bg-emerald-200 text-emerald-800', amount: 'text-emerald-700' },
                         paye_avance: { bg: 'bg-purple-50 border-purple-300', icon: 'bg-purple-500', label: '💜 Payé d\'avance', labelBg: 'bg-purple-200 text-purple-800', amount: 'text-purple-700' },
                         a_payer: { bg: 'bg-orange-50 border-orange-300', icon: 'bg-orange-500', label: '🔥 À payer', labelBg: 'bg-orange-200 text-orange-800', amount: 'text-orange-700' },
-                        bloque: { bg: 'bg-slate-100 border-slate-300', icon: 'bg-slate-400', label: '⏸️ Bloqué financeur', labelBg: 'bg-slate-200 text-slate-700', amount: 'text-slate-500' },
+                        bloque: { bg: 'bg-slate-100 border-slate-300', icon: 'bg-slate-400', label: '⏸️ Bloqué société', labelBg: 'bg-slate-200 text-slate-700', amount: 'text-slate-500' },
                       }[etat];
                       const canOpen = !!(l.dossierLocalId && onShowQuick);
                       const handleOpen = () => canOpen && onShowQuick(l.dossierLocalId, scrollTargetFor(l.prestataireType || p.type));
@@ -7574,7 +7573,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
           {dashboard.rappelsClient.length > 0 && (
             <div className="p-4 border-b border-slate-100">
               <h3 className="text-sm font-bold text-rose-600 mb-2 flex items-center gap-1">
-                <AlertTriangle className="w-4 h-4" />Financeurs en retard ({dashboard.rappelsClient.length})
+                <AlertTriangle className="w-4 h-4" />Sociétés en retard ({dashboard.rappelsClient.length})
               </h3>
               <div className="space-y-1.5">
                 {dashboard.rappelsClient.slice(0, 20).map(d => (
