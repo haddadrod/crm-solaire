@@ -238,6 +238,23 @@ function statutMilestoneLabel(fromStatut, toStatut) {
   }
 }
 
+// 🧾 Déduit le montant HT depuis les données extraites d'une facture par l'IA.
+// Beaucoup de factures n'affichent clairement que le TTC (ou l'IA ne lit que
+// lui) → si montantHt manque mais qu'on a le TTC, on recalcule le HT à partir
+// du taux de TVA (20% par défaut, 0 si sans TVA). Renvoie 0 si rien d'exploitable.
+function htFromExtraction(data) {
+  if (!data) return 0;
+  const ht = Number(data.montantHt) || 0;
+  if (ht > 0) return Math.round(ht * 100) / 100;
+  const ttc = Number(data.montantTtc) || 0;
+  if (ttc > 0) {
+    const taux = (typeof data.tauxTva === 'number') ? data.tauxTva : 20;
+    const calc = taux > 0 ? ttc / (1 + taux / 100) : ttc;
+    return Math.round(calc * 100) / 100;
+  }
+  return 0;
+}
+
 const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM', 'FINANCO', 'FRANFINANCE'];
 
 // 🛡️ Clés de réglages dont on garde un snapshot quotidien (1 par jour, upsert)
@@ -16738,7 +16755,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 const upd = {};
                                 if (data.factureNo && !r.factureNo) upd.factureNo = String(data.factureNo);
                                 if (data.bl && !r.bl) upd.bl = String(data.bl);
-                                if (data.montantHt && data.montantHt > 0 && !r.htCustom) upd.htCustom = String(data.montantHt);
+                                const htR = htFromExtraction(data);
+                                if (htR > 0 && !r.htCustom) upd.htCustom = String(htR);
                                 if (typeof data.tauxTva === 'number' && data.tauxTva === 0 && !r.sansTva) {
                                   upd.sansTva = true; upd.tauxTva = 0;
                                 }
@@ -17088,7 +17106,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           const upd = {};
                           if (data.factureNo && !p.factureNo) upd.factureNo = String(data.factureNo);
                           if (data.bl && !p.bl) upd.bl = String(data.bl);
-                          if (data.montantHt && data.montantHt > 0 && !p.htCustom) upd.htCustom = String(data.montantHt);
+                          const htP = htFromExtraction(data);
+                          if (htP > 0 && !p.htCustom) upd.htCustom = String(htP);
                           if (data.dateFacture && !p.dateFacture) upd.dateFacture = String(data.dateFacture);
                           if (Object.keys(upd).length > 0) updatePoseur(i, upd);
                         }}
@@ -17211,10 +17230,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           const upd = {};
                           if (data.factureNo && !f.factureNo) upd.factureNo = String(data.factureNo);
                           if (data.bl && !f.bl) upd.bl = String(data.bl);
-                          if (data.montantHt && data.montantHt > 0 && !f.htCustom) upd.htCustom = String(data.montantHt);
-                          if (typeof data.tauxTva === 'number' && data.tauxTva === 0 && !f.sansTva) {
-                            upd.sansTva = true; upd.tauxTva = 0;
-                          }
+                          // Si sans TVA détecté → on le coche AVANT de calculer le HT
+                          // (sinon htFromExtraction diviserait par 1.2 à tort).
+                          const sansTvaDetecte = (typeof data.tauxTva === 'number' && data.tauxTva === 0);
+                          if (sansTvaDetecte && !f.sansTva) { upd.sansTva = true; upd.tauxTva = 0; }
+                          const htF = htFromExtraction(data);
+                          if (htF > 0 && !f.htCustom) upd.htCustom = String(htF);
                           if (data.dateFacture && !f.dateFacture) upd.dateFacture = String(data.dateFacture);
                           if (Object.keys(upd).length > 0) updateFournisseur(i, upd);
                         }}
