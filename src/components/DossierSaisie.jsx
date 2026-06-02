@@ -4673,7 +4673,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         />}
 
         {/* DASHBOARD */}
-        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
+        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
 
         {activeTab === 'calendrier' && (
           <CalendrierView
@@ -7194,7 +7194,112 @@ function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onS
   );
 }
 
-function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, setProjexioCaps, isAdmin = false, onCreate, onShowQuick }) {
+// 🩺 SANTÉ DES DOSSIERS — radar de qualité de saisie. Repère les dossiers
+// actifs avec des infos manquantes / incohérentes qu'aucune alerte d'étape ne
+// capte : téléphone vide, prix de vente non saisi, puissance à 0, panneau sans
+// marque/modèle, doublon de téléphone. Tourne en continu pour que l'équipe
+// corrige au fil de l'eau et qu'aucun dossier ne dorme avec un trou de saisie.
+function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onShowQuick }) {
+  const [open, setOpen] = useState(false);
+
+  const { items, total } = useMemo(() => {
+    const actifs = (dossiers || []).filter(d =>
+      d && d.localId &&
+      !d.archived &&
+      d.statut !== 'W2_ANNULER' && d.statut !== 'ANNULER' &&
+      (activeSociete ? d.societe === activeSociete : true)
+    );
+
+    // Index des téléphones pour repérer les doublons (numéro partagé par 2+ dossiers).
+    const phoneMap = {};
+    actifs.forEach(d => {
+      const p = String(d.telephone || '').replace(/\D/g, '');
+      if (p && p.length >= 6) {
+        if (!phoneMap[p]) phoneMap[p] = [];
+        phoneMap[p].push(d);
+      }
+    });
+
+    // Le catalogue panneaux a-t-il des variantes (marques/modèles) définies ?
+    const catPanneau = findProduit(produits, 'PANNEAU_SOLAIRE');
+    const panneauAVariantes = Array.isArray(catPanneau?.variants) && catPanneau.variants.length > 0;
+
+    const out = [];
+    actifs.forEach(d => {
+      const issues = [];
+
+      if (!String(d.telephone || '').trim()) issues.push('Téléphone manquant');
+
+      // Prix de vente : on n'alerte qu'une fois le BC signé (sinon brouillon normal).
+      const prix = parseFloat(d.montantTotal) || 0;
+      if (d.dateSignature && prix <= 0) issues.push('Prix de vente non renseigné');
+
+      const produitsList = d.produits || [];
+      const hasPanneau = produitsList.some(p => p.type === 'PANNEAU_SOLAIRE');
+      if (hasPanneau) {
+        if (!d.puissance || Number(d.puissance) <= 0) issues.push('Puissance solaire à 0');
+        if (panneauAVariantes && produitsList.some(p => p.type === 'PANNEAU_SOLAIRE' && !p.variantId)) {
+          issues.push('Panneau sans marque/modèle');
+        }
+      }
+
+      const pnorm = String(d.telephone || '').replace(/\D/g, '');
+      if (pnorm && pnorm.length >= 6 && (phoneMap[pnorm] || []).length > 1) {
+        const autres = phoneMap[pnorm].filter(x => x.localId !== d.localId)
+          .map(x => `${x.nom || ''} ${x.prenom || ''}`.trim() || 'sans nom').slice(0, 2).join(', ');
+        issues.push(`Doublon téléphone (aussi : ${autres})`);
+      }
+
+      if (issues.length > 0) out.push({ d, issues });
+    });
+
+    // Les dossiers avec le plus de problèmes en premier.
+    out.sort((a, b) => b.issues.length - a.issues.length);
+    return { items: out, total: out.length };
+  }, [dossiers, produits, activeSociete]);
+
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-slate-50"
+      >
+        <span className="flex items-center gap-2 font-bold text-slate-800 text-sm">
+          🩺 Santé des dossiers
+          {total > 0 ? (
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700">{total} à corriger</span>
+          ) : (
+            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">✅ tout est propre</span>
+          )}
+        </span>
+        {total > 0 && <span className="text-slate-400 text-xs">{open ? '▼' : '▶'}</span>}
+      </button>
+      {open && total > 0 && (
+        <div className="border-t border-slate-100 divide-y divide-slate-50 max-h-[420px] overflow-y-auto">
+          {items.map(({ d, issues }) => (
+            <button
+              key={d.localId}
+              onClick={() => onShowQuick && onShowQuick(d.localId, null)}
+              className="w-full text-left px-4 py-2.5 hover:bg-amber-50/60 flex flex-col gap-1"
+            >
+              <span className="flex items-center gap-2 text-[13px] font-semibold text-slate-800">
+                {`${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)'}
+                {d.ville && <span className="text-[11px] font-normal text-slate-400">· {d.ville}</span>}
+              </span>
+              <span className="flex flex-wrap gap-1">
+                {issues.map((iss, k) => (
+                  <span key={k} className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800">⚠️ {iss}</span>
+                ))}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, setProjexioCaps, isAdmin = false, onCreate, onShowQuick, produits = [] }) {
   // Vue restreinte pour le rôle « Envoi finance » : seules les sections
   // Plafond Projexio + Financements en attente de retour sont affichées.
   // Les tuiles CA/marge/évolution et tous les autres rappels sont masqués.
@@ -7258,6 +7363,11 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
 
   return (
     <div className="space-y-4">
+      {/* 🩺 Santé des dossiers — radar de qualité de saisie (masqué en vue restreinte) */}
+      {!isRestricted && (
+        <SanteDossiersPanel dossiers={dossiers} produits={produits} activeSociete={activeSociete} onShowQuick={onShowQuick} />
+      )}
+
       {/* 🏦 PROJEXIO — un bandeau de plafond par société émettrice */}
       {projBars.map(b => {
         const isOpen = projOpenSocId === b.socId;
