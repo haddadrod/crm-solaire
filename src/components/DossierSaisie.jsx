@@ -268,13 +268,26 @@ const FIELD_LABELS = {
   typeToiture: 'Type toiture', orientationPanneaux: 'Orientation panneaux',
   montantTotal: 'Prix de vente', payeClientDate: 'Date paiement',
   dateControleLivraison: 'Contrôle livraison', datePaiementBanque: 'Paiement banque',
+  regies: 'Régies', poseurs: 'Poseurs', fournisseurs: 'Fournisseurs', produits: 'Produits',
+  poseursDetail: 'Poseurs (détail)', regiesDetail: 'Régies (détail)',
 };
 // Formate une valeur de champ pour l'historique (date FR, bool ✓/✗, etc.).
+// Pour les tableaux d'objets connus (régies, poseurs…), on affiche les noms
+// plutôt qu'un inutile « N élément(s) ».
 function fmtFieldVal(v) {
   if (v === '' || v == null) return 'vide';
   if (v === true) return '✓';
   if (v === false) return '✗';
-  if (Array.isArray(v)) return `${v.length} élément${v.length > 1 ? 's' : ''}`;
+  if (Array.isArray(v)) {
+    if (v.length === 0) return 'aucun';
+    // Tableau d'objets avec un nom → liste des noms (« RV SERVICE, OREN »)
+    const noms = v.map(x => (x && typeof x === 'object') ? (x.nom || x.type || x.label || '') : String(x)).filter(Boolean);
+    if (noms.length > 0) {
+      const txt = noms.slice(0, 3).join(', ');
+      return noms.length > 3 ? `${txt} +${noms.length - 3}` : txt;
+    }
+    return `${v.length} élément${v.length > 1 ? 's' : ''}`;
+  }
   if (typeof v === 'object') return JSON.stringify(v).slice(0, 40);
   const s = String(v);
   if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
@@ -7543,43 +7556,56 @@ function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
                     <div className="text-xs text-slate-400 italic py-2">Aucun détail (anciens dossiers non tracés).</div>
                   ) : (
                     <div className="space-y-1 max-h-[360px] overflow-y-auto">
-                      {u.entries.map((e, j) => (
-                        <button
-                          key={j}
-                          type="button"
-                          onClick={(ev) => { ev.stopPropagation(); onShowQuick && onShowQuick(e.localId); }}
-                          className="w-full text-left bg-white hover:bg-violet-50 border border-slate-100 rounded-lg p-2 transition-colors"
-                        >
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <span className="text-[11px] font-bold text-slate-700 truncate">
-                              {e.type === 'création' ? '✨ Créé' : e.type === 'modification' ? '✏️ Modifié' : e.type === 'statut' ? '🔄 Statut' : '📞 Relance'} · {e.client}
-                            </span>
-                            <span className="text-[9px] text-slate-400 flex-shrink-0">{formatEntryDate(e.date)}</span>
-                          </div>
-                          {/* Détail selon le type */}
-                          {e.type === 'modification' && Array.isArray(e.changes) && e.changes.length > 0 && (
-                            <div className="mt-1 flex flex-wrap gap-1">
-                              {e.changes.slice(0, 6).map((c, k) => (
-                                <span key={k} className="text-[10px] bg-slate-100 rounded px-1.5 py-0.5 text-slate-600">
-                                  <strong className="text-slate-700">{FIELD_LABELS[c.field] || c.field}</strong>
-                                  {': '}{fmtFieldVal(c.from)} → <span className="text-emerald-700 font-semibold">{fmtFieldVal(c.to)}</span>
-                                </span>
-                              ))}
-                              {e.changes.length > 6 && <span className="text-[10px] text-slate-400">+{e.changes.length - 6} autres</span>}
+                      {u.entries.map((e, j) => {
+                        // Pour les modifs : ne garde QUE les changements visibles
+                        // (from formaté ≠ to formaté). Évite les « OREN → OREN »
+                        // ou « 1 élément → 1 élément » quand seul un sous-champ
+                        // interne a bougé (sans intérêt à ce niveau de détail).
+                        const visibleChanges = (e.type === 'modification' && Array.isArray(e.changes))
+                          ? e.changes.filter(c => fmtFieldVal(c.from) !== fmtFieldVal(c.to))
+                          : [];
+                        return (
+                          <button
+                            key={j}
+                            type="button"
+                            onClick={(ev) => { ev.stopPropagation(); onShowQuick && onShowQuick(e.localId); }}
+                            className="w-full text-left bg-white hover:bg-violet-50 border border-slate-100 rounded-lg p-2 transition-colors"
+                          >
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <span className="text-[11px] font-bold text-slate-700 truncate">
+                                {e.type === 'création' ? '✨ Créé' : e.type === 'modification' ? '✏️ Modifié' : e.type === 'statut' ? '🔄 Statut' : '📞 Relance'} · {e.client}
+                              </span>
+                              <span className="text-[9px] text-slate-400 flex-shrink-0">{formatEntryDate(e.date)}</span>
                             </div>
-                          )}
-                          {e.type === 'statut' && (
-                            <div className="mt-0.5 text-[10px] text-slate-500">
-                              {e.from ? `${e.from} → ` : ''}<span className="font-semibold text-amber-700">{e.to}</span>
-                            </div>
-                          )}
-                          {e.type === 'relance' && (
-                            <div className="mt-0.5 text-[10px] text-slate-500">
-                              {e.channel === 'whatsapp' ? '📲 WhatsApp' : e.channel?.startsWith('email') ? '📧 Email' : '✉️ Message'}{e.motif ? ` · ${e.motif}` : ''}
-                            </div>
-                          )}
-                        </button>
-                      ))}
+                            {/* Détail selon le type */}
+                            {e.type === 'modification' && (
+                              visibleChanges.length > 0 ? (
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {visibleChanges.slice(0, 6).map((c, k) => (
+                                    <span key={k} className="text-[10px] bg-slate-100 rounded px-1.5 py-0.5 text-slate-600">
+                                      <strong className="text-slate-700">{FIELD_LABELS[c.field] || c.field}</strong>
+                                      {': '}{fmtFieldVal(c.from)} → <span className="text-emerald-700 font-semibold">{fmtFieldVal(c.to)}</span>
+                                    </span>
+                                  ))}
+                                  {visibleChanges.length > 6 && <span className="text-[10px] text-slate-400">+{visibleChanges.length - 6} autres</span>}
+                                </div>
+                              ) : (
+                                <div className="mt-0.5 text-[10px] text-slate-400 italic">ajustement interne</div>
+                              )
+                            )}
+                            {e.type === 'statut' && (
+                              <div className="mt-0.5 text-[10px] text-slate-500">
+                                {e.from ? `${e.from} → ` : ''}<span className="font-semibold text-amber-700">{e.to}</span>
+                              </div>
+                            )}
+                            {e.type === 'relance' && (
+                              <div className="mt-0.5 text-[10px] text-slate-500">
+                                {e.channel === 'whatsapp' ? '📲 WhatsApp' : e.channel?.startsWith('email') ? '📧 Email' : '✉️ Message'}{e.motif ? ` · ${e.motif}` : ''}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
