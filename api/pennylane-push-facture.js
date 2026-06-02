@@ -105,12 +105,11 @@ async function findSupplierByName(apiKey, name) {
 }
 
 // Crée un fournisseur dans Pennylane (compte de la société) → renvoie son id.
-// Appelé quand le fournisseur n'existe pas encore. Pennylane exige au minimum
-// un `name` ; on envoie aussi un pays par défaut (FR) pour éviter les rejets.
+// Appelé quand le fournisseur n'existe pas encore. Pennylane n'exige que le
+// `name` (les autres champs comme le pays ne sont pas acceptés ici).
 async function createSupplier(apiKey, name) {
   const supplierBody = {
     name: String(name || '').trim(),
-    country_alpha2: 'FR',
   };
   const { ok, status, payload } = await plFetch(apiKey, `/suppliers`, {
     method: 'POST',
