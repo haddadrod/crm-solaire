@@ -18783,8 +18783,8 @@ function KanbanCard({ d, societes = [], onShowQuick, isAdmin }) {
         {d.hasSav && <span className="text-[9px] font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">🛠️ SAV</span>}
         {d.hasRappel && <span className="text-[9px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">📞 Rappel</span>}
         {soc && (
-          <span className="text-[9px] font-bold bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded ml-auto" title={`Société : ${soc.label}`}>
-            {soc.emoji}
+          <span className="ml-auto" title={`Société : ${soc.label}`}>
+            <SocieteBadge societe={soc} variant="inline" />
           </span>
         )}
       </div>
@@ -18909,18 +18909,8 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorText: 'text-pink-700',
       tooltip: 'CQ validé — dossiers à envoyer en financement',
     },
-    {
-      type: 'financement',
-      label: 'Financement',
-      emoji: '💳',
-      count: rappelsFinancement.length,
-      adminOnly: false,
-      color: 'from-blue-500 to-cyan-500',
-      colorBg: 'bg-blue-50',
-      colorBorder: 'border-blue-200',
-      colorText: 'text-blue-700',
-      tooltip: 'Banques sans retour +48h',
-    },
+    // Badge « Financement » retiré : doublon avec le Kanban qui affiche
+    // déjà « ⏱ X j sans retour » sur chaque carte en B1_EN_COURS_FINANCEMENT.
     {
       type: 'manqueDoc',
       label: 'Manque docs',
