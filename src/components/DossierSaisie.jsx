@@ -710,13 +710,22 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
   const handlePushPennylane = async () => {
     if (!pennylaneInfo || !fileId) return;
     const missing = [];
-    if (!pennylaneInfo.supplierName) missing.push('nom du fournisseur');
-    if (!pennylaneInfo.factureNo) missing.push('N° facture');
-    if (!pennylaneInfo.dateFacture) missing.push('date facture');
-    if (!pennylaneInfo.montantHt || pennylaneInfo.montantHt <= 0) missing.push('montant HT');
-    if (!pennylaneInfo.montantTtc || pennylaneInfo.montantTtc <= 0) missing.push('montant TTC');
+    if (!pennylaneInfo.supplierName) missing.push('le nom du fournisseur');
+    if (!pennylaneInfo.factureNo) missing.push('le N° de facture');
+    if (!pennylaneInfo.dateFacture) missing.push('la date de facture');
+    const montantManquant = (!pennylaneInfo.montantHt || pennylaneInfo.montantHt <= 0)
+      || (!pennylaneInfo.montantTtc || pennylaneInfo.montantTtc <= 0);
+    if (montantManquant) {
+      // Cas le plus fréquent : le prestataire n'a pas de tarif → montant à 0.
+      // Message actionnable plutôt qu'un « manque montant HT/TTC » cryptique.
+      alert(
+        `Impossible d'envoyer à Pennylane : le montant de « ${pennylaneInfo.supplierName || 'ce prestataire'} » est à 0 €.\n\n` +
+        `👉 Renseigne le montant HT sur la ligne (champ « HT »), ou configure son tarif dans Réglages → ${pennylaneInfo.tauxTva === 0 ? 'Poseurs' : 'Régies'}, puis réessaie.`
+      );
+      return;
+    }
     if (missing.length > 0) {
-      alert(`Impossible d'envoyer à Pennylane — manque : ${missing.join(', ')}.`);
+      alert(`Impossible d'envoyer à Pennylane — il manque : ${missing.join(', ')}.`);
       return;
     }
     setPushingPennylane(true);
@@ -17089,7 +17098,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           factureNo: p.factureNo,
                           dateFacture: p.dateFacture || new Date().toISOString().slice(0, 10),
                           montantHt: parseFloat(p.htCustom) || (d.poseursDetail?.[i]?.autoHt) || 0,
-                          montantTtc: d.poseursDetail?.[i]?.ttc || 0,
+                          montantTtc: (d.poseursDetail?.[i]?.ttc) || parseFloat(p.htCustom) || (d.poseursDetail?.[i]?.autoHt) || 0,
                           tauxTva: 0, // poseurs : toujours sans TVA
                           pushedId: p.pennylaneInvoiceId,
                         }}
