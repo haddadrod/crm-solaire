@@ -786,17 +786,36 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
   // l'overlay in-app FilePreviewOverlay (compatible mobile, pas de popup blocker
   // contrairement à window.open qui est bloqué après un await asynchrone).
   const [preview, setPreview] = useState(null);
+  // 👁️ Ouvre la facture dans un NOUVEL onglet (pas dans le CRM). On convertit
+  // la data URL base64 en Blob → objectURL : ouvrir directement une data URL
+  // PDF fait planter / remplace l'onglet courant sur Safari & mobile. Le blob
+  // s'ouvre proprement dans un nouvel onglet sans toucher au CRM.
   const handleView = async () => {
     if (!fileId) return;
     try {
       const r = await window.storage.get(`file:${fileId}`);
       if (!r?.value) { alert('❌ Fichier introuvable.'); return; }
       const data = JSON.parse(r.value);
-      setPreview({
-        doc: { name: data.name || 'facture.pdf', size: data.size || 0 },
-        dataUrl: data.dataUrl,
-        type: data.type || 'application/pdf',
-      });
+      const dataUrl = data.dataUrl || '';
+      const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+      if (m) {
+        const mime = m[1];
+        const bytes = atob(m[2]);
+        const arr = new Uint8Array(bytes.length);
+        for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+        const blob = new Blob([arr], { type: mime });
+        const url = URL.createObjectURL(blob);
+        const win = window.open(url, '_blank', 'noopener,noreferrer');
+        // Si le navigateur bloque le popup, fallback sur l'aperçu overlay.
+        if (!win) {
+          setPreview({ doc: { name: data.name || 'facture.pdf', size: data.size || 0 }, dataUrl, type: mime });
+        }
+        // Révoque l'objectURL après un délai (le temps que l'onglet charge).
+        setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 60000);
+        return;
+      }
+      // Pas une data URL base64 (cas rare) → aperçu overlay classique.
+      setPreview({ doc: { name: data.name || 'facture.pdf', size: data.size || 0 }, dataUrl, type: data.type || 'application/pdf' });
     } catch (e) { alert('Erreur : ' + e.message); }
   };
   const handleDownload = () => {
