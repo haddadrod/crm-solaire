@@ -11353,20 +11353,24 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             </div>
             {isAdmin && (
               <div className="mt-3">
-                <Toggle label={`✅ Payé par le financeur (${formData.financement})`} checked={formData.payeClient} onChange={(v) => {
-                  const today = new Date().toISOString().split('T')[0];
-                  if (v) {
-                    setFormData({
-                      ...formData,
-                      payeClient: true,
-                      payeClientDate: formData.payeClientDate || today,
-                      datePaiementBanque: formData.datePaiementBanque || today,
-                      statut: 'W_DOSSIER_PAYER',
-                    });
-                  } else {
-                    setFormData({ ...formData, payeClient: false, payeClientDate: '' });
-                  }
-                }} />
+                <Toggle
+                  label={`✅ Payé par le financeur (${formData.financement})${formData.payeClient && formData.payeClientDate ? ` — le ${new Date(formData.payeClientDate).toLocaleDateString('fr-FR')}` : ''}`}
+                  checked={formData.payeClient}
+                  onChange={(v) => {
+                    const today = new Date().toISOString().split('T')[0];
+                    if (v) {
+                      setFormData({
+                        ...formData,
+                        payeClient: true,
+                        payeClientDate: formData.payeClientDate || today,
+                        datePaiementBanque: formData.datePaiementBanque || today,
+                        statut: 'W_DOSSIER_PAYER',
+                      });
+                    } else {
+                      setFormData({ ...formData, payeClient: false, payeClientDate: '' });
+                    }
+                  }}
+                />
               </div>
             )}
 
@@ -11478,7 +11482,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       </div>
                       {isAdmin && r.nom && (
                         <button type="button" onClick={() => upd({ paye: !r.paye, datePaye: !r.paye ? new Date().toISOString().split('T')[0] : '' })} className={`mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-bold ${r.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                          {r.paye ? `✓ Payée (${formatEuro(ttcRegie)} TTC)` : `⏳ Non payée (${formatEuro(ttcRegie)} TTC)`}
+                          {r.paye
+                            ? `✓ Payée le ${r.datePaye ? new Date(r.datePaye).toLocaleDateString('fr-FR') : '—'} (${formatEuro(ttcRegie)} TTC)`
+                            : `⏳ Non payée (${formatEuro(ttcRegie)} TTC)`}
                         </button>
                       )}
                     </div>
@@ -16988,7 +16994,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         )}
                         {canCheckPaiements && (
                           <button onClick={() => updateRegie(i, { paye: !r.paye, datePaye: !r.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[10px] font-bold ${r.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                            {r.paye ? `✓ Payée (${formatEuro(ttcRegie)})` : `⏳ Non payée (${formatEuro(ttcRegie)})`}
+                            {r.paye
+                              ? `✓ Payée le ${r.datePaye ? new Date(r.datePaye).toLocaleDateString('fr-FR') : '—'} (${formatEuro(ttcRegie)})`
+                              : `⏳ Non payée (${formatEuro(ttcRegie)})`}
                           </button>
                         )}
                       </>
@@ -17336,7 +17344,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   )}
                   {canCheckPaiements && p.nom && (
                     <button onClick={() => updatePoseur(i, { paye: !p.paye, datePaye: !p.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded-lg text-[10px] font-bold ${p.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                      {p.paye ? '✓ Payé' : '⏳ Non payé'}
+                      {p.paye
+                        ? `✓ Payé le ${p.datePaye ? new Date(p.datePaye).toLocaleDateString('fr-FR') : '—'}`
+                        : '⏳ Non payé'}
                     </button>
                   )}
                 </div>
@@ -17527,7 +17537,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   )}
                   {canCheckPaiements && f.nom && (
                     <button onClick={() => updateFournisseur(i, { paye: !f.paye, datePaye: !f.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded-lg text-[10px] font-bold ${f.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
-                      {f.paye ? '✓ Payé' : '⏳ Non payé'}
+                      {f.paye
+                        ? `✓ Payé le ${f.datePaye ? new Date(f.datePaye).toLocaleDateString('fr-FR') : '—'}`
+                        : '⏳ Non payé'}
                     </button>
                   )}
                 </div>
