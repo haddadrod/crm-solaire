@@ -313,6 +313,19 @@ function fmtFieldVal(v) {
   return s.length > 40 ? s.slice(0, 40) + '…' : s;
 }
 
+// 🏦 Plafonds mensuels Projexio par société émettrice. Chaque société a
+// son propre quota négocié avec Projexio ; au-delà du plafond ils ne
+// traitent plus les dossiers du mois pour cette société.
+// Clés alignées sur l'id des sociétés (cf state `societes`).
+// ⚠️ Ces valeurs ne sont QUE les défauts au premier démarrage. Une fois la
+// clé 'projexio-caps' présente dans Supabase, c'est elle qui pilote (et
+// l'utilisateur l'édite directement depuis le dashboard). La banque peut
+// renégocier ces plafonds du jour au lendemain — d'où le besoin d'édition
+// inline.
+const PROJEXIO_CAP_MENSUEL_PAR_SOCIETE = {
+  yolico: 1_000_000,
+  elsun:  2_500_000,
+};
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
 // Prérequis avant de pouvoir saisir le contrôle de livraison (= étape qui
@@ -1354,7 +1367,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const initialTabFromHash = (typeof window !== 'undefined' && window.location.hash)
     ? window.location.hash.replace(/^#/, '').split('/')[0] || 'dossiers'
     : 'dossiers';
-  const VALID_TABS = ['dossiers', 'archives', 'kanban', 'calendrier', 'paiements', 'dashboard', 'reglages'];
+  const VALID_TABS = ['ajourd', 'dossiers', 'archives', 'kanban', 'calendrier', 'paiements', 'dashboard', 'reglages'];
   const [activeTab, setActiveTab] = useState(VALID_TABS.includes(initialTabFromHash) ? initialTabFromHash : 'dossiers');
   const [statutsOrder, setStatutsOrder] = useState(STATUTS.map(s => s.id));
   const [tarifsPoseurs, setTarifsPoseurs] = useState(TARIFS_POSEURS_DEFAULT);
@@ -1369,6 +1382,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // /api/gmail-oauth (GET) au mount + après retour du callback OAuth.
   const [gmailOAuth, setGmailOAuth] = useState({ connected: false, email: null, connectedAt: null });
   const [tarifsRegies, setTarifsRegies] = useState(TARIFS_REGIES_DEFAULT);
+  // 🏦 Plafond mensuel Projexio par société — éditable depuis le dashboard,
+  // persisté dans Supabase. Au premier démarrage on prend les défauts du
+  // const PROJEXIO_CAP_MENSUEL_PAR_SOCIETE.
+  const [projexioCaps, setProjexioCaps] = useState(PROJEXIO_CAP_MENSUEL_PAR_SOCIETE);
   const [tarifsInternes, setTarifsInternes] = useState(TARIFS_INTERNES_DEFAULT);
   const [nomsInternes, setNomsInternes] = useState(NOMS_INTERNES_DEFAULT);
   const [listeFournisseurs, setListeFournisseurs] = useState(FOURNISSEURS_DEFAULT);
@@ -1397,6 +1414,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [quickViewScrollTo, setQuickViewScrollTo] = useState(null); // 🎯 section à scroller dans la bannière
   const [showSearch, setShowSearch] = useState(false); // 🔍 recherche globale Ctrl+K
   const [showAssistantIa, setShowAssistantIa] = useState(false); // 🤖 modale assistant IA email
+  const [copilotCtx, setCopilotCtx] = useState(null); // 🤖 contexte Sol : { action, dossier }
   const [showAlertesType, setShowAlertesType] = useState(null); // 🔔 type d'alerte ouvert : null | 'financement' | 'consuel' | 'paiement' | 'stagnation'
   const [showImport, setShowImport] = useState(false); // 📥 modal import dossiers
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
@@ -1584,7 +1602,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
           supprimerDossier: false,
           modifierTous: true,
           voirRapportPaiements: false,
-          // Dashboard activé en mode restreint (cf DashboardView).
+          // Dashboard activé MAIS en mode restreint (cf DashboardView) : seuls
+          // le bandeau Plafond Projexio et le bloc Financements en attente de
+          // retour sont affichés.
           voirDashboard: true,
           voirReglages: false,
           cocherPaiements: false,
@@ -1764,6 +1784,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     rappelMotif: '', // 📝 pourquoi rappeler
     rappelFait: false, // toggle : rappel effectué ?
     rappelDateFait: '', // date à laquelle le rappel a été fait
+    // 💤 Snooze d'actions Ma journée — masque temporairement une catégorie
+    // d'alerte sur ce dossier (ex: { rappelsClientRappel: '2026-06-02T08:00:00Z' }
+    // = ne plus afficher l'action « À rappeler » jusqu'à demain matin).
+    snoozedActions: {},
     historique: [],
     createdBy: '', createdAt: '', modifiedBy: '', modifiedAt: '',
     scannedBon: null, // {dataUrl, name, type, size} si scan IA réussi, sinon null
@@ -1873,7 +1897,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         'statuts-order', 'tarifs-poseurs', 'tarifs-regies',
         'poseurs-contacts', 'regies-contacts', 'email-config', 'tarifs-internes',
         'noms-internes', 'liste-fournisseurs', 'tarifs-fournisseurs',
-        'produits', 'users-list', 'chat-messages', 'message-templates',
+        'produits', 'users-list', 'projexio-caps', 'chat-messages', 'message-templates',
       ];
       const bgResults = await Promise.allSettled(bgKeys.map(k => window.storage.get(k)));
       const bgData = {};
@@ -1954,7 +1978,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // la garde anti-écrasement du save effect fonctionne dès la 1ère modif
       // (sinon le 1er changement réécrit toutes les clés avec l'état chargé).
       try {
-        const syncedKeys = ['tarifs-poseurs','tarifs-regies','tarifs-internes','noms-internes','liste-fournisseurs','tarifs-fournisseurs','produits','poseurs-contacts','regies-contacts','email-config','message-templates'];
+        const syncedKeys = ['tarifs-poseurs','tarifs-regies','tarifs-internes','noms-internes','liste-fournisseurs','tarifs-fournisseurs','produits','poseurs-contacts','regies-contacts','email-config','projexio-caps','message-templates'];
         syncedKeys.forEach(k => {
           const v = bgData[k]?.value;
           if (typeof v === 'string') lastWrittenSettings.current[k] = v;
@@ -1972,6 +1996,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (r?.value) {
           const arr = JSON.parse(r.value);
           if (Array.isArray(arr)) setUsers(arr);
+        }
+      } catch (e) {}
+      try {
+        const r = bgData['projexio-caps'];
+        if (r?.value) {
+          const obj = JSON.parse(r.value);
+          if (obj && typeof obj === 'object') setProjexioCaps({ ...PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, ...obj });
         }
       } catch (e) {}
       try {
@@ -2341,8 +2372,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     saveAndTrack('regies-contacts', regiesContacts);
     saveAndTrack('email-config', emailConfig);
     saveAndTrack('societes', societes);
+    saveAndTrack('projexio-caps', projexioCaps);
     saveAndTrack('message-templates', messageTemplates);
-  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, societes, messageTemplates, loading]);
+  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, societes, projexioCaps, messageTemplates, loading]);
 
   // 💬 Save effect dédié au chat — séparé des réglages pour éviter qu'un
   // envoi de message ne re-sauvegarde TOUS les tarifs (et inversement).
@@ -2880,6 +2912,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       rappelMotif: d.rappelMotif || '',
       rappelFait: !!d.rappelFait,
       rappelDateFait: d.rappelDateFait || '',
+      snoozedActions: (d.snoozedActions && typeof d.snoozedActions === 'object') ? d.snoozedActions : {},
       savDateOuverture: d.savDateOuverture || '',
       savMotif: d.savMotif || '',
       savIntervenant: d.savIntervenant || '',
@@ -3342,6 +3375,31 @@ export default function DossierSaisie({ authUser, onLogout }) {
       return `${prev.getFullYear()}-${pad(prev.getMonth() + 1)}`;
     })();
     const moisPrecedent = statsMois.find(m => m.mois === lastStr) || { count: 0, ca: 0, margeTtc: 0 };
+
+    // 🏦 PROJEXIO — total d'envois banque du mois, breakdown par société.
+    // Règles de comptage demandées :
+    //   ✓ Refusé par la banque (statutFin === 'refusé') → COMPTÉ
+    //     (le dossier a quand même consommé du quota chez Projexio).
+    //   ✗ Annulé par nous (statut === 'W2_ANNULER') → EXCLU
+    //     (on a retiré le dossier nous-mêmes, Projexio le sait).
+    // Filtre temporel : mois du `dateEnvoiFin` (date d'envoi au financeur).
+    // Le plafond mensuel est défini PAR SOCIÉTÉ dans PROJEXIO_CAP_MENSUEL_PAR_SOCIETE.
+    const projexioMoisCourant = (() => {
+      const parSociete = {}; // { [societeId]: { total, count, dossiers: [] } }
+      dossiersDash.forEach(d => {
+        if (d.financement !== 'PROJEXIO') return;
+        if (!d.dateEnvoiFin) return;
+        if (d.dateEnvoiFin.substring(0, 7) !== todayStr) return;
+        if (d.statut === 'W2_ANNULER') return;
+        const m = parseFloat(d.montantTotal) || 0;
+        const soc = d.societe || '';
+        if (!parSociete[soc]) parSociete[soc] = { total: 0, count: 0, dossiers: [] };
+        parSociete[soc].total += m;
+        parSociete[soc].count += 1;
+        parSociete[soc].dossiers.push({ localId: d.localId, nom: d.nom, prenom: d.prenom, montant: m, statut: d.statut, dateEnvoiFin: d.dateEnvoiFin });
+      });
+      return { parSociete };
+    })();
 
     // 📊 Métriques avancées partagées (régies / poseurs / commerciaux) :
     //   - nbPayes        : dossiers où le client a été payé (réussite)
@@ -4053,7 +4111,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsMaterielNonRendu.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, statsCommerciaux, statsBanques, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsCommerciaux, statsBanques, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -4311,6 +4369,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
           {/* Onglets — selon permissions du rôle actif */}
           <div className="flex gap-2 mb-3 bg-white rounded-2xl p-1.5 shadow-sm border border-violet-100 max-w-full flex-nowrap overflow-x-auto">
+            {(() => {
+              // Compteur d'actions « Ma journée » pour le badge de l'onglet.
+              const canArgent = isAdmin || currentUserRole === 'compta' || currentUserRole === 'envoi_finance';
+              const baseKeys = ['rappelsClientRappel','rappelsControleQualite','rappelsAEnvoyerBanque','rappelsFinancement','rappelsManqueDoc','rappelsAEnvoyerPose','rappelsPoseurNonAssigne','rappelsPoseNonFinie','rappelsAEnvoyerMairie','rappelsAEnvoyerConsuel','rappelsAEnvoyerRaccordement','rappelsMaterielNonRendu','rappelsLitige','rappelsSav','rappelsStagnation'];
+              const argentKeys = ['rappelsOriginaux','rappelsControleLivraison','rappelsPaiement','rappelsRecupTva','rappelsFacturesManquantes','rappelsPennylaneAEnvoyer'];
+              const keys = canArgent ? [...baseKeys, ...argentKeys] : baseKeys;
+              const cnt = keys.reduce((s, k) => s + ((dashboard[k] || []).length), 0);
+              return (
+                <TabButton active={activeTab === 'ajourd'} onClick={() => setActiveTab('ajourd')} icon={Flame} label="Ma journée" color="from-violet-500 to-fuchsia-500" badge={cnt > 0 ? `${cnt}` : null} badgeColor="bg-rose-100 text-rose-700" />
+              );
+            })()}
             <TabButton active={activeTab === 'dossiers'} onClick={() => setActiveTab('dossiers')} icon={FileText} label={`Dossiers (${nbActifs})`} color="from-violet-500 to-pink-500" />
             <TabButton active={activeTab === 'archives'} onClick={() => setActiveTab('archives')} icon={Check} label={`Archivés (${nbArchives})`} color="from-slate-500 to-gray-600" />
             <TabButton active={activeTab === 'kanban'} onClick={() => setActiveTab('kanban')} icon={LayoutGrid} label="Kanban" color="from-violet-500 to-fuchsia-500" />
@@ -4349,6 +4418,47 @@ export default function DossierSaisie({ authUser, onLogout }) {
           />
 
         </div>
+
+        {/* DOSSIERS / ARCHIVES — même vue, filtre auto */}
+        {activeTab === 'ajourd' && (
+          <MaJourneeView
+            dashboard={dashboard}
+            dossiers={dossiers}
+            currentUserRole={currentUserRole}
+            isAdmin={isAdmin}
+            onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }}
+            onCopilot={(action, dossier) => setCopilotCtx({ action, dossier })}
+            onSnoozeAction={(action, dossier) => {
+              // Reporte de 24h : on stocke snoozedActions[srcKey] = maintenant + 24h
+              const until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+              setDossiers(prev => prev.map(d => d.localId === dossier.localId
+                ? { ...d, snoozedActions: { ...(d.snoozedActions || {}), [action.srcKey]: until } }
+                : d
+              ));
+            }}
+          />
+        )}
+
+        {/* 🤖 COPILOTE IA — modale Sol qui pré-rédige un message contextualisé */}
+        {copilotCtx && (
+          <AiCopilotModal
+            action={copilotCtx.action}
+            dossier={copilotCtx.dossier}
+            currentUser={currentUser}
+            gmailOAuth={gmailOAuth}
+            emailConfig={emailConfig}
+            onClose={() => setCopilotCtx(null)}
+            onSent={(entry) => {
+              // Loggue l'action dans l'historique du dossier comme une relance
+              const userTag = currentUser || '(anonyme)';
+              const now = new Date().toISOString();
+              setDossiers(prev => prev.map(d => d.localId === copilotCtx.dossier.localId
+                ? { ...d, historique: [...(d.historique || []), { date: now, user: userTag, action: 'relance_whatsapp', cible_kind: 'client', cible_nom: `${d.nom || ''} ${d.prenom || ''}`.trim(), channel: entry.channel, motif: copilotCtx.action?.label || 'copilote_ia' }] }
+                : d
+              ));
+            }}
+          />
+        )}
 
         {(activeTab === 'dossiers' || activeTab === 'archives') && (
           <>
@@ -4563,7 +4673,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         />}
 
         {/* DASHBOARD */}
-        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
+        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
 
         {activeTab === 'calendrier' && (
           <CalendrierView
@@ -4614,6 +4724,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
             nomsInternes={nomsInternes} setNomsInternes={setNomsInternes}
             produits={produits}
             societes={societes}
+            projexioMoisCourant={dashboard.projexioMoisCourant}
+            projexioCaps={projexioCaps}
             dossiers={dossiers}
             currentUser={currentUser}
             onClose={resetForm} onSubmit={handleSubmit} isAdmin={isAdmin}
@@ -6924,6 +7036,164 @@ function PrestatairesPayerSection({ rappels, onShowQuick }) {
   );
 }
 
+// 🎯 « Ma journée » — centre d'actions priorisé. Agrège TOUS les rappels du
+// dashboard en une seule liste actionnable, triée par urgence (le plus en
+// retard en haut). Chaque action → clic ouvre le dossier sur la bonne section.
+// Transforme le CRM de « base qu'on consulte » en « assistant qui dit quoi faire ».
+function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onShowQuick, onCopilot, onSnoozeAction }) {
+  const dossierById = useMemo(() => {
+    const m = new Map();
+    (dossiers || []).forEach(d => m.set(d.localId, d));
+    return m;
+  }, [dossiers]);
+  // Mapping rappel → action concrète. scrollTo cible la section QuickView.
+  // adminCompta = action réservée admin/compta (argent, banque) — masquée
+  // pour les autres rôles pour ne pas noyer la secrétaire sous des items
+  // qui ne la concernent pas.
+  const SOURCES = [
+    { key: 'rappelsClientRappel',       emoji: '📞', label: 'Rappeler le client',                    scrollTo: 'rappel',        cat: 'Client' },
+    { key: 'rappelsControleQualite',    emoji: '📋', label: 'Faire le contrôle qualité',             scrollTo: 'cq',            cat: 'Qualité' },
+    { key: 'rappelsAEnvoyerBanque',     emoji: '🏦', label: 'Envoyer le dossier en banque',          scrollTo: 'financement',   cat: 'Banque' },
+    { key: 'rappelsFinancement',        emoji: '⏳', label: 'Relancer la banque (sans retour)',       scrollTo: 'financement',   cat: 'Banque' },
+    { key: 'rappelsManqueDoc',          emoji: '📄', label: 'Récupérer les docs réclamés par la banque', scrollTo: 'financement', cat: 'Banque' },
+    { key: 'rappelsAEnvoyerPose',       emoji: '📅', label: 'Programmer la pose',                     scrollTo: 'pose',          cat: 'Pose' },
+    { key: 'rappelsPoseurNonAssigne',   emoji: '🔧', label: 'Assigner un poseur',                     scrollTo: 'poseurs',       cat: 'Pose' },
+    { key: 'rappelsPoseNonFinie',       emoji: '🔧', label: 'Finaliser / confirmer la pose',          scrollTo: 'pose',          cat: 'Pose' },
+    { key: 'rappelsAEnvoyerMairie',     emoji: '🏛️', label: 'Envoyer la déclaration en mairie',       scrollTo: 'mairie',        cat: 'Démarches' },
+    { key: 'rappelsAEnvoyerConsuel',    emoji: '⚡', label: 'Envoyer le Consuel',                     scrollTo: 'consuel',       cat: 'Démarches' },
+    { key: 'rappelsAEnvoyerRaccordement', emoji: '🔌', label: 'Demander le raccordement Enedis',      scrollTo: 'raccordement',  cat: 'Démarches' },
+    { key: 'rappelsOriginaux',          emoji: '📨', label: 'Récupérer les originaux pour la banque', scrollTo: 'paiement',      cat: 'Banque', adminCompta: true },
+    { key: 'rappelsControleLivraison',  emoji: '✅', label: 'Faire le contrôle de livraison',         scrollTo: 'paiement',      cat: 'Banque', adminCompta: true },
+    { key: 'rappelsPaiement',           emoji: '💳', label: 'Encaisser / relancer le paiement',       scrollTo: 'paiement',      cat: 'Argent', adminCompta: true },
+    { key: 'rappelsRecupTva',           emoji: '🧾', label: 'Récupérer la TVA',                       scrollTo: 'paiement',      cat: 'Argent', adminCompta: true },
+    { key: 'rappelsFacturesManquantes', emoji: '🧾', label: 'Récupérer les factures prestataires',    scrollTo: 'poseurs',       cat: 'Argent', adminCompta: true },
+    { key: 'rappelsPennylaneAEnvoyer',  emoji: '📤', label: 'Envoyer les factures à Pennylane (compta)', scrollTo: 'poseurs',     cat: 'Argent', adminCompta: true },
+    { key: 'rappelsMaterielNonRendu',   emoji: '📦', label: 'Récupérer le matériel chez le poseur',   scrollTo: 'materielNonRendu', cat: 'Pose' },
+    { key: 'rappelsLitige',             emoji: '⚖️', label: 'Traiter le litige',                      scrollTo: 'litige',        cat: 'Litige' },
+    { key: 'rappelsSav',                emoji: '🛠️', label: 'Traiter le SAV',                         scrollTo: 'sav',           cat: 'SAV' },
+    { key: 'rappelsStagnation',         emoji: '🐌', label: 'Dossier bloqué trop longtemps — débloquer', scrollTo: null,         cat: 'Blocage' },
+  ];
+
+  const canSeeArgent = isAdmin || currentUserRole === 'compta' || currentUserRole === 'envoi_finance';
+  const nowIso = new Date().toISOString();
+
+  // Construit la liste plate des actions. Filtre :
+  //   - snooze actif (snoozedActions[srcKey] > maintenant) → on cache l'action
+  //     temporairement sans toucher au dossier (le snooze expire tout seul).
+  const actions = [];
+  for (const src of SOURCES) {
+    if (src.adminCompta && !canSeeArgent) continue;
+    const items = dashboard?.[src.key] || [];
+    for (const it of items) {
+      const d = it.dossier || it;
+      if (!d || !d.localId) continue;
+      const snoozeUntil = d.snoozedActions && d.snoozedActions[src.key];
+      if (snoozeUntil && snoozeUntil > nowIso) continue;
+      actions.push({
+        localId: d.localId,
+        srcKey: src.key,
+        nom: `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)',
+        ville: d.ville || '',
+        emoji: src.emoji,
+        label: src.label,
+        cat: src.cat,
+        scrollTo: src.scrollTo,
+        jours: typeof it.jours === 'number' ? it.jours : 0,
+        level: it.level || 'warn',
+      });
+    }
+  }
+  // Tri : critique d'abord, puis par jours décroissant (le plus vieux en haut).
+  const levelRank = { critical: 0, high: 1, warn: 2 };
+  actions.sort((a, b) => {
+    const lr = (levelRank[a.level] ?? 2) - (levelRank[b.level] ?? 2);
+    if (lr !== 0) return lr;
+    return (b.jours || 0) - (a.jours || 0);
+  });
+
+  const levelStyle = (level) => level === 'critical'
+    ? 'border-l-rose-500 bg-rose-50'
+    : level === 'high'
+      ? 'border-l-orange-400 bg-orange-50'
+      : 'border-l-amber-300 bg-amber-50';
+
+  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
+
+  return (
+    <div className="max-w-3xl mx-auto">
+      <div className="bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-3xl p-5 mb-4 text-white shadow-lg">
+        <h2 className="text-xl font-bold flex items-center gap-2">🎯 Ma journée</h2>
+        <p className="text-sm text-white/90 mt-0.5 capitalize">{today}</p>
+        <p className="text-sm text-white/90 mt-1">
+          {actions.length === 0
+            ? '✨ Rien d\'urgent — tout est à jour !'
+            : `${actions.length} action${actions.length > 1 ? 's' : ''} à traiter, les plus urgentes en haut.`}
+        </p>
+      </div>
+
+      {actions.length === 0 ? (
+        <div className="bg-white rounded-3xl shadow-md border border-emerald-100 p-10 text-center">
+          <div className="text-5xl mb-3">🎉</div>
+          <h3 className="text-base font-bold text-slate-700 mb-1">Aucune action en attente</h3>
+          <p className="text-sm text-slate-500">Tous tes dossiers sont à jour. Profites-en !</p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {actions.map((a, i) => {
+            const dossier = dossierById.get(a.localId);
+            return (
+              <div
+                key={`${a.localId}_${a.label}_${i}`}
+                className={`flex items-stretch rounded-xl border border-slate-100 border-l-4 ${levelStyle(a.level)} hover:shadow-md transition-all overflow-hidden`}
+              >
+                <button
+                  onClick={() => onShowQuick && onShowQuick(a.localId, a.scrollTo)}
+                  className="flex-1 text-left flex items-center gap-3 p-3 hover:bg-white/40 min-w-0"
+                  title="Ouvrir le dossier"
+                >
+                  <span className="text-xl flex-shrink-0">{a.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-slate-800 text-sm truncate">{a.label}</div>
+                    <div className="text-xs text-slate-500 truncate">
+                      👤 {a.nom}{a.ville ? ` · ${a.ville}` : ''} · <span className="font-semibold text-slate-600">{a.cat}</span>
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0 text-right">
+                    {a.jours > 0 && (
+                      <div className={`text-lg font-bold ${a.level === 'critical' ? 'text-rose-600' : a.level === 'high' ? 'text-orange-600' : 'text-amber-600'}`}>{a.jours}j</div>
+                    )}
+                    <div className="text-[9px] text-slate-400 uppercase">{a.level === 'critical' ? 'urgent' : a.level === 'high' ? 'à faire' : 'à voir'}</div>
+                  </div>
+                </button>
+                {/* 🤖 Sol — pré-rédige un message contextualisé pour cette action */}
+                {dossier && onCopilot && (dossier.telephone || dossier.email) && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onCopilot(a, dossier); }}
+                    title="Sol : demander à l'IA de rédiger un message pour cette action"
+                    className="flex-shrink-0 px-3 flex items-center justify-center bg-violet-100 hover:bg-violet-200 text-violet-700 border-l border-slate-200 transition-colors"
+                  >
+                    🤖
+                  </button>
+                )}
+                {/* 💤 Reporter à demain — masque l'action pendant 24h sans toucher au dossier */}
+                {dossier && onSnoozeAction && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onSnoozeAction(a, dossier); }}
+                    title="Reporter cette action à demain (masquer 24h)"
+                    className="flex-shrink-0 px-3 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 border-l border-slate-200 transition-colors"
+                  >
+                    💤
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // 🩺 SANTÉ DES DOSSIERS — radar de qualité de saisie. Repère les dossiers
 // actifs avec des infos manquantes / incohérentes qu'aucune alerte d'étape ne
 // capte : téléphone vide, prix de vente non saisi, puissance à 0, panneau sans
@@ -7029,9 +7299,25 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
   );
 }
 
-function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', isAdmin = false, onCreate, onShowQuick, produits = [] }) {
-  // Vue restreinte pour le rôle « Envoi finance » : sections argent masquées.
+function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, setProjexioCaps, isAdmin = false, onCreate, onShowQuick, produits = [] }) {
+  // Vue restreinte pour le rôle « Envoi finance » : seules les sections
+  // Plafond Projexio + Financements en attente de retour sont affichées.
+  // Les tuiles CA/marge/évolution et tous les autres rappels sont masqués.
   const isRestricted = currentUserRole === 'envoi_finance';
+  // Société dont la liste de dossiers Projexio est dépliée (cliquable depuis
+  // le bandeau du plafond). null = tout replié.
+  const [projOpenSocId, setProjOpenSocId] = useState(null);
+  // Édition du plafond Projexio par société (admin uniquement). null = aucun
+  // en édition. Sinon { socId, value: '... en cours de frappe' }.
+  const [projEditing, setProjEditing] = useState(null);
+  const saveProjCap = (socId, raw) => {
+    const n = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+    if (!isFinite(n) || n <= 0) { setProjEditing(null); return; }
+    if (typeof setProjexioCaps === 'function') {
+      setProjexioCaps({ ...projexioCaps, [socId]: Math.round(n) });
+    }
+    setProjEditing(null);
+  };
   if (dossiers.length === 0) {
     return (
       <div className="bg-white rounded-3xl p-12 text-center shadow-md border border-violet-100">
@@ -7045,6 +7331,36 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
     );
   }
 
+  // 🏦 Plafonds mensuels PROJEXIO — un bandeau par société qui a un plafond
+  // défini. Si une société est filtrée (activeSociete), on ne montre qu'elle.
+  const projParSociete = dashboard.projexioMoisCourant?.parSociete || {};
+  const projColorsByLevel = {
+    ok:       { bg: 'from-emerald-500 to-green-600', hint: '✅ Marge confortable' },
+    warn:     { bg: 'from-amber-500 to-orange-500',  hint: '⚠️ Tu approches du plafond' },
+    critical: { bg: 'from-orange-500 to-rose-500',   hint: '🚨 Plus que 10 % de marge' },
+    over:     { bg: 'from-rose-600 to-red-700',      hint: '⛔ Plafond dépassé — Projexio ne traite plus' },
+  };
+  const societesAvecPlafond = Object.keys(projexioCaps);
+  const societesAAfficher = activeSociete
+    ? (societesAvecPlafond.includes(activeSociete) ? [activeSociete] : [])
+    : societesAvecPlafond;
+  const projBars = societesAAfficher.map(socId => {
+    const cap = projexioCaps[socId];
+    const data = projParSociete[socId] || { total: 0, count: 0, dossiers: [] };
+    const pct = Math.min(100, (data.total / cap) * 100);
+    const over = data.total > cap;
+    const reste = Math.max(0, cap - data.total);
+    const level = over ? 'over' : pct >= 90 ? 'critical' : pct >= 70 ? 'warn' : 'ok';
+    const socMeta = societes.find(s => s.id === socId);
+    return {
+      socId,
+      socLabel: socMeta?.label || socId.toUpperCase(),
+      socEmoji: socMeta?.emoji || '🏦',
+      cap, data, pct, over, reste, level,
+      colors: projColorsByLevel[level],
+    };
+  });
+
   return (
     <div className="space-y-4">
       {/* 🩺 Santé des dossiers — radar de qualité de saisie (masqué en vue restreinte) */}
@@ -7052,6 +7368,115 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
         <SanteDossiersPanel dossiers={dossiers} produits={produits} activeSociete={activeSociete} onShowQuick={onShowQuick} />
       )}
 
+      {/* 🏦 PROJEXIO — un bandeau de plafond par société émettrice */}
+      {projBars.map(b => {
+        const isOpen = projOpenSocId === b.socId;
+        const dossiersOfMonth = b.data.dossiers || [];
+        return (
+        <div key={b.socId} className={`bg-gradient-to-r ${b.colors.bg} rounded-2xl p-4 text-white shadow-md`}>
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{b.socEmoji}</span>
+              <div>
+                <div className="text-xs font-semibold uppercase opacity-90">Plafond mensuel PROJEXIO — {b.socLabel}</div>
+                <div className="text-[10px] opacity-75">{b.data.count} dossier{b.data.count > 1 ? 's' : ''} envoyé{b.data.count > 1 ? 's' : ''} ce mois (refus banque inclus, annulés par toi exclus)</div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold">{formatEuro(b.data.total)}</div>
+              <div className="text-[11px] opacity-90 flex items-center gap-1 justify-end">
+                <span>/</span>
+                {projEditing && projEditing.socId === b.socId ? (
+                  <>
+                    <input
+                      type="text"
+                      autoFocus
+                      value={projEditing.value}
+                      onChange={(e) => setProjEditing({ socId: b.socId, value: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveProjCap(b.socId, projEditing.value);
+                        if (e.key === 'Escape') setProjEditing(null);
+                      }}
+                      onBlur={() => saveProjCap(b.socId, projEditing.value)}
+                      className="w-28 px-1.5 py-0.5 bg-white/90 text-slate-800 font-bold rounded text-xs text-right"
+                    />
+                    <span>€</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{formatEuro(b.cap)} ({b.pct.toFixed(0)} %)</span>
+                    {isAdmin && typeof setProjexioCaps === 'function' && (
+                      <button
+                        onClick={() => setProjEditing({ socId: b.socId, value: String(b.cap) })}
+                        className="ml-1 px-1 py-0.5 rounded bg-white/20 hover:bg-white/35 text-[10px] font-semibold"
+                        title="Modifier le plafond (la banque peut le renégocier)"
+                      >
+                        ✏️
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="h-2 bg-black/25 rounded-full overflow-hidden">
+            <div className="h-full bg-white transition-all" style={{ width: `${b.pct}%` }} />
+          </div>
+          <div className="flex items-center justify-between mt-1.5 text-[11px]">
+            <span className="opacity-90">{b.colors.hint}</span>
+            <span className="font-semibold">
+              {b.over
+                ? `Dépassement : ${formatEuro(b.data.total - b.cap)}`
+                : `Reste : ${formatEuro(b.reste)}`}
+            </span>
+          </div>
+          {dossiersOfMonth.length > 0 && (
+            <button
+              onClick={() => setProjOpenSocId(isOpen ? null : b.socId)}
+              className="mt-2 text-[11px] font-semibold opacity-90 hover:opacity-100 underline-offset-2 hover:underline"
+            >
+              {isOpen ? '▼ Masquer' : '▶ Voir les'} {dossiersOfMonth.length} dossier{dossiersOfMonth.length > 1 ? 's' : ''} en cours
+            </button>
+          )}
+          {isOpen && dossiersOfMonth.length > 0 && (
+            <div className="mt-2 bg-white/15 rounded-xl p-2 space-y-1 max-h-72 overflow-y-auto">
+              {/* Tri par date d'envoi banque décroissante : le dernier envoyé
+                  apparaît en haut — c'est la date pertinente pour le plafond. */}
+              {[...dossiersOfMonth]
+                .sort((a, b) => (b.dateEnvoiFin || '').localeCompare(a.dateEnvoiFin || ''))
+                .map((d, i) => {
+                const statut = STATUTS.find(s => s.id === d.statut);
+                const envoiLabel = d.dateEnvoiFin
+                  ? new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+                  : null;
+                return (
+                  <button
+                    key={d.localId || i}
+                    onClick={() => onShowQuick && onShowQuick(d.localId)}
+                    className="w-full text-left bg-white/10 hover:bg-white/25 rounded-lg px-2.5 py-1.5 transition-colors flex items-center justify-between gap-2"
+                  >
+                    <span className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
+                      <span className="font-bold text-sm truncate">{(d.nom || '').toUpperCase()} {d.prenom || ''}</span>
+                      {envoiLabel && (
+                        <span className="text-[9px] font-bold bg-black/25 px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap">
+                          🏦 Envoyé banque {envoiLabel}
+                        </span>
+                      )}
+                      {statut && (
+                        <span className="text-[9px] font-bold bg-white/25 px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap">
+                          {statut.emoji} {statut.label}
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-bold text-sm whitespace-nowrap">{formatEuro(d.montant)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        );
+      })}
 
       {!isRestricted && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -9971,7 +10396,7 @@ function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
   );
 }
 
-function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], dossiers = [], currentUser, onClose, onSubmit, isAdmin }) {
+function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], projexioMoisCourant = { parSociete: {} }, projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, dossiers = [], currentUser, onClose, onSubmit, isAdmin }) {
   // 🚨 Détection de doublons : scanne les dossiers existants à mesure que
   // l'utilisateur saisit nom/prenom/tel. Match strict sur :
   //   - téléphone normalisé E.164 (le plus fiable)
@@ -10864,6 +11289,32 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   <option value="">— Choisir un financement —</option>
                   {FINANCEMENTS.map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
+                {/* 🏦 Plafond Projexio en temps réel : si l'user choisit
+                    PROJEXIO, on lui montre où il en est sur la société active
+                    avant qu'il envoie le dossier en banque. Évite de découvrir
+                    le dépassement dans le dashboard une fois trop tard. */}
+                {formData.financement === 'PROJEXIO' && formData.societe && (() => {
+                  const cap = (projexioCaps && projexioCaps[formData.societe]) || 0;
+                  const used = (projexioMoisCourant?.parSociete?.[formData.societe]?.total) || 0;
+                  const montant = parseFloat(formData.montantTotal) || 0;
+                  const usedAfter = used + montant;
+                  const pct = cap > 0 ? (usedAfter / cap) * 100 : 0;
+                  const soc = societes.find(s => s.id === formData.societe);
+                  const socLabel = soc?.label || formData.societe;
+                  const overflow = cap > 0 && usedAfter > cap;
+                  const warning = cap > 0 && pct >= 80 && !overflow;
+                  return (
+                    <div className={`mt-1.5 px-2 py-1.5 rounded-lg border text-[11px] ${overflow ? 'bg-rose-50 border-rose-300 text-rose-800' : warning ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+                      <div className="font-bold">
+                        {overflow ? '⚠️ Plafond dépassé' : warning ? '⚠️ Plafond presque atteint' : '🏦 Plafond Projexio'} — {socLabel}
+                      </div>
+                      <div className="text-[10px] mt-0.5">
+                        Consommé : <strong>{formatEuro(used)}</strong> {montant > 0 && <>+ ce dossier ({formatEuro(montant)}) = <strong>{formatEuro(usedAfter)}</strong></>} / plafond <strong>{formatEuro(cap)}</strong>
+                        {cap > 0 && <> ({pct.toFixed(0)}%)</>}
+                      </div>
+                    </div>
+                  );
+                })()}
               </Field>
               <Field label="🧮 Taux de TVA">
                 <div className="grid grid-cols-3 gap-1">
@@ -17205,6 +17656,228 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 }
 
 // ===================== ASSISTANT IA — façon secrétaire =====================
+// 🤖 Co-pilote IA « Sol » — pour chaque action de Ma journée, pré-rédige un
+// message contextualisé via Claude (réutilise /api/ai-email-assistant). L'user
+// révise et envoie en 1 clic (Gmail OAuth / WhatsApp / copie presse-papier).
+// C'est la version « secrétaire virtuelle » : Sol propose, l'humain valide.
+function AiCopilotModal({ action, dossier, currentUser, gmailOAuth, emailConfig, onClose, onSent }) {
+  const [intent, setIntent] = useState(action?.label || '');
+  const [generating, setGenerating] = useState(false);
+  const [draft, setDraft] = useState({ subject: '', body: '', reasoning: '' });
+  const [editedSubject, setEditedSubject] = useState('');
+  const [editedBody, setEditedBody] = useState('');
+  const [error, setError] = useState(null);
+  const [sending, setSending] = useState(false);
+  const [sentFlash, setSentFlash] = useState(null);
+  const [copied, setCopied] = useState(false);
+
+  const tel = dossier?.telephone || '';
+  const email = dossier?.email || '';
+  const clientLabel = `${dossier?.nom || ''} ${dossier?.prenom || ''}`.trim();
+
+  // Construit l'ordre IA contextualisé pour ce dossier + cette action.
+  const buildCommand = (intentText) => {
+    const lines = [
+      `Pour le dossier de ${clientLabel}${dossier?.ville ? ` à ${dossier.ville}` : ''}, rédige un message court et professionnel.`,
+      `Intention : ${intentText}`,
+      dossier?.dateInsta ? `Date de pose : ${new Date(dossier.dateInsta).toLocaleDateString('fr-FR')}` : '',
+      dossier?.financement ? `Financement : ${dossier.financement}` : '',
+      dossier?.statut ? `Statut actuel : ${dossier.statut}` : '',
+    ].filter(Boolean);
+    return lines.join('\n');
+  };
+
+  const generate = async (customIntent) => {
+    if (!dossier) return;
+    setGenerating(true);
+    setError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/ai-email-assistant', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          command: buildCommand(customIntent || intent),
+          // On ne passe QUE le dossier ciblé → pas d'ambiguïté possible.
+          dossiers: [{
+            localId: dossier.localId,
+            nom: dossier.nom, prenom: dossier.prenom,
+            email: dossier.email, telephone: dossier.telephone,
+            statut: dossier.statut, dateInsta: dossier.dateInsta,
+            financement: dossier.financement,
+            ville: dossier.ville,
+          }],
+          senderName: currentUser || '',
+        }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      const d = payload.data || {};
+      setDraft({ subject: d.subject || '', body: d.body || '', reasoning: d.reasoning || '' });
+      setEditedSubject(d.subject || '');
+      setEditedBody(d.body || '');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  // Auto-génération à l'ouverture de la modale
+  useEffect(() => { generate(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
+
+  const copyDraft = async () => {
+    const text = editedSubject ? `${editedSubject}\n\n${editedBody}` : editedBody;
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch (e) {
+      window.prompt('Copie ce message :', text);
+    }
+  };
+
+  const openWhatsApp = () => {
+    if (!tel) return;
+    const text = editedBody;
+    const link = buildWhatsAppLink(tel, text);
+    window.open(link, '_blank');
+    if (onSent) onSent({ channel: 'whatsapp', subject: editedSubject, body: editedBody });
+  };
+
+  const sendEmail = async () => {
+    if (!email) { setError("Pas d'email sur ce client."); return; }
+    setSending(true); setError(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const useOAuth = !!gmailOAuth?.connected;
+      const useSmtp = !useOAuth && !!(emailConfig?.smtpUser && emailConfig?.smtpPass);
+      if (!useOAuth && !useSmtp) {
+        throw new Error("Aucun email d'envoi configuré (Réglages → Email d'envoi).");
+      }
+      const body = useOAuth
+        ? { provider: 'gmail-oauth', to: email, subject: editedSubject, text: editedBody, fromName: emailConfig?.fromName || 'CRM Solaire' }
+        : { to: email, subject: editedSubject, text: editedBody, smtpUser: emailConfig.smtpUser, smtpPass: emailConfig.smtpPass, fromName: emailConfig?.fromName || 'CRM Solaire' };
+      const res = await fetch('/api/send-email', { method: 'POST', headers, body: JSON.stringify(body) });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      setSentFlash('email');
+      if (onSent) onSent({ channel: useOAuth ? 'email_oauth' : 'email_smtp', subject: editedSubject, body: editedBody });
+      setTimeout(() => onClose && onClose(), 1500);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
+      <div className="bg-white rounded-3xl shadow-2xl border border-violet-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
+        {/* Header */}
+        <div className="px-5 py-4 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white flex items-center justify-between">
+          <div>
+            <h2 className="font-bold text-lg flex items-center gap-2">🤖 Sol — Copilote IA</h2>
+            <p className="text-xs opacity-90 mt-0.5">
+              {action?.emoji} {action?.label} · 👤 {clientLabel}
+            </p>
+          </div>
+          <button onClick={onClose} className="hover:bg-white/20 rounded p-1"><X className="w-5 h-5" /></button>
+        </div>
+
+        {/* Corps */}
+        <div className="flex-1 overflow-y-auto p-5 space-y-3">
+          {/* Champ intention modifiable + bouton régénérer */}
+          <div>
+            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Intention</label>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                value={intent}
+                onChange={(e) => setIntent(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') generate(); }}
+                className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
+              />
+              <button onClick={() => generate()} disabled={generating} className="px-3 py-2 bg-violet-500 hover:bg-violet-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1 whitespace-nowrap">
+                <Sparkles className="w-3 h-3" />{generating ? '…' : 'Régénérer'}
+              </button>
+            </div>
+          </div>
+
+          {/* État chargement / erreur */}
+          {generating && (
+            <div className="p-6 text-center text-violet-600 text-sm">
+              <div className="text-3xl mb-2 animate-pulse">🤖</div>
+              Sol réfléchit…
+            </div>
+          )}
+          {error && (
+            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
+              ❌ {error}
+            </div>
+          )}
+
+          {/* Brouillon éditable */}
+          {!generating && (draft.subject || draft.body) && (
+            <>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Sujet (email)</label>
+                <input
+                  type="text"
+                  value={editedSubject}
+                  onChange={(e) => setEditedSubject(e.target.value)}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold"
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Message</label>
+                <textarea
+                  value={editedBody}
+                  onChange={(e) => setEditedBody(e.target.value)}
+                  rows={8}
+                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-violet-400 resize-y"
+                />
+              </div>
+              {draft.reasoning && (
+                <div className="text-[11px] text-slate-500 italic px-1">💡 {draft.reasoning}</div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Footer actions */}
+        <div className="p-3 border-t border-slate-200 bg-slate-50 flex gap-2 flex-wrap">
+          <button onClick={copyDraft} disabled={generating || !editedBody} className="flex-1 min-w-[100px] px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-700 rounded-xl text-sm font-bold">
+            {copied ? '✓ Copié !' : '📋 Copier'}
+          </button>
+          {tel && (
+            <a
+              href="#"
+              onClick={(e) => { e.preventDefault(); openWhatsApp(); }}
+              className={`flex-1 min-w-[100px] px-3 py-2 text-center rounded-xl text-sm font-bold ${(!generating && editedBody) ? 'bg-[#25D366] hover:bg-[#1ebe5a] text-white' : 'bg-slate-200 text-slate-400 pointer-events-none'}`}
+            >
+              📲 WhatsApp
+            </a>
+          )}
+          {email && (
+            <button
+              onClick={sendEmail}
+              disabled={generating || sending || !editedBody}
+              className="flex-1 min-w-[100px] px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-xl text-sm font-bold"
+            >
+              {sending ? '⏳…' : sentFlash === 'email' ? '✓ Envoyé !' : '📧 Envoyer'}
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Tape un ordre en langage naturel ("Envoie un mail à Marage pour confirmer
 // la pose mardi"), Claude identifie le client + rédige le mail, tu valides
 // et tu envoies via Gmail OAuth ou SMTP.
