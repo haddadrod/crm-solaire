@@ -1414,7 +1414,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [quickViewScrollTo, setQuickViewScrollTo] = useState(null); // 🎯 section à scroller dans la bannière
   const [showSearch, setShowSearch] = useState(false); // 🔍 recherche globale Ctrl+K
   const [showAssistantIa, setShowAssistantIa] = useState(false); // 🤖 modale assistant IA email
-  const [copilotCtx, setCopilotCtx] = useState(null); // 🤖 contexte Sol : { action, dossier }
   const [showAlertesType, setShowAlertesType] = useState(null); // 🔔 type d'alerte ouvert : null | 'financement' | 'consuel' | 'paiement' | 'stagnation'
   const [showImport, setShowImport] = useState(false); // 📥 modal import dossiers
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
@@ -1784,10 +1783,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
     rappelMotif: '', // 📝 pourquoi rappeler
     rappelFait: false, // toggle : rappel effectué ?
     rappelDateFait: '', // date à laquelle le rappel a été fait
-    // 💤 Snooze d'actions Ma journée — masque temporairement une catégorie
-    // d'alerte sur ce dossier (ex: { rappelsClientRappel: '2026-06-02T08:00:00Z' }
-    // = ne plus afficher l'action « À rappeler » jusqu'à demain matin).
-    snoozedActions: {},
     historique: [],
     createdBy: '', createdAt: '', modifiedBy: '', modifiedAt: '',
     scannedBon: null, // {dataUrl, name, type, size} si scan IA réussi, sinon null
@@ -2912,7 +2907,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
       rappelMotif: d.rappelMotif || '',
       rappelFait: !!d.rappelFait,
       rappelDateFait: d.rappelDateFait || '',
-      snoozedActions: (d.snoozedActions && typeof d.snoozedActions === 'object') ? d.snoozedActions : {},
       savDateOuverture: d.savDateOuverture || '',
       savMotif: d.savMotif || '',
       savIntervenant: d.savIntervenant || '',
@@ -4369,8 +4363,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
           {/* Onglets — selon permissions du rôle actif */}
           <div className="flex gap-2 mb-3 bg-white rounded-2xl p-1.5 shadow-sm border border-violet-100 max-w-full flex-nowrap overflow-x-auto">
-            {/* « Ma journée » retiré : redondant avec le Kanban. La vue MaJourneeView
-                reste dans le code (inactive) pour réactivation rapide si besoin. */}
             <TabButton active={activeTab === 'dossiers'} onClick={() => setActiveTab('dossiers')} icon={FileText} label={`Dossiers (${nbActifs})`} color="from-violet-500 to-pink-500" />
             <TabButton active={activeTab === 'archives'} onClick={() => setActiveTab('archives')} icon={Check} label={`Archivés (${nbArchives})`} color="from-slate-500 to-gray-600" />
             <TabButton active={activeTab === 'kanban'} onClick={() => setActiveTab('kanban')} icon={LayoutGrid} label="Kanban" color="from-violet-500 to-fuchsia-500" />
@@ -4409,47 +4401,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
           />
 
         </div>
-
-        {/* DOSSIERS / ARCHIVES — même vue, filtre auto */}
-        {activeTab === 'ajourd' && (
-          <MaJourneeView
-            dashboard={dashboard}
-            dossiers={dossiers}
-            currentUserRole={currentUserRole}
-            isAdmin={isAdmin}
-            onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }}
-            onCopilot={(action, dossier) => setCopilotCtx({ action, dossier })}
-            onSnoozeAction={(action, dossier) => {
-              // Reporte de 24h : on stocke snoozedActions[srcKey] = maintenant + 24h
-              const until = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-              setDossiers(prev => prev.map(d => d.localId === dossier.localId
-                ? { ...d, snoozedActions: { ...(d.snoozedActions || {}), [action.srcKey]: until } }
-                : d
-              ));
-            }}
-          />
-        )}
-
-        {/* 🤖 COPILOTE IA — modale Sol qui pré-rédige un message contextualisé */}
-        {copilotCtx && (
-          <AiCopilotModal
-            action={copilotCtx.action}
-            dossier={copilotCtx.dossier}
-            currentUser={currentUser}
-            gmailOAuth={gmailOAuth}
-            emailConfig={emailConfig}
-            onClose={() => setCopilotCtx(null)}
-            onSent={(entry) => {
-              // Loggue l'action dans l'historique du dossier comme une relance
-              const userTag = currentUser || '(anonyme)';
-              const now = new Date().toISOString();
-              setDossiers(prev => prev.map(d => d.localId === copilotCtx.dossier.localId
-                ? { ...d, historique: [...(d.historique || []), { date: now, user: userTag, action: 'relance_whatsapp', cible_kind: 'client', cible_nom: `${d.nom || ''} ${d.prenom || ''}`.trim(), channel: entry.channel, motif: copilotCtx.action?.label || 'copilote_ia' }] }
-                : d
-              ));
-            }}
-          />
-        )}
 
         {(activeTab === 'dossiers' || activeTab === 'archives') && (
           <>
@@ -7024,164 +6975,6 @@ function PrestatairesPayerSection({ rappels, onShowQuick }) {
         <div className="text-[11px] text-center text-slate-500 mt-2 italic">{sorted.length - 30} autres non affichés</div>
       )}
     </>
-  );
-}
-
-// 🎯 « Ma journée » — centre d'actions priorisé. Agrège TOUS les rappels du
-// dashboard en une seule liste actionnable, triée par urgence (le plus en
-// retard en haut). Chaque action → clic ouvre le dossier sur la bonne section.
-// Transforme le CRM de « base qu'on consulte » en « assistant qui dit quoi faire ».
-function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onShowQuick, onCopilot, onSnoozeAction }) {
-  const dossierById = useMemo(() => {
-    const m = new Map();
-    (dossiers || []).forEach(d => m.set(d.localId, d));
-    return m;
-  }, [dossiers]);
-  // Mapping rappel → action concrète. scrollTo cible la section QuickView.
-  // adminCompta = action réservée admin/compta (argent, banque) — masquée
-  // pour les autres rôles pour ne pas noyer la secrétaire sous des items
-  // qui ne la concernent pas.
-  const SOURCES = [
-    { key: 'rappelsClientRappel',       emoji: '📞', label: 'Rappeler le client',                    scrollTo: 'rappel',        cat: 'Client' },
-    { key: 'rappelsControleQualite',    emoji: '📋', label: 'Faire le contrôle qualité',             scrollTo: 'cq',            cat: 'Qualité' },
-    { key: 'rappelsAEnvoyerBanque',     emoji: '🏦', label: 'Envoyer le dossier en banque',          scrollTo: 'financement',   cat: 'Banque' },
-    { key: 'rappelsFinancement',        emoji: '⏳', label: 'Relancer la banque (sans retour)',       scrollTo: 'financement',   cat: 'Banque' },
-    { key: 'rappelsManqueDoc',          emoji: '📄', label: 'Récupérer les docs réclamés par la banque', scrollTo: 'financement', cat: 'Banque' },
-    { key: 'rappelsAEnvoyerPose',       emoji: '📅', label: 'Programmer la pose',                     scrollTo: 'pose',          cat: 'Pose' },
-    { key: 'rappelsPoseurNonAssigne',   emoji: '🔧', label: 'Assigner un poseur',                     scrollTo: 'poseurs',       cat: 'Pose' },
-    { key: 'rappelsPoseNonFinie',       emoji: '🔧', label: 'Finaliser / confirmer la pose',          scrollTo: 'pose',          cat: 'Pose' },
-    { key: 'rappelsAEnvoyerMairie',     emoji: '🏛️', label: 'Envoyer la déclaration en mairie',       scrollTo: 'mairie',        cat: 'Démarches' },
-    { key: 'rappelsAEnvoyerConsuel',    emoji: '⚡', label: 'Envoyer le Consuel',                     scrollTo: 'consuel',       cat: 'Démarches' },
-    { key: 'rappelsAEnvoyerRaccordement', emoji: '🔌', label: 'Demander le raccordement Enedis',      scrollTo: 'raccordement',  cat: 'Démarches' },
-    { key: 'rappelsOriginaux',          emoji: '📨', label: 'Récupérer les originaux pour la banque', scrollTo: 'paiement',      cat: 'Banque', adminCompta: true },
-    { key: 'rappelsControleLivraison',  emoji: '✅', label: 'Faire le contrôle de livraison',         scrollTo: 'paiement',      cat: 'Banque', adminCompta: true },
-    { key: 'rappelsPaiement',           emoji: '💳', label: 'Encaisser / relancer le paiement',       scrollTo: 'paiement',      cat: 'Argent', adminCompta: true },
-    { key: 'rappelsRecupTva',           emoji: '🧾', label: 'Récupérer la TVA',                       scrollTo: 'paiement',      cat: 'Argent', adminCompta: true },
-    { key: 'rappelsFacturesManquantes', emoji: '🧾', label: 'Récupérer les factures prestataires',    scrollTo: 'poseurs',       cat: 'Argent', adminCompta: true },
-    { key: 'rappelsPennylaneAEnvoyer',  emoji: '📤', label: 'Envoyer les factures à Pennylane (compta)', scrollTo: 'poseurs',     cat: 'Argent', adminCompta: true },
-    { key: 'rappelsMaterielNonRendu',   emoji: '📦', label: 'Récupérer le matériel chez le poseur',   scrollTo: 'materielNonRendu', cat: 'Pose' },
-    { key: 'rappelsLitige',             emoji: '⚖️', label: 'Traiter le litige',                      scrollTo: 'litige',        cat: 'Litige' },
-    { key: 'rappelsSav',                emoji: '🛠️', label: 'Traiter le SAV',                         scrollTo: 'sav',           cat: 'SAV' },
-    { key: 'rappelsStagnation',         emoji: '🐌', label: 'Dossier bloqué trop longtemps — débloquer', scrollTo: null,         cat: 'Blocage' },
-  ];
-
-  const canSeeArgent = isAdmin || currentUserRole === 'compta' || currentUserRole === 'envoi_finance';
-  const nowIso = new Date().toISOString();
-
-  // Construit la liste plate des actions. Filtre :
-  //   - snooze actif (snoozedActions[srcKey] > maintenant) → on cache l'action
-  //     temporairement sans toucher au dossier (le snooze expire tout seul).
-  const actions = [];
-  for (const src of SOURCES) {
-    if (src.adminCompta && !canSeeArgent) continue;
-    const items = dashboard?.[src.key] || [];
-    for (const it of items) {
-      const d = it.dossier || it;
-      if (!d || !d.localId) continue;
-      const snoozeUntil = d.snoozedActions && d.snoozedActions[src.key];
-      if (snoozeUntil && snoozeUntil > nowIso) continue;
-      actions.push({
-        localId: d.localId,
-        srcKey: src.key,
-        nom: `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)',
-        ville: d.ville || '',
-        emoji: src.emoji,
-        label: src.label,
-        cat: src.cat,
-        scrollTo: src.scrollTo,
-        jours: typeof it.jours === 'number' ? it.jours : 0,
-        level: it.level || 'warn',
-      });
-    }
-  }
-  // Tri : critique d'abord, puis par jours décroissant (le plus vieux en haut).
-  const levelRank = { critical: 0, high: 1, warn: 2 };
-  actions.sort((a, b) => {
-    const lr = (levelRank[a.level] ?? 2) - (levelRank[b.level] ?? 2);
-    if (lr !== 0) return lr;
-    return (b.jours || 0) - (a.jours || 0);
-  });
-
-  const levelStyle = (level) => level === 'critical'
-    ? 'border-l-rose-500 bg-rose-50'
-    : level === 'high'
-      ? 'border-l-orange-400 bg-orange-50'
-      : 'border-l-amber-300 bg-amber-50';
-
-  const today = new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long' });
-
-  return (
-    <div className="max-w-3xl mx-auto">
-      <div className="bg-gradient-to-r from-violet-500 to-fuchsia-500 rounded-3xl p-5 mb-4 text-white shadow-lg">
-        <h2 className="text-xl font-bold flex items-center gap-2">🎯 Ma journée</h2>
-        <p className="text-sm text-white/90 mt-0.5 capitalize">{today}</p>
-        <p className="text-sm text-white/90 mt-1">
-          {actions.length === 0
-            ? '✨ Rien d\'urgent — tout est à jour !'
-            : `${actions.length} action${actions.length > 1 ? 's' : ''} à traiter, les plus urgentes en haut.`}
-        </p>
-      </div>
-
-      {actions.length === 0 ? (
-        <div className="bg-white rounded-3xl shadow-md border border-emerald-100 p-10 text-center">
-          <div className="text-5xl mb-3">🎉</div>
-          <h3 className="text-base font-bold text-slate-700 mb-1">Aucune action en attente</h3>
-          <p className="text-sm text-slate-500">Tous tes dossiers sont à jour. Profites-en !</p>
-        </div>
-      ) : (
-        <div className="space-y-1.5">
-          {actions.map((a, i) => {
-            const dossier = dossierById.get(a.localId);
-            return (
-              <div
-                key={`${a.localId}_${a.label}_${i}`}
-                className={`flex items-stretch rounded-xl border border-slate-100 border-l-4 ${levelStyle(a.level)} hover:shadow-md transition-all overflow-hidden`}
-              >
-                <button
-                  onClick={() => onShowQuick && onShowQuick(a.localId, a.scrollTo)}
-                  className="flex-1 text-left flex items-center gap-3 p-3 hover:bg-white/40 min-w-0"
-                  title="Ouvrir le dossier"
-                >
-                  <span className="text-xl flex-shrink-0">{a.emoji}</span>
-                  <div className="flex-1 min-w-0">
-                    <div className="font-bold text-slate-800 text-sm truncate">{a.label}</div>
-                    <div className="text-xs text-slate-500 truncate">
-                      👤 {a.nom}{a.ville ? ` · ${a.ville}` : ''} · <span className="font-semibold text-slate-600">{a.cat}</span>
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0 text-right">
-                    {a.jours > 0 && (
-                      <div className={`text-lg font-bold ${a.level === 'critical' ? 'text-rose-600' : a.level === 'high' ? 'text-orange-600' : 'text-amber-600'}`}>{a.jours}j</div>
-                    )}
-                    <div className="text-[9px] text-slate-400 uppercase">{a.level === 'critical' ? 'urgent' : a.level === 'high' ? 'à faire' : 'à voir'}</div>
-                  </div>
-                </button>
-                {/* 🤖 Sol — pré-rédige un message contextualisé pour cette action */}
-                {dossier && onCopilot && (dossier.telephone || dossier.email) && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onCopilot(a, dossier); }}
-                    title="Sol : demander à l'IA de rédiger un message pour cette action"
-                    className="flex-shrink-0 px-3 flex items-center justify-center bg-violet-100 hover:bg-violet-200 text-violet-700 border-l border-slate-200 transition-colors"
-                  >
-                    🤖
-                  </button>
-                )}
-                {/* 💤 Reporter à demain — masque l'action pendant 24h sans toucher au dossier */}
-                {dossier && onSnoozeAction && (
-                  <button
-                    onClick={(e) => { e.stopPropagation(); onSnoozeAction(a, dossier); }}
-                    title="Reporter cette action à demain (masquer 24h)"
-                    className="flex-shrink-0 px-3 flex items-center justify-center bg-slate-100 hover:bg-slate-200 text-slate-600 border-l border-slate-200 transition-colors"
-                  >
-                    💤
-                  </button>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
   );
 }
 
@@ -17647,228 +17440,6 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 }
 
 // ===================== ASSISTANT IA — façon secrétaire =====================
-// 🤖 Co-pilote IA « Sol » — pour chaque action de Ma journée, pré-rédige un
-// message contextualisé via Claude (réutilise /api/ai-email-assistant). L'user
-// révise et envoie en 1 clic (Gmail OAuth / WhatsApp / copie presse-papier).
-// C'est la version « secrétaire virtuelle » : Sol propose, l'humain valide.
-function AiCopilotModal({ action, dossier, currentUser, gmailOAuth, emailConfig, onClose, onSent }) {
-  const [intent, setIntent] = useState(action?.label || '');
-  const [generating, setGenerating] = useState(false);
-  const [draft, setDraft] = useState({ subject: '', body: '', reasoning: '' });
-  const [editedSubject, setEditedSubject] = useState('');
-  const [editedBody, setEditedBody] = useState('');
-  const [error, setError] = useState(null);
-  const [sending, setSending] = useState(false);
-  const [sentFlash, setSentFlash] = useState(null);
-  const [copied, setCopied] = useState(false);
-
-  const tel = dossier?.telephone || '';
-  const email = dossier?.email || '';
-  const clientLabel = `${dossier?.nom || ''} ${dossier?.prenom || ''}`.trim();
-
-  // Construit l'ordre IA contextualisé pour ce dossier + cette action.
-  const buildCommand = (intentText) => {
-    const lines = [
-      `Pour le dossier de ${clientLabel}${dossier?.ville ? ` à ${dossier.ville}` : ''}, rédige un message court et professionnel.`,
-      `Intention : ${intentText}`,
-      dossier?.dateInsta ? `Date de pose : ${new Date(dossier.dateInsta).toLocaleDateString('fr-FR')}` : '',
-      dossier?.financement ? `Financement : ${dossier.financement}` : '',
-      dossier?.statut ? `Statut actuel : ${dossier.statut}` : '',
-    ].filter(Boolean);
-    return lines.join('\n');
-  };
-
-  const generate = async (customIntent) => {
-    if (!dossier) return;
-    setGenerating(true);
-    setError(null);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = { 'Content-Type': 'application/json' };
-      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const res = await fetch('/api/ai-email-assistant', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          command: buildCommand(customIntent || intent),
-          // On ne passe QUE le dossier ciblé → pas d'ambiguïté possible.
-          dossiers: [{
-            localId: dossier.localId,
-            nom: dossier.nom, prenom: dossier.prenom,
-            email: dossier.email, telephone: dossier.telephone,
-            statut: dossier.statut, dateInsta: dossier.dateInsta,
-            financement: dossier.financement,
-            ville: dossier.ville,
-          }],
-          senderName: currentUser || '',
-        }),
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
-      const d = payload.data || {};
-      setDraft({ subject: d.subject || '', body: d.body || '', reasoning: d.reasoning || '' });
-      setEditedSubject(d.subject || '');
-      setEditedBody(d.body || '');
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setGenerating(false);
-    }
-  };
-
-  // Auto-génération à l'ouverture de la modale
-  useEffect(() => { generate(); /* eslint-disable-line react-hooks/exhaustive-deps */ }, []);
-
-  const copyDraft = async () => {
-    const text = editedSubject ? `${editedSubject}\n\n${editedBody}` : editedBody;
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch (e) {
-      window.prompt('Copie ce message :', text);
-    }
-  };
-
-  const openWhatsApp = () => {
-    if (!tel) return;
-    const text = editedBody;
-    const link = buildWhatsAppLink(tel, text);
-    window.open(link, '_blank');
-    if (onSent) onSent({ channel: 'whatsapp', subject: editedSubject, body: editedBody });
-  };
-
-  const sendEmail = async () => {
-    if (!email) { setError("Pas d'email sur ce client."); return; }
-    setSending(true); setError(null);
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = { 'Content-Type': 'application/json' };
-      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const useOAuth = !!gmailOAuth?.connected;
-      const useSmtp = !useOAuth && !!(emailConfig?.smtpUser && emailConfig?.smtpPass);
-      if (!useOAuth && !useSmtp) {
-        throw new Error("Aucun email d'envoi configuré (Réglages → Email d'envoi).");
-      }
-      const body = useOAuth
-        ? { provider: 'gmail-oauth', to: email, subject: editedSubject, text: editedBody, fromName: emailConfig?.fromName || 'CRM Solaire' }
-        : { to: email, subject: editedSubject, text: editedBody, smtpUser: emailConfig.smtpUser, smtpPass: emailConfig.smtpPass, fromName: emailConfig?.fromName || 'CRM Solaire' };
-      const res = await fetch('/api/send-email', { method: 'POST', headers, body: JSON.stringify(body) });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
-      setSentFlash('email');
-      if (onSent) onSent({ channel: useOAuth ? 'email_oauth' : 'email_smtp', subject: editedSubject, body: editedBody });
-      setTimeout(() => onClose && onClose(), 1500);
-    } catch (e) {
-      setError(e.message);
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm">
-      <div className="bg-white rounded-3xl shadow-2xl border border-violet-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="px-5 py-4 bg-gradient-to-r from-violet-500 to-fuchsia-500 text-white flex items-center justify-between">
-          <div>
-            <h2 className="font-bold text-lg flex items-center gap-2">🤖 Sol — Copilote IA</h2>
-            <p className="text-xs opacity-90 mt-0.5">
-              {action?.emoji} {action?.label} · 👤 {clientLabel}
-            </p>
-          </div>
-          <button onClick={onClose} className="hover:bg-white/20 rounded p-1"><X className="w-5 h-5" /></button>
-        </div>
-
-        {/* Corps */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-3">
-          {/* Champ intention modifiable + bouton régénérer */}
-          <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Intention</label>
-            <div className="flex gap-2">
-              <input
-                type="text"
-                value={intent}
-                onChange={(e) => setIntent(e.target.value)}
-                onKeyDown={(e) => { if (e.key === 'Enter') generate(); }}
-                className="flex-1 px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-violet-400"
-              />
-              <button onClick={() => generate()} disabled={generating} className="px-3 py-2 bg-violet-500 hover:bg-violet-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold flex items-center gap-1 whitespace-nowrap">
-                <Sparkles className="w-3 h-3" />{generating ? '…' : 'Régénérer'}
-              </button>
-            </div>
-          </div>
-
-          {/* État chargement / erreur */}
-          {generating && (
-            <div className="p-6 text-center text-violet-600 text-sm">
-              <div className="text-3xl mb-2 animate-pulse">🤖</div>
-              Sol réfléchit…
-            </div>
-          )}
-          {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl text-sm text-rose-700">
-              ❌ {error}
-            </div>
-          )}
-
-          {/* Brouillon éditable */}
-          {!generating && (draft.subject || draft.body) && (
-            <>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Sujet (email)</label>
-                <input
-                  type="text"
-                  value={editedSubject}
-                  onChange={(e) => setEditedSubject(e.target.value)}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm font-semibold"
-                />
-              </div>
-              <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Message</label>
-                <textarea
-                  value={editedBody}
-                  onChange={(e) => setEditedBody(e.target.value)}
-                  rows={8}
-                  className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-violet-400 resize-y"
-                />
-              </div>
-              {draft.reasoning && (
-                <div className="text-[11px] text-slate-500 italic px-1">💡 {draft.reasoning}</div>
-              )}
-            </>
-          )}
-        </div>
-
-        {/* Footer actions */}
-        <div className="p-3 border-t border-slate-200 bg-slate-50 flex gap-2 flex-wrap">
-          <button onClick={copyDraft} disabled={generating || !editedBody} className="flex-1 min-w-[100px] px-3 py-2 bg-white border border-slate-300 hover:bg-slate-50 disabled:opacity-50 text-slate-700 rounded-xl text-sm font-bold">
-            {copied ? '✓ Copié !' : '📋 Copier'}
-          </button>
-          {tel && (
-            <a
-              href="#"
-              onClick={(e) => { e.preventDefault(); openWhatsApp(); }}
-              className={`flex-1 min-w-[100px] px-3 py-2 text-center rounded-xl text-sm font-bold ${(!generating && editedBody) ? 'bg-[#25D366] hover:bg-[#1ebe5a] text-white' : 'bg-slate-200 text-slate-400 pointer-events-none'}`}
-            >
-              📲 WhatsApp
-            </a>
-          )}
-          {email && (
-            <button
-              onClick={sendEmail}
-              disabled={generating || sending || !editedBody}
-              className="flex-1 min-w-[100px] px-3 py-2 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white rounded-xl text-sm font-bold"
-            >
-              {sending ? '⏳…' : sentFlash === 'email' ? '✓ Envoyé !' : '📧 Envoyer'}
-            </button>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // Tape un ordre en langage naturel ("Envoie un mail à Marage pour confirmer
 // la pose mardi"), Claude identifie le client + rédige le mail, tu valides
 // et tu envoies via Gmail OAuth ou SMTP.
