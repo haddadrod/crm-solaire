@@ -3427,11 +3427,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const isPose = d.statutPose === 'visite_ok';
       (d.poseursDetail || []).forEach(p => {
         const key = `${p.nom}::${soc}`;
-        if (!poseurMap[key]) poseurMap[key] = { nom: p.nom, societe: soc, count: 0, ca: 0, coutTotal: 0, puissanceTotale: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 };
+        if (!poseurMap[key]) poseurMap[key] = { nom: p.nom, societe: soc, count: 0, caSigne: 0, ca: 0, coutTotal: 0, puissanceTotale: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 };
         const m = poseurMap[key];
         m.count += 1;
         m.puissanceTotale += d.puissance || 0;
         m.dossierIds.push(d.localId);
+        m.caSigne += d.montantTotal || 0;
         if (d.payeClient) {
           m.nbPayes += 1;
           m.ca += d.montantTotal || 0;
@@ -3462,13 +3463,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (isPose) m.nbPoses += 1;
         if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
       };
-      const makeEntry = (nom) => ({ nom, societe: soc, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 });
+      const makeEntry = (nom) => ({ nom, societe: soc, count: 0, caSigne: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 });
       if (regiesArr.length === 0) {
         const nom = 'Sans régie';
         const key = `${nom}::${soc}`;
         if (!regieMap[key]) regieMap[key] = makeEntry(nom);
         regieMap[key].count += 1;
         regieMap[key].dossierIds.push(d.localId);
+        regieMap[key].caSigne += d.montantTotal || 0;
         if (isPaid) {
           regieMap[key].ca += d.montantTotal || 0;
           regieMap[key].margeApportee += d.margeTtc || 0;
@@ -3482,6 +3484,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           if (!regieMap[key]) regieMap[key] = makeEntry(nom);
           regieMap[key].count += 1;
           regieMap[key].dossierIds.push(d.localId);
+          regieMap[key].caSigne += d.montantTotal || 0;
           if (isPaid) {
             regieMap[key].ca += d.montantTotal || 0;
             regieMap[key].coutTotal += reg.ttc || 0;
@@ -3504,10 +3507,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const isAnnule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
       const isPose = d.statutPose === 'visite_ok';
       const key = `${nom}::${soc}`;
-      if (!commercialMap[key]) commercialMap[key] = { nom, societe: soc, count: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 };
+      if (!commercialMap[key]) commercialMap[key] = { nom, societe: soc, count: 0, caSigne: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 };
       const m = commercialMap[key];
       m.count += 1;
       m.dossierIds.push(d.localId);
+      m.caSigne += d.montantTotal || 0;
       if (d.payeClient) {
         m.nbPayes += 1;
         m.ca += d.montantTotal || 0;
@@ -7863,7 +7867,6 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, meda
       </div>
       <div className="divide-y divide-slate-100">
         {data.map((p, idx) => {
-          const margePct = p.ca > 0 ? (p.margeApportee / p.ca) * 100 : 0;
           const m = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : medal;
           // Clé unique : nom + société pour éviter collision quand le même
           // nom apparaît sur plusieurs sociétés (ex: OREN · Yolico et OREN · Elsun).
@@ -7932,10 +7935,10 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, meda
                       })()}
                     </div>
                   </div>
-                  <div className="flex gap-3 text-xs" title="CA / coût / marge basés UNIQUEMENT sur les dossiers payés par le client">
+                  <div className="flex gap-3 text-xs" title="CA signé = tous les dossiers attribués · CA payé = dossiers déjà encaissés · Coût = ce que coûte ce prestataire">
+                    <SmallStat label="CA signé" value={formatEuro(p.caSigne || 0)} color="text-violet-600" />
                     <SmallStat label="CA payé" value={formatEuro(p.ca)} color="text-blue-600" />
                     {!hideCoutMarge && <SmallStat label="Coût" value={formatEuro(p.coutTotal)} color="text-amber-600" />}
-                    {!hideCoutMarge && <SmallStat label="Marge" value={`${margePct.toFixed(1)}%`} color="text-emerald-600" />}
                   </div>
                 </div>
               </button>
