@@ -313,6 +313,19 @@ function fmtFieldVal(v) {
   return s.length > 40 ? s.slice(0, 40) + '…' : s;
 }
 
+// 🏦 Plafonds mensuels Projexio par société émettrice. Chaque société a
+// son propre quota négocié avec Projexio ; au-delà du plafond ils ne
+// traitent plus les dossiers du mois pour cette société.
+// Clés alignées sur l'id des sociétés (cf state `societes`).
+// ⚠️ Ces valeurs ne sont QUE les défauts au premier démarrage. Une fois la
+// clé 'projexio-caps' présente dans Supabase, c'est elle qui pilote (et
+// l'utilisateur l'édite directement depuis le dashboard). La banque peut
+// renégocier ces plafonds du jour au lendemain — d'où le besoin d'édition
+// inline.
+const PROJEXIO_CAP_MENSUEL_PAR_SOCIETE = {
+  yolico: 1_000_000,
+  elsun:  2_500_000,
+};
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
 // Prérequis avant de pouvoir saisir le contrôle de livraison (= étape qui
@@ -1369,6 +1382,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // /api/gmail-oauth (GET) au mount + après retour du callback OAuth.
   const [gmailOAuth, setGmailOAuth] = useState({ connected: false, email: null, connectedAt: null });
   const [tarifsRegies, setTarifsRegies] = useState(TARIFS_REGIES_DEFAULT);
+  // 🏦 Plafond mensuel Projexio par société — éditable depuis le dashboard,
+  // persisté dans Supabase. Au premier démarrage on prend les défauts du
+  // const PROJEXIO_CAP_MENSUEL_PAR_SOCIETE.
+  const [projexioCaps, setProjexioCaps] = useState(PROJEXIO_CAP_MENSUEL_PAR_SOCIETE);
   const [tarifsInternes, setTarifsInternes] = useState(TARIFS_INTERNES_DEFAULT);
   const [nomsInternes, setNomsInternes] = useState(NOMS_INTERNES_DEFAULT);
   const [listeFournisseurs, setListeFournisseurs] = useState(FOURNISSEURS_DEFAULT);
@@ -1584,7 +1601,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
           supprimerDossier: false,
           modifierTous: true,
           voirRapportPaiements: false,
-          // Dashboard activé en mode restreint (cf DashboardView).
+          // Dashboard activé MAIS en mode restreint (cf DashboardView) : seuls
+          // le bandeau Plafond Projexio et le bloc Financements en attente de
+          // retour sont affichés.
           voirDashboard: true,
           voirReglages: false,
           cocherPaiements: false,
@@ -1873,7 +1892,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         'statuts-order', 'tarifs-poseurs', 'tarifs-regies',
         'poseurs-contacts', 'regies-contacts', 'email-config', 'tarifs-internes',
         'noms-internes', 'liste-fournisseurs', 'tarifs-fournisseurs',
-        'produits', 'users-list', 'chat-messages', 'message-templates',
+        'produits', 'users-list', 'projexio-caps', 'chat-messages', 'message-templates',
       ];
       const bgResults = await Promise.allSettled(bgKeys.map(k => window.storage.get(k)));
       const bgData = {};
@@ -1954,7 +1973,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // la garde anti-écrasement du save effect fonctionne dès la 1ère modif
       // (sinon le 1er changement réécrit toutes les clés avec l'état chargé).
       try {
-        const syncedKeys = ['tarifs-poseurs','tarifs-regies','tarifs-internes','noms-internes','liste-fournisseurs','tarifs-fournisseurs','produits','poseurs-contacts','regies-contacts','email-config','message-templates'];
+        const syncedKeys = ['tarifs-poseurs','tarifs-regies','tarifs-internes','noms-internes','liste-fournisseurs','tarifs-fournisseurs','produits','poseurs-contacts','regies-contacts','email-config','projexio-caps','message-templates'];
         syncedKeys.forEach(k => {
           const v = bgData[k]?.value;
           if (typeof v === 'string') lastWrittenSettings.current[k] = v;
@@ -1972,6 +1991,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (r?.value) {
           const arr = JSON.parse(r.value);
           if (Array.isArray(arr)) setUsers(arr);
+        }
+      } catch (e) {}
+      try {
+        const r = bgData['projexio-caps'];
+        if (r?.value) {
+          const obj = JSON.parse(r.value);
+          if (obj && typeof obj === 'object') setProjexioCaps({ ...PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, ...obj });
         }
       } catch (e) {}
       try {
@@ -2341,8 +2367,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     saveAndTrack('regies-contacts', regiesContacts);
     saveAndTrack('email-config', emailConfig);
     saveAndTrack('societes', societes);
+    saveAndTrack('projexio-caps', projexioCaps);
     saveAndTrack('message-templates', messageTemplates);
-  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, societes, messageTemplates, loading]);
+  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, societes, projexioCaps, messageTemplates, loading]);
 
   // 💬 Save effect dédié au chat — séparé des réglages pour éviter qu'un
   // envoi de message ne re-sauvegarde TOUS les tarifs (et inversement).
@@ -3343,6 +3370,31 @@ export default function DossierSaisie({ authUser, onLogout }) {
     })();
     const moisPrecedent = statsMois.find(m => m.mois === lastStr) || { count: 0, ca: 0, margeTtc: 0 };
 
+    // 🏦 PROJEXIO — total d'envois banque du mois, breakdown par société.
+    // Règles de comptage demandées :
+    //   ✓ Refusé par la banque (statutFin === 'refusé') → COMPTÉ
+    //     (le dossier a quand même consommé du quota chez Projexio).
+    //   ✗ Annulé par nous (statut === 'W2_ANNULER') → EXCLU
+    //     (on a retiré le dossier nous-mêmes, Projexio le sait).
+    // Filtre temporel : mois du `dateEnvoiFin` (date d'envoi au financeur).
+    // Le plafond mensuel est défini PAR SOCIÉTÉ dans PROJEXIO_CAP_MENSUEL_PAR_SOCIETE.
+    const projexioMoisCourant = (() => {
+      const parSociete = {}; // { [societeId]: { total, count, dossiers: [] } }
+      dossiersDash.forEach(d => {
+        if (d.financement !== 'PROJEXIO') return;
+        if (!d.dateEnvoiFin) return;
+        if (d.dateEnvoiFin.substring(0, 7) !== todayStr) return;
+        if (d.statut === 'W2_ANNULER') return;
+        const m = parseFloat(d.montantTotal) || 0;
+        const soc = d.societe || '';
+        if (!parSociete[soc]) parSociete[soc] = { total: 0, count: 0, dossiers: [] };
+        parSociete[soc].total += m;
+        parSociete[soc].count += 1;
+        parSociete[soc].dossiers.push({ localId: d.localId, nom: d.nom, prenom: d.prenom, montant: m, statut: d.statut, dateEnvoiFin: d.dateEnvoiFin });
+      });
+      return { parSociete };
+    })();
+
     // 📊 Métriques avancées partagées (régies / poseurs / commerciaux) :
     //   - nbPayes        : dossiers où le client a été payé (réussite)
     //   - nbRefusBanque  : dossiers refusés par la banque (échec dossier)
@@ -4053,7 +4105,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsMaterielNonRendu.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, statsPoseurs, statsRegies, statsCommerciaux, statsBanques, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsCommerciaux, statsBanques, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -4563,7 +4615,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         />}
 
         {/* DASHBOARD */}
-        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
+        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
 
         {activeTab === 'calendrier' && (
           <CalendrierView
@@ -4614,6 +4666,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
             nomsInternes={nomsInternes} setNomsInternes={setNomsInternes}
             produits={produits}
             societes={societes}
+            projexioMoisCourant={dashboard.projexioMoisCourant}
+            projexioCaps={projexioCaps}
             dossiers={dossiers}
             currentUser={currentUser}
             onClose={resetForm} onSubmit={handleSubmit} isAdmin={isAdmin}
@@ -7029,9 +7083,25 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
   );
 }
 
-function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', isAdmin = false, onCreate, onShowQuick, produits = [] }) {
-  // Vue restreinte pour le rôle « Envoi finance » : sections argent masquées.
+function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, setProjexioCaps, isAdmin = false, onCreate, onShowQuick, produits = [] }) {
+  // Vue restreinte pour le rôle « Envoi finance » : seules les sections
+  // Plafond Projexio + Financements en attente de retour sont affichées.
+  // Les tuiles CA/marge/évolution et tous les autres rappels sont masqués.
   const isRestricted = currentUserRole === 'envoi_finance';
+  // Société dont la liste de dossiers Projexio est dépliée (cliquable depuis
+  // le bandeau du plafond). null = tout replié.
+  const [projOpenSocId, setProjOpenSocId] = useState(null);
+  // Édition du plafond Projexio par société (admin uniquement). null = aucun
+  // en édition. Sinon { socId, value: '... en cours de frappe' }.
+  const [projEditing, setProjEditing] = useState(null);
+  const saveProjCap = (socId, raw) => {
+    const n = parseFloat(String(raw).replace(/[^0-9.]/g, ''));
+    if (!isFinite(n) || n <= 0) { setProjEditing(null); return; }
+    if (typeof setProjexioCaps === 'function') {
+      setProjexioCaps({ ...projexioCaps, [socId]: Math.round(n) });
+    }
+    setProjEditing(null);
+  };
   if (dossiers.length === 0) {
     return (
       <div className="bg-white rounded-3xl p-12 text-center shadow-md border border-violet-100">
@@ -7045,6 +7115,36 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
     );
   }
 
+  // 🏦 Plafonds mensuels PROJEXIO — un bandeau par société qui a un plafond
+  // défini. Si une société est filtrée (activeSociete), on ne montre qu'elle.
+  const projParSociete = dashboard.projexioMoisCourant?.parSociete || {};
+  const projColorsByLevel = {
+    ok:       { bg: 'from-emerald-500 to-green-600', hint: '✅ Marge confortable' },
+    warn:     { bg: 'from-amber-500 to-orange-500',  hint: '⚠️ Tu approches du plafond' },
+    critical: { bg: 'from-orange-500 to-rose-500',   hint: '🚨 Plus que 10 % de marge' },
+    over:     { bg: 'from-rose-600 to-red-700',      hint: '⛔ Plafond dépassé — Projexio ne traite plus' },
+  };
+  const societesAvecPlafond = Object.keys(projexioCaps);
+  const societesAAfficher = activeSociete
+    ? (societesAvecPlafond.includes(activeSociete) ? [activeSociete] : [])
+    : societesAvecPlafond;
+  const projBars = societesAAfficher.map(socId => {
+    const cap = projexioCaps[socId];
+    const data = projParSociete[socId] || { total: 0, count: 0, dossiers: [] };
+    const pct = Math.min(100, (data.total / cap) * 100);
+    const over = data.total > cap;
+    const reste = Math.max(0, cap - data.total);
+    const level = over ? 'over' : pct >= 90 ? 'critical' : pct >= 70 ? 'warn' : 'ok';
+    const socMeta = societes.find(s => s.id === socId);
+    return {
+      socId,
+      socLabel: socMeta?.label || socId.toUpperCase(),
+      socEmoji: socMeta?.emoji || '🏦',
+      cap, data, pct, over, reste, level,
+      colors: projColorsByLevel[level],
+    };
+  });
+
   return (
     <div className="space-y-4">
       {/* 🩺 Santé des dossiers — radar de qualité de saisie (masqué en vue restreinte) */}
@@ -7052,6 +7152,115 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
         <SanteDossiersPanel dossiers={dossiers} produits={produits} activeSociete={activeSociete} onShowQuick={onShowQuick} />
       )}
 
+      {/* 🏦 PROJEXIO — un bandeau de plafond par société émettrice */}
+      {projBars.map(b => {
+        const isOpen = projOpenSocId === b.socId;
+        const dossiersOfMonth = b.data.dossiers || [];
+        return (
+        <div key={b.socId} className={`bg-gradient-to-r ${b.colors.bg} rounded-2xl p-4 text-white shadow-md`}>
+          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <span className="text-xl">{b.socEmoji}</span>
+              <div>
+                <div className="text-xs font-semibold uppercase opacity-90">Plafond mensuel PROJEXIO — {b.socLabel}</div>
+                <div className="text-[10px] opacity-75">{b.data.count} dossier{b.data.count > 1 ? 's' : ''} envoyé{b.data.count > 1 ? 's' : ''} ce mois (refus banque inclus, annulés par toi exclus)</div>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-2xl font-bold">{formatEuro(b.data.total)}</div>
+              <div className="text-[11px] opacity-90 flex items-center gap-1 justify-end">
+                <span>/</span>
+                {projEditing && projEditing.socId === b.socId ? (
+                  <>
+                    <input
+                      type="text"
+                      autoFocus
+                      value={projEditing.value}
+                      onChange={(e) => setProjEditing({ socId: b.socId, value: e.target.value })}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') saveProjCap(b.socId, projEditing.value);
+                        if (e.key === 'Escape') setProjEditing(null);
+                      }}
+                      onBlur={() => saveProjCap(b.socId, projEditing.value)}
+                      className="w-28 px-1.5 py-0.5 bg-white/90 text-slate-800 font-bold rounded text-xs text-right"
+                    />
+                    <span>€</span>
+                  </>
+                ) : (
+                  <>
+                    <span>{formatEuro(b.cap)} ({b.pct.toFixed(0)} %)</span>
+                    {isAdmin && typeof setProjexioCaps === 'function' && (
+                      <button
+                        onClick={() => setProjEditing({ socId: b.socId, value: String(b.cap) })}
+                        className="ml-1 px-1 py-0.5 rounded bg-white/20 hover:bg-white/35 text-[10px] font-semibold"
+                        title="Modifier le plafond (la banque peut le renégocier)"
+                      >
+                        ✏️
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="h-2 bg-black/25 rounded-full overflow-hidden">
+            <div className="h-full bg-white transition-all" style={{ width: `${b.pct}%` }} />
+          </div>
+          <div className="flex items-center justify-between mt-1.5 text-[11px]">
+            <span className="opacity-90">{b.colors.hint}</span>
+            <span className="font-semibold">
+              {b.over
+                ? `Dépassement : ${formatEuro(b.data.total - b.cap)}`
+                : `Reste : ${formatEuro(b.reste)}`}
+            </span>
+          </div>
+          {dossiersOfMonth.length > 0 && (
+            <button
+              onClick={() => setProjOpenSocId(isOpen ? null : b.socId)}
+              className="mt-2 text-[11px] font-semibold opacity-90 hover:opacity-100 underline-offset-2 hover:underline"
+            >
+              {isOpen ? '▼ Masquer' : '▶ Voir les'} {dossiersOfMonth.length} dossier{dossiersOfMonth.length > 1 ? 's' : ''} en cours
+            </button>
+          )}
+          {isOpen && dossiersOfMonth.length > 0 && (
+            <div className="mt-2 bg-white/15 rounded-xl p-2 space-y-1 max-h-72 overflow-y-auto">
+              {/* Tri par date d'envoi banque décroissante : le dernier envoyé
+                  apparaît en haut — c'est la date pertinente pour le plafond. */}
+              {[...dossiersOfMonth]
+                .sort((a, b) => (b.dateEnvoiFin || '').localeCompare(a.dateEnvoiFin || ''))
+                .map((d, i) => {
+                const statut = STATUTS.find(s => s.id === d.statut);
+                const envoiLabel = d.dateEnvoiFin
+                  ? new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
+                  : null;
+                return (
+                  <button
+                    key={d.localId || i}
+                    onClick={() => onShowQuick && onShowQuick(d.localId)}
+                    className="w-full text-left bg-white/10 hover:bg-white/25 rounded-lg px-2.5 py-1.5 transition-colors flex items-center justify-between gap-2"
+                  >
+                    <span className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
+                      <span className="font-bold text-sm truncate">{(d.nom || '').toUpperCase()} {d.prenom || ''}</span>
+                      {envoiLabel && (
+                        <span className="text-[9px] font-bold bg-black/25 px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap">
+                          🏦 Envoyé banque {envoiLabel}
+                        </span>
+                      )}
+                      {statut && (
+                        <span className="text-[9px] font-bold bg-white/25 px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap">
+                          {statut.emoji} {statut.label}
+                        </span>
+                      )}
+                    </span>
+                    <span className="font-bold text-sm whitespace-nowrap">{formatEuro(d.montant)}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+        );
+      })}
 
       {!isRestricted && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -9971,7 +10180,7 @@ function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
   );
 }
 
-function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], dossiers = [], currentUser, onClose, onSubmit, isAdmin }) {
+function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], projexioMoisCourant = { parSociete: {} }, projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, dossiers = [], currentUser, onClose, onSubmit, isAdmin }) {
   // 🚨 Détection de doublons : scanne les dossiers existants à mesure que
   // l'utilisateur saisit nom/prenom/tel. Match strict sur :
   //   - téléphone normalisé E.164 (le plus fiable)
@@ -10864,6 +11073,32 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   <option value="">— Choisir un financement —</option>
                   {FINANCEMENTS.map(f => <option key={f} value={f}>{f}</option>)}
                 </select>
+                {/* 🏦 Plafond Projexio en temps réel : si l'user choisit
+                    PROJEXIO, on lui montre où il en est sur la société active
+                    avant qu'il envoie le dossier en banque. Évite de découvrir
+                    le dépassement dans le dashboard une fois trop tard. */}
+                {formData.financement === 'PROJEXIO' && formData.societe && (() => {
+                  const cap = (projexioCaps && projexioCaps[formData.societe]) || 0;
+                  const used = (projexioMoisCourant?.parSociete?.[formData.societe]?.total) || 0;
+                  const montant = parseFloat(formData.montantTotal) || 0;
+                  const usedAfter = used + montant;
+                  const pct = cap > 0 ? (usedAfter / cap) * 100 : 0;
+                  const soc = societes.find(s => s.id === formData.societe);
+                  const socLabel = soc?.label || formData.societe;
+                  const overflow = cap > 0 && usedAfter > cap;
+                  const warning = cap > 0 && pct >= 80 && !overflow;
+                  return (
+                    <div className={`mt-1.5 px-2 py-1.5 rounded-lg border text-[11px] ${overflow ? 'bg-rose-50 border-rose-300 text-rose-800' : warning ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+                      <div className="font-bold">
+                        {overflow ? '⚠️ Plafond dépassé' : warning ? '⚠️ Plafond presque atteint' : '🏦 Plafond Projexio'} — {socLabel}
+                      </div>
+                      <div className="text-[10px] mt-0.5">
+                        Consommé : <strong>{formatEuro(used)}</strong> {montant > 0 && <>+ ce dossier ({formatEuro(montant)}) = <strong>{formatEuro(usedAfter)}</strong></>} / plafond <strong>{formatEuro(cap)}</strong>
+                        {cap > 0 && <> ({pct.toFixed(0)}%)</>}
+                      </div>
+                    </div>
+                  );
+                })()}
               </Field>
               <Field label="🧮 Taux de TVA">
                 <div className="grid grid-cols-3 gap-1">
