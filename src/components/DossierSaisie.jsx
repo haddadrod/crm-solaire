@@ -3427,18 +3427,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const isPose = d.statutPose === 'visite_ok';
       (d.poseursDetail || []).forEach(p => {
         const key = `${p.nom}::${soc}`;
-        if (!poseurMap[key]) poseurMap[key] = { nom: p.nom, societe: soc, count: 0, caSigne: 0, ca: 0, coutTotal: 0, puissanceTotale: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 };
+        if (!poseurMap[key]) poseurMap[key] = { nom: p.nom, societe: soc, count: 0, totalDu: 0, dejaPaye: 0, puissanceTotale: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 };
         const m = poseurMap[key];
         m.count += 1;
         m.puissanceTotale += d.puissance || 0;
         m.dossierIds.push(d.localId);
-        m.caSigne += d.montantTotal || 0;
-        if (d.payeClient) {
-          m.nbPayes += 1;
-          m.ca += d.montantTotal || 0;
-          m.coutTotal += p.ttc || 0;
-          m.margeApportee += d.margeTtc || 0;
+        // « Ce que je dois au poseur » : somme de p.ttc sur TOUS ses dossiers
+        // (annulé/refusé exclus, sinon on doit ce qu'on ne va jamais payer).
+        if (!isAnnule && d.statutFin !== 'refusé') {
+          m.totalDu += p.ttc || 0;
+          if (p.paye) m.dejaPaye += p.ttc || 0;
         }
+        if (d.payeClient) m.nbPayes += 1;
         if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
         if (isAnnule) m.nbAnnules += 1;
         if (isPose) m.nbPoses += 1;
@@ -3463,32 +3463,26 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (isPose) m.nbPoses += 1;
         if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
       };
-      const makeEntry = (nom) => ({ nom, societe: soc, count: 0, caSigne: 0, ca: 0, coutTotal: 0, margeApportee: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 });
+      const makeEntry = (nom) => ({ nom, societe: soc, count: 0, totalDu: 0, dejaPaye: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 });
+      // Ce qu'on doit à la régie n'a pas de sens si annulé/refusé.
+      const compteCouts = !isAnnule && d.statutFin !== 'refusé';
       if (regiesArr.length === 0) {
         const nom = 'Sans régie';
         const key = `${nom}::${soc}`;
         if (!regieMap[key]) regieMap[key] = makeEntry(nom);
         regieMap[key].count += 1;
         regieMap[key].dossierIds.push(d.localId);
-        regieMap[key].caSigne += d.montantTotal || 0;
-        if (isPaid) {
-          regieMap[key].ca += d.montantTotal || 0;
-          regieMap[key].margeApportee += d.margeTtc || 0;
-        }
         bumpAdvanced(regieMap[key]);
       } else {
-        const totalCout = regiesArr.reduce((s, r) => s + r.ttc, 0);
         regiesArr.forEach(reg => {
           const nom = reg.nom || 'Inconnu';
           const key = `${nom}::${soc}`;
           if (!regieMap[key]) regieMap[key] = makeEntry(nom);
           regieMap[key].count += 1;
           regieMap[key].dossierIds.push(d.localId);
-          regieMap[key].caSigne += d.montantTotal || 0;
-          if (isPaid) {
-            regieMap[key].ca += d.montantTotal || 0;
-            regieMap[key].coutTotal += reg.ttc || 0;
-            regieMap[key].margeApportee += (d.margeTtc || 0) * (totalCout > 0 ? reg.ttc / totalCout : 1);
+          if (compteCouts) {
+            regieMap[key].totalDu += reg.ttc || 0;
+            if (reg.paye) regieMap[key].dejaPaye += reg.ttc || 0;
           }
           bumpAdvanced(regieMap[key]);
         });
@@ -7620,7 +7614,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
       <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
       <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
       {(dashboard.statsCommerciaux || []).length > 0 && (
-        <PerfList titre="💼 Performance des commerciaux" data={dashboard.statsCommerciaux} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="💼" border="border-blue-100" header="from-blue-50 to-cyan-50" iconColor="text-blue-500" hideCoutMarge />
+        <PerfList titre="💼 Performance des commerciaux" data={dashboard.statsCommerciaux} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="💼" border="border-blue-100" header="from-blue-50 to-cyan-50" iconColor="text-blue-500" />
       )}
       {(dashboard.statsBanques || []).length > 0 && (
         <BanquePerfList data={dashboard.statsBanques} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} />
@@ -7837,7 +7831,7 @@ function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
   );
 }
 
-function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, medal, border, header, iconColor, hideCoutMarge = false }) {
+function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, medal, border, header, iconColor }) {
   const [expandedNom, setExpandedNom] = useState(null);
   const societeById = useMemo(() => {
     const m = new Map();
@@ -7935,11 +7929,25 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, meda
                       })()}
                     </div>
                   </div>
-                  <div className="flex gap-3 text-xs" title="CA signé = tous les dossiers attribués · CA payé = dossiers déjà encaissés · Coût = ce que coûte ce prestataire">
-                    <SmallStat label="CA signé" value={formatEuro(p.caSigne || 0)} color="text-violet-600" />
-                    <SmallStat label="CA payé" value={formatEuro(p.ca)} color="text-blue-600" />
-                    {!hideCoutMarge && <SmallStat label="Coût" value={formatEuro(p.coutTotal)} color="text-amber-600" />}
-                  </div>
+                  {p.totalDu !== undefined ? (
+                    // 🤝 Poseur / Régie : ce qu'on lui doit, ce qu'on lui a déjà payé,
+                    // et ce qu'il reste à payer. Pas de CA — c'est nous qui les payons.
+                    <div className="flex gap-3 text-xs" title="Total à payer = somme due sur les dossiers actifs · Déjà payé = factures cochées payées · Reste = différence">
+                      <SmallStat label="À payer total" value={formatEuro(p.totalDu)} color="text-amber-600" />
+                      <SmallStat label="Déjà payé" value={formatEuro(p.dejaPaye)} color="text-emerald-600" />
+                      <SmallStat
+                        label="Reste à payer"
+                        value={formatEuro(Math.max(0, p.totalDu - p.dejaPaye))}
+                        color={(p.totalDu - p.dejaPaye) > 0 ? 'text-rose-600' : 'text-slate-500'}
+                      />
+                    </div>
+                  ) : (
+                    // 💼 Commercial : CA apporté (signé) et ce qui est déjà rentré (payé).
+                    <div className="flex gap-3 text-xs" title="CA signé = dossiers attribués · CA payé = dossiers déjà encaissés par le financeur">
+                      <SmallStat label="CA signé" value={formatEuro(p.caSigne || 0)} color="text-violet-600" />
+                      <SmallStat label="CA payé" value={formatEuro(p.ca)} color="text-blue-600" />
+                    </div>
+                  )}
                 </div>
               </button>
               {isExpanded && (
