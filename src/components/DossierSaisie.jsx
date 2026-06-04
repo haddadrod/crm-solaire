@@ -9016,6 +9016,38 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     setData({ ...data, [nom]: t });
   };
 
+  // 🛡️ Édition locale différée — on ne touche au parent QU'AU clic « Enregistrer ».
+  // Évite les pertes silencieuses si la grille se re-render (autre onglet, sync
+  // Realtime) entre la frappe et le onBlur.
+  // pending : { [nom]: { [key]: string|number } }
+  const [pending, setPending] = useState({});
+  // Valeur courante d'une cellule : pending si modifiée, sinon valeur du parent.
+  const getLocal = (nom, key) => {
+    if (pending[nom] && key in pending[nom]) return pending[nom][key];
+    return data[nom]?.[key];
+  };
+  const editLocal = (nom, key, v) => {
+    setPending(prev => {
+      const base = prev[nom] ?? {};
+      return { ...prev, [nom]: { ...base, [key]: v } };
+    });
+  };
+  const savePending = (nom) => {
+    const p = pending[nom];
+    if (!p) return;
+    const tarifs = { ...(data[nom] || {}) };
+    Object.entries(p).forEach(([k, v]) => {
+      const num = parseFloat(v);
+      if (v === '' || isNaN(num) || num === 0) delete tarifs[k]; else tarifs[k] = num;
+    });
+    setData({ ...data, [nom]: tarifs });
+    setPending(prev => { const np = { ...prev }; delete np[nom]; return np; });
+  };
+  const cancelPending = (nom) => {
+    setPending(prev => { const np = { ...prev }; delete np[nom]; return np; });
+  };
+  const hasPending = (nom) => !!pending[nom] && Object.keys(pending[nom]).length > 0;
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
@@ -9064,19 +9096,35 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                           {/* Tél/email gérés dans Réglages → Utilisateurs (compte rattaché à ce {type}) — source de vérité unique, plus de bug d'effacement */}
                         </td>
                         {PUISSANCES_PRINCIPALES.map(p => {
-                          const isExact = data[nom][p] !== undefined;
+                          const localVal = getLocal(nom, p);
+                          const isExact = localVal !== undefined && localVal !== '' && !isNaN(parseFloat(localVal)) && parseFloat(localVal) !== 0;
                           const tarif = findClosestTarif(data[nom], p);
+                          const isEdited = pending[nom] && p in pending[nom];
                           return (
                             <td key={p} className="px-1 py-1.5 text-right">
-                              <input type="number" defaultValue={isExact ? data[nom][p] : ''} onBlur={(e) => updateTarif(nom, p, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} placeholder={tarif > 0 ? tarif : '—'} className={`w-16 px-1.5 py-0.5 bg-slate-50 border border-slate-200 rounded text-right focus:outline-none focus:ring-1 focus:ring-violet-400 text-xs ${isExact ? 'font-semibold text-slate-800' : 'text-slate-400'}`} />
+                              <input
+                                type="number"
+                                value={localVal ?? ''}
+                                onChange={(e) => editLocal(nom, p, e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
+                                placeholder={tarif > 0 ? tarif : '—'}
+                                className={`w-16 px-1.5 py-0.5 ${isEdited ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border rounded text-right focus:outline-none focus:ring-1 focus:ring-violet-400 text-xs ${isExact ? 'font-semibold text-slate-800' : 'text-slate-400'}`}
+                              />
                             </td>
                           );
                         })}
                         <td className="px-2 py-1.5 text-center">
                           <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${used > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}`}>{used}</span>
                         </td>
-                        <td className="px-2 py-1.5 text-center">
-                          <button onClick={() => del(nom)} className="p-1 text-rose-500 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+                        <td className="px-2 py-1.5 text-center whitespace-nowrap">
+                          {hasPending(nom) ? (
+                            <span className="inline-flex items-center gap-1">
+                              <button onClick={() => savePending(nom)} title="Enregistrer les modifs" className="px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[10px] font-bold">💾 Enregistrer</button>
+                              <button onClick={() => cancelPending(nom)} title="Annuler les modifs" className="p-1 text-slate-500 hover:bg-slate-100 rounded text-xs">↶</button>
+                            </span>
+                          ) : (
+                            <button onClick={() => del(nom)} className="p-1 text-rose-500 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
+                          )}
                         </td>
                       </tr>
                     );
@@ -9104,6 +9152,7 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                           </div>
                         </th>
                       ))}
+                      <th className="px-2 py-2 text-center font-bold text-slate-600"></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -9111,14 +9160,31 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                       <tr key={nom} className="border-t border-slate-200 hover:bg-slate-50">
                         <td className="px-2 py-1.5 font-semibold text-slate-700 sticky left-0 bg-white z-10 min-w-[140px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">{nom}</td>
                         {otherProducts.map(p => {
-                          const val = data[nom]?.[p.id];
+                          const val = getLocal(nom, p.id);
                           const isSet = val !== undefined && val !== null && val !== '';
+                          const isEdited = pending[nom] && p.id in pending[nom];
                           return (
                             <td key={p.id} className="px-1 py-1.5 text-right">
-                              <input type="number" step="0.01" defaultValue={isSet ? val : ''} onBlur={(e) => updateTarif(nom, p.id, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} placeholder="—" className={`w-20 px-1.5 py-0.5 bg-slate-50 border border-slate-200 rounded text-right focus:outline-none focus:ring-1 focus:ring-violet-400 text-xs ${isSet ? 'font-semibold text-slate-800' : 'text-slate-400'}`} />
+                              <input
+                                type="number"
+                                step="0.01"
+                                value={val ?? ''}
+                                onChange={(e) => editLocal(nom, p.id, e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
+                                placeholder="—"
+                                className={`w-20 px-1.5 py-0.5 ${isEdited ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border rounded text-right focus:outline-none focus:ring-1 focus:ring-violet-400 text-xs ${isSet ? 'font-semibold text-slate-800' : 'text-slate-400'}`}
+                              />
                             </td>
                           );
                         })}
+                        <td className="px-2 py-1.5 text-center whitespace-nowrap">
+                          {hasPending(nom) && (
+                            <span className="inline-flex items-center gap-1">
+                              <button onClick={() => savePending(nom)} title="Enregistrer les modifs" className="px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[10px] font-bold">💾 Enregistrer</button>
+                              <button onClick={() => cancelPending(nom)} title="Annuler les modifs" className="p-1 text-slate-500 hover:bg-slate-100 rounded text-xs">↶</button>
+                            </span>
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
