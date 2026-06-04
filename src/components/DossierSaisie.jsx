@@ -7892,6 +7892,7 @@ function ActiviteMensuellePanel({ data = [] }) {
     const noms = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
     return `${noms[m]} ${y}`;
   };
+  const pct = (n, total) => total > 0 ? Math.round((n / total) * 100) : 0;
   const totalDossiers = data.reduce((s, m) => s + m.count, 0);
   const totalPoses = data.reduce((s, m) => s + m.nbPoses, 0);
   const totalAnnules = data.reduce((s, m) => s + m.nbAnnules, 0);
@@ -7915,9 +7916,9 @@ function ActiviteMensuellePanel({ data = [] }) {
               <tr>
                 <th className="text-left px-3 py-2 font-semibold">Mois</th>
                 <th className="text-right px-3 py-2 font-semibold" title="Dossiers créés dans le CRM ce mois-là">Créés</th>
-                <th className="text-right px-3 py-2 font-semibold text-emerald-700" title="Posés ce mois : statut « ✓ Posé » avec la date « Posé le » dans ce mois">Posés</th>
-                <th className="text-right px-3 py-2 font-semibold text-stone-700" title="Annulés ce mois : statut W2_ANNULER avec date d'archivage dans ce mois">Annulés</th>
-                <th className="text-right px-3 py-2 font-semibold text-rose-700" title="Refusés banque ce mois : statut « refusé » avec date de retour banque dans ce mois">Refus banque</th>
+                <th className="text-right px-3 py-2 font-semibold text-emerald-700" title="Posés ce mois (dateInsta dans ce mois). Le % est ratio Posés/Créés du même mois.">Posés</th>
+                <th className="text-right px-3 py-2 font-semibold text-stone-700" title="Annulés ce mois (archivedAt dans ce mois). Le % est ratio Annulés/Créés du même mois.">Annulés</th>
+                <th className="text-right px-3 py-2 font-semibold text-rose-700" title="Refusés banque ce mois (dateRetourFin dans ce mois). Le % est ratio Refus/Créés du même mois.">Refus banque</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -7925,9 +7926,18 @@ function ActiviteMensuellePanel({ data = [] }) {
                 <tr key={m.mois} className="hover:bg-slate-50">
                   <td className="px-3 py-2 font-semibold text-slate-800">{moisLabel(m.mois)}</td>
                   <td className="px-3 py-2 text-right font-bold text-slate-700">{m.count}</td>
-                  <td className="px-3 py-2 text-right font-bold text-emerald-700">{m.nbPoses}</td>
-                  <td className="px-3 py-2 text-right font-bold text-stone-700">{m.nbAnnules}</td>
-                  <td className="px-3 py-2 text-right font-bold text-rose-700">{m.nbRefusBanque}</td>
+                  <td className="px-3 py-2 text-right">
+                    <span className="font-bold text-emerald-700">{m.nbPoses}</span>
+                    {m.count > 0 && <span className="text-emerald-500 ml-1 font-normal">({pct(m.nbPoses, m.count)}%)</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <span className="font-bold text-stone-700">{m.nbAnnules}</span>
+                    {m.count > 0 && <span className="text-stone-500 ml-1 font-normal">({pct(m.nbAnnules, m.count)}%)</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <span className="font-bold text-rose-700">{m.nbRefusBanque}</span>
+                    {m.count > 0 && <span className="text-rose-500 ml-1 font-normal">({pct(m.nbRefusBanque, m.count)}%)</span>}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -7935,9 +7945,15 @@ function ActiviteMensuellePanel({ data = [] }) {
               <tr>
                 <td className="px-3 py-2">Total</td>
                 <td className="px-3 py-2 text-right">{totalDossiers}</td>
-                <td className="px-3 py-2 text-right text-emerald-700">{totalPoses}</td>
-                <td className="px-3 py-2 text-right text-stone-700">{totalAnnules}</td>
-                <td className="px-3 py-2 text-right text-rose-700">{totalRefus}</td>
+                <td className="px-3 py-2 text-right text-emerald-700">
+                  {totalPoses}{totalDossiers > 0 && <span className="text-emerald-500 ml-1 font-normal">({pct(totalPoses, totalDossiers)}%)</span>}
+                </td>
+                <td className="px-3 py-2 text-right text-stone-700">
+                  {totalAnnules}{totalDossiers > 0 && <span className="text-stone-500 ml-1 font-normal">({pct(totalAnnules, totalDossiers)}%)</span>}
+                </td>
+                <td className="px-3 py-2 text-right text-rose-700">
+                  {totalRefus}{totalDossiers > 0 && <span className="text-rose-500 ml-1 font-normal">({pct(totalRefus, totalDossiers)}%)</span>}
+                </td>
               </tr>
             </tfoot>
           </table>
