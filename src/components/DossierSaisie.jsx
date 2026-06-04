@@ -4109,7 +4109,29 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsMaterielNonRendu.sort((a, b) => b.jours - a.jours);
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsCommerciaux, statsBanques, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
+    // 📅 Activité mensuelle — pour chaque mois de signature, combien de dossiers
+    // signés et leur devenir : posés / annulés / refus banque (avec % sur le
+    // total signé). Réponds à « qu'est-ce que j'ai fait tous les mois ».
+    // Date de référence : dateSignature (date du BC). Fallback : createdAt.
+    const activiteMoisMap = {};
+    dossiersDash.forEach(d => {
+      const ref = d.dateSignature || d.createdAt || d.savedAt;
+      if (!ref) return;
+      const k = String(ref).substring(0, 7); // YYYY-MM
+      if (!/^\d{4}-\d{2}$/.test(k)) return;
+      if (!activiteMoisMap[k]) {
+        activiteMoisMap[k] = { mois: k, count: 0, nbPoses: 0, nbAnnules: 0, nbRefusBanque: 0 };
+      }
+      const m = activiteMoisMap[k];
+      m.count += 1;
+      if (d.statutPose === 'visite_ok') m.nbPoses += 1;
+      if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') m.nbAnnules += 1;
+      if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
+    });
+    // Tri du plus récent au plus ancien (mois actuel en premier).
+    const activiteMois = Object.values(activiteMoisMap).sort((a, b) => b.mois.localeCompare(a.mois));
+
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsCommerciaux, statsBanques, activiteMois, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -7611,6 +7633,8 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
         </div>
       )}
 
+      {!isRestricted && <ActiviteMensuellePanel data={dashboard.activiteMois || []} />}
+
       <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
       <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
       {(dashboard.statsCommerciaux || []).length > 0 && (
@@ -7827,6 +7851,95 @@ function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// 📅 Activité mensuelle — récap par mois de signature : combien de dossiers
+// entrés, combien posés, annulés, refus banque (+ %). Réponds à
+// « qu'est-ce que j'ai fait tous les mois ».
+function ActiviteMensuellePanel({ data = [] }) {
+  const [open, setOpen] = useState(true);
+  if (data.length === 0) {
+    return (
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 text-sm text-slate-500">
+        📅 Activité mensuelle — pas encore de dossier signé.
+      </div>
+    );
+  }
+  // Formatte "2026-06" → "Juin 2026"
+  const moisLabel = (k) => {
+    const [y, m] = k.split('-').map(Number);
+    const noms = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+    return `${noms[m]} ${y}`;
+  };
+  const pct = (n, total) => total > 0 ? Math.round((n / total) * 100) : 0;
+  const totalDossiers = data.reduce((s, m) => s + m.count, 0);
+  const totalPoses = data.reduce((s, m) => s + m.nbPoses, 0);
+  const totalAnnules = data.reduce((s, m) => s + m.nbAnnules, 0);
+  const totalRefus = data.reduce((s, m) => s + m.nbRefusBanque, 0);
+  return (
+    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-2 px-4 py-3 hover:bg-slate-50"
+      >
+        <span className="flex items-center gap-2 font-bold text-slate-800 text-sm">
+          📅 Activité mensuelle
+          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-700">{data.length} mois</span>
+        </span>
+        <span className="text-slate-400 text-xs">{open ? '▼' : '▶'}</span>
+      </button>
+      {open && (
+        <div className="border-t border-slate-100 overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead className="bg-slate-50 text-slate-600 uppercase text-[10px]">
+              <tr>
+                <th className="text-left px-3 py-2 font-semibold">Mois</th>
+                <th className="text-right px-3 py-2 font-semibold" title="Dossiers signés ce mois">Signés</th>
+                <th className="text-right px-3 py-2 font-semibold text-emerald-700" title="Pose réalisée (statut « ✓ Posé »)">Posés</th>
+                <th className="text-right px-3 py-2 font-semibold text-stone-700" title="Dossiers annulés (W2_ANNULER)">Annulés</th>
+                <th className="text-right px-3 py-2 font-semibold text-rose-700" title="Dossiers refusés par la banque">Refus banque</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {data.map(m => (
+                <tr key={m.mois} className="hover:bg-slate-50">
+                  <td className="px-3 py-2 font-semibold text-slate-800">{moisLabel(m.mois)}</td>
+                  <td className="px-3 py-2 text-right font-bold text-slate-700">{m.count}</td>
+                  <td className="px-3 py-2 text-right">
+                    <span className="font-bold text-emerald-700">{m.nbPoses}</span>
+                    {m.count > 0 && <span className="text-emerald-500 ml-1 font-normal">({pct(m.nbPoses, m.count)}%)</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <span className="font-bold text-stone-700">{m.nbAnnules}</span>
+                    {m.count > 0 && <span className="text-stone-500 ml-1 font-normal">({pct(m.nbAnnules, m.count)}%)</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right">
+                    <span className="font-bold text-rose-700">{m.nbRefusBanque}</span>
+                    {m.count > 0 && <span className="text-rose-500 ml-1 font-normal">({pct(m.nbRefusBanque, m.count)}%)</span>}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+            <tfoot className="bg-slate-100 font-bold text-slate-800 text-[11px]">
+              <tr>
+                <td className="px-3 py-2">Total</td>
+                <td className="px-3 py-2 text-right">{totalDossiers}</td>
+                <td className="px-3 py-2 text-right text-emerald-700">
+                  {totalPoses}{totalDossiers > 0 && <span className="text-emerald-500 ml-1 font-normal">({pct(totalPoses, totalDossiers)}%)</span>}
+                </td>
+                <td className="px-3 py-2 text-right text-stone-700">
+                  {totalAnnules}{totalDossiers > 0 && <span className="text-stone-500 ml-1 font-normal">({pct(totalAnnules, totalDossiers)}%)</span>}
+                </td>
+                <td className="px-3 py-2 text-right text-rose-700">
+                  {totalRefus}{totalDossiers > 0 && <span className="text-rose-500 ml-1 font-normal">({pct(totalRefus, totalDossiers)}%)</span>}
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
