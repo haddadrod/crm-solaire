@@ -4192,7 +4192,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
       }
       return true;
     })
-    .filter(d => filterStatut === 'all' || d.statut === filterStatut)
+    .filter(d => {
+      if (filterStatut === 'all') return true;
+      // Filtre spécial : « ✓ Posés » = tous les dossiers où le bouton
+      // « ✓ Posé » est coché, peu importe l'étape du workflow (en attente
+      // accord déf., en banque, payé, etc.).
+      if (filterStatut === 'pose_done') return d.statutPose === 'visite_ok';
+      return d.statut === filterStatut;
+    })
     .filter(d => {
       if (!searchTerm) return true;
       const s = searchTerm.toLowerCase();
@@ -4573,13 +4580,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
                   {/* Indicateur du filtre actif quand replié */}
                   {!showStatutFilter && filterStatut !== 'all' && (() => {
-                    const cur = STATUTS_ORDERED.find(s => s.id === filterStatut);
-                    if (!cur) return null;
-                    const count = dossiers.filter(d => d.statut === filterStatut).length;
+                    let label, emoji, color, count;
+                    if (filterStatut === 'pose_done') {
+                      label = 'Posés'; emoji = '✓'; color = 'from-emerald-500 to-green-600';
+                      count = dossiers.filter(d => d.statutPose === 'visite_ok').length;
+                    } else {
+                      const cur = STATUTS_ORDERED.find(s => s.id === filterStatut);
+                      if (!cur) return null;
+                      label = cur.label; emoji = cur.emoji; color = cur.color;
+                      count = dossiers.filter(d => d.statut === filterStatut).length;
+                    }
                     return (
                       <div className="flex items-center gap-2">
-                        <span className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 bg-gradient-to-r ${cur.color} text-white shadow-md`}>
-                          <span>{cur.emoji}</span>{cur.label}
+                        <span className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 bg-gradient-to-r ${color} text-white shadow-md`}>
+                          <span>{emoji}</span>{label}
                           <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/30">{count}</span>
                         </span>
                         <button onClick={() => setFilterStatut('all')} className="text-[10px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-lg flex items-center gap-0.5" title="Effacer le filtre">
@@ -4610,6 +4624,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       📋 Tous
                       <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${filterStatut === 'all' ? 'bg-white/30' : 'bg-white text-slate-700'}`}>{dossiers.length}</span>
                     </button>
+                    {(() => {
+                      // 🎯 Raccourci : tous les dossiers posés (statutPose === 'visite_ok')
+                      const sel = filterStatut === 'pose_done';
+                      const count = dossiers.filter(d => d.statutPose === 'visite_ok').length;
+                      return (
+                        <button onClick={() => setFilterStatut('pose_done')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-md scale-105' : 'bg-emerald-50 text-emerald-700'}`} title="Tous les dossiers avec le bouton « ✓ Posé » coché, peu importe l'étape banque/paiement">
+                          ✓ Posés
+                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${sel ? 'bg-white/30' : 'bg-white text-emerald-700'}`}>{count}</span>
+                        </button>
+                      );
+                    })()}
                     {STATUTS_ORDERED.map(s => {
                       const count = dossiers.filter(d => d.statut === s.id).length;
                       const sel = filterStatut === s.id;
