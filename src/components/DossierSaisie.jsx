@@ -4109,13 +4109,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsMaterielNonRendu.sort((a, b) => b.jours - a.jours);
 
-    // 📅 Activité mensuelle — pour chaque mois de signature, combien de dossiers
-    // signés et leur devenir : posés / annulés / refus banque (avec % sur le
-    // total signé). Réponds à « qu'est-ce que j'ai fait tous les mois ».
-    // Date de référence : dateSignature (date du BC). Fallback : createdAt.
+    // 📅 Activité mensuelle — pour chaque mois où le dossier a été créé dans
+    // le CRM, combien de dossiers entrés et leur devenir : posés / annulés /
+    // refus banque (avec % sur le total entré ce mois).
+    // Date de référence : createdAt (entrée du dossier dans le CRM). Fallback
+    // sur savedAt pour les anciens dossiers où createdAt manquerait.
     const activiteMoisMap = {};
     dossiersDash.forEach(d => {
-      const ref = d.dateSignature || d.createdAt || d.savedAt;
+      const ref = d.createdAt || d.savedAt;
       if (!ref) return;
       const k = String(ref).substring(0, 7); // YYYY-MM
       if (!/^\d{4}-\d{2}$/.test(k)) return;
@@ -7896,7 +7897,7 @@ function ActiviteMensuellePanel({ data = [] }) {
             <thead className="bg-slate-50 text-slate-600 uppercase text-[10px]">
               <tr>
                 <th className="text-left px-3 py-2 font-semibold">Mois</th>
-                <th className="text-right px-3 py-2 font-semibold" title="Dossiers signés ce mois">Signés</th>
+                <th className="text-right px-3 py-2 font-semibold" title="Dossiers créés dans le CRM ce mois-là">Créés</th>
                 <th className="text-right px-3 py-2 font-semibold text-emerald-700" title="Pose réalisée (statut « ✓ Posé »)">Posés</th>
                 <th className="text-right px-3 py-2 font-semibold text-stone-700" title="Dossiers annulés (W2_ANNULER)">Annulés</th>
                 <th className="text-right px-3 py-2 font-semibold text-rose-700" title="Dossiers refusés par la banque">Refus banque</th>
