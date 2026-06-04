@@ -4203,6 +4203,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     })
     .sort((a, b) => {
       if (sortBy === 'date') return (b.dateInsta || '').localeCompare(a.dateInsta || '');
+      if (sortBy === 'createdDesc') return (b.createdAt || b.savedAt || '').localeCompare(a.createdAt || a.savedAt || '');
+      if (sortBy === 'createdAsc')  return (a.createdAt || a.savedAt || '').localeCompare(b.createdAt || b.savedAt || '');
       if (sortBy === 'montant') return (b.montantTotal || 0) - (a.montantTotal || 0);
       if (sortBy === 'marge') return (b.margeTtc || 0) - (a.margeTtc || 0);
       if (sortBy === 'nom') return (a.nom || '').localeCompare(b.nom || '');
@@ -4635,7 +4637,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
                   <select value={sortBy} onChange={(e) => setSortBy(e.target.value)} className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-3 py-2 cursor-pointer hover:bg-slate-100">
                     <option value="statut">↕️ Trier : Statut</option>
-                    <option value="date">📅 Date récente</option>
+                    <option value="date">📅 Date de pose (récent → ancien)</option>
+                    <option value="createdDesc">📥 Date création (récent → ancien)</option>
+                    <option value="createdAsc">📤 Date création (ancien → récent)</option>
                     <option value="montant">💰 Montant (gros → petit)</option>
                     <option value="marge">📈 Marge (gros → petit)</option>
                     <option value="nom">🔤 Nom (A → Z)</option>
