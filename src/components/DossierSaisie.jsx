@@ -9037,11 +9037,24 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     const p = pending[nom];
     if (!p) return;
     const tarifs = { ...(data[nom] || {}) };
+    let telToSave = null, emailToSave = null;
     Object.entries(p).forEach(([k, v]) => {
+      // Convention : clés __tel et __email sortent vers `contacts`, le reste
+      // vers `data` (tarifs par puissance ou produit).
+      if (k === '__tel') { telToSave = v; return; }
+      if (k === '__email') { emailToSave = v; return; }
       const num = parseFloat(v);
       if (v === '' || isNaN(num) || num === 0) delete tarifs[k]; else tarifs[k] = num;
     });
     setData({ ...data, [nom]: tarifs });
+    // Sauve les contacts si modifiés. Pour les contacts en string (legacy
+    // poseurs), seul le tél compte ; pour les contacts object (régies), on
+    // sauve tél+email ensemble pour éviter d'écraser une 2e valeur.
+    if ((telToSave !== null || emailToSave !== null) && setContacts) {
+      const currentTel = telToSave !== null ? telToSave : getTel(nom);
+      const currentEmail = emailToSave !== null ? emailToSave : getEmail(nom);
+      saveContact(nom, currentTel, currentEmail);
+    }
     setPending(prev => { const np = { ...prev }; delete np[nom]; return np; });
   };
   const cancelPending = (nom) => {
@@ -9092,9 +9105,29 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                     const used = dossiers.filter(d => d[dossierField] === nom).length;
                     return (
                       <tr key={nom} className="border-t border-slate-200 hover:bg-slate-50 group">
-                        <td className="px-2 py-1.5 sticky left-0 bg-white group-hover:bg-slate-50 z-10 min-w-[140px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">
+                        <td className="px-2 py-1.5 sticky left-0 bg-white group-hover:bg-slate-50 z-10 min-w-[180px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">
                           <input type="text" defaultValue={nom} onBlur={(e) => rename(nom, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="w-full px-2 py-1 bg-transparent border border-transparent hover:border-slate-300 focus:border-violet-400 focus:bg-white focus:outline-none rounded text-xs font-semibold" />
-                          {/* Tél/email gérés dans Réglages → Utilisateurs (compte rattaché à ce {type}) — source de vérité unique, plus de bug d'effacement */}
+                          {/* 📞 Tél et 📧 email — édition différée, sauvés par le bouton « Enregistrer » de la ligne. */}
+                          <div className="mt-1 space-y-0.5">
+                            <input
+                              type="tel"
+                              value={pending[nom] && '__tel' in pending[nom] ? pending[nom].__tel : getTel(nom)}
+                              onChange={(e) => editLocal(nom, '__tel', e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
+                              placeholder="📞 Téléphone"
+                              className={`w-full px-2 py-0.5 ${pending[nom] && '__tel' in pending[nom] ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border rounded text-[10px]`}
+                            />
+                            {contactsObjectShape && (
+                              <input
+                                type="email"
+                                value={pending[nom] && '__email' in pending[nom] ? pending[nom].__email : getEmail(nom)}
+                                onChange={(e) => editLocal(nom, '__email', e.target.value)}
+                                onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
+                                placeholder="📧 Email"
+                                className={`w-full px-2 py-0.5 ${pending[nom] && '__email' in pending[nom] ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border rounded text-[10px]`}
+                              />
+                            )}
+                          </div>
                         </td>
                         {PUISSANCES_PRINCIPALES.map(p => {
                           const localVal = getLocal(nom, p);
