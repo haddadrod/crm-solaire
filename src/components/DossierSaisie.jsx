@@ -4109,25 +4109,43 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsMaterielNonRendu.sort((a, b) => b.jours - a.jours);
 
-    // 📅 Activité mensuelle — pour chaque mois où le dossier a été créé dans
-    // le CRM, combien de dossiers entrés et leur devenir : posés / annulés /
-    // refus banque (avec % sur le total entré ce mois).
-    // Date de référence : createdAt (entrée du dossier dans le CRM). Fallback
-    // sur savedAt pour les anciens dossiers où createdAt manquerait.
+    // 📅 Activité mensuelle — pour chaque mois on compte les ÉVÉNEMENTS qui
+    // ont eu lieu ce mois-là, chacun sur sa propre date :
+    //   - Créés         : createdAt du dossier dans le mois
+    //   - Posés         : statutPose === 'visite_ok' ET dateInsta (date de
+    //                     pose RÉELLE saisie après le clic « ✓ Posé »)
+    //   - Annulés       : statut === W2_ANNULER ET archivedAt dans le mois
+    //   - Refus banque  : statutFin === 'refusé' ET dateRetourFin dans le mois
+    // → Chaque colonne reflète ce qui a été fait CE mois, peu importe quand
+    //   le dossier est entré dans le CRM.
+    const ensureMonth = (map, k) => {
+      if (!/^\d{4}-\d{2}$/.test(k)) return null;
+      if (!map[k]) map[k] = { mois: k, count: 0, nbPoses: 0, nbAnnules: 0, nbRefusBanque: 0 };
+      return map[k];
+    };
     const activiteMoisMap = {};
     dossiersDash.forEach(d => {
-      const ref = d.createdAt || d.savedAt;
-      if (!ref) return;
-      const k = String(ref).substring(0, 7); // YYYY-MM
-      if (!/^\d{4}-\d{2}$/.test(k)) return;
-      if (!activiteMoisMap[k]) {
-        activiteMoisMap[k] = { mois: k, count: 0, nbPoses: 0, nbAnnules: 0, nbRefusBanque: 0 };
+      // Créés ce mois
+      const refCreated = d.createdAt || d.savedAt;
+      if (refCreated) {
+        const m = ensureMonth(activiteMoisMap, String(refCreated).substring(0, 7));
+        if (m) m.count += 1;
       }
-      const m = activiteMoisMap[k];
-      m.count += 1;
-      if (d.statutPose === 'visite_ok') m.nbPoses += 1;
-      if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') m.nbAnnules += 1;
-      if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
+      // Posés ce mois (sur dateInsta = date de pose réelle saisie par l'user)
+      if (d.statutPose === 'visite_ok' && d.dateInsta) {
+        const m = ensureMonth(activiteMoisMap, String(d.dateInsta).substring(0, 7));
+        if (m) m.nbPoses += 1;
+      }
+      // Annulés ce mois (sur archivedAt — date du clic « Annulé »)
+      if ((d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') && d.archivedAt) {
+        const m = ensureMonth(activiteMoisMap, String(d.archivedAt).substring(0, 7));
+        if (m) m.nbAnnules += 1;
+      }
+      // Refus banque ce mois (sur dateRetourFin — date saisie du retour banque)
+      if (d.statutFin === 'refusé' && d.dateRetourFin) {
+        const m = ensureMonth(activiteMoisMap, String(d.dateRetourFin).substring(0, 7));
+        if (m) m.nbRefusBanque += 1;
+      }
     });
     // Tri du plus récent au plus ancien (mois actuel en premier).
     const activiteMois = Object.values(activiteMoisMap).sort((a, b) => b.mois.localeCompare(a.mois));
@@ -7874,7 +7892,6 @@ function ActiviteMensuellePanel({ data = [] }) {
     const noms = ['', 'Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
     return `${noms[m]} ${y}`;
   };
-  const pct = (n, total) => total > 0 ? Math.round((n / total) * 100) : 0;
   const totalDossiers = data.reduce((s, m) => s + m.count, 0);
   const totalPoses = data.reduce((s, m) => s + m.nbPoses, 0);
   const totalAnnules = data.reduce((s, m) => s + m.nbAnnules, 0);
@@ -7898,9 +7915,9 @@ function ActiviteMensuellePanel({ data = [] }) {
               <tr>
                 <th className="text-left px-3 py-2 font-semibold">Mois</th>
                 <th className="text-right px-3 py-2 font-semibold" title="Dossiers créés dans le CRM ce mois-là">Créés</th>
-                <th className="text-right px-3 py-2 font-semibold text-emerald-700" title="Pose réalisée (statut « ✓ Posé »)">Posés</th>
-                <th className="text-right px-3 py-2 font-semibold text-stone-700" title="Dossiers annulés (W2_ANNULER)">Annulés</th>
-                <th className="text-right px-3 py-2 font-semibold text-rose-700" title="Dossiers refusés par la banque">Refus banque</th>
+                <th className="text-right px-3 py-2 font-semibold text-emerald-700" title="Posés ce mois : statut « ✓ Posé » avec la date « Posé le » dans ce mois">Posés</th>
+                <th className="text-right px-3 py-2 font-semibold text-stone-700" title="Annulés ce mois : statut W2_ANNULER avec date d'archivage dans ce mois">Annulés</th>
+                <th className="text-right px-3 py-2 font-semibold text-rose-700" title="Refusés banque ce mois : statut « refusé » avec date de retour banque dans ce mois">Refus banque</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
@@ -7908,18 +7925,9 @@ function ActiviteMensuellePanel({ data = [] }) {
                 <tr key={m.mois} className="hover:bg-slate-50">
                   <td className="px-3 py-2 font-semibold text-slate-800">{moisLabel(m.mois)}</td>
                   <td className="px-3 py-2 text-right font-bold text-slate-700">{m.count}</td>
-                  <td className="px-3 py-2 text-right">
-                    <span className="font-bold text-emerald-700">{m.nbPoses}</span>
-                    {m.count > 0 && <span className="text-emerald-500 ml-1 font-normal">({pct(m.nbPoses, m.count)}%)</span>}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <span className="font-bold text-stone-700">{m.nbAnnules}</span>
-                    {m.count > 0 && <span className="text-stone-500 ml-1 font-normal">({pct(m.nbAnnules, m.count)}%)</span>}
-                  </td>
-                  <td className="px-3 py-2 text-right">
-                    <span className="font-bold text-rose-700">{m.nbRefusBanque}</span>
-                    {m.count > 0 && <span className="text-rose-500 ml-1 font-normal">({pct(m.nbRefusBanque, m.count)}%)</span>}
-                  </td>
+                  <td className="px-3 py-2 text-right font-bold text-emerald-700">{m.nbPoses}</td>
+                  <td className="px-3 py-2 text-right font-bold text-stone-700">{m.nbAnnules}</td>
+                  <td className="px-3 py-2 text-right font-bold text-rose-700">{m.nbRefusBanque}</td>
                 </tr>
               ))}
             </tbody>
@@ -7927,15 +7935,9 @@ function ActiviteMensuellePanel({ data = [] }) {
               <tr>
                 <td className="px-3 py-2">Total</td>
                 <td className="px-3 py-2 text-right">{totalDossiers}</td>
-                <td className="px-3 py-2 text-right text-emerald-700">
-                  {totalPoses}{totalDossiers > 0 && <span className="text-emerald-500 ml-1 font-normal">({pct(totalPoses, totalDossiers)}%)</span>}
-                </td>
-                <td className="px-3 py-2 text-right text-stone-700">
-                  {totalAnnules}{totalDossiers > 0 && <span className="text-stone-500 ml-1 font-normal">({pct(totalAnnules, totalDossiers)}%)</span>}
-                </td>
-                <td className="px-3 py-2 text-right text-rose-700">
-                  {totalRefus}{totalDossiers > 0 && <span className="text-rose-500 ml-1 font-normal">({pct(totalRefus, totalDossiers)}%)</span>}
-                </td>
+                <td className="px-3 py-2 text-right text-emerald-700">{totalPoses}</td>
+                <td className="px-3 py-2 text-right text-stone-700">{totalAnnules}</td>
+                <td className="px-3 py-2 text-right text-rose-700">{totalRefus}</td>
               </tr>
             </tfoot>
           </table>
