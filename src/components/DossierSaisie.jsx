@@ -4198,6 +4198,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // « ✓ Posé » est coché, peu importe l'étape du workflow (en attente
       // accord déf., en banque, payé, etc.).
       if (filterStatut === 'pose_done') return d.statutPose === 'visite_ok';
+      // « ⏳ Posés non payés » = posés mais pas encore encaissés par le
+      // financeur. C'est le suivi banque actif : travail fait, argent à
+      // venir. Annulés / refus banque exclus (on ne reçoit plus rien).
+      if (filterStatut === 'pose_done_unpaid') {
+        if (d.statutPose !== 'visite_ok') return false;
+        if (d.payeClient) return false;
+        if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') return false;
+        if (d.statutFin === 'refusé') return false;
+        return true;
+      }
       return d.statut === filterStatut;
     })
     .filter(d => {
@@ -4584,6 +4594,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     if (filterStatut === 'pose_done') {
                       label = 'Posés'; emoji = '✓'; color = 'from-emerald-500 to-green-600';
                       count = dossiers.filter(d => d.statutPose === 'visite_ok').length;
+                    } else if (filterStatut === 'pose_done_unpaid') {
+                      label = 'Posés non payés'; emoji = '⏳'; color = 'from-amber-500 to-orange-600';
+                      count = dossiers.filter(d => d.statutPose === 'visite_ok' && !d.payeClient && d.statut !== 'W2_ANNULER' && d.statut !== 'ANNULER' && d.statutFin !== 'refusé').length;
                     } else {
                       const cur = STATUTS_ORDERED.find(s => s.id === filterStatut);
                       if (!cur) return null;
@@ -4632,6 +4645,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
                         <button onClick={() => setFilterStatut('pose_done')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-md scale-105' : 'bg-emerald-50 text-emerald-700'}`} title="Tous les dossiers avec le bouton « ✓ Posé » coché, peu importe l'étape banque/paiement">
                           ✓ Posés
                           <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${sel ? 'bg-white/30' : 'bg-white text-emerald-700'}`}>{count}</span>
+                        </button>
+                      );
+                    })()}
+                    {(() => {
+                      // 🎯 Raccourci : posés mais pas encore payés par le financeur
+                      const sel = filterStatut === 'pose_done_unpaid';
+                      const count = dossiers.filter(d => d.statutPose === 'visite_ok' && !d.payeClient && d.statut !== 'W2_ANNULER' && d.statut !== 'ANNULER' && d.statutFin !== 'refusé').length;
+                      return (
+                        <button onClick={() => setFilterStatut('pose_done_unpaid')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md scale-105' : 'bg-amber-50 text-amber-700'}`} title="Dossiers posés mais pas encore encaissés par le financeur (annulés et refus banque exclus). Le suivi banque actif.">
+                          ⏳ Posés non payés
+                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${sel ? 'bg-white/30' : 'bg-white text-amber-700'}`}>{count}</span>
                         </button>
                       );
                     })()}
