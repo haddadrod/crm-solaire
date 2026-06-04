@@ -10321,6 +10321,32 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
     setProduits(produits.map(p => p.id === id ? { ...p, ...updates } : p));
   };
 
+  // 🛡️ Édition différée du type (emoji + label) : on garde une copie locale
+  // tant que l'utilisateur n'a pas cliqué « Enregistrer ». Évite qu'un autre
+  // onglet ou un sync Realtime efface ce qu'il est en train de taper.
+  // pendingType : { [typeId]: { emoji, label } }
+  const [pendingType, setPendingType] = useState({});
+  const getTypeLocal = (id, field) => {
+    if (pendingType[id] && field in pendingType[id]) return pendingType[id][field];
+    const p = produits.find(x => x.id === id);
+    return p ? p[field] : '';
+  };
+  const editType = (id, field, v) => {
+    setPendingType(prev => ({ ...prev, [id]: { ...(prev[id] || {}), [field]: v } }));
+  };
+  const saveType = (id) => {
+    const p = pendingType[id]; if (!p) return;
+    const upd = {};
+    if ('emoji' in p) upd.emoji = String(p.emoji || '').slice(0, 4) || '🔧';
+    if ('label' in p) upd.label = String(p.label || '').trim() || 'Sans nom';
+    updateProduit(id, upd);
+    setPendingType(prev => { const np = { ...prev }; delete np[id]; return np; });
+  };
+  const cancelType = (id) => {
+    setPendingType(prev => { const np = { ...prev }; delete np[id]; return np; });
+  };
+  const hasPendingType = (id) => !!pendingType[id] && Object.keys(pendingType[id]).length > 0;
+
   const del = (p) => {
     if (p.autoTarif) {
       alert('Le produit "Panneaux solaires" ne peut pas être supprimé : il sert pour les tarifs auto par Wc.');
@@ -10419,8 +10445,27 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
                   >
                     {expanded ? '▼' : '▶'}
                   </button>
-                  <input type="text" value={p.emoji} onChange={(e) => updateProduit(p.id, { emoji: e.target.value.slice(0, 4) })} className="w-12 px-2 py-1.5 bg-white border border-slate-200 rounded-lg text-center text-base" maxLength={4} />
-                  <input type="text" value={p.label} onChange={(e) => updateProduit(p.id, { label: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} placeholder="Type" className="flex-1 min-w-[200px] px-3 py-1.5 bg-white border border-slate-200 rounded-lg text-sm font-semibold" />
+                  <input
+                    type="text"
+                    value={getTypeLocal(p.id, 'emoji')}
+                    onChange={(e) => editType(p.id, 'emoji', e.target.value.slice(0, 4))}
+                    className={`w-12 px-2 py-1.5 ${hasPendingType(p.id) ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'} border rounded-lg text-center text-base`}
+                    maxLength={4}
+                  />
+                  <input
+                    type="text"
+                    value={getTypeLocal(p.id, 'label')}
+                    onChange={(e) => editType(p.id, 'label', e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); saveType(p.id); } }}
+                    placeholder="Type"
+                    className={`flex-1 min-w-[200px] px-3 py-1.5 ${hasPendingType(p.id) ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'} border rounded-lg text-sm font-semibold`}
+                  />
+                  {hasPendingType(p.id) && (
+                    <span className="inline-flex items-center gap-1">
+                      <button onClick={() => saveType(p.id)} title="Enregistrer le nom/emoji" className="px-2 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-bold whitespace-nowrap">💾 Enregistrer</button>
+                      <button onClick={() => cancelType(p.id)} title="Annuler les modifs" className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg text-xs">↶</button>
+                    </span>
+                  )}
                   {/* Compteur de variantes — discoverability quand c'est replié */}
                   <button
                     type="button"
