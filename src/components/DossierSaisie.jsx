@@ -3149,6 +3149,51 @@ export default function DossierSaisie({ authUser, onLogout }) {
     showToast(`📊 Grand livre exporté — ${nbSoc} fichier${nbSoc > 1 ? 's' : ''} (${nomsSoc})`, 'success', 4000);
   };
 
+  // 💰 Pointage rapide d'un prestataire (poseur/régie/fournisseur) sur un
+  // dossier — toggle paye + datePaye. Réutilisé par PerfList (Dashboard) et
+  // PaiementsView (Rapport paiements).
+  const handleTogglePresta = (localId, nom, kind) => {
+    setDossiers(prev => prev.map(d => {
+      if (d.localId !== localId) return d;
+      const today = new Date().toISOString().split('T')[0];
+      if (kind === 'poseur') {
+        const poseurs = (d.poseurs || []).map(p => p && p.nom === nom ? { ...p, paye: !p.paye, datePaye: !p.paye ? today : '' } : p);
+        return { ...d, poseurs };
+      }
+      if (kind === 'regie') {
+        const regies = (d.regies || []).map(r => r && r.nom === nom ? { ...r, paye: !r.paye, datePaye: !r.paye ? today : '' } : r);
+        return { ...d, regies };
+      }
+      if (kind === 'fournisseur') {
+        const fournisseurs = (d.fournisseurs || []).map(f => f && f.nom === nom ? { ...f, paye: !f.paye, datePaye: !f.paye ? today : '' } : f);
+        return { ...d, fournisseurs };
+      }
+      return d;
+    }));
+  };
+  // 💰 Validation d'un virement groupé : passe en payé tous les dossiers
+  // sélectionnés (laisse intacts ceux déjà payés). Un seul setDossiers atomique.
+  const handleMarkPrestaPaye = (localIds, nom, kind) => {
+    const idSet = new Set(localIds);
+    const today = new Date().toISOString().split('T')[0];
+    setDossiers(prev => prev.map(d => {
+      if (!idSet.has(d.localId)) return d;
+      if (kind === 'poseur') {
+        const poseurs = (d.poseurs || []).map(p => p && p.nom === nom && !p.paye ? { ...p, paye: true, datePaye: today } : p);
+        return { ...d, poseurs };
+      }
+      if (kind === 'regie') {
+        const regies = (d.regies || []).map(r => r && r.nom === nom && !r.paye ? { ...r, paye: true, datePaye: today } : r);
+        return { ...d, regies };
+      }
+      if (kind === 'fournisseur') {
+        const fournisseurs = (d.fournisseurs || []).map(f => f && f.nom === nom && !f.paye ? { ...f, paye: true, datePaye: today } : f);
+        return { ...d, fournisseurs };
+      }
+      return d;
+    }));
+  };
+
   // Dossiers enrichis : calcule à la volée HT, marges, totaux poseurs/régie/fournisseur, etc.
   // Permet d'afficher correctement les anciens dossiers qui n'ont pas ces champs stockés.
   const dossiersEnriched = useMemo(() => {
@@ -4736,6 +4781,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {activeTab === 'paiements' && <PaiementsView
           rapportPaiements={rapportPaiements}
           societes={societes}
+          onMarkPrestaPaye={handleMarkPrestaPaye}
           onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }}
           onTogglePenalite={(dossierLocalId, tentativeIdx) => {
             const now = new Date().toISOString();
@@ -4765,39 +4811,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         />}
 
         {/* DASHBOARD */}
-        {activeTab === 'dashboard' && <DashboardView dossiers={dossiersEnriched} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} onTogglePresta={(localId, nom, kind) => {
-          // Toggle paye sur le poseur/régie d'un dossier (bouton rapide).
-          setDossiers(prev => prev.map(d => {
-            if (d.localId !== localId) return d;
-            const today = new Date().toISOString().split('T')[0];
-            if (kind === 'poseur') {
-              const poseurs = (d.poseurs || []).map(p => p && p.nom === nom ? { ...p, paye: !p.paye, datePaye: !p.paye ? today : '' } : p);
-              return { ...d, poseurs };
-            }
-            if (kind === 'regie') {
-              const regies = (d.regies || []).map(r => r && r.nom === nom ? { ...r, paye: !r.paye, datePaye: !r.paye ? today : '' } : r);
-              return { ...d, regies };
-            }
-            return d;
-          }));
-        }} onMarkPrestaPaye={(localIds, nom, kind) => {
-          // Valide un virement groupé : passe en payé tous les dossiers
-          // sélectionnés (ceux déjà payés sont laissés tels quels).
-          const idSet = new Set(localIds);
-          const today = new Date().toISOString().split('T')[0];
-          setDossiers(prev => prev.map(d => {
-            if (!idSet.has(d.localId)) return d;
-            if (kind === 'poseur') {
-              const poseurs = (d.poseurs || []).map(p => p && p.nom === nom && !p.paye ? { ...p, paye: true, datePaye: today } : p);
-              return { ...d, poseurs };
-            }
-            if (kind === 'regie') {
-              const regies = (d.regies || []).map(r => r && r.nom === nom && !r.paye ? { ...r, paye: true, datePaye: today } : r);
-              return { ...d, regies };
-            }
-            return d;
-          }));
-        }} />}
+        {activeTab === 'dashboard' && <DashboardView dossiers={dossiersEnriched} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} onTogglePresta={handleTogglePresta} onMarkPrestaPaye={handleMarkPrestaPaye} />}
 
         {activeTab === 'calendrier' && (
           <CalendrierView
@@ -6639,7 +6653,33 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
 
 // ====================== AUTRES VUES (inchangées) ======================
 
-function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onTogglePenalite, onToggleLitige }) {
+function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onTogglePenalite, onToggleLitige, onMarkPrestaPaye }) {
+  // 🎯 Filtre par défaut : ne montrer que les dossiers qu'on PEUT payer
+  // maintenant (client a payé). Toggle pour voir aussi les "bloqués"
+  // (en attente d'encaissement client) et les déjà payés.
+  const [showOnlyAPayer, setShowOnlyAPayer] = useState(true);
+  // ☑️ Sélection multi pour virement groupé, namespacée par prestataire
+  // (clé = `${type}::${nom}::${societe}`).
+  const [selectedByKey, setSelectedByKey] = useState({});
+  const toggleSelected = (key, lid) => {
+    setSelectedByKey(prev => {
+      const cur = new Set(prev[key] || []);
+      if (cur.has(lid)) cur.delete(lid); else cur.add(lid);
+      const next = { ...prev };
+      if (cur.size === 0) delete next[key]; else next[key] = cur;
+      return next;
+    });
+  };
+  const clearSelection = (key) => {
+    setSelectedByKey(prev => { const next = { ...prev }; delete next[key]; return next; });
+  };
+  // 'Poseur'/'Régie'/'Fournisseur' → 'poseur'/'regie'/'fournisseur' (kind du callback).
+  const kindFromType = (type) => {
+    if (type === 'Poseur') return 'poseur';
+    if (type === 'Régie') return 'regie';
+    if (type === 'Fournisseur') return 'fournisseur';
+    return null;
+  };
   // Helper pour afficher le badge société à côté du nom prestataire/banque
   const renderSocieteBadge = (societeId) => {
     if (!societeId) return null;
@@ -6821,6 +6861,12 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
             <TrendingUp className="w-5 h-5 text-violet-500" />Détail par prestataire
           </h2>
           <p className="text-xs text-slate-500 mt-1">💡 Vous payez seulement quand le financeur a payé</p>
+          <div className="mt-2 flex items-center gap-2 flex-wrap">
+            <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 cursor-pointer select-none bg-white border border-slate-200 px-2 py-1 rounded-lg hover:bg-slate-50">
+              <input type="checkbox" checked={showOnlyAPayer} onChange={(e) => setShowOnlyAPayer(e.target.checked)} className="w-3.5 h-3.5 accent-violet-600" />
+              🔥 Afficher uniquement les dossiers à payer
+            </label>
+          </div>
         </div>
 
         {(rapportPaiements.totalAPayerMaintenant > 0 || rapportPaiements.totalEnAttenteFinanceur > 0 || rapportPaiements.totalPayeAvance > 0) && (
@@ -6850,6 +6896,15 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
                              p.type === 'Régie' ? 'bg-purple-100 text-purple-700' :
                              isInternal ? 'bg-fuchsia-100 text-fuchsia-700' :
                              'bg-blue-100 text-blue-700';
+              // Filtre les lignes selon le toggle « uniquement à payer »
+              const lignesFiltrees = showOnlyAPayer
+                ? p.lignes.filter(l => !l.paye && (l.isInterne || l.financeurPaye))
+                : p.lignes;
+              // Si le filtre est actif et qu'il ne reste rien, on cache le prestataire entier.
+              if (showOnlyAPayer && lignesFiltrees.length === 0) return null;
+              const prestaKey = `${p.type}::${p.nom}::${p.societe || ''}`;
+              const kind = kindFromType(p.type);
+              const selSet = selectedByKey[prestaKey] || new Set();
               return (
                 <details key={idx} className="group">
                   <summary className="p-4 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-3 list-none flex-wrap">
@@ -6870,7 +6925,7 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
                     </div>
                   </summary>
                   <div className="bg-slate-50 px-4 py-3 space-y-1.5">
-                    {p.lignes.map((l, i) => {
+                    {lignesFiltrees.map((l, i) => {
                       const etat = l.paye ? (l.payeAvance ? 'paye_avance' : 'paye') : l.financeurPaye ? 'a_payer' : 'bloque';
                       const styles = {
                         paye: { bg: 'bg-emerald-50 border-emerald-200', icon: 'bg-emerald-500', label: '✓ Payé', labelBg: 'bg-emerald-200 text-emerald-800', amount: 'text-emerald-700' },
@@ -6880,6 +6935,8 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
                       }[etat];
                       const canOpen = !!(l.dossierLocalId && onShowQuick);
                       const handleOpen = () => canOpen && onShowQuick(l.dossierLocalId, scrollTargetFor(l.prestataireType || p.type));
+                      const canCheck = !!(kind && onMarkPrestaPaye && etat === 'a_payer' && l.dossierLocalId);
+                      const isChecked = selSet.has(l.dossierLocalId);
                       return (
                         <div
                           key={i}
@@ -6888,12 +6945,23 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
                           tabIndex={canOpen ? 0 : undefined}
                           onKeyDown={canOpen ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpen(); } } : undefined}
                           title={canOpen ? `Ouvrir ${l.client || 'le dossier'} — section ${p.type}` : undefined}
-                          className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm border ${styles.bg} ${canOpen ? 'cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-violet-300 transition' : ''}`}
+                          className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm border ${isChecked ? 'bg-blue-50 border-blue-300' : styles.bg} ${canOpen ? 'cursor-pointer hover:ring-2 hover:ring-offset-1 hover:ring-violet-300 transition' : ''}`}
                         >
                           <div className="flex items-center gap-2 flex-1 min-w-0">
-                            <div className={`w-5 h-5 rounded flex items-center justify-center ${styles.icon}`}>
-                              {l.paye && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
-                            </div>
+                            {canCheck ? (
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => { e.stopPropagation(); toggleSelected(prestaKey, l.dossierLocalId); }}
+                                onClick={(e) => e.stopPropagation()}
+                                className="w-4 h-4 accent-blue-600 cursor-pointer flex-shrink-0"
+                                title="Cocher pour inclure dans le prochain virement"
+                              />
+                            ) : (
+                              <div className={`w-5 h-5 rounded flex items-center justify-center ${styles.icon}`}>
+                                {l.paye && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
+                              </div>
+                            )}
                             {l.dossierId !== '—' && <span className="text-xs font-mono text-slate-500">#{l.dossierId}</span>}
                             <span className="font-medium text-slate-700 truncate">{l.client || '(sans nom)'}</span>
                             <span className="text-[10px] text-slate-400">💳 {l.financement}</span>
@@ -6907,6 +6975,44 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
                         </div>
                       );
                     })}
+                    {/* 💰 Barre virement groupé — visible quand au moins une case cochée pour ce prestataire */}
+                    {kind && onMarkPrestaPaye && selSet.size > 0 && (() => {
+                      let totalSel = 0;
+                      const toMark = [];
+                      lignesFiltrees.forEach(l => {
+                        if (l.paye) return;
+                        if (!selSet.has(l.dossierLocalId)) return;
+                        totalSel += l.ttc || 0;
+                        toMark.push(l.dossierLocalId);
+                      });
+                      if (toMark.length === 0) return null;
+                      return (
+                        <div className="sticky bottom-0 mt-2 -mx-4 px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-600 text-white shadow-lg flex items-center justify-between gap-3 flex-wrap z-10">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl font-extrabold">{formatEuro(totalSel)}</span>
+                            <span className="text-xs opacity-90">à virer · {toMark.length} dossier{toMark.length > 1 ? 's' : ''} coché{toMark.length > 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); clearSelection(prestaKey); }}
+                              className="text-[11px] font-bold text-white/90 bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg"
+                            >Tout désélectionner</button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const msg = `Valider le virement de ${formatEuro(totalSel)} à ${p.nom} ?\nCela va pointer ${toMark.length} dossier${toMark.length > 1 ? 's' : ''} comme « payés » avec la date du jour.`;
+                                if (!window.confirm(msg)) return;
+                                onMarkPrestaPaye(toMark, p.nom, kind);
+                                clearSelection(prestaKey);
+                              }}
+                              className="text-xs font-bold bg-white text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg shadow-md"
+                            >✓ Valider le virement</button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 </details>
               );
