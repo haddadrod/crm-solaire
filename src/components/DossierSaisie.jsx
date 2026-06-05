@@ -8234,8 +8234,31 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                       const dd = dossierByLocalId.get(lid); if (!dd) return;
                       if (dd.payeClient) idsEncaisses.push(lid); else idsAttente.push(lid);
                     });
+                    // 🥇 Tri par priorité : les plus vieux d'abord (= on les doit
+                    // depuis le plus longtemps, donc à payer en premier).
+                    // - Section « encaissée » : âge depuis payeClientDate
+                    //   (depuis quand on a l'argent du client).
+                    // - Section « attente » : âge depuis dateInsta (depuis quand
+                    //   la pose a été faite).
+                    const today = new Date();
+                    const ageDays = (iso) => {
+                      if (!iso) return -1;
+                      const t = new Date(iso).getTime();
+                      if (isNaN(t)) return -1;
+                      return Math.floor((today.getTime() - t) / 86400000);
+                    };
+                    const ageEncaisse = (lid) => {
+                      const dd = dossierByLocalId.get(lid);
+                      return ageDays(dd?.payeClientDate || dd?.datePaiementBanque || dd?.dateInsta);
+                    };
+                    const ageAttente = (lid) => {
+                      const dd = dossierByLocalId.get(lid);
+                      return ageDays(dd?.dateInsta || dd?.dateEnvoiPose || dd?.createdAt);
+                    };
+                    idsEncaisses.sort((a, b) => ageEncaisse(b) - ageEncaisse(a));
+                    idsAttente.sort((a, b) => ageAttente(b) - ageAttente(a));
 
-                    const renderLine = (lid, allowSelection) => {
+                    const renderLine = (lid, allowSelection, age) => {
                       const d = dossierByLocalId.get(lid);
                       if (!d) return null;
                       const list = p.kind === 'poseur' ? (d.poseursDetail || []) : p.kind === 'regie' ? (d.regiesDetail || []) : null;
@@ -8245,6 +8268,8 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                       const factureNo = detail ? (detail.factureNo || '') : '';
                       const canToggle = !!(detail && onTogglePresta && p.kind !== 'commercial');
                       const isSelected = selectedIds.has(lid);
+                      // Couleur du badge d'ancienneté : plus c'est vieux, plus c'est rouge.
+                      const ageColor = age >= 30 ? 'bg-rose-100 text-rose-700' : age >= 14 ? 'bg-orange-100 text-orange-700' : age >= 7 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500';
                       return (
                         <div key={lid} className={`flex items-center gap-2 py-1.5 px-2 rounded ${paye ? 'bg-emerald-50/50' : isSelected ? 'bg-blue-50' : ''}`}>
                           {allowSelection && canToggle && !paye ? (
@@ -8271,6 +8296,11 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                               {!factureNo && d.id && <span className="text-[10px] text-slate-400 ml-1">· #{d.id}</span>}
                             </span>
                           </button>
+                          {age >= 0 && (
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap ${ageColor}`} title="Ancienneté — les plus vieux sont en haut, à payer en priorité">
+                              {age === 0 ? "auj." : age === 1 ? "1j" : `${age}j`}
+                            </span>
+                          )}
                           <span className="text-[11px] font-bold text-slate-700 flex-shrink-0 whitespace-nowrap">
                             {formatEuro(amount)}
                           </span>
@@ -8309,7 +8339,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                               <span className="text-[11px] font-bold text-emerald-900">{formatEuro(totalEncaisses)}</span>
                             </div>
                             <div className="divide-y divide-slate-200">
-                              {idsEncaisses.map(lid => renderLine(lid, true))}
+                              {idsEncaisses.map(lid => renderLine(lid, true, ageEncaisse(lid)))}
                             </div>
                           </div>
                         )}
@@ -8320,7 +8350,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                               <span className="text-[11px] font-bold text-slate-700">{formatEuro(totalAttente)}</span>
                             </div>
                             <div className="divide-y divide-slate-200">
-                              {idsAttente.map(lid => renderLine(lid, true))}
+                              {idsAttente.map(lid => renderLine(lid, true, ageAttente(lid)))}
                             </div>
                           </div>
                         )}
