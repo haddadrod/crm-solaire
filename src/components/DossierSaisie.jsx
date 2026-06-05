@@ -9457,6 +9457,90 @@ function CommissionsInternesManager({ tarifs, setTarifs, noms, setNoms, dossiers
   );
 }
 
+// 🛒 Carte « Autres produits » par produit : liste les prestataires qui ont
+// un tarif sur ce produit, et propose d'en ajouter d'autres via un menu.
+// Évite la grille avec plein de vides quand peu de poseurs font la PAC ou
+// la Pergola par exemple.
+function ProductPrestaCard({ product, type, lignesActives, nomsDispo, getLocal, editLocal, savePending, cancelPending, hasPending, pending }) {
+  const [showAdd, setShowAdd] = useState(false);
+  const [pickedNom, setPickedNom] = useState('');
+  // Quand on ajoute un prestataire à un produit, on initialise le pending
+  // pour ce nom × ce produit avec une valeur vide → la ligne apparaît dans
+  // les actives et l'utilisateur peut taper son prix.
+  const handlePickAdd = (nom) => {
+    if (!nom) return;
+    editLocal(nom, product.id, '0');
+    setPickedNom('');
+    setShowAdd(false);
+  };
+  return (
+    <div className="border border-slate-200 rounded-xl overflow-hidden">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
+        <div className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
+          <span>{product.emoji}</span><span>{product.label}</span>
+          <span className="text-[10px] font-normal text-slate-500">({lignesActives.length} {type}{lignesActives.length > 1 ? 's' : ''})</span>
+        </div>
+        {nomsDispo.length > 0 && (
+          showAdd ? (
+            <div className="flex items-center gap-1.5">
+              <select
+                value={pickedNom}
+                onChange={(e) => setPickedNom(e.target.value)}
+                className="text-xs bg-white border border-slate-300 rounded px-2 py-1"
+                autoFocus
+              >
+                <option value="">— Choisir un {type} —</option>
+                {nomsDispo.map(n => <option key={n} value={n}>{n}</option>)}
+              </select>
+              <button onClick={() => handlePickAdd(pickedNom)} disabled={!pickedNom} className="text-[10px] font-bold bg-violet-500 hover:bg-violet-600 disabled:bg-slate-200 disabled:text-slate-400 text-white px-2 py-1 rounded">Ajouter</button>
+              <button onClick={() => { setShowAdd(false); setPickedNom(''); }} className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded">Annuler</button>
+            </div>
+          ) : (
+            <button onClick={() => setShowAdd(true)} className="text-[11px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded flex items-center gap-1">
+              <Plus className="w-3 h-3" />Ajouter un {type}
+            </button>
+          )
+        )}
+      </div>
+      {lignesActives.length === 0 ? (
+        <div className="px-3 py-4 text-center text-xs text-slate-400 italic">
+          Aucun {type} avec tarif sur {product.label}. Clique « Ajouter un {type} » ci-dessus.
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {lignesActives.map(nom => {
+            const val = getLocal(nom, product.id);
+            const isEdited = pending[nom] && product.id in pending[nom];
+            return (
+              <div key={nom} className="flex items-center gap-2 px-3 py-2 hover:bg-slate-50">
+                <span className="flex-1 text-xs font-semibold text-slate-700 truncate">{nom}</span>
+                <div className="flex items-center gap-1">
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={val ?? ''}
+                    onChange={(e) => editLocal(nom, product.id, e.target.value)}
+                    onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
+                    placeholder="—"
+                    className={`w-24 px-2 py-1 ${isEdited ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'} border rounded text-right text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-violet-400`}
+                  />
+                  <span className="text-[10px] text-slate-500">€ HT</span>
+                  {hasPending(nom) && (
+                    <span className="inline-flex items-center gap-0.5 ml-1">
+                      <button onClick={() => savePending(nom)} title="Enregistrer" className="px-1.5 py-0.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[10px] font-bold">💾</button>
+                      <button onClick={() => cancelPending(nom)} title="Annuler" className="p-1 text-slate-500 hover:bg-slate-100 rounded text-xs">↶</button>
+                    </span>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PrestataireManager({ titre, description, data, setData, dossiers, dossierField, type, produits, contacts, setContacts, contactsObjectShape = false }) {
   // contactsObjectShape=false : contacts = { [nom]: 'tel' } (legacy poseurs)
   // contactsObjectShape=true  : contacts = { [nom]: { tel, email } } (régies)
@@ -9472,9 +9556,44 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
   };
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
-  const noms = Object.keys(data);
+  const allNoms = Object.keys(data);
   // Produits non-solaires (avec tarif flat par produit)
   const otherProducts = (produits || []).filter(p => !p.autoTarif);
+
+  // 🏢 Déduit la société de chaque prestataire depuis les dossiers existants
+  // (un poseur peut bosser pour plusieurs sociétés → set de sociétés par nom).
+  // Sert au filtre dropdown qui restreint l'affichage à une société à la fois.
+  const societesParNom = useMemo(() => {
+    const m = new Map();
+    const arrField = dossierField === 'poseur' ? 'poseurs'
+                    : dossierField === 'regie' ? 'regies'
+                    : dossierField === 'fournisseur' ? 'fournisseurs'
+                    : null;
+    if (!arrField) return m;
+    (dossiers || []).forEach(d => {
+      const soc = d.societe || '';
+      if (!soc) return;
+      (d[arrField] || []).forEach(p => {
+        if (!p?.nom) return;
+        if (!m.has(p.nom)) m.set(p.nom, new Set());
+        m.get(p.nom).add(soc);
+      });
+    });
+    return m;
+  }, [dossiers, dossierField]);
+  const societesPresentes = useMemo(() => {
+    const s = new Set();
+    societesParNom.forEach(set => set.forEach(soc => s.add(soc)));
+    return Array.from(s).sort();
+  }, [societesParNom]);
+  const [filterSociete, setFilterSociete] = useState('');
+  // noms affichés selon le filtre. « Sans société » regroupe les prestataires
+  // qui n'ont jamais été utilisés sur un dossier de société identifiée.
+  const noms = useMemo(() => {
+    if (!filterSociete) return allNoms;
+    if (filterSociete === '__none__') return allNoms.filter(n => !societesParNom.has(n) || societesParNom.get(n).size === 0);
+    return allNoms.filter(n => societesParNom.get(n)?.has(filterSociete));
+  }, [allNoms, filterSociete, societesParNom]);
 
   const add = () => {
     const nom = newName.trim().toUpperCase();
@@ -9739,7 +9858,26 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
         </div>
         <div className="p-4">
           <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
-            <div className="text-sm font-semibold text-slate-600">📋 {noms.length} {type}{noms.length > 1 ? 's' : ''}</div>
+            <div className="flex items-center gap-3 flex-wrap">
+              <div className="text-sm font-semibold text-slate-600">
+                📋 {noms.length} {type}{noms.length > 1 ? 's' : ''}
+                {filterSociete && <span className="text-xs font-normal text-slate-400 ml-1">/ {allNoms.length} total</span>}
+              </div>
+              {societesPresentes.length > 0 && (
+                <select
+                  value={filterSociete}
+                  onChange={(e) => setFilterSociete(e.target.value)}
+                  className="text-xs font-semibold bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 cursor-pointer hover:bg-slate-100"
+                  title="Filtrer les prestataires selon la société de leurs dossiers"
+                >
+                  <option value="">🏢 Toutes sociétés</option>
+                  {societesPresentes.map(s => (
+                    <option key={s} value={s}>🏢 {s}</option>
+                  ))}
+                  <option value="__none__">🏢 Sans société</option>
+                </select>
+              )}
+            </div>
             {!showAdd ? (
               <div className="flex items-center gap-2">
                 <button onClick={() => { setShowImport(true); setImportPreview(null); }} className="text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg flex items-center gap-1.5" title="Coller un tableau depuis Google Sheets / Excel pour remplir tous les tarifs d'un coup">
@@ -9845,60 +9983,39 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
           {otherProducts.length > 0 && (
             <div className="mt-5">
               <h3 className="text-xs font-bold text-slate-700 uppercase mb-2 flex items-center gap-1.5">
-                <span>🛒</span><span>Autres produits — prix HT unitaire (multiplié par la quantité)</span>
+                <span>🛒</span><span>Autres produits — prix HT unitaire par {type}</span>
               </h3>
-              <div className="overflow-x-auto rounded-xl border border-slate-200">
-                <table className="w-full text-xs">
-                  <thead className="bg-slate-50">
-                    <tr>
-                      <th className="px-2 py-2 text-left font-bold text-slate-600 sticky left-0 bg-slate-50 z-10 min-w-[140px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">Nom</th>
-                      {otherProducts.map(p => (
-                        <th key={p.id} className="px-2 py-2 text-center font-bold text-slate-600 whitespace-nowrap" title={p.label}>
-                          <div className="flex items-center justify-center gap-1">
-                            <span>{p.emoji}</span><span>{p.label}</span>
-                          </div>
-                        </th>
-                      ))}
-                      <th className="px-2 py-2 text-center font-bold text-slate-600"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {noms.map(nom => (
-                      <tr key={nom} className="border-t border-slate-200 hover:bg-slate-50">
-                        <td className="px-2 py-1.5 font-semibold text-slate-700 sticky left-0 bg-white z-10 min-w-[140px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">{nom}</td>
-                        {otherProducts.map(p => {
-                          const val = getLocal(nom, p.id);
-                          const isSet = val !== undefined && val !== null && val !== '';
-                          const isEdited = pending[nom] && p.id in pending[nom];
-                          return (
-                            <td key={p.id} className="px-1 py-1.5 text-right">
-                              <input
-                                type="number"
-                                step="0.01"
-                                value={val ?? ''}
-                                onChange={(e) => editLocal(nom, p.id, e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
-                                placeholder="—"
-                                className={`w-20 px-1.5 py-0.5 ${isEdited ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border rounded text-right focus:outline-none focus:ring-1 focus:ring-violet-400 text-xs ${isSet ? 'font-semibold text-slate-800' : 'text-slate-400'}`}
-                              />
-                            </td>
-                          );
-                        })}
-                        <td className="px-2 py-1.5 text-center whitespace-nowrap">
-                          {hasPending(nom) && (
-                            <span className="inline-flex items-center gap-1">
-                              <button onClick={() => savePending(nom)} title="Enregistrer les modifs" className="px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[10px] font-bold">💾 Enregistrer</button>
-                              <button onClick={() => cancelPending(nom)} title="Annuler les modifs" className="p-1 text-slate-500 hover:bg-slate-100 rounded text-xs">↶</button>
-                            </span>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div className="space-y-2">
+                {otherProducts.map(prod => {
+                  // Pour ce produit, ne lister que les prestataires qui ont un
+                  // tarif saisi (ou une modif en cours). Permet d'éviter la
+                  // grille pleine de vides.
+                  const lignesActives = noms.filter(nom => {
+                    const val = getLocal(nom, prod.id);
+                    return val !== undefined && val !== null && val !== '';
+                  });
+                  // Les noms qui n'ont PAS encore de tarif sur ce produit (pour
+                  // le menu d'ajout). On les filtre aussi par société active.
+                  const nomsDispo = noms.filter(nom => !lignesActives.includes(nom));
+                  return (
+                    <ProductPrestaCard
+                      key={prod.id}
+                      product={prod}
+                      type={type}
+                      lignesActives={lignesActives}
+                      nomsDispo={nomsDispo}
+                      getLocal={getLocal}
+                      editLocal={editLocal}
+                      savePending={savePending}
+                      cancelPending={cancelPending}
+                      hasPending={hasPending}
+                      pending={pending}
+                    />
+                  );
+                })}
               </div>
               <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-700 leading-relaxed">
-                💡 Prix HT que tu paies à ce {type} pour <strong>1 unité</strong> de chaque produit. Sur un dossier, ce prix est multiplié par la quantité saisie (ex: 3 climatisations → 3× le prix unitaire). Laisse vide pour saisir manuellement.
+                💡 Prix HT que tu paies pour <strong>1 unité</strong>. Sur un dossier, ce prix est multiplié par la quantité saisie (ex: 3 climatisations → 3× le prix unitaire). N'ajoute que les {type}s qui font ce produit.
               </div>
             </div>
           )}
