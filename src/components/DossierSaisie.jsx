@@ -9607,10 +9607,16 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
 
   const parsePuissance = (s) => {
     if (s == null) return null;
-    const str = String(s).replace(/[^\d]/g, '');
+    const raw = String(s).trim();
+    // Rejette les cellules contenant des lettres (DEPLACEMENT, PERGOLA, PAC, etc.)
+    // Seul espace insécable, virgule, point et chiffres tolérés autour du nombre.
+    if (/[a-zA-Z]/.test(raw)) return null;
+    const str = raw.replace(/[^\d]/g, '');
     if (!str) return null;
     const n = parseInt(str, 10);
-    return isFinite(n) && n > 0 ? n : null;
+    // Puissance plausible : entre 500 Wc et 99 999 Wc.
+    if (!isFinite(n) || n < 500 || n > 99999) return null;
+    return n;
   };
   const parseTarif = (s) => {
     if (s == null) return null;
@@ -9629,29 +9635,41 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
   };
   const parseImport = (text) => {
     const errors = [];
-    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    const lines = text.split(/\r?\n/).map(l => l.replace(/\s+$/, '')).filter(l => l.replace(/[\t;,]/g, '').trim().length > 0);
     if (lines.length === 0) return { rows: [], errors: ['Texte vide.'] };
     const rows = lines.map(splitRow);
 
-    // Heuristique : détecte les paires (PUISSANCE / TARIF) du format de l'user.
-    const looksLikeFormatB = rows.some(r => /^puissance$/i.test((r[1] || '').trim()));
+    // Trouve la colonne qui contient « PUISSANCE » ou « TARIF » (robuste à
+    // une colonne vide en début, à un titre, etc.). On scanne les 5 premières
+    // colonnes de chaque ligne.
+    const findMarkerCol = (r) => {
+      for (let i = 0; i < Math.min(r.length, 5); i++) {
+        const v = (r[i] || '').trim().toUpperCase();
+        if (v === 'PUISSANCE' || v === 'TARIF') return i;
+      }
+      return -1;
+    };
+    // La colonne du nom est juste avant la colonne du marqueur.
+    const looksLikeFormatB = rows.some(r => findMarkerCol(r) >= 0);
 
     const result = [];
 
     if (looksLikeFormatB) {
-      // Format B : lignes appariées. On scanne, dès qu'on voit "TARIF" en
-      // colonne 1, on prend la ligne précédente comme PUISSANCE.
       let lastPuiss = null;
       let lastNom = null;
       for (const r of rows) {
-        const col1 = (r[1] || '').trim().toUpperCase();
-        if (col1 === 'PUISSANCE') {
-          lastNom = (r[0] || lastNom || '').trim().toUpperCase();
-          lastPuiss = r.slice(2);
-        } else if (col1 === 'TARIF') {
+        const markerCol = findMarkerCol(r);
+        if (markerCol < 0) continue;
+        const marker = (r[markerCol] || '').trim().toUpperCase();
+        const nomCol = markerCol - 1;
+        if (marker === 'PUISSANCE') {
+          const nomCell = nomCol >= 0 ? (r[nomCol] || '').trim() : '';
+          if (nomCell) lastNom = nomCell.toUpperCase();
+          lastPuiss = r.slice(markerCol + 1);
+        } else if (marker === 'TARIF') {
           if (!lastPuiss || !lastNom) continue;
           const tarifs = {};
-          const tarifsCells = r.slice(2);
+          const tarifsCells = r.slice(markerCol + 1);
           for (let i = 0; i < lastPuiss.length; i++) {
             const p = parsePuissance(lastPuiss[i]);
             const t = parseTarif(tarifsCells[i]);
@@ -9666,19 +9684,22 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     } else {
       // Format A simple : 1ère ligne = entête (Nom | 3000 | 3500 | …)
       const header = rows[0];
-      const puissances = header.slice(1).map(parsePuissance);
+      // Détecte la colonne du nom (1ère colonne non vide qui n'est pas une puissance)
+      let nomCol = 0;
+      while (nomCol < header.length && parsePuissance(header[nomCol]) != null) nomCol++;
+      const puissances = header.slice(nomCol + 1).map(parsePuissance);
       if (puissances.every(p => p == null)) {
         errors.push("Impossible de lire les puissances dans la 1ère ligne (entête). Mets « Nom » puis les puissances : 2000, 2500, 3000, …");
         return { rows: [], errors };
       }
       for (let i = 1; i < rows.length; i++) {
         const r = rows[i];
-        const nom = (r[0] || '').trim().toUpperCase();
+        const nom = (r[nomCol] || '').trim().toUpperCase();
         if (!nom) continue;
         const tarifs = {};
         for (let j = 0; j < puissances.length; j++) {
           const p = puissances[j];
-          const t = parseTarif(r[j + 1]);
+          const t = parseTarif(r[nomCol + 1 + j]);
           if (p && t) tarifs[p] = t;
         }
         if (Object.keys(tarifs).length > 0) {
