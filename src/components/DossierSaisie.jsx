@@ -1417,6 +1417,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [copilotCtx, setCopilotCtx] = useState(null); // 🤖 contexte Sol : { action, dossier }
   const [showAlertesType, setShowAlertesType] = useState(null); // 🔔 type d'alerte ouvert : null | 'financement' | 'consuel' | 'paiement' | 'stagnation'
   const [showImport, setShowImport] = useState(false); // 📥 modal import dossiers
+  const [showImportJson, setShowImportJson] = useState(false); // 📦 modal import dossiers JSON
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
   // Plus de dropdown local — qui est connecté = qui agit.
   // currentUser = nom complet (utilisé pour tagger createdBy / modifiedBy) ;
@@ -4428,6 +4429,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <Upload className="w-4 h-4" />Importer
                 </button>
               )}
+              {isAdmin && (
+                <button onClick={() => setShowImportJson(true)} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200 whitespace-nowrap flex-shrink-0" title="Importer un fichier JSON de dossiers (migration depuis Google Sheets)">
+                  📦 Import JSON
+                </button>
+              )}
               <button onClick={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} className="bg-gradient-to-r from-violet-500 to-pink-500 text-white px-5 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center gap-2 whitespace-nowrap flex-shrink-0">
                 <Plus className="w-5 h-5" />Nouveau dossier
               </button>
@@ -5035,6 +5041,28 @@ export default function DossierSaisie({ authUser, onLogout }) {
             REGIES={REGIES}
             FOURNISSEURS={FOURNISSEURS}
             produits={produits}
+          />
+        )}
+
+        {/* 📦 IMPORT JSON — drag-drop d'un fichier JSON de dossiers (migration) */}
+        {showImportJson && (
+          <ImportDossiersJsonModal
+            onClose={() => setShowImportJson(false)}
+            existingDossiers={dossiers}
+            onImport={(newDossiers, mode) => {
+              if (mode === 'replace_dupes') {
+                // Remplace par id : si même id existe, on garde la nouvelle version
+                const newById = new Map(newDossiers.filter(d => d.id).map(d => [d.id, d]));
+                const kept = dossiers.filter(d => !d.id || !newById.has(d.id));
+                setDossiers([...newDossiers, ...kept]);
+              } else {
+                // skip_dupes : on n'importe que les nouveaux ids
+                const existingIds = new Set(dossiers.filter(d => d.id).map(d => d.id));
+                const toAdd = newDossiers.filter(d => !d.id || !existingIds.has(d.id));
+                setDossiers([...toAdd, ...dossiers]);
+              }
+              setShowImportJson(false);
+            }}
           />
         )}
 
@@ -15180,6 +15208,131 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
               return <button onClick={enterPreview} disabled={mappedCount === 0} className="px-5 py-2 bg-violet-500 hover:bg-violet-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold">Aperçu →</button>;
             })()}
             {step === 3 && <button onClick={doImport} disabled={!dryRun.dossiers || dryRun.dossiers.length === 0} className="px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold flex items-center gap-2"><Check className="w-4 h-4" />Importer {dryRun.dossiers?.length || 0} dossier{(dryRun.dossiers?.length || 0) > 1 ? 's' : ''}</button>}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// 📦 Import en masse de dossiers via un fichier JSON. Utilisé pour migrer
+// depuis Google Sheets (ou autre source) où on a transformé les données
+// brutes en objets dossier compatibles. Affiche un compte-rendu (nouveaux
+// vs doublons par id) et propose de skipper ou remplacer les doublons.
+function ImportDossiersJsonModal({ onClose, onImport, existingDossiers }) {
+  const [text, setText] = useState('');
+  const [parsed, setParsed] = useState(null);
+  const [error, setError] = useState('');
+
+  const onFile = async (file) => {
+    if (!file) return;
+    setError('');
+    try {
+      const txt = await file.text();
+      setText(txt);
+      handleAnalyse(txt);
+    } catch (e) { setError('Lecture du fichier impossible : ' + e.message); }
+  };
+
+  const handleAnalyse = (raw) => {
+    setError('');
+    try {
+      const data = JSON.parse(raw || text);
+      const arr = Array.isArray(data) ? data : (data.dossiers || []);
+      if (!Array.isArray(arr) || arr.length === 0) {
+        setError('JSON valide mais aucun dossier détecté (attendu : tableau d\'objets).');
+        setParsed(null);
+        return;
+      }
+      const existingIds = new Set((existingDossiers || []).filter(d => d.id).map(d => d.id));
+      const newIds = new Set();
+      let dupes = 0, nouveaux = 0, sansId = 0;
+      arr.forEach(d => {
+        if (!d.id) { sansId += 1; return; }
+        if (existingIds.has(d.id) || newIds.has(d.id)) dupes += 1; else nouveaux += 1;
+        newIds.add(d.id);
+      });
+      // Stats annexes utiles pour rassurer l'user
+      const payes = arr.filter(d => d.payeClient).length;
+      const poses = arr.filter(d => d.statutPose === 'visite_ok').length;
+      const bySociete = arr.reduce((m, d) => { const k = d.societe || '(sans)'; m[k] = (m[k] || 0) + 1; return m; }, {});
+      setParsed({ items: arr, dupes, nouveaux, sansId, payes, poses, bySociete });
+    } catch (e) {
+      setError('JSON invalide : ' + e.message);
+      setParsed(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="px-5 py-3 border-b border-slate-200 bg-gradient-to-r from-violet-50 to-pink-50 flex items-center justify-between">
+          <h3 className="text-base font-bold text-slate-800">📦 Importer des dossiers (JSON)</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+        </div>
+        <div className="p-5 overflow-y-auto space-y-3">
+          <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
+            Charge un fichier JSON contenant un <strong>tableau de dossiers</strong> au format CRM. Utile pour migrer depuis Google Sheets.
+            Les dossiers déjà présents (même <code>id</code>) peuvent être <strong>ignorés</strong> ou <strong>remplacés</strong>.
+          </div>
+          <div>
+            <label className="inline-flex items-center gap-2 px-3 py-2 bg-violet-500 hover:bg-violet-600 text-white rounded-lg text-sm font-bold cursor-pointer">
+              📁 Choisir un fichier .json
+              <input type="file" accept="application/json,.json" className="hidden" onChange={(e) => onFile(e.target.files?.[0])} />
+            </label>
+            <span className="text-xs text-slate-500 ml-2">ou colle le JSON ci-dessous</span>
+          </div>
+          <textarea
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+            placeholder='[{"nom":"...","prenom":"...","montantTotal":..., ...}, ...]'
+            className="w-full h-32 p-3 border border-slate-300 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-violet-400"
+          />
+          <button onClick={() => handleAnalyse()} disabled={!text.trim()} className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg text-xs font-semibold">
+            🔍 Analyser
+          </button>
+          {error && <div className="bg-rose-50 border border-rose-300 rounded p-2 text-xs text-rose-700">{error}</div>}
+          {parsed && (
+            <div className="border border-slate-200 rounded-lg overflow-hidden">
+              <div className="px-3 py-2 bg-slate-50 border-b border-slate-200">
+                <div className="text-sm font-bold text-slate-800">{parsed.items.length} dossier{parsed.items.length > 1 ? 's' : ''} détecté{parsed.items.length > 1 ? 's' : ''}</div>
+                <div className="text-[11px] text-slate-600 mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5">
+                  <span>✨ Nouveaux : <strong className="text-emerald-700">{parsed.nouveaux}</strong></span>
+                  <span>↻ Doublons (même id) : <strong className="text-amber-700">{parsed.dupes}</strong></span>
+                  <span>❓ Sans id : <strong className="text-slate-700">{parsed.sansId}</strong></span>
+                  <span>✅ Payés : <strong>{parsed.payes}</strong></span>
+                  <span>🔧 Posés : <strong>{parsed.poses}</strong></span>
+                  <span></span>
+                </div>
+                <div className="text-[11px] text-slate-600 mt-1">
+                  Sociétés : {Object.entries(parsed.bySociete).map(([k, v]) => `${k} (${v})`).join(' · ')}
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+        <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-2 flex-wrap">
+          <span className="text-[11px] text-slate-500">
+            {parsed && `Pour les ${parsed.dupes} doublons :`}
+          </span>
+          <div className="flex items-center gap-2">
+            <button onClick={onClose} className="px-3 py-1.5 text-slate-600 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg text-xs font-semibold">Annuler</button>
+            <button
+              onClick={() => onImport(parsed.items, 'skip_dupes')}
+              disabled={!parsed || parsed.items.length === 0}
+              className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg text-xs font-bold"
+              title="N'importe que les dossiers dont l'id n'existe pas encore"
+            >
+              ✓ Importer (skip doublons)
+            </button>
+            <button
+              onClick={() => onImport(parsed.items, 'replace_dupes')}
+              disabled={!parsed || parsed.items.length === 0}
+              className="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg text-xs font-bold"
+              title="Remplace les dossiers existants ayant le même id par la version importée"
+            >
+              ↻ Importer (remplacer doublons)
+            </button>
           </div>
         </div>
       </div>
