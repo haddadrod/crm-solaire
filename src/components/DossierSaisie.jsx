@@ -8319,8 +8319,8 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                               <span className="text-[11px] font-bold text-slate-600 uppercase">⏳ En attente d'encaissement client — pas encore à payer ({idsAttente.length})</span>
                               <span className="text-[11px] font-bold text-slate-700">{formatEuro(totalAttente)}</span>
                             </div>
-                            <div className="divide-y divide-slate-200 opacity-75">
-                              {idsAttente.map(lid => renderLine(lid, false))}
+                            <div className="divide-y divide-slate-200">
+                              {idsAttente.map(lid => renderLine(lid, true))}
                             </div>
                           </div>
                         )}
@@ -8336,9 +8336,6 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                     const toMark = [];
                     selectedIds.forEach(lid => {
                       const dd = dossierByLocalId.get(lid); if (!dd) return;
-                      // Sécurité : ne valide JAMAIS un dossier dont le client
-                      // n'a pas payé (même si la coche s'est faufilée).
-                      if (!dd.payeClient) return;
                       const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : (dd.regiesDetail || []);
                       const it = list.find(x => x.nom === p.nom); if (!it) return;
                       if (it.paye) return; // ignorés
