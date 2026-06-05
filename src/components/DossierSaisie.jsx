@@ -9593,6 +9593,122 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
   };
   const hasPending = (nom) => !!pending[nom] && Object.keys(pending[nom]).length > 0;
 
+  // 📥 Import en masse depuis copier-coller (Google Sheets / Excel).
+  // Format accepté :
+  //   - Format A (simple) : 1 ligne = 1 prestataire. 1ère colonne = nom,
+  //     colonnes suivantes = tarifs (entête = puissances : 3000, 3500…).
+  //   - Format B (le format de l'utilisateur) : 2 lignes par prestataire.
+  //     Ligne 1 (PUISSANCE) = puissances de référence (3000, 3500…).
+  //     Ligne 2 (TARIF)     = tarifs €. Le nom est dans la 1ère col de la
+  //     ligne PUISSANCE.
+  const [showImport, setShowImport] = useState(false);
+  const [importText, setImportText] = useState('');
+  const [importPreview, setImportPreview] = useState(null); // { rows: [{nom, tarifs}], errors: [] }
+
+  const parsePuissance = (s) => {
+    if (s == null) return null;
+    const str = String(s).replace(/[^\d]/g, '');
+    if (!str) return null;
+    const n = parseInt(str, 10);
+    return isFinite(n) && n > 0 ? n : null;
+  };
+  const parseTarif = (s) => {
+    if (s == null) return null;
+    // Accepte "1 400,00 €", "1400.00", "1 400", "1400€" etc.
+    const cleaned = String(s).replace(/[^\d,.\-]/g, '').replace(/\s/g, '').replace(',', '.');
+    if (!cleaned) return null;
+    const n = parseFloat(cleaned);
+    return isFinite(n) && n > 0 ? n : null;
+  };
+  const splitRow = (line) => {
+    // Détection séparateur : tab par défaut (Google Sheets / Excel),
+    // sinon ; (Excel FR), sinon , (CSV anglo-saxon).
+    if (line.includes('\t')) return line.split('\t');
+    if (line.includes(';')) return line.split(';');
+    return line.split(',');
+  };
+  const parseImport = (text) => {
+    const errors = [];
+    const lines = text.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+    if (lines.length === 0) return { rows: [], errors: ['Texte vide.'] };
+    const rows = lines.map(splitRow);
+
+    // Heuristique : détecte les paires (PUISSANCE / TARIF) du format de l'user.
+    const looksLikeFormatB = rows.some(r => /^puissance$/i.test((r[1] || '').trim()));
+
+    const result = [];
+
+    if (looksLikeFormatB) {
+      // Format B : lignes appariées. On scanne, dès qu'on voit "TARIF" en
+      // colonne 1, on prend la ligne précédente comme PUISSANCE.
+      let lastPuiss = null;
+      let lastNom = null;
+      for (const r of rows) {
+        const col1 = (r[1] || '').trim().toUpperCase();
+        if (col1 === 'PUISSANCE') {
+          lastNom = (r[0] || lastNom || '').trim().toUpperCase();
+          lastPuiss = r.slice(2);
+        } else if (col1 === 'TARIF') {
+          if (!lastPuiss || !lastNom) continue;
+          const tarifs = {};
+          const tarifsCells = r.slice(2);
+          for (let i = 0; i < lastPuiss.length; i++) {
+            const p = parsePuissance(lastPuiss[i]);
+            const t = parseTarif(tarifsCells[i]);
+            if (p && t) tarifs[p] = t;
+          }
+          if (Object.keys(tarifs).length > 0) {
+            result.push({ nom: lastNom, tarifs });
+          }
+          lastPuiss = null;
+        }
+      }
+    } else {
+      // Format A simple : 1ère ligne = entête (Nom | 3000 | 3500 | …)
+      const header = rows[0];
+      const puissances = header.slice(1).map(parsePuissance);
+      if (puissances.every(p => p == null)) {
+        errors.push("Impossible de lire les puissances dans la 1ère ligne (entête). Mets « Nom » puis les puissances : 2000, 2500, 3000, …");
+        return { rows: [], errors };
+      }
+      for (let i = 1; i < rows.length; i++) {
+        const r = rows[i];
+        const nom = (r[0] || '').trim().toUpperCase();
+        if (!nom) continue;
+        const tarifs = {};
+        for (let j = 0; j < puissances.length; j++) {
+          const p = puissances[j];
+          const t = parseTarif(r[j + 1]);
+          if (p && t) tarifs[p] = t;
+        }
+        if (Object.keys(tarifs).length > 0) {
+          result.push({ nom, tarifs });
+        }
+      }
+    }
+    if (result.length === 0) errors.push('Aucune ligne lisible. Vérifie le format (nom + puissances + tarifs).');
+    return { rows: result, errors };
+  };
+  const handleAnalyseImport = () => {
+    const r = parseImport(importText);
+    setImportPreview(r);
+  };
+  const handleConfirmImport = () => {
+    if (!importPreview || importPreview.rows.length === 0) return;
+    // Merge : on remplace les tarifs des poseurs existants par les nouveaux,
+    // on crée ceux qui n'existent pas.
+    const merged = { ...data };
+    importPreview.rows.forEach(({ nom, tarifs }) => {
+      merged[nom] = { ...(merged[nom] || {}), ...tarifs };
+    });
+    setData(merged);
+    setImportText('');
+    setImportPreview(null);
+    setShowImport(false);
+    setPending({}); // on annule toute modif en cours qui pourrait écraser
+    alert(`✅ ${importPreview.rows.length} ${type}${importPreview.rows.length > 1 ? 's' : ''} importé${importPreview.rows.length > 1 ? 's' : ''} / mis à jour.`);
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
@@ -9604,9 +9720,14 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
           <div className="mb-3 flex items-center justify-between flex-wrap gap-2">
             <div className="text-sm font-semibold text-slate-600">📋 {noms.length} {type}{noms.length > 1 ? 's' : ''}</div>
             {!showAdd ? (
-              <button onClick={() => setShowAdd(true)} className="text-xs font-semibold text-violet-600 bg-violet-50 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
-                <Plus className="w-3 h-3" />Ajouter
-              </button>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setShowImport(true); setImportPreview(null); }} className="text-xs font-semibold text-emerald-700 bg-emerald-50 hover:bg-emerald-100 px-3 py-1.5 rounded-lg flex items-center gap-1.5" title="Coller un tableau depuis Google Sheets / Excel pour remplir tous les tarifs d'un coup">
+                  📥 Importer
+                </button>
+                <button onClick={() => setShowAdd(true)} className="text-xs font-semibold text-violet-600 bg-violet-50 px-3 py-1.5 rounded-lg flex items-center gap-1.5">
+                  <Plus className="w-3 h-3" />Ajouter
+                </button>
+              </div>
             ) : (
               <div className="flex items-center gap-2">
                 <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') add(); if (e.key === 'Escape') { setShowAdd(false); setNewName(''); } }} placeholder={`Nom du ${type}`} className="px-3 py-1.5 bg-slate-50 border border-slate-200 rounded-lg text-sm" autoFocus />
@@ -9766,6 +9887,101 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
           </div>
         </div>
       </div>
+
+      {/* 📥 Modale d'import en masse depuis Google Sheets / Excel */}
+      {showImport && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40" onClick={() => setShowImport(false)}>
+          <div className="bg-white rounded-2xl shadow-xl max-w-3xl w-full max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+            <div className="px-5 py-3 border-b border-slate-200 bg-gradient-to-r from-emerald-50 to-teal-50 flex items-center justify-between">
+              <h3 className="text-base font-bold text-slate-800">📥 Importer les tarifs {type === 'poseur' ? 'poseurs' : type === 'régie' ? 'régies' : type + 's'} depuis Sheets</h3>
+              <button onClick={() => setShowImport(false)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+            </div>
+            <div className="p-5 overflow-y-auto space-y-3">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 text-xs text-blue-800">
+                <p className="font-bold mb-1">Mode d'emploi :</p>
+                <ol className="list-decimal ml-4 space-y-0.5">
+                  <li>Ouvre ton Google Sheets / Excel</li>
+                  <li>Sélectionne tout le tableau (entêtes inclus)</li>
+                  <li>Copie (Ctrl+C / Cmd+C)</li>
+                  <li>Colle ici (Ctrl+V / Cmd+V)</li>
+                  <li>Clique « Analyser » puis « Valider l'import »</li>
+                </ol>
+                <p className="mt-2 font-bold">Formats acceptés :</p>
+                <ul className="list-disc ml-4 space-y-0.5">
+                  <li><strong>Format simple</strong> : 1ère ligne = entêtes (Nom · 2000 · 2500 · 3000…), puis 1 ligne par {type}.</li>
+                  <li><strong>Format 2 lignes</strong> (comme ton sheet) : pour chaque {type}, une ligne « PUISSANCE » + une ligne « TARIF ».</li>
+                </ul>
+              </div>
+              <textarea
+                value={importText}
+                onChange={(e) => setImportText(e.target.value)}
+                placeholder="Colle ici ton tableau (Ctrl+V / Cmd+V)…"
+                className="w-full h-40 p-3 border border-slate-300 rounded-lg text-xs font-mono focus:outline-none focus:ring-2 focus:ring-emerald-400"
+              />
+              <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={handleAnalyseImport} disabled={!importText.trim()} className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg text-xs font-semibold">
+                  🔍 Analyser
+                </button>
+                {importPreview && (
+                  <button onClick={() => { setImportText(''); setImportPreview(null); }} className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-semibold">
+                    Effacer
+                  </button>
+                )}
+              </div>
+              {importPreview && (
+                <div className="border border-slate-200 rounded-lg overflow-hidden">
+                  <div className="px-3 py-2 bg-slate-50 border-b border-slate-200 text-xs font-bold text-slate-700">
+                    {importPreview.rows.length} {type}{importPreview.rows.length > 1 ? 's' : ''} détecté{importPreview.rows.length > 1 ? 's' : ''}
+                  </div>
+                  {importPreview.errors.length > 0 && (
+                    <div className="p-3 bg-rose-50 border-b border-rose-200 text-xs text-rose-700">
+                      {importPreview.errors.map((e, i) => <div key={i}>⚠️ {e}</div>)}
+                    </div>
+                  )}
+                  {importPreview.rows.length > 0 && (
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-[11px]">
+                        <thead className="bg-slate-50 text-slate-600 sticky top-0">
+                          <tr>
+                            <th className="text-left px-2 py-1 font-bold">Nom</th>
+                            <th className="text-right px-2 py-1 font-bold">Nb tarifs</th>
+                            <th className="text-right px-2 py-1 font-bold">Aperçu</th>
+                            <th className="text-center px-2 py-1 font-bold">État</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {importPreview.rows.map((r, i) => {
+                            const apercu = Object.entries(r.tarifs).slice(0, 3).map(([p, t]) => `${p}Wc → ${t}€`).join(', ');
+                            const existe = !!data[r.nom];
+                            return (
+                              <tr key={i} className="hover:bg-slate-50">
+                                <td className="px-2 py-1 font-semibold text-slate-800">{r.nom}</td>
+                                <td className="px-2 py-1 text-right text-slate-600">{Object.keys(r.tarifs).length}</td>
+                                <td className="px-2 py-1 text-right text-slate-500 text-[10px]">{apercu}…</td>
+                                <td className="px-2 py-1 text-center">
+                                  {existe ? <span className="text-amber-700 font-bold">↻ Mise à jour</span> : <span className="text-emerald-700 font-bold">+ Nouveau</span>}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-end gap-2">
+              <button onClick={() => setShowImport(false)} className="px-3 py-1.5 text-slate-600 bg-white border border-slate-300 hover:bg-slate-100 rounded-lg text-xs font-semibold">
+                Annuler
+              </button>
+              <button onClick={handleConfirmImport} disabled={!importPreview || importPreview.rows.length === 0} className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 disabled:bg-slate-200 disabled:text-slate-400 text-white rounded-lg text-xs font-bold">
+                ✓ Valider l'import
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
