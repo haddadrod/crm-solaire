@@ -8223,62 +8223,110 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                       </button>
                     </div>
                   )}
-                  {ids.map((lid) => {
-                    const d = dossierByLocalId.get(lid);
-                    if (!d) return null;
-                    // 🎯 Pour un poseur/régie : on affiche ce qu'on lui doit
-                    // SUR CE DOSSIER (ttc de sa ligne), pas le prix de vente
-                    // client. C'est ce qui sert à préparer son virement.
-                    const list = p.kind === 'poseur' ? (d.poseursDetail || []) : p.kind === 'regie' ? (d.regiesDetail || []) : null;
-                    const detail = list ? list.find(x => x.nom === p.nom) : null;
-                    const amount = detail ? (detail.ttc || 0) : (d.montantTotal || 0);
-                    const paye = detail ? !!detail.paye : false;
-                    const factureNo = detail ? (detail.factureNo || '') : '';
-                    const canToggle = !!(detail && onTogglePresta && p.kind !== 'commercial');
-                    const isSelected = selectedIds.has(lid);
-                    return (
-                      <div key={lid} className={`flex items-center gap-2 py-1.5 px-2 rounded ${paye ? 'bg-emerald-50/50' : isSelected ? 'bg-blue-50' : ''}`}>
-                        {canToggle && !paye && (
-                          <input
-                            type="checkbox"
-                            checked={isSelected}
-                            onChange={(e) => { e.stopPropagation(); toggleSelected(lid); }}
-                            onClick={(e) => e.stopPropagation()}
-                            className="w-4 h-4 accent-blue-600 cursor-pointer flex-shrink-0"
-                            title="Cocher pour inclure dans le prochain virement"
-                          />
-                        )}
-                        {canToggle && paye && <span className="w-4 flex-shrink-0" />}
-                        <button
-                          type="button"
-                          onClick={(e) => { e.stopPropagation(); onShowQuick && onShowQuick(lid); }}
-                          className="flex-1 flex items-center gap-2 text-left hover:bg-white rounded px-1 py-0.5 transition-colors min-w-0"
-                          title="Cliquer pour ouvrir l'aperçu rapide du dossier"
-                        >
-                          <span className="text-xs font-semibold text-slate-700 truncate">
-                            {d.nom} {d.prenom}
-                            {factureNo && <span className="text-[10px] text-slate-400 ml-1">· 🧾 {factureNo}</span>}
-                            {!factureNo && d.id && <span className="text-[10px] text-slate-400 ml-1">· #{d.id}</span>}
-                          </span>
-                        </button>
-                        <span className="text-[11px] font-bold text-slate-700 flex-shrink-0 whitespace-nowrap">
-                          {formatEuro(amount)}
-                        </span>
-                        {canToggle ? (
+                  {/* 💰 Sépare les dossiers en 2 groupes : ceux où le client a
+                      été payé par le financeur (= on peut payer le prestataire
+                      maintenant) et ceux en attente d'encaissement. Évite de
+                      sortir des virements alors que l'argent n'est pas rentré. */}
+                  {(() => {
+                    const idsEncaisses = []; // client a payé → à payer presta
+                    const idsAttente = [];   // client pas encore payé
+                    ids.forEach(lid => {
+                      const dd = dossierByLocalId.get(lid); if (!dd) return;
+                      if (dd.payeClient) idsEncaisses.push(lid); else idsAttente.push(lid);
+                    });
+
+                    const renderLine = (lid, allowSelection) => {
+                      const d = dossierByLocalId.get(lid);
+                      if (!d) return null;
+                      const list = p.kind === 'poseur' ? (d.poseursDetail || []) : p.kind === 'regie' ? (d.regiesDetail || []) : null;
+                      const detail = list ? list.find(x => x.nom === p.nom) : null;
+                      const amount = detail ? (detail.ttc || 0) : (d.montantTotal || 0);
+                      const paye = detail ? !!detail.paye : false;
+                      const factureNo = detail ? (detail.factureNo || '') : '';
+                      const canToggle = !!(detail && onTogglePresta && p.kind !== 'commercial');
+                      const isSelected = selectedIds.has(lid);
+                      return (
+                        <div key={lid} className={`flex items-center gap-2 py-1.5 px-2 rounded ${paye ? 'bg-emerald-50/50' : isSelected ? 'bg-blue-50' : ''}`}>
+                          {allowSelection && canToggle && !paye ? (
+                            <input
+                              type="checkbox"
+                              checked={isSelected}
+                              onChange={(e) => { e.stopPropagation(); toggleSelected(lid); }}
+                              onClick={(e) => e.stopPropagation()}
+                              className="w-4 h-4 accent-blue-600 cursor-pointer flex-shrink-0"
+                              title="Cocher pour inclure dans le prochain virement"
+                            />
+                          ) : canToggle ? (
+                            <span className="w-4 flex-shrink-0" />
+                          ) : null}
                           <button
                             type="button"
-                            onClick={(e) => { e.stopPropagation(); onTogglePresta(lid, p.nom, p.kind); }}
-                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${paye ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
-                            title={paye && detail?.datePaye ? `Payé le ${new Date(detail.datePaye).toLocaleDateString('fr-FR')} — clic pour repointer` : 'Pointer comme payé (rapide, sans groupe)'}
+                            onClick={(e) => { e.stopPropagation(); onShowQuick && onShowQuick(lid); }}
+                            className="flex-1 flex items-center gap-2 text-left hover:bg-white rounded px-1 py-0.5 transition-colors min-w-0"
+                            title="Cliquer pour ouvrir l'aperçu rapide du dossier"
                           >
-                            {paye ? `✓ Payé${detail?.datePaye ? ' ' + new Date(detail.datePaye).toLocaleDateString('fr-FR') : ''}` : '⏳ Non payé'}
+                            <span className="text-xs font-semibold text-slate-700 truncate">
+                              {d.nom} {d.prenom}
+                              {factureNo && <span className="text-[10px] text-slate-400 ml-1">· 🧾 {factureNo}</span>}
+                              {!factureNo && d.id && <span className="text-[10px] text-slate-400 ml-1">· #{d.id}</span>}
+                            </span>
                           </button>
-                        ) : (
-                          d.dateInsta && <span className="text-[11px] text-slate-500 flex-shrink-0">📅 {new Date(d.dateInsta).toLocaleDateString('fr-FR')}</span>
+                          <span className="text-[11px] font-bold text-slate-700 flex-shrink-0 whitespace-nowrap">
+                            {formatEuro(amount)}
+                          </span>
+                          {canToggle ? (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); onTogglePresta(lid, p.nom, p.kind); }}
+                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${paye ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
+                              title={paye && detail?.datePaye ? `Payé le ${new Date(detail.datePaye).toLocaleDateString('fr-FR')} — clic pour repointer` : 'Pointer comme payé (rapide, sans groupe)'}
+                            >
+                              {paye ? `✓ Payé${detail?.datePaye ? ' ' + new Date(detail.datePaye).toLocaleDateString('fr-FR') : ''}` : '⏳ Non payé'}
+                            </button>
+                          ) : (
+                            d.dateInsta && <span className="text-[11px] text-slate-500 flex-shrink-0">📅 {new Date(d.dateInsta).toLocaleDateString('fr-FR')}</span>
+                          )}
+                        </div>
+                      );
+                    };
+
+                    // Sommes par section pour les entêtes
+                    const sumGroup = (idsArr) => idsArr.reduce((s, lid) => {
+                      const dd = dossierByLocalId.get(lid); if (!dd) return s;
+                      const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : (dd.regiesDetail || []);
+                      const it = list.find(x => x.nom === p.nom); if (!it) return s;
+                      return s + (it.ttc || 0);
+                    }, 0);
+                    const totalEncaisses = sumGroup(idsEncaisses);
+                    const totalAttente = sumGroup(idsAttente);
+
+                    return (
+                      <>
+                        {idsEncaisses.length > 0 && (
+                          <div>
+                            <div className="flex items-center justify-between gap-2 px-2 py-2 bg-emerald-50 border-y border-emerald-200 sticky top-0 z-[1]">
+                              <span className="text-[11px] font-bold text-emerald-800 uppercase">💚 Client a payé — à payer maintenant ({idsEncaisses.length})</span>
+                              <span className="text-[11px] font-bold text-emerald-900">{formatEuro(totalEncaisses)}</span>
+                            </div>
+                            <div className="divide-y divide-slate-200">
+                              {idsEncaisses.map(lid => renderLine(lid, true))}
+                            </div>
+                          </div>
                         )}
-                      </div>
+                        {idsAttente.length > 0 && (
+                          <div className="mt-2">
+                            <div className="flex items-center justify-between gap-2 px-2 py-2 bg-slate-100 border-y border-slate-200 sticky top-0 z-[1]">
+                              <span className="text-[11px] font-bold text-slate-600 uppercase">⏳ En attente d'encaissement client — pas encore à payer ({idsAttente.length})</span>
+                              <span className="text-[11px] font-bold text-slate-700">{formatEuro(totalAttente)}</span>
+                            </div>
+                            <div className="divide-y divide-slate-200 opacity-75">
+                              {idsAttente.map(lid => renderLine(lid, false))}
+                            </div>
+                          </div>
+                        )}
+                      </>
                     );
-                  })}
+                  })()}
                   {/* 💰 Barre récap virement groupé — visible dès qu'au moins 1
                       dossier est coché. Calcule le total des cochés (sans
                       compter ceux déjà payés) et propose un bouton « ✓ Valider
@@ -8288,6 +8336,9 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                     const toMark = [];
                     selectedIds.forEach(lid => {
                       const dd = dossierByLocalId.get(lid); if (!dd) return;
+                      // Sécurité : ne valide JAMAIS un dossier dont le client
+                      // n'a pas payé (même si la coche s'est faufilée).
+                      if (!dd.payeClient) return;
                       const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : (dd.regiesDetail || []);
                       const it = list.find(x => x.nom === p.nom); if (!it) return;
                       if (it.paye) return; // ignorés
