@@ -9892,6 +9892,38 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     setPending(prev => { const np = { ...prev }; delete np[nom]; return np; });
   };
   const hasPending = (nom) => !!pending[nom] && Object.keys(pending[nom]).length > 0;
+  // 💾 Enregistrer toutes les fiches en attente d'un coup, en un seul
+  // setData. Évite d'avoir à cliquer Enregistrer sur chaque fiche après
+  // un import ou une session de modifs multiples.
+  const nomsPending = Object.keys(pending).filter(n => Object.keys(pending[n] || {}).length > 0);
+  const saveAllPending = () => {
+    if (nomsPending.length === 0) return;
+    const merged = { ...data };
+    const pendingContacts = {}; // { nom: { tel, email } }
+    nomsPending.forEach(nom => {
+      const p = pending[nom] || {};
+      const tarifs = { ...(merged[nom] || {}) };
+      let tel = null, email = null;
+      Object.entries(p).forEach(([k, v]) => {
+        if (k === '__tel') { tel = v; return; }
+        if (k === '__email') { email = v; return; }
+        const num = parseFloat(v);
+        if (v === '' || isNaN(num) || num === 0) delete tarifs[k]; else tarifs[k] = num;
+      });
+      merged[nom] = tarifs;
+      if (tel !== null || email !== null) {
+        pendingContacts[nom] = {
+          tel: tel !== null ? tel : getTel(nom),
+          email: email !== null ? email : getEmail(nom),
+        };
+      }
+    });
+    setData(merged);
+    if (Object.keys(pendingContacts).length > 0) {
+      Object.entries(pendingContacts).forEach(([nom, { tel, email }]) => saveContact(nom, tel, email));
+    }
+    setPending({});
+  };
 
   // 📥 Import en masse depuis copier-coller (Google Sheets / Excel).
   // Format accepté :
@@ -10057,6 +10089,15 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                   ))}
                   <option value="__none__">🏢 Sans société</option>
                 </select>
+              )}
+              {nomsPending.length > 0 && (
+                <button
+                  onClick={saveAllPending}
+                  className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-sm animate-pulse"
+                  title={`Enregistrer en une fois les modifs sur ${nomsPending.length} ${type}${nomsPending.length > 1 ? 's' : ''} : ${nomsPending.join(', ')}`}
+                >
+                  💾 Tout enregistrer ({nomsPending.length})
+                </button>
               )}
             </div>
             {!showAdd ? (
