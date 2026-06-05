@@ -8900,7 +8900,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'poseurs' && (
-        <PrestataireManager titre="🔧 Poseurs" description="Tarifs HT par puissance. Tél/email du poseur → onglet Utilisateurs (compte rattaché à ce poseur)." data={tarifsPoseurs} setData={setTarifsPoseurs} dossiers={dossiers} dossierField="poseur" type="poseur" produits={produits} contacts={poseursContacts} setContacts={setPoseursContacts} contactsObjectShape={true} />
+        <PrestataireManager titre="🔧 Poseurs" description="Tarifs HT par puissance. Tél/email du poseur → onglet Utilisateurs (compte rattaché à ce poseur)." data={tarifsPoseurs} setData={setTarifsPoseurs} dossiers={dossiers} dossierField="poseur" type="poseur" produits={produits} contacts={poseursContacts} setContacts={setPoseursContacts} contactsObjectShape={true} societesGroupe={societes} />
       )}
 
       {section === 'fournisseurs' && (
@@ -8908,7 +8908,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'regies' && (
-        <PrestataireManager titre="🤝 Régies commerciales" description="Tarifs HT par puissance. Tél/email de la régie → onglet Utilisateurs (compte rattaché à cette régie)." data={tarifsRegies} setData={setTarifsRegies} dossiers={dossiers} dossierField="regie" type="régie" produits={produits} contacts={regiesContacts} setContacts={setRegiesContacts} contactsObjectShape={true} />
+        <PrestataireManager titre="🤝 Régies commerciales" description="Tarifs HT par puissance. Tél/email de la régie → onglet Utilisateurs (compte rattaché à cette régie)." data={tarifsRegies} setData={setTarifsRegies} dossiers={dossiers} dossierField="regie" type="régie" produits={produits} contacts={regiesContacts} setContacts={setRegiesContacts} contactsObjectShape={true} societesGroupe={societes} />
       )}
 
       {section === 'commissions' && (
@@ -9546,7 +9546,7 @@ function ProductPrestaCard({ product, type, lignesActives, nomsDispo, getLocal, 
 // (déjà saisis + bouton « + Ajouter un produit »), boutons Enregistrer /
 // Annuler / Supprimer. Évite le scroll horizontal et regroupe tout au même
 // endroit pour ce prestataire.
-function PrestataireCard({ nom, type, used, societes, data, getLocal, editLocal, savePending, cancelPending, hasPending, pending, getTel, getEmail, contactsObjectShape, rename, del, otherProducts }) {
+function PrestataireCard({ nom, type, used, societes, societesDefinies = [], societesGroupe = [], setSocietesDefinies, data, getLocal, editLocal, savePending, cancelPending, hasPending, pending, getTel, getEmail, contactsObjectShape, rename, del, otherProducts, labelSociete = (x) => x }) {
   const [open, setOpen] = useState(false);
   const dirty = hasPending(nom);
   const tarifs = data[nom] || {};
@@ -9577,7 +9577,7 @@ function PrestataireCard({ nom, type, used, societes, data, getLocal, editLocal,
           {societes && societes.size > 0 && (
             <span className="flex items-center gap-1 flex-shrink-0">
               {[...societes].map(s => (
-                <span key={s} className="text-[9px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full uppercase">{s}</span>
+                <span key={s} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${societesDefinies.includes(s) ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600 border border-blue-200 italic'}`} title={societesDefinies.includes(s) ? 'Société choisie' : 'Déduite des dossiers (pas encore choisie)'}>{labelSociete(s)}</span>
               ))}
             </span>
           )}
@@ -9628,6 +9628,39 @@ function PrestataireCard({ nom, type, used, societes, data, getLocal, editLocal,
               </div>
             )}
           </div>
+          {/* 🏢 Sociétés du groupe pour lesquelles bosse ce prestataire */}
+          {setSocietesDefinies && societesGroupe.length > 0 && (
+            <div>
+              <div className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1.5">
+                <span>🏢</span><span>Société{societesGroupe.length > 1 ? 's' : ''} de ce {type}</span>
+              </div>
+              <div className="flex items-center gap-3 flex-wrap">
+                {societesGroupe.map(s => {
+                  if (!s?.id) return null;
+                  const checked = societesDefinies.includes(s.id);
+                  return (
+                    <label key={s.id} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border cursor-pointer text-xs font-semibold ${checked ? 'bg-blue-50 border-blue-300 text-blue-700' : 'bg-white border-slate-200 text-slate-500 hover:bg-slate-50'}`}>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(e) => {
+                          const next = e.target.checked
+                            ? [...new Set([...societesDefinies, s.id])]
+                            : societesDefinies.filter(x => x !== s.id);
+                          setSocietesDefinies(nom, next);
+                        }}
+                        className="w-3.5 h-3.5 accent-blue-600"
+                      />
+                      {s.emoji ? `${s.emoji} ` : ''}{s.label}
+                    </label>
+                  );
+                })}
+              </div>
+              {societesDefinies.length === 0 && (
+                <div className="text-[10px] text-slate-400 italic mt-1">Aucune coche → le CRM essaie de deviner depuis les dossiers où ce {type} a bossé.</div>
+              )}
+            </div>
+          )}
           {/* Tarifs panneaux par Wc — grille compacte qui s'enroule */}
           <div>
             <div className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1.5">
@@ -9722,7 +9755,7 @@ function PrestataireCard({ nom, type, used, societes, data, getLocal, editLocal,
   );
 }
 
-function PrestataireManager({ titre, description, data, setData, dossiers, dossierField, type, produits, contacts, setContacts, contactsObjectShape = false }) {
+function PrestataireManager({ titre, description, data, setData, dossiers, dossierField, type, produits, contacts, setContacts, contactsObjectShape = false, societesGroupe = [] }) {
   // contactsObjectShape=false : contacts = { [nom]: 'tel' } (legacy poseurs)
   // contactsObjectShape=true  : contacts = { [nom]: { tel, email } } (régies)
   const getTel = (nom) => {
@@ -9741,10 +9774,10 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
   // Produits non-solaires (avec tarif flat par produit)
   const otherProducts = (produits || []).filter(p => !p.autoTarif);
 
-  // 🏢 Déduit la société de chaque prestataire depuis les dossiers existants
-  // (un poseur peut bosser pour plusieurs sociétés → set de sociétés par nom).
-  // Sert au filtre dropdown qui restreint l'affichage à une société à la fois.
-  const societesParNom = useMemo(() => {
+  // 🏢 Sociétés EFFECTIVES d'un prestataire : on prend en priorité ce que
+  // l'utilisateur a choisi manuellement (contacts[nom].societes), sinon on
+  // déduit depuis les dossiers où il a bossé.
+  const societesParNomDeduites = useMemo(() => {
     const m = new Map();
     const arrField = dossierField === 'poseur' ? 'poseurs'
                     : dossierField === 'regie' ? 'regies'
@@ -9762,19 +9795,32 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     });
     return m;
   }, [dossiers, dossierField]);
+  // Sociétés effectives = définies manuellement OU à défaut déduites.
+  // Retourne un Set d'ids société.
+  const getSocietesEffectives = (nom) => {
+    const defs = getSocietesDefinies(nom);
+    if (defs.length > 0) return new Set(defs);
+    return societesParNomDeduites.get(nom) || new Set();
+  };
+  // Liste de sociétés disponibles dans le dropdown : les sociétés du groupe
+  // (state global) + celles déduites des dossiers (au cas où des dossiers
+  // anciens ont des sociétés disparues).
   const societesPresentes = useMemo(() => {
     const s = new Set();
-    societesParNom.forEach(set => set.forEach(soc => s.add(soc)));
+    (societesGroupe || []).forEach(g => { if (g?.id) s.add(g.id); });
+    societesParNomDeduites.forEach(set => set.forEach(soc => s.add(soc)));
     return Array.from(s).sort();
-  }, [societesParNom]);
+  }, [societesGroupe, societesParNomDeduites]);
+  const labelSociete = (id) => {
+    const g = (societesGroupe || []).find(s => s?.id === id);
+    return g?.label || id;
+  };
   const [filterSociete, setFilterSociete] = useState('');
-  // noms affichés selon le filtre. « Sans société » regroupe les prestataires
-  // qui n'ont jamais été utilisés sur un dossier de société identifiée.
   const noms = useMemo(() => {
     if (!filterSociete) return allNoms;
-    if (filterSociete === '__none__') return allNoms.filter(n => !societesParNom.has(n) || societesParNom.get(n).size === 0);
-    return allNoms.filter(n => societesParNom.get(n)?.has(filterSociete));
-  }, [allNoms, filterSociete, societesParNom]);
+    if (filterSociete === '__none__') return allNoms.filter(n => getSocietesEffectives(n).size === 0);
+    return allNoms.filter(n => getSocietesEffectives(n).has(filterSociete));
+  }, [allNoms, filterSociete, contacts, societesParNomDeduites]);
 
   const add = () => {
     const nom = newName.trim().toUpperCase();
@@ -9832,11 +9878,32 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     setContacts(prev => {
       const nc = { ...(prev || {}) };
       if (contactsObjectShape) {
-        const next = { tel: tVal, email: eVal };
-        if (!next.tel && !next.email) delete nc[nom]; else nc[nom] = next;
+        // Préserve les sociétés déjà définies pour ce prestataire.
+        const existing = (nc[nom] && typeof nc[nom] === 'object') ? nc[nom] : {};
+        const next = { ...existing, tel: tVal, email: eVal };
+        if (!next.tel && !next.email && (!next.societes || next.societes.length === 0)) delete nc[nom];
+        else nc[nom] = next;
       } else {
         if (tVal) nc[nom] = tVal; else delete nc[nom];
       }
+      return nc;
+    });
+  };
+  // 🏢 Sociétés DÉFINIES manuellement pour un prestataire (tableau d'ids).
+  // Stocké dans contacts[nom].societes pour éviter une nouvelle clé Supabase.
+  const getSocietesDefinies = (nom) => {
+    const c = (contacts || {})[nom];
+    if (!c || typeof c !== 'object') return [];
+    return Array.isArray(c.societes) ? c.societes : [];
+  };
+  const setSocietesDefinies = (nom, socIds) => {
+    if (!setContacts || !contactsObjectShape) return;
+    setContacts(prev => {
+      const nc = { ...(prev || {}) };
+      const existing = (nc[nom] && typeof nc[nom] === 'object') ? nc[nom] : { tel: '', email: '' };
+      const next = { ...existing, societes: socIds };
+      const isEmpty = (!next.tel && !next.email && (!next.societes || next.societes.length === 0));
+      if (isEmpty) delete nc[nom]; else nc[nom] = next;
       return nc;
     });
   };
@@ -10085,9 +10152,9 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                 >
                   <option value="">🏢 Toutes sociétés</option>
                   {societesPresentes.map(s => (
-                    <option key={s} value={s}>🏢 {s}</option>
+                    <option key={s} value={s}>🏢 {labelSociete(s)}</option>
                   ))}
-                  <option value="__none__">🏢 Sans société</option>
+                  <option value="__none__">🏢 Aucune définie</option>
                 </select>
               )}
               {nomsPending.length > 0 && (
@@ -10135,7 +10202,10 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                     nom={nom}
                     type={type}
                     used={dossiers.filter(d => d[dossierField] === nom).length}
-                    societes={societesParNom.get(nom)}
+                    societes={getSocietesEffectives(nom)}
+                    societesDefinies={getSocietesDefinies(nom)}
+                    societesGroupe={societesGroupe}
+                    setSocietesDefinies={setSocietesDefinies}
                     data={data}
                     getLocal={getLocal}
                     editLocal={editLocal}
@@ -10149,6 +10219,7 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                     rename={rename}
                     del={del}
                     otherProducts={otherProducts}
+                    labelSociete={labelSociete}
                   />
                 ))}
               </div>
