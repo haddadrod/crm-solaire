@@ -6982,8 +6982,24 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
           <div className="p-12 text-center text-slate-500">Aucun prestataire à afficher.</div>
         ) : (
           <div className="divide-y divide-slate-100">
-            {rapportPaiements.list.map((p, idx) => {
-              const isInternal = ['Téléprospecteur', 'Confirmateur', 'Commercial', 'Coordinateur projet', 'Resp. envoi pose'].includes(p.type);
+            {(() => {
+              // 🗂️ Regroupe par type pour faciliter la lecture (fournisseurs
+              // ensemble, régies ensemble, etc.) plutôt que d'avoir tout
+              // mélangé dans une seule liste à plat.
+              const INTERNES = ['Téléprospecteur', 'Confirmateur', 'Commercial', 'Coordinateur projet', 'Resp. envoi pose'];
+              const groups = [
+                { label: '📦 Fournisseurs', match: (p) => p.type === 'Fournisseur' },
+                { label: '🤝 Régies',       match: (p) => p.type === 'Régie' },
+                { label: '🔧 Poseurs',      match: (p) => p.type === 'Poseur' },
+                { label: '👥 Équipe interne', match: (p) => INTERNES.includes(p.type) },
+              ].map(g => ({ ...g, items: rapportPaiements.list.filter(g.match) })).filter(g => g.items.length > 0);
+              return groups.map((g) => (
+                <div key={g.label}>
+                  <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 sticky top-0 z-[1]">
+                    <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">{g.label} ({g.items.length})</span>
+                  </div>
+                  {g.items.map((p, idx) => {
+              const isInternal = INTERNES.includes(p.type);
               const colors = p.type === 'Fournisseur' ? 'bg-amber-100 text-amber-700' :
                              p.type === 'Régie' ? 'bg-purple-100 text-purple-700' :
                              isInternal ? 'bg-fuchsia-100 text-fuchsia-700' :
@@ -7109,6 +7125,9 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
                 </details>
               );
             })}
+                </div>
+              ));
+            })()}
           </div>
         )}
       </div>
