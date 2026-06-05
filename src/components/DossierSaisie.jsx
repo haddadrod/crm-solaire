@@ -3194,6 +3194,25 @@ export default function DossierSaisie({ authUser, onLogout }) {
     }));
   };
 
+  // 💰 Pointage groupé d'encaissements client : quand la banque vire pour
+  // plusieurs dossiers d'un coup, on coche dans le rapport, on valide, et
+  // tous passent en payeClient=true avec la date du jour.
+  const handleMarkClientPaye = (localIds) => {
+    const idSet = new Set(localIds);
+    const today = new Date().toISOString().split('T')[0];
+    setDossiers(prev => prev.map(d => {
+      if (!idSet.has(d.localId)) return d;
+      if (d.payeClient) return d; // déjà payé → on n'écrase pas la date d'origine
+      return {
+        ...d,
+        payeClient: true,
+        payeClientDate: today,
+        datePaiementBanque: d.datePaiementBanque || today,
+        statut: 'W_DOSSIER_PAYER',
+      };
+    }));
+  };
+
   // Dossiers enrichis : calcule à la volée HT, marges, totaux poseurs/régie/fournisseur, etc.
   // Permet d'afficher correctement les anciens dossiers qui n'ont pas ces champs stockés.
   const dossiersEnriched = useMemo(() => {
@@ -4782,6 +4801,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           rapportPaiements={rapportPaiements}
           societes={societes}
           onMarkPrestaPaye={handleMarkPrestaPaye}
+          onMarkClientPaye={handleMarkClientPaye}
           onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }}
           onTogglePenalite={(dossierLocalId, tentativeIdx) => {
             const now = new Date().toISOString();
@@ -6653,7 +6673,7 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
 
 // ====================== AUTRES VUES (inchangées) ======================
 
-function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onTogglePenalite, onToggleLitige, onMarkPrestaPaye }) {
+function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onTogglePenalite, onToggleLitige, onMarkPrestaPaye, onMarkClientPaye }) {
   // 🎯 Filtre par défaut : ne montrer que les dossiers qu'on PEUT payer
   // maintenant (client a payé). Toggle pour voir aussi les "bloqués"
   // (en attente d'encaissement client) et les déjà payés.
@@ -6679,6 +6699,22 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
     if (type === 'Régie') return 'regie';
     if (type === 'Fournisseur') return 'fournisseur';
     return null;
+  };
+  // ☑️ Sélection multi pour encaissement client groupé, namespacée par
+  // financeur+société (clé = `${nom}::${societe}`). Quand la banque vire
+  // pour plusieurs dossiers d'un coup, on coche puis on valide.
+  const [selectedFinanceurByKey, setSelectedFinanceurByKey] = useState({});
+  const toggleFinanceurSelected = (key, lid) => {
+    setSelectedFinanceurByKey(prev => {
+      const cur = new Set(prev[key] || []);
+      if (cur.has(lid)) cur.delete(lid); else cur.add(lid);
+      const next = { ...prev };
+      if (cur.size === 0) delete next[key]; else next[key] = cur;
+      return next;
+    });
+  };
+  const clearFinanceurSelection = (key) => {
+    setSelectedFinanceurByKey(prev => { const next = { ...prev }; delete next[key]; return next; });
   };
   // Helper pour afficher le badge société à côté du nom prestataire/banque
   const renderSocieteBadge = (societeId) => {
@@ -6775,6 +6811,8 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
               const restant = e.totalRestant > 0;
               const dossiersAttente = e.lignes.filter(l => !l.paye);
               const progress = e.totalAttendu > 0 ? (e.totalRecu / e.totalAttendu) * 100 : 0;
+              const finKey = `${e.nom}::${e.societe || ''}`;
+              const finSel = selectedFinanceurByKey[finKey] || new Set();
               return (
                 <div key={idx} className={`rounded-lg border overflow-hidden ${restant ? 'bg-amber-50 border-amber-200' : 'bg-emerald-50 border-emerald-200'}`}>
                   <div className={`px-2.5 py-1.5 ${restant ? 'bg-gradient-to-r from-amber-500 to-orange-500' : 'bg-gradient-to-r from-emerald-500 to-teal-500'} text-white`}>
@@ -6825,6 +6863,8 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
                           {dossiersAttente.map((l, i) => {
                             const canOpen = !!(l.dossierLocalId && onShowQuick);
                             const handleOpen = (ev) => { ev.stopPropagation(); if (canOpen) onShowQuick(l.dossierLocalId, 'paiement'); };
+                            const canCheck = !!(onMarkClientPaye && l.dossierLocalId);
+                            const isChecked = finSel.has(l.dossierLocalId);
                             return (
                               <div
                                 key={i}
@@ -6833,9 +6873,19 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
                                 tabIndex={canOpen ? 0 : undefined}
                                 onKeyDown={canOpen ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleOpen(e); } } : undefined}
                                 title={canOpen ? `Ouvrir ${l.client || 'le dossier'} — section paiement client` : undefined}
-                                className={`bg-white/80 rounded px-1.5 py-1 flex items-center justify-between gap-1 border border-amber-200 ${canOpen ? 'cursor-pointer hover:ring-1 hover:ring-violet-300 transition' : ''}`}
+                                className={`rounded px-1.5 py-1 flex items-center justify-between gap-1 border ${isChecked ? 'bg-emerald-50 border-emerald-300' : 'bg-white/80 border-amber-200'} ${canOpen ? 'cursor-pointer hover:ring-1 hover:ring-violet-300 transition' : ''}`}
                               >
                                 <div className="flex items-center gap-1 min-w-0 flex-1">
+                                  {canCheck && (
+                                    <input
+                                      type="checkbox"
+                                      checked={isChecked}
+                                      onChange={(ev) => { ev.stopPropagation(); toggleFinanceurSelected(finKey, l.dossierLocalId); }}
+                                      onClick={(ev) => ev.stopPropagation()}
+                                      className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer flex-shrink-0"
+                                      title="Cocher pour valider l'encaissement en groupe"
+                                    />
+                                  )}
                                   {l.dossierId !== '—' && <span className="text-[9px] font-mono bg-slate-100 text-slate-600 px-0.5 rounded">#{l.dossierId}</span>}
                                   <span className="font-semibold text-slate-700 truncate text-[11px]">{l.client}</span>
                                 </div>
@@ -6845,6 +6895,43 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
                             );
                           })}
                         </div>
+                        {/* 💚 Barre encaissement groupé — quand au moins 1 case cochée */}
+                        {onMarkClientPaye && finSel.size > 0 && (() => {
+                          let totalSel = 0;
+                          const toMark = [];
+                          dossiersAttente.forEach(l => {
+                            if (!finSel.has(l.dossierLocalId)) return;
+                            totalSel += l.ttc || 0;
+                            toMark.push(l.dossierLocalId);
+                          });
+                          if (toMark.length === 0) return null;
+                          return (
+                            <div className="sticky bottom-0 mt-2 -mx-2 px-2 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md rounded-b-lg flex items-center justify-between gap-2 flex-wrap z-10">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="text-base font-extrabold whitespace-nowrap">{formatEuro(totalSel)}</span>
+                                <span className="text-[10px] opacity-90 whitespace-nowrap">reçu · {toMark.length} dossier{toMark.length > 1 ? 's' : ''}</span>
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={(ev) => { ev.stopPropagation(); clearFinanceurSelection(finKey); }}
+                                  className="text-[10px] font-bold text-white/90 bg-white/10 hover:bg-white/20 px-1.5 py-0.5 rounded"
+                                >Désélectionner</button>
+                                <button
+                                  type="button"
+                                  onClick={(ev) => {
+                                    ev.stopPropagation();
+                                    const msg = `Valider l'encaissement de ${formatEuro(totalSel)} reçu de ${e.nom} ?\nCela va pointer ${toMark.length} dossier${toMark.length > 1 ? 's' : ''} comme « ✅ Payé par le financeur » avec la date du jour.`;
+                                    if (!window.confirm(msg)) return;
+                                    onMarkClientPaye(toMark);
+                                    clearFinanceurSelection(finKey);
+                                  }}
+                                  className="text-[11px] font-bold bg-white text-emerald-700 hover:bg-emerald-50 px-2 py-1 rounded shadow"
+                                >✓ Valider l'encaissement</button>
+                              </div>
+                            </div>
+                          );
+                        })()}
                       </details>
                     )}
                   </div>
