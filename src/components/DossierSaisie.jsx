@@ -4434,6 +4434,48 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   📦 Import JSON
                 </button>
               )}
+              {isAdmin && (
+                <button
+                  onClick={() => {
+                    // 💾 Backup : télécharge l'état actuel des dossiers en JSON
+                    try {
+                      const json = JSON.stringify(dossiers, null, 2);
+                      const blob = new Blob([json], { type: 'application/json' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      const pad = (n) => String(n).padStart(2, '0');
+                      const d = new Date();
+                      const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+                      a.href = url;
+                      a.download = `crm-solaire-backup-${stamp}.json`;
+                      document.body.appendChild(a);
+                      a.click();
+                      setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch (_) {} }, 100);
+                    } catch (e) { alert('Sauvegarde impossible : ' + e.message); }
+                  }}
+                  className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200 whitespace-nowrap flex-shrink-0"
+                  title="Télécharge un fichier JSON de TOUS tes dossiers actuels. À garder au chaud avant un gros import — si quelque chose tourne mal, tu pourras le réimporter via « 📦 Import JSON »."
+                >
+                  💾 Sauvegarde JSON
+                </button>
+              )}
+              {isAdmin && dossiers.some(d => d.createdBy === 'import_sheet') && (
+                <button
+                  onClick={() => {
+                    const importes = dossiers.filter(d => d.createdBy === 'import_sheet');
+                    const restants = dossiers.filter(d => d.createdBy !== 'import_sheet');
+                    if (importes.length === 0) { alert('Aucun dossier importé à supprimer.'); return; }
+                    const msg = `Supprimer les ${importes.length} dossier${importes.length > 1 ? 's' : ''} importé${importes.length > 1 ? 's' : ''} (ceux marqués createdBy = "import_sheet") ?\n\nLes ${restants.length} autres dossiers ne seront PAS touchés.\n\nIRRÉVERSIBLE (sauf via une sauvegarde JSON faite avant).`;
+                    if (!window.confirm(msg)) return;
+                    setDossiers(restants);
+                    alert(`✅ ${importes.length} dossier${importes.length > 1 ? 's' : ''} importé${importes.length > 1 ? 's' : ''} supprimé${importes.length > 1 ? 's' : ''}.`);
+                  }}
+                  className="bg-white hover:bg-rose-50 text-rose-600 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-rose-200 whitespace-nowrap flex-shrink-0"
+                  title="Supprime tous les dossiers ayant été ajoutés via « 📦 Import JSON » (identifiés par createdBy = import_sheet). Tes dossiers d'origine NE sont PAS touchés."
+                >
+                  🗑 Annuler l'import
+                </button>
+              )}
               <button onClick={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} className="bg-gradient-to-r from-violet-500 to-pink-500 text-white px-5 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center gap-2 whitespace-nowrap flex-shrink-0">
                 <Plus className="w-5 h-5" />Nouveau dossier
               </button>
