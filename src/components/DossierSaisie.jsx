@@ -9541,6 +9541,187 @@ function ProductPrestaCard({ product, type, lignesActives, nomsDispo, getLocal, 
   );
 }
 
+// 👤 Fiche individuelle d'un prestataire — repliée par défaut. Quand ouverte :
+// nom + tél/email, grille compacte des tarifs panneaux par Wc, autres produits
+// (déjà saisis + bouton « + Ajouter un produit »), boutons Enregistrer /
+// Annuler / Supprimer. Évite le scroll horizontal et regroupe tout au même
+// endroit pour ce prestataire.
+function PrestataireCard({ nom, type, used, societes, data, getLocal, editLocal, savePending, cancelPending, hasPending, pending, getTel, getEmail, contactsObjectShape, rename, del, otherProducts }) {
+  const [open, setOpen] = useState(false);
+  const dirty = hasPending(nom);
+  const tarifs = data[nom] || {};
+  const nbTarifsPuiss = PUISSANCES_PRINCIPALES.filter(p => tarifs[p] !== undefined).length;
+  const autresActifs = (otherProducts || []).filter(p => {
+    const v = getLocal(nom, p.id);
+    return v !== undefined && v !== null && v !== '';
+  });
+  const [addingProduct, setAddingProduct] = useState(false);
+  const [pickedProductId, setPickedProductId] = useState('');
+  const otherDispo = (otherProducts || []).filter(p => !autresActifs.find(a => a.id === p.id));
+  const handleAddProduct = () => {
+    if (!pickedProductId) return;
+    editLocal(nom, pickedProductId, '0');
+    setPickedProductId('');
+    setAddingProduct(false);
+  };
+  return (
+    <div className={`border rounded-xl overflow-hidden ${dirty ? 'border-amber-300 bg-amber-50/30' : 'border-slate-200 bg-white'}`}>
+      <button
+        type="button"
+        onClick={() => setOpen(o => !o)}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50"
+      >
+        <span className="flex items-center gap-2 min-w-0">
+          <span className="text-slate-400 text-xs">{open ? '▼' : '▶'}</span>
+          <span className="font-bold text-sm text-slate-800 truncate">{nom}</span>
+          {societes && societes.size > 0 && (
+            <span className="flex items-center gap-1 flex-shrink-0">
+              {[...societes].map(s => (
+                <span key={s} className="text-[9px] font-bold px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded-full uppercase">{s}</span>
+              ))}
+            </span>
+          )}
+        </span>
+        <span className="flex items-center gap-2 text-[10px] text-slate-500 flex-shrink-0">
+          {nbTarifsPuiss > 0 && <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded font-semibold">☀️ {nbTarifsPuiss}</span>}
+          {autresActifs.length > 0 && <span className="px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded font-semibold">🛒 {autresActifs.length}</span>}
+          {used > 0 && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold">{used} doss.</span>}
+          {dirty && <span className="px-1.5 py-0.5 bg-amber-200 text-amber-800 rounded font-bold">● non sauvé</span>}
+        </span>
+      </button>
+      {open && (
+        <div className="px-3 pb-3 pt-1 space-y-3 border-t border-slate-200 bg-white">
+          {/* Nom + tél + email */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase mb-0.5 block">Nom</label>
+              <input
+                type="text"
+                defaultValue={nom}
+                onBlur={(e) => rename(nom, e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                className="w-full px-2 py-1 bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-violet-400 focus:bg-white focus:outline-none rounded text-xs font-semibold"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-bold text-slate-500 uppercase mb-0.5 block">📞 Téléphone</label>
+              <input
+                type="tel"
+                value={pending[nom] && '__tel' in pending[nom] ? pending[nom].__tel : getTel(nom)}
+                onChange={(e) => editLocal(nom, '__tel', e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
+                placeholder="—"
+                className={`w-full px-2 py-1 ${pending[nom] && '__tel' in pending[nom] ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border rounded text-xs`}
+              />
+            </div>
+            {contactsObjectShape && (
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase mb-0.5 block">📧 Email</label>
+                <input
+                  type="email"
+                  value={pending[nom] && '__email' in pending[nom] ? pending[nom].__email : getEmail(nom)}
+                  onChange={(e) => editLocal(nom, '__email', e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
+                  placeholder="—"
+                  className={`w-full px-2 py-1 ${pending[nom] && '__email' in pending[nom] ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border rounded text-xs`}
+                />
+              </div>
+            )}
+          </div>
+          {/* Tarifs panneaux par Wc — grille compacte qui s'enroule */}
+          <div>
+            <div className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1.5">
+              <span>☀️</span><span>Tarifs panneaux par Wc</span>
+            </div>
+            <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
+              {PUISSANCES_PRINCIPALES.map(p => {
+                const localVal = getLocal(nom, p);
+                const isExact = localVal !== undefined && localVal !== '' && !isNaN(parseFloat(localVal)) && parseFloat(localVal) !== 0;
+                const isEdited = pending[nom] && p in pending[nom];
+                return (
+                  <div key={p} className="flex flex-col">
+                    <label className="text-[9px] font-bold text-slate-500 text-center">{p} Wc</label>
+                    <input
+                      type="number"
+                      value={localVal ?? ''}
+                      onChange={(e) => editLocal(nom, p, e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
+                      placeholder="—"
+                      className={`w-full px-1 py-0.5 ${isEdited ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border rounded text-right focus:outline-none focus:ring-1 focus:ring-violet-400 text-xs ${isExact ? 'font-semibold text-slate-800' : 'text-slate-400'}`}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+          {/* Autres produits — uniquement ceux saisis + bouton ajouter */}
+          {(autresActifs.length > 0 || otherDispo.length > 0) && (
+            <div>
+              <div className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center justify-between">
+                <span className="flex items-center gap-1.5"><span>🛒</span><span>Autres produits (€ HT par unité)</span></span>
+                {otherDispo.length > 0 && (
+                  addingProduct ? (
+                    <span className="flex items-center gap-1 normal-case">
+                      <select value={pickedProductId} onChange={(e) => setPickedProductId(e.target.value)} className="text-[11px] bg-white border border-slate-300 rounded px-1.5 py-0.5">
+                        <option value="">— Choisir —</option>
+                        {otherDispo.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>)}
+                      </select>
+                      <button onClick={handleAddProduct} disabled={!pickedProductId} className="text-[10px] font-bold bg-violet-500 hover:bg-violet-600 disabled:bg-slate-200 text-white px-2 py-0.5 rounded">OK</button>
+                      <button onClick={() => { setAddingProduct(false); setPickedProductId(''); }} className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-0.5 rounded">×</button>
+                    </span>
+                  ) : (
+                    <button onClick={() => setAddingProduct(true)} className="text-[10px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded flex items-center gap-1 normal-case">
+                      <Plus className="w-2.5 h-2.5" />Ajouter un produit
+                    </button>
+                  )
+                )}
+              </div>
+              {autresActifs.length === 0 ? (
+                <div className="text-[10px] text-slate-400 italic">Aucun autre produit pour ce {type}.</div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {autresActifs.map(p => {
+                    const val = getLocal(nom, p.id);
+                    const isEdited = pending[nom] && p.id in pending[nom];
+                    return (
+                      <div key={p.id} className="flex items-center gap-1.5 bg-slate-50 rounded px-2 py-1">
+                        <span className="flex-1 text-[11px] font-semibold text-slate-700 truncate">{p.emoji} {p.label}</span>
+                        <input
+                          type="number"
+                          step="0.01"
+                          value={val ?? ''}
+                          onChange={(e) => editLocal(nom, p.id, e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
+                          placeholder="—"
+                          className={`w-20 px-1.5 py-0.5 ${isEdited ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'} border rounded text-right text-xs font-semibold`}
+                        />
+                        <span className="text-[10px] text-slate-500">€</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          {/* Actions */}
+          <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-100">
+            {dirty ? (
+              <>
+                <button onClick={() => cancelPending(nom)} className="px-2 py-1 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded text-[11px] font-semibold">↶ Annuler</button>
+                <button onClick={() => savePending(nom)} className="px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[11px] font-bold">💾 Enregistrer</button>
+              </>
+            ) : (
+              <button onClick={() => del(nom)} className="px-2 py-1 text-rose-500 hover:bg-rose-50 rounded text-[11px] font-semibold flex items-center gap-1">
+                <Trash2 className="w-3 h-3" />Supprimer
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PrestataireManager({ titre, description, data, setData, dossiers, dossierField, type, produits, contacts, setContacts, contactsObjectShape = false }) {
   // contactsObjectShape=false : contacts = { [nom]: 'tel' } (legacy poseurs)
   // contactsObjectShape=true  : contacts = { [nom]: { tel, email } } (régies)
@@ -9896,129 +10077,43 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
             )}
           </div>
 
-          {/* GRILLE 1 : Panneaux solaires par Wc (existant) */}
+          {/* 👤 FICHES PRESTATAIRES — une fiche repliable par poseur/régie/fournisseur */}
           <div className="mb-2">
             <h3 className="text-xs font-bold text-slate-700 uppercase mb-2 flex items-center gap-1.5">
-              <span>☀️</span><span>Panneaux solaires — tarifs par Wc</span>
+              <span>👤</span><span>{type === 'poseur' ? 'Poseurs' : type === 'régie' ? 'Régies' : 'Fournisseurs'} — fiches individuelles</span>
             </h3>
-            <div className="overflow-x-auto rounded-xl border border-slate-200">
-              <table className="w-full text-xs">
-                <thead className="bg-slate-50">
-                  <tr>
-                    <th className="px-2 py-2 text-left font-bold text-slate-600 sticky left-0 bg-slate-50 z-10 min-w-[140px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">Nom</th>
-                    {PUISSANCES_PRINCIPALES.map(p => <th key={p} className="px-2 py-2 text-right font-bold text-slate-600 whitespace-nowrap">{p} Wc</th>)}
-                    <th className="px-2 py-2 text-center font-bold text-slate-600">Dossiers</th>
-                    <th className="px-2 py-2 text-center font-bold text-slate-600"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {noms.map(nom => {
-                    const used = dossiers.filter(d => d[dossierField] === nom).length;
-                    return (
-                      <tr key={nom} className="border-t border-slate-200 hover:bg-slate-50 group">
-                        <td className="px-2 py-1.5 sticky left-0 bg-white group-hover:bg-slate-50 z-10 min-w-[180px] border-r border-slate-200 shadow-[2px_0_4px_-2px_rgba(0,0,0,0.05)]">
-                          <input type="text" defaultValue={nom} onBlur={(e) => rename(nom, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="w-full px-2 py-1 bg-transparent border border-transparent hover:border-slate-300 focus:border-violet-400 focus:bg-white focus:outline-none rounded text-xs font-semibold" />
-                          {/* 📞 Tél et 📧 email — édition différée, sauvés par le bouton « Enregistrer » de la ligne. */}
-                          <div className="mt-1 space-y-0.5">
-                            <input
-                              type="tel"
-                              value={pending[nom] && '__tel' in pending[nom] ? pending[nom].__tel : getTel(nom)}
-                              onChange={(e) => editLocal(nom, '__tel', e.target.value)}
-                              onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
-                              placeholder="📞 Téléphone"
-                              className={`w-full px-2 py-0.5 ${pending[nom] && '__tel' in pending[nom] ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border rounded text-[10px]`}
-                            />
-                            {contactsObjectShape && (
-                              <input
-                                type="email"
-                                value={pending[nom] && '__email' in pending[nom] ? pending[nom].__email : getEmail(nom)}
-                                onChange={(e) => editLocal(nom, '__email', e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
-                                placeholder="📧 Email"
-                                className={`w-full px-2 py-0.5 ${pending[nom] && '__email' in pending[nom] ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border rounded text-[10px]`}
-                              />
-                            )}
-                          </div>
-                        </td>
-                        {PUISSANCES_PRINCIPALES.map(p => {
-                          const localVal = getLocal(nom, p);
-                          const isExact = localVal !== undefined && localVal !== '' && !isNaN(parseFloat(localVal)) && parseFloat(localVal) !== 0;
-                          const tarif = findClosestTarif(data[nom], p);
-                          const isEdited = pending[nom] && p in pending[nom];
-                          return (
-                            <td key={p} className="px-1 py-1.5 text-right">
-                              <input
-                                type="number"
-                                value={localVal ?? ''}
-                                onChange={(e) => editLocal(nom, p, e.target.value)}
-                                onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
-                                placeholder={tarif > 0 ? tarif : '—'}
-                                className={`w-16 px-1.5 py-0.5 ${isEdited ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border rounded text-right focus:outline-none focus:ring-1 focus:ring-violet-400 text-xs ${isExact ? 'font-semibold text-slate-800' : 'text-slate-400'}`}
-                              />
-                            </td>
-                          );
-                        })}
-                        <td className="px-2 py-1.5 text-center">
-                          <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${used > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-400'}`}>{used}</span>
-                        </td>
-                        <td className="px-2 py-1.5 text-center whitespace-nowrap">
-                          {hasPending(nom) ? (
-                            <span className="inline-flex items-center gap-1">
-                              <button onClick={() => savePending(nom)} title="Enregistrer les modifs" className="px-2 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[10px] font-bold">💾 Enregistrer</button>
-                              <button onClick={() => cancelPending(nom)} title="Annuler les modifs" className="p-1 text-slate-500 hover:bg-slate-100 rounded text-xs">↶</button>
-                            </span>
-                          ) : (
-                            <button onClick={() => del(nom)} className="p-1 text-rose-500 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
-                          )}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            {noms.length === 0 ? (
+              <div className="text-center py-6 text-xs text-slate-400 italic bg-slate-50 rounded-xl border border-slate-200">
+                Aucun {type} {filterSociete ? 'pour cette société' : 'enregistré'}. Clique « Ajouter » ou « Importer » en haut.
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {noms.map(nom => (
+                  <PrestataireCard
+                    key={nom}
+                    nom={nom}
+                    type={type}
+                    used={dossiers.filter(d => d[dossierField] === nom).length}
+                    societes={societesParNom.get(nom)}
+                    data={data}
+                    getLocal={getLocal}
+                    editLocal={editLocal}
+                    savePending={savePending}
+                    cancelPending={cancelPending}
+                    hasPending={hasPending}
+                    pending={pending}
+                    getTel={getTel}
+                    getEmail={getEmail}
+                    contactsObjectShape={contactsObjectShape}
+                    rename={rename}
+                    del={del}
+                    otherProducts={otherProducts}
+                  />
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* GRILLE 2 : Autres produits — prix flat par produit (opt-in) */}
-          {otherProducts.length > 0 && (
-            <div className="mt-5">
-              <h3 className="text-xs font-bold text-slate-700 uppercase mb-2 flex items-center gap-1.5">
-                <span>🛒</span><span>Autres produits — prix HT unitaire par {type}</span>
-              </h3>
-              <div className="space-y-2">
-                {otherProducts.map(prod => {
-                  // Pour ce produit, ne lister que les prestataires qui ont un
-                  // tarif saisi (ou une modif en cours). Permet d'éviter la
-                  // grille pleine de vides.
-                  const lignesActives = noms.filter(nom => {
-                    const val = getLocal(nom, prod.id);
-                    return val !== undefined && val !== null && val !== '';
-                  });
-                  // Les noms qui n'ont PAS encore de tarif sur ce produit (pour
-                  // le menu d'ajout). On les filtre aussi par société active.
-                  const nomsDispo = noms.filter(nom => !lignesActives.includes(nom));
-                  return (
-                    <ProductPrestaCard
-                      key={prod.id}
-                      product={prod}
-                      type={type}
-                      lignesActives={lignesActives}
-                      nomsDispo={nomsDispo}
-                      getLocal={getLocal}
-                      editLocal={editLocal}
-                      savePending={savePending}
-                      cancelPending={cancelPending}
-                      hasPending={hasPending}
-                      pending={pending}
-                    />
-                  );
-                })}
-              </div>
-              <div className="mt-2 p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-700 leading-relaxed">
-                💡 Prix HT que tu paies pour <strong>1 unité</strong>. Sur un dossier, ce prix est multiplié par la quantité saisie (ex: 3 climatisations → 3× le prix unitaire). N'ajoute que les {type}s qui font ce produit.
-              </div>
-            </div>
-          )}
 
           <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-700">
             💡 Cliquez sur un nom ou tarif pour modifier. Tarif en <strong>gras</strong> = saisi, en <span className="text-slate-400">gris</span> = vide. Tu peux laisser vide et saisir le HT manuellement à chaque dossier — ou pré-remplir ici pour gagner du temps. Sur un dossier mixte (panneaux + PAC), les tarifs auto se cumulent.
