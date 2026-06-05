@@ -4765,7 +4765,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         />}
 
         {/* DASHBOARD */}
-        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} onTogglePresta={(localId, nom, kind) => {
+        {activeTab === 'dashboard' && <DashboardView dossiers={dossiersEnriched} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} onTogglePresta={(localId, nom, kind) => {
           // Toggle paye sur le poseur/régie d'un dossier (bouton rapide).
           setDossiers(prev => prev.map(d => {
             if (d.localId !== localId) return d;
