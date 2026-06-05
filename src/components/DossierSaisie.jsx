@@ -6732,21 +6732,26 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
   };
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-5 text-white shadow-lg">
           <div className="text-xs font-semibold opacity-90 uppercase">✅ Reçu des financeurs</div>
           <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalEncaisseClient)}</div>
           <div className="text-sm opacity-90 mt-2">À recevoir : {formatEuro(rapportPaiements.totalAEncaisserClient)}</div>
         </div>
+        <div className="bg-gradient-to-br from-orange-500 to-amber-600 rounded-2xl p-5 text-white shadow-lg">
+          <div className="text-xs font-semibold opacity-90 uppercase">💸 Décaissé</div>
+          <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalGeneralPaye)}</div>
+          <div className="text-sm opacity-90 mt-2">Déjà payé aux prestataires</div>
+        </div>
         <div className="bg-gradient-to-br from-rose-500 to-pink-500 rounded-2xl p-5 text-white shadow-lg">
           <div className="text-xs font-semibold opacity-90 uppercase">⏳ Reste à payer</div>
           <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalGeneralRestant)}</div>
-          <div className="text-sm opacity-90 mt-2">Déjà payé : {formatEuro(rapportPaiements.totalGeneralPaye)}</div>
+          <div className="text-sm opacity-90 mt-2">Dont à payer maintenant : {formatEuro(rapportPaiements.totalAPayerMaintenant)}</div>
         </div>
         <div className="bg-gradient-to-br from-violet-500 to-purple-500 rounded-2xl p-5 text-white shadow-lg">
           <div className="text-xs font-semibold opacity-90 uppercase">💰 Trésorerie nette</div>
           <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalEncaisseClient - rapportPaiements.totalGeneralPaye)}</div>
-          <div className="text-sm opacity-90 mt-2">Reçu − Payé (réalisé)</div>
+          <div className="text-sm opacity-90 mt-2">Reçu − Décaissé</div>
         </div>
       </div>
 
