@@ -4766,8 +4766,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
         {/* DASHBOARD */}
         {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} onTogglePresta={(localId, nom, kind) => {
-          // Toggle paye sur le poseur/régie d'un dossier directement depuis
-          // Perf. poseurs/régies (pointage rapide pour préparer un virement).
+          // Toggle paye sur le poseur/régie d'un dossier (bouton rapide).
           setDossiers(prev => prev.map(d => {
             if (d.localId !== localId) return d;
             const today = new Date().toISOString().split('T')[0];
@@ -4777,6 +4776,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
             }
             if (kind === 'regie') {
               const regies = (d.regies || []).map(r => r && r.nom === nom ? { ...r, paye: !r.paye, datePaye: !r.paye ? today : '' } : r);
+              return { ...d, regies };
+            }
+            return d;
+          }));
+        }} onMarkPrestaPaye={(localIds, nom, kind) => {
+          // Valide un virement groupé : passe en payé tous les dossiers
+          // sélectionnés (ceux déjà payés sont laissés tels quels).
+          const idSet = new Set(localIds);
+          const today = new Date().toISOString().split('T')[0];
+          setDossiers(prev => prev.map(d => {
+            if (!idSet.has(d.localId)) return d;
+            if (kind === 'poseur') {
+              const poseurs = (d.poseurs || []).map(p => p && p.nom === nom && !p.paye ? { ...p, paye: true, datePaye: today } : p);
+              return { ...d, poseurs };
+            }
+            if (kind === 'regie') {
+              const regies = (d.regies || []).map(r => r && r.nom === nom && !r.paye ? { ...r, paye: true, datePaye: today } : r);
               return { ...d, regies };
             }
             return d;
@@ -7407,7 +7423,7 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
   );
 }
 
-function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, setProjexioCaps, isAdmin = false, onCreate, onShowQuick, onTogglePresta, produits = [] }) {
+function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, setProjexioCaps, isAdmin = false, onCreate, onShowQuick, onTogglePresta, onMarkPrestaPaye, produits = [] }) {
   // Vue restreinte pour le rôle « Envoi finance » : seules les sections
   // Plafond Projexio + Financements en attente de retour sont affichées.
   // Les tuiles CA/marge/évolution et tous les autres rappels sont masqués.
@@ -7723,8 +7739,8 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
 
       {!isRestricted && <ActiviteMensuellePanel data={dashboard.activiteMois || []} />}
 
-      <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
-      <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
+      <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
+      <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
       {(dashboard.statsCommerciaux || []).length > 0 && (
         <PerfList titre="💼 Performance des commerciaux" data={dashboard.statsCommerciaux} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="💼" border="border-blue-100" header="from-blue-50 to-cyan-50" iconColor="text-blue-500" />
       )}
@@ -8032,8 +8048,20 @@ function ActiviteMensuellePanel({ data = [] }) {
   );
 }
 
-function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTogglePresta, medal, border, header, iconColor }) {
+function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTogglePresta, onMarkPrestaPaye, medal, border, header, iconColor }) {
   const [expandedNom, setExpandedNom] = useState(null);
+  // 🧾 Sélection pour virement groupé : Set des localId cochés. Reset à chaque
+  // changement de ligne dépliée (sinon la sélection d'un poseur fuite vers
+  // un autre).
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  useEffect(() => { setSelectedIds(new Set()); }, [expandedNom]);
+  const toggleSelected = (lid) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(lid)) next.delete(lid); else next.add(lid);
+      return next;
+    });
+  };
   const societeById = useMemo(() => {
     const m = new Map();
     (societes || []).forEach(s => m.set(s.id, s));
@@ -8207,8 +8235,20 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                     const paye = detail ? !!detail.paye : false;
                     const factureNo = detail ? (detail.factureNo || '') : '';
                     const canToggle = !!(detail && onTogglePresta && p.kind !== 'commercial');
+                    const isSelected = selectedIds.has(lid);
                     return (
-                      <div key={lid} className={`flex items-center justify-between gap-2 py-1.5 px-2 rounded ${paye ? 'bg-emerald-50/50' : ''}`}>
+                      <div key={lid} className={`flex items-center gap-2 py-1.5 px-2 rounded ${paye ? 'bg-emerald-50/50' : isSelected ? 'bg-blue-50' : ''}`}>
+                        {canToggle && !paye && (
+                          <input
+                            type="checkbox"
+                            checked={isSelected}
+                            onChange={(e) => { e.stopPropagation(); toggleSelected(lid); }}
+                            onClick={(e) => e.stopPropagation()}
+                            className="w-4 h-4 accent-blue-600 cursor-pointer flex-shrink-0"
+                            title="Cocher pour inclure dans le prochain virement"
+                          />
+                        )}
+                        {canToggle && paye && <span className="w-4 flex-shrink-0" />}
                         <button
                           type="button"
                           onClick={(e) => { e.stopPropagation(); onShowQuick && onShowQuick(lid); }}
@@ -8229,7 +8269,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                             type="button"
                             onClick={(e) => { e.stopPropagation(); onTogglePresta(lid, p.nom, p.kind); }}
                             className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${paye ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
-                            title={paye && detail?.datePaye ? `Payé le ${new Date(detail.datePaye).toLocaleDateString('fr-FR')} — clic pour repointer` : 'Pointer comme payé'}
+                            title={paye && detail?.datePaye ? `Payé le ${new Date(detail.datePaye).toLocaleDateString('fr-FR')} — clic pour repointer` : 'Pointer comme payé (rapide, sans groupe)'}
                           >
                             {paye ? `✓ Payé${detail?.datePaye ? ' ' + new Date(detail.datePaye).toLocaleDateString('fr-FR') : ''}` : '⏳ Non payé'}
                           </button>
@@ -8239,6 +8279,54 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                       </div>
                     );
                   })}
+                  {/* 💰 Barre récap virement groupé — visible dès qu'au moins 1
+                      dossier est coché. Calcule le total des cochés (sans
+                      compter ceux déjà payés) et propose un bouton « ✓ Valider
+                      le virement » qui les passe TOUS en payés en un coup. */}
+                  {p.kind && p.kind !== 'commercial' && selectedIds.size > 0 && (() => {
+                    let totalSel = 0;
+                    const toMark = [];
+                    selectedIds.forEach(lid => {
+                      const dd = dossierByLocalId.get(lid); if (!dd) return;
+                      const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : (dd.regiesDetail || []);
+                      const it = list.find(x => x.nom === p.nom); if (!it) return;
+                      if (it.paye) return; // ignorés
+                      totalSel += it.ttc || 0;
+                      toMark.push(lid);
+                    });
+                    if (toMark.length === 0) return null;
+                    return (
+                      <div className="sticky bottom-0 mt-2 -mx-4 px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-600 text-white shadow-lg flex items-center justify-between gap-3 flex-wrap">
+                        <div className="flex items-center gap-3">
+                          <span className="text-2xl font-extrabold">{formatEuro(totalSel)}</span>
+                          <span className="text-xs opacity-90">à virer · {toMark.length} dossier{toMark.length > 1 ? 's' : ''} coché{toMark.length > 1 ? 's' : ''}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); setSelectedIds(new Set()); }}
+                            className="text-[11px] font-bold text-white/90 bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg"
+                          >
+                            Tout désélectionner
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (!onMarkPrestaPaye) return;
+                              const msg = `Valider le virement de ${formatEuro(totalSel)} à ${p.nom} ?\nCela va pointer ${toMark.length} dossier${toMark.length > 1 ? 's' : ''} comme « payés » avec la date du jour.`;
+                              if (!window.confirm(msg)) return;
+                              onMarkPrestaPaye(toMark, p.nom, p.kind);
+                              setSelectedIds(new Set());
+                            }}
+                            className="text-xs font-bold bg-white text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg shadow-md"
+                          >
+                            ✓ Valider le virement
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
             </div>
