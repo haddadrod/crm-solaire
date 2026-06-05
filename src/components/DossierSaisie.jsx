@@ -3446,7 +3446,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
       });
     });
-    const statsPoseurs = Object.values(poseurMap).sort((a, b) => b.count - a.count);
+    const statsPoseurs = Object.values(poseurMap).sort((a, b) => b.count - a.count).map(p => ({ ...p, kind: 'poseur' }));
 
     const regieMap = {};
     dossiersDash.forEach(d => {
@@ -3488,7 +3488,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         });
       }
     });
-    const statsRegies = Object.values(regieMap).sort((a, b) => b.count - a.count);
+    const statsRegies = Object.values(regieMap).sort((a, b) => b.count - a.count).map(r => ({ ...r, kind: 'regie' }));
 
     // 💼 Stats commerciaux — basées sur le champ d.commercial (équipe interne).
     // Sans coût direct (pas de TTC commercial dans le modèle), donc on
@@ -3517,7 +3517,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const dj = dureeJours(d);
       if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
     });
-    const statsCommerciaux = Object.values(commercialMap).sort((a, b) => b.count - a.count);
+    const statsCommerciaux = Object.values(commercialMap).sort((a, b) => b.count - a.count).map(c => ({ ...c, kind: 'commercial' }));
 
     // 🏦 Performance des maisons de financement (Projexio / Sofinco / etc.),
     // splittée par société comme les régies/poseurs/commerciaux. Pour chaque
@@ -4765,7 +4765,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
         />}
 
         {/* DASHBOARD */}
-        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} />}
+        {activeTab === 'dashboard' && <DashboardView dossiers={dossiers} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} onTogglePresta={(localId, nom, kind) => {
+          // Toggle paye sur le poseur/régie d'un dossier directement depuis
+          // Perf. poseurs/régies (pointage rapide pour préparer un virement).
+          setDossiers(prev => prev.map(d => {
+            if (d.localId !== localId) return d;
+            const today = new Date().toISOString().split('T')[0];
+            if (kind === 'poseur') {
+              const poseurs = (d.poseurs || []).map(p => p && p.nom === nom ? { ...p, paye: !p.paye, datePaye: !p.paye ? today : '' } : p);
+              return { ...d, poseurs };
+            }
+            if (kind === 'regie') {
+              const regies = (d.regies || []).map(r => r && r.nom === nom ? { ...r, paye: !r.paye, datePaye: !r.paye ? today : '' } : r);
+              return { ...d, regies };
+            }
+            return d;
+          }));
+        }} />}
 
         {activeTab === 'calendrier' && (
           <CalendrierView
@@ -7391,7 +7407,7 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
   );
 }
 
-function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, setProjexioCaps, isAdmin = false, onCreate, onShowQuick, produits = [] }) {
+function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, setProjexioCaps, isAdmin = false, onCreate, onShowQuick, onTogglePresta, produits = [] }) {
   // Vue restreinte pour le rôle « Envoi finance » : seules les sections
   // Plafond Projexio + Financements en attente de retour sont affichées.
   // Les tuiles CA/marge/évolution et tous les autres rappels sont masqués.
@@ -7707,8 +7723,8 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
 
       {!isRestricted && <ActiviteMensuellePanel data={dashboard.activiteMois || []} />}
 
-      <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
-      <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
+      <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
+      <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
       {(dashboard.statsCommerciaux || []).length > 0 && (
         <PerfList titre="💼 Performance des commerciaux" data={dashboard.statsCommerciaux} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="💼" border="border-blue-100" header="from-blue-50 to-cyan-50" iconColor="text-blue-500" />
       )}
@@ -8016,7 +8032,7 @@ function ActiviteMensuellePanel({ data = [] }) {
   );
 }
 
-function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, medal, border, header, iconColor }) {
+function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTogglePresta, medal, border, header, iconColor }) {
   const [expandedNom, setExpandedNom] = useState(null);
   const societeById = useMemo(() => {
     const m = new Map();
@@ -8140,26 +8156,87 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, meda
                   {ids.length === 0 && (
                     <div className="text-xs text-slate-500 italic py-2">Aucun dossier trouvé.</div>
                   )}
+                  {/* 📋 Bouton « Copier le récap » pour préparer un virement et
+                      transmettre au comptable du poseur/régie. Format texte
+                      tabulé : Client | N° facture | Montant | Payé/Non payé. */}
+                  {ids.length > 0 && p.kind && p.kind !== 'commercial' && (
+                    <div className="flex items-center justify-end py-2">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const lines = [`Récap ${p.nom}${p.societe ? ' · ' + p.societe : ''}`, ''];
+                          lines.push(['Client', 'N° facture', 'Montant TTC', 'Statut', 'Date paiement'].join('\t'));
+                          let total = 0, totalPaye = 0;
+                          ids.forEach(lid => {
+                            const dd = dossierByLocalId.get(lid); if (!dd) return;
+                            const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : (dd.regiesDetail || []);
+                            const it = list.find(x => x.nom === p.nom); if (!it) return;
+                            const ttc = it.ttc || 0;
+                            total += ttc; if (it.paye) totalPaye += ttc;
+                            lines.push([
+                              `${dd.nom || ''} ${dd.prenom || ''}`.trim(),
+                              it.factureNo || '',
+                              formatEuro(ttc),
+                              it.paye ? '✓ Payé' : '⏳ Non payé',
+                              it.datePaye ? new Date(it.datePaye).toLocaleDateString('fr-FR') : '',
+                            ].join('\t'));
+                          });
+                          lines.push('');
+                          lines.push(`Total : ${formatEuro(total)}  ·  Déjà payé : ${formatEuro(totalPaye)}  ·  Reste : ${formatEuro(Math.max(0, total - totalPaye))}`);
+                          const txt = lines.join('\n');
+                          try { navigator.clipboard.writeText(txt); alert('📋 Récap copié dans le presse-papier (collable dans un email / Excel)'); }
+                          catch (err) { alert('Copie impossible : ' + err.message); }
+                        }}
+                        className="text-[11px] font-bold text-violet-700 bg-violet-100 hover:bg-violet-200 px-2 py-1 rounded-lg flex items-center gap-1"
+                        title="Copier la liste des dossiers (client, n° facture, montant, payé/non payé) pour la coller dans un email ou Excel"
+                      >
+                        📋 Copier le récap
+                      </button>
+                    </div>
+                  )}
                   {ids.map((lid) => {
                     const d = dossierByLocalId.get(lid);
                     if (!d) return null;
+                    // 🎯 Pour un poseur/régie : on affiche ce qu'on lui doit
+                    // SUR CE DOSSIER (ttc de sa ligne), pas le prix de vente
+                    // client. C'est ce qui sert à préparer son virement.
+                    const list = p.kind === 'poseur' ? (d.poseursDetail || []) : p.kind === 'regie' ? (d.regiesDetail || []) : null;
+                    const detail = list ? list.find(x => x.nom === p.nom) : null;
+                    const amount = detail ? (detail.ttc || 0) : (d.montantTotal || 0);
+                    const paye = detail ? !!detail.paye : false;
+                    const factureNo = detail ? (detail.factureNo || '') : '';
+                    const canToggle = !!(detail && onTogglePresta && p.kind !== 'commercial');
                     return (
-                      <button
-                        key={lid}
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onShowQuick && onShowQuick(lid); }}
-                        className="w-full flex items-center justify-between gap-2 py-1.5 text-left hover:bg-white rounded px-2 transition-colors"
-                        title="Cliquer pour ouvrir l'aperçu rapide du dossier"
-                      >
-                        <span className="text-xs font-semibold text-slate-700 truncate">
-                          {d.nom} {d.prenom}
-                          {d.id && <span className="text-[10px] text-slate-400 ml-1">· #{d.id}</span>}
+                      <div key={lid} className={`flex items-center justify-between gap-2 py-1.5 px-2 rounded ${paye ? 'bg-emerald-50/50' : ''}`}>
+                        <button
+                          type="button"
+                          onClick={(e) => { e.stopPropagation(); onShowQuick && onShowQuick(lid); }}
+                          className="flex-1 flex items-center gap-2 text-left hover:bg-white rounded px-1 py-0.5 transition-colors min-w-0"
+                          title="Cliquer pour ouvrir l'aperçu rapide du dossier"
+                        >
+                          <span className="text-xs font-semibold text-slate-700 truncate">
+                            {d.nom} {d.prenom}
+                            {factureNo && <span className="text-[10px] text-slate-400 ml-1">· 🧾 {factureNo}</span>}
+                            {!factureNo && d.id && <span className="text-[10px] text-slate-400 ml-1">· #{d.id}</span>}
+                          </span>
+                        </button>
+                        <span className="text-[11px] font-bold text-slate-700 flex-shrink-0 whitespace-nowrap">
+                          {formatEuro(amount)}
                         </span>
-                        <span className="text-[11px] text-slate-500 flex-shrink-0">
-                          {formatEuro(d.montantTotal || 0)}
-                          {d.dateInsta && <span className="ml-2">📅 {new Date(d.dateInsta).toLocaleDateString('fr-FR')}</span>}
-                        </span>
-                      </button>
+                        {canToggle ? (
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); onTogglePresta(lid, p.nom, p.kind); }}
+                            className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${paye ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
+                            title={paye && detail?.datePaye ? `Payé le ${new Date(detail.datePaye).toLocaleDateString('fr-FR')} — clic pour repointer` : 'Pointer comme payé'}
+                          >
+                            {paye ? `✓ Payé${detail?.datePaye ? ' ' + new Date(detail.datePaye).toLocaleDateString('fr-FR') : ''}` : '⏳ Non payé'}
+                          </button>
+                        ) : (
+                          d.dateInsta && <span className="text-[11px] text-slate-500 flex-shrink-0">📅 {new Date(d.dateInsta).toLocaleDateString('fr-FR')}</span>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
