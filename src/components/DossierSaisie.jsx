@@ -45,6 +45,11 @@ const STATUTS = [
   { id: 'W2_ANNULER',              label: 'ANNULÉ',                   color: 'from-stone-500 to-neutral-600',  bg: 'bg-stone-100',   text: 'text-stone-700',   emoji: '❌' },
   { id: 'C_LITIGE',                label: 'LITIGE',                   color: 'from-rose-500 to-red-500',       bg: 'bg-rose-100',    text: 'text-rose-700',    emoji: '⚠️' },
   { id: 'D_SAV',                   label: 'SAV',                      color: 'from-yellow-400 to-amber-500',   bg: 'bg-yellow-100',  text: 'text-yellow-700',  emoji: '🛠️' },
+  { id: 'M_ATT_DOSSIER',           label: 'ATTENTE DOSSIER',          color: 'from-amber-400 to-yellow-500',   bg: 'bg-amber-100',   text: 'text-amber-700',   emoji: '📂' },
+  { id: 'H_NRP_CQ_LIVRAISON',      label: 'NRP CONTRÔLE LIVRAISON',   color: 'from-orange-400 to-red-400',     bg: 'bg-orange-100',  text: 'text-orange-700',  emoji: '📞' },
+  { id: 'K_ATTENTE_CONSUEL',       label: 'ATTENTE CONSUEL',          color: 'from-yellow-400 to-amber-500',   bg: 'bg-yellow-100',  text: 'text-yellow-700',  emoji: '⚡' },
+  { id: 'J_VISITE_CONSUEL',        label: 'VISITE CONSUEL',           color: 'from-fuchsia-400 to-purple-500', bg: 'bg-fuchsia-100', text: 'text-fuchsia-700', emoji: '👀' },
+  { id: 'E_PASSE_COMPTANT',        label: 'PASSÉ COMPTANT',           color: 'from-lime-400 to-green-500',     bg: 'bg-lime-100',    text: 'text-lime-700',    emoji: '💰' },
   // ── Hérités (anciens dossiers — non sélectionnables, conservés pour l'affichage) ──
   { id: 'F2_PREFINANCEMENT',       label: 'PRÉFINANCEMENT',           color: 'from-emerald-300 to-green-400',  bg: 'bg-emerald-50',  text: 'text-emerald-700', emoji: '💳', legacy: true },
   { id: 'F1_ACCEPTE',              label: 'ACCEPTÉ',                  color: 'from-rose-300 to-pink-300',      bg: 'bg-rose-50',     text: 'text-rose-700',    emoji: '👍', legacy: true },
@@ -981,7 +986,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
     // Avoirs (notes de crédit) → déduction du coût HT du fournisseur.
     const avoirsHt = (f.avoirs || []).reduce((s, a) => s + (parseFloat(a.montantHt) || 0), 0);
     const ht = baseHt - avoirsHt;
-    return { nom: f.nom, ht, baseHt, avoirsHt, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
+    return { nom: f.nom, ht, baseHt, avoirsHt, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '', factureExternalUrl: f.factureExternalUrl || '' };
   });
   const fournisseurHt = fournisseursDetail.reduce((s, f) => s + f.ht, 0);
   const fournisseurTtc = fournisseursDetail.reduce((s, f) => s + f.ttc, 0);
@@ -1004,7 +1009,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
   const regiesDetail = regiesList.map(r => {
     const autoHt = computeAutoTarif((tarifsRegies || {})[r.nom]);
     const ht = (r.htCustom !== '' && r.htCustom !== undefined && r.htCustom !== null) ? (parseFloat(r.htCustom) || 0) : autoHt;
-    return { nom: r.nom, ht, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '' };
+    return { nom: r.nom, ht, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '' };
   });
   const regieHt = regiesDetail.reduce((s, r) => s + r.ht, 0);
   const regieTtc = regiesDetail.reduce((s, r) => s + r.ttc, 0);
@@ -1013,9 +1018,11 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
 
   const poseursDetail = (d.poseurs || []).map(p => {
     const autoHt = computeAutoTarif((tarifsPoseurs || {})[p.nom]);
-    const ht = (p.htCustom !== '' && p.htCustom !== undefined && p.htCustom !== null) ? (parseFloat(p.htCustom) || 0) : autoHt;
+    const baseHt = (p.htCustom !== '' && p.htCustom !== undefined && p.htCustom !== null) ? (parseFloat(p.htCustom) || 0) : autoHt;
+    const surplus = parseFloat(p.surplus) || 0;
+    const ht = baseHt + surplus;
     // Poseurs : jamais de TVA (toujours HT). TTC = HT.
-    return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '' };
+    return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, baseHt, surplus, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '' };
   });
   const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
   const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
@@ -1654,6 +1661,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // « Posé le » affiche une date alors que l'utilisateur n'a rien saisi.
     // Le bouton « ✓ Posé » ou « Auj. » la remplit explicitement.
     id: '', dateInsta: '',
+    // 📅 Date de fin de pose (peut être > dateInsta si la pose dure plusieurs jours)
+    datePoseTerminee: '',
+    // 🔗 ID dans l'ancien CRM Chelly (importé depuis sheets Google) — sert à
+    // construire le lien « Voir dans Chelly » pour consulter le dossier d'origine
+    idChelly: '',
+    // 📋 Flag activé sur les dossiers importés où la colonne S n'était pas
+    // une puissance numérique (ex: PAC, ballon, déplacement). Le dossier doit
+    // être complété manuellement, et un filtre dédié permet de les retrouver.
+    needsImportReview: false,
+    importNote: '', // valeur brute de la col qui a déclenché needsImportReview
     dateSignature: '',
     societe: activeSociete || (societes[0]?.id || ''), // 🏢 société émettrice (Yolico/Elsun)
     // Étape 1 : contrôle qualité (avant envoi banque)
@@ -1806,7 +1823,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // en arrière-plan et s'appliquent au fur et à mesure. L'utilisateur
       // n'attend plus que les dossiers eux-mêmes — ~500 ms au lieu de 5-10 s.
 
-      const REMOVED_STATUSES = ['I_CONSUEL_OK', 'CONSUEL_OK', 'J_VISITE_CONSUEL', 'M_VISITE_CONSUEL', 'K_ATTENTE_CONSUEL', 'ATTENTE_CONSUEL', 'K2_PROBLEME_CONSUEL', 'M_PROBLEME_CONSUEL', 'M_ATT_DOSSIER', 'ATT_DOSSIER', 'E_PASSE_COMPTANT', 'PASSE_COMPTANT', 'H_NRP_CQ_LIVRAISON', 'G1_ATT_NRP_CL'];
+      const REMOVED_STATUSES = ['I_CONSUEL_OK', 'CONSUEL_OK', 'M_VISITE_CONSUEL', 'ATTENTE_CONSUEL', 'K2_PROBLEME_CONSUEL', 'M_PROBLEME_CONSUEL', 'ATT_DOSSIER', 'PASSE_COMPTANT', 'G1_ATT_NRP_CL'];
       const RENAMED_STATUSES = { 'ANNULER': 'W2_ANNULER', 'DOSSIER_PAYER': 'W_DOSSIER_PAYER', 'DEPOSER': 'W1_DEPOSER', 'ACCEPTE': 'F1_ACCEPTE' };
       const ROLES_KEYS = ['teleprospecteur', 'confirmateur', 'commercial', 'coordinateurProjet', 'responsableEnvoiPose'];
       const isFullyPaid = (d) => {
@@ -2523,7 +2540,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const baseHt = (f.htCustom !== '' && f.htCustom !== undefined && f.htCustom !== null) ? (parseFloat(f.htCustom) || 0) : autoHt;
       const avoirsHt = (f.avoirs || []).reduce((s, a) => s + (parseFloat(a.montantHt) || 0), 0);
       const ht = baseHt - avoirsHt;
-      return { nom: f.nom, ht, baseHt, avoirsHt, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '' };
+      return { nom: f.nom, ht, baseHt, avoirsHt, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '', factureExternalUrl: f.factureExternalUrl || '' };
     });
     const fournisseurHt = fournisseursDetail.reduce((s, f) => s + f.ht, 0);
     const fournisseurTtc = fournisseursDetail.reduce((s, f) => s + f.ttc, 0);
@@ -2531,7 +2548,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const regiesDetail = (formData.regies || []).map(r => {
       const autoHt = computeAutoTarif(tarifsRegies[r.nom]);
       const ht = r.htCustom !== '' ? (parseFloat(r.htCustom) || 0) : autoHt;
-      return { nom: r.nom, ht, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '' };
+      return { nom: r.nom, ht, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '' };
     });
     const regieHt = regiesDetail.reduce((s, r) => s + r.ht, 0);
     const regieTtc = regiesDetail.reduce((s, r) => s + r.ttc, 0);
@@ -2539,9 +2556,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     const poseursDetail = (formData.poseurs || []).map(p => {
       const autoHt = computeAutoTarif(tarifsPoseurs[p.nom]);
-      const ht = p.htCustom !== '' ? (parseFloat(p.htCustom) || 0) : autoHt;
+      const baseHt = p.htCustom !== '' ? (parseFloat(p.htCustom) || 0) : autoHt;
+      const surplus = parseFloat(p.surplus) || 0;
+      const ht = baseHt + surplus;
       // Poseurs : jamais de TVA (toujours HT). TTC = HT.
-      return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '' };
+      return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, baseHt, surplus, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '' };
     });
     const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
     const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
@@ -2787,6 +2806,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // Idem emptyForm : pas de fallback à aujourd'hui sur dateInsta. La pose
       // n'est considérée réalisée que quand l'utilisateur saisit la date.
       id: d.id || '', dateInsta: d.dateInsta || '',
+      datePoseTerminee: d.datePoseTerminee || '',
+      idChelly: d.idChelly || '',
+      needsImportReview: !!d.needsImportReview,
+      importNote: d.importNote || '',
       dateSignature: d.dateSignature || '',
       societe: d.societe || activeSociete || (societes[0]?.id || ''),
       dateAccord: d.dateAccord || '', dateConsuel: d.dateConsuel || '',
@@ -2852,12 +2875,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
         : [{ type: d.produit || 'PANNEAU_SOLAIRE', puissance: d.puissance || 6000, description: '', quantite: 1 }],
       puissance: d.puissance || 6000,
       fournisseurs: d.fournisseurs?.length > 0
-        ? d.fournisseurs.map(f => ({ ...f, nom: f.nom, htCustom: f.htCustom || '', paye: f.paye || false, datePaye: f.datePaye || '', bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '', avoirs: f.avoirs || [] }))
+        ? d.fournisseurs.map(f => ({ ...f, nom: f.nom, htCustom: f.htCustom || '', paye: f.paye || false, datePaye: f.datePaye || '', bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '', factureExternalUrl: f.factureExternalUrl || '', avoirs: f.avoirs || [] }))
         : [],
       regie: d.regie || '', regieHtCustom: d.regieHtCustom || '',
       regies: (d.regies && d.regies.length > 0)
-        ? d.regies.map(r => ({ nom: r.nom || '', htCustom: r.htCustom || '', paye: r.paye || false, datePaye: r.datePaye || '', bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '' }))
-        : (d.regie ? [{ nom: d.regie, htCustom: d.regieHtCustom || '', paye: d.regiePaye || false, datePaye: d.regieDatePaye || '', bl: '', factureNo: '', facturePdfUrl: '' }] : []),
+        ? d.regies.map(r => ({ nom: r.nom || '', htCustom: r.htCustom || '', paye: r.paye || false, datePaye: r.datePaye || '', bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '' }))
+        : (d.regie ? [{ nom: d.regie, htCustom: d.regieHtCustom || '', paye: d.regiePaye || false, datePaye: d.regieDatePaye || '', bl: '', factureNo: '', facturePdfUrl: '', factureExternalUrl: '' }] : []),
       typeRegie: d.typeRegie || (d.regie ? 'externe' : 'externe'),
       teleprospecteur: d.teleprospecteur || '',
       teleprospecteurMontant: d.teleprospecteurMontant || '',
@@ -2882,9 +2905,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
       provenanceLead: d.provenanceLead || '',
       regiePaye: d.regiePaye || false, regieDatePaye: d.regieDatePaye || '',
       poseurs: d.poseurs?.length > 0
-        ? d.poseurs.map(p => ({ nom: p.nom, htCustom: p.htCustom || '', paye: p.paye || false, datePaye: p.datePaye || '', bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '' }))
+        ? d.poseurs.map(p => ({ nom: p.nom, htCustom: p.htCustom || '', paye: p.paye || false, datePaye: p.datePaye || '', bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '', surplus: p.surplus || 0 }))
         : (d.poseur
-            ? [{ nom: d.poseur, htCustom: d.poseurHtCustom || '', paye: d.poseurPaye || false, datePaye: d.poseurDatePaye || '', bl: '', factureNo: '', facturePdfUrl: '' }]
+            ? [{ nom: d.poseur, htCustom: d.poseurHtCustom || '', paye: d.poseurPaye || false, datePaye: d.poseurDatePaye || '', bl: '', factureNo: '', facturePdfUrl: '', factureExternalUrl: '', surplus: 0 }]
             : []),
       accordDef: d.accordDef || false, consuel: d.consuel || false,
       observations: d.observations || '',
@@ -4273,6 +4296,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (d.statutFin === 'refusé') return false;
         return true;
       }
+      // Dossiers importés depuis Google Sheets dont la col S n'était pas une
+      // puissance numérique (PAC, ballon, déplacement…) → à compléter à la main.
+      if (filterStatut === 'needs_import_review') return !!d.needsImportReview;
       return d.statut === filterStatut;
     })
     .filter(d => {
@@ -4709,6 +4735,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     } else if (filterStatut === 'pose_done_unpaid') {
                       label = 'Posés non payés'; emoji = '⏳'; color = 'from-amber-500 to-orange-600';
                       count = dossiers.filter(d => d.statutPose === 'visite_ok' && !d.payeClient && d.statut !== 'W2_ANNULER' && d.statut !== 'ANNULER' && d.statutFin !== 'refusé').length;
+                    } else if (filterStatut === 'needs_import_review') {
+                      label = 'À compléter (import)'; emoji = '📋'; color = 'from-rose-500 to-pink-600';
+                      count = dossiers.filter(d => d.needsImportReview).length;
                     } else {
                       const cur = STATUTS_ORDERED.find(s => s.id === filterStatut);
                       if (!cur) return null;
@@ -4768,6 +4797,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
                         <button onClick={() => setFilterStatut('pose_done_unpaid')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md scale-105' : 'bg-amber-50 text-amber-700'}`} title="Dossiers posés mais pas encore encaissés par le financeur (annulés et refus banque exclus). Le suivi banque actif.">
                           ⏳ Posés non payés
                           <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${sel ? 'bg-white/30' : 'bg-white text-amber-700'}`}>{count}</span>
+                        </button>
+                      );
+                    })()}
+                    {(() => {
+                      // 📋 Dossiers importés depuis Google Sheets dont la col S n'était pas
+                      // un nombre (PAC, ballon, déplacement…) → à compléter manuellement.
+                      // Bouton affiché uniquement s'il y en a au moins un.
+                      const count = dossiers.filter(d => d.needsImportReview).length;
+                      if (count === 0) return null;
+                      const sel = filterStatut === 'needs_import_review';
+                      return (
+                        <button onClick={() => setFilterStatut('needs_import_review')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow-md scale-105' : 'bg-rose-50 text-rose-700'}`} title="Dossiers importés dont le produit/puissance n'a pas pu être déterminé automatiquement — à compléter à la main.">
+                          📋 À compléter (import)
+                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${sel ? 'bg-white/30' : 'bg-white text-rose-700'}`}>{count}</span>
                         </button>
                       );
                     })()}
@@ -5396,6 +5439,9 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                 {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
               <DocsBtn size="small" /><HistBtn size="small" />
+              {d.idChelly && (
+                <a href={`https://app.chelly.net/?app=yolico&search_id=${encodeURIComponent(d.idChelly)}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} aria-label="Voir dans Chelly" title={`Voir dans Chelly (id ${d.idChelly})`} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded text-xs">🔗</a>
+              )}
               <button onClick={() => onEdit(d)} aria-label="Modifier le dossier" title="Modifier le dossier" className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded"><Edit3 className="w-3.5 h-3.5" /></button>
               {isAdmin && <button onClick={() => onDelete(d.localId)} aria-label="Supprimer le dossier" title="Supprimer le dossier" className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>}
             </>
@@ -5442,6 +5488,11 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
               })()}
               <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700"><Calendar className="w-3 h-3" />{formatDateForSheet(d.dateInsta)}</span>
               {d.dateSignature && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-pink-50 text-pink-700">✍️ {formatDateForSheet(d.dateSignature)}</span>}
+              {d.needsImportReview && (
+                <span title={d.importNote ? `À compléter — ${d.importNote}` : 'Dossier importé à vérifier'} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-300">
+                  📋 À compléter{d.importNote ? ` · ${d.importNote}` : ''}
+                </span>
+              )}
               {dossierProduits.map((p, i) => {
                 const prod = findProduit(produits, p.type);
                 const qty = p.quantite || 1;
@@ -5527,6 +5578,9 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                   {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 </button>
                 <DocsBtn /><HistBtn />
+                {d.idChelly && (
+                  <a href={`https://app.chelly.net/?app=yolico&search_id=${encodeURIComponent(d.idChelly)}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} aria-label="Voir dans Chelly" title={`Voir dans Chelly (id ${d.idChelly})`} className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg text-xs">🔗</a>
+                )}
                 <button onClick={() => onEdit(d)} aria-label="Modifier le dossier" title="Modifier le dossier" className="p-1.5 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded-lg"><Edit3 className="w-3.5 h-3.5" /></button>
               </>
             )}
@@ -5582,6 +5636,9 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                       {p.facturePdfUrl && (
                         <a href={p.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
                       )}
+                      {p.factureExternalUrl && (
+                        <a href={p.factureExternalUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-600 rounded font-bold" title="Ouvrir le PDF Drive (lien externe)">🔗</a>
+                      )}
                     </span>
                   ))}
                 </div>
@@ -5604,6 +5661,9 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                       {r.facturePdfUrl && (
                         <a href={r.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
                       )}
+                      {r.factureExternalUrl && (
+                        <a href={r.factureExternalUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-600 rounded font-bold" title="Ouvrir le PDF Drive (lien externe)">🔗</a>
+                      )}
                     </span>
                   ))}
                 </div>
@@ -5625,6 +5685,9 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                       {f.factureNo && <><span className="text-orange-400">·</span><span className="text-orange-600">🧾 {f.factureNo}</span></>}
                       {f.facturePdfUrl && (
                         <a href={f.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
+                      )}
+                      {f.factureExternalUrl && (
+                        <a href={f.factureExternalUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-600 rounded font-bold" title="Ouvrir le PDF Drive (lien externe)">🔗</a>
                       )}
                     </span>
                   ))}
