@@ -3309,11 +3309,27 @@ export default function DossierSaisie({ authUser, onLogout }) {
     dossiersFiltres.forEach(d => {
       // Dossiers morts → on ne les attend plus chez le financeur.
       // (Annulé / déposé / refus financement / client a refusé la pose.)
+      // On inclut aussi les statuts "en standby" du tableur historique
+      // (déplacement, litige, SAV, attente dossier, conformité contrat,
+      // visite/attente consuel, passé comptant, NRP CQ livraison) — ces
+      // dossiers ne sont plus dans le pipeline normal banque-déblocage.
       // Si déjà payé par le financeur on garde la ligne pour traçabilité du
       // chiffre encaissé, mais on ne l'ajoute jamais au "à recevoir".
       const isDead = d.statut === 'W2_ANNULER'
         || d.statut === 'W1_DEPOSER'
         || d.statut === 'B3_REFUS_FINANCEMENT'
+        || d.statut === 'C_LITIGE'
+        || d.statut === 'D_SAV'
+        || d.statut === 'Z_DEPLACEMENT'
+        || d.statut === 'CONFORMITE_CONTRAT'
+        || d.statut === 'M_ATT_DOSSIER'
+        || d.statut === 'H_NRP_CQ_LIVRAISON'
+        || d.statut === 'K_ATTENTE_CONSUEL'
+        || d.statut === 'J_VISITE_CONSUEL'
+        || d.statut === 'E_PASSE_COMPTANT'
+        || d.statut === 'F1_ACCEPTE'
+        || d.statut === 'F2_PREFINANCEMENT'
+        || d.statut === 'F3_MANQUE_RECEP'
         || d.statutFin === 'refusé'
         || d.statutPose === 'client_refuse';
       if (isDead && !d.payeClient) return;
