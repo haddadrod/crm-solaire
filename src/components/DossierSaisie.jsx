@@ -16274,7 +16274,20 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             <div className="text-3xl">{statut?.emoji || '📄'}</div>
             <div className="flex-1 min-w-0 pr-6">
               <h2 className="text-base font-bold truncate">{d.nom} {d.prenom}</h2>
-              {d.id && <div className="text-[10px] opacity-90 mt-0.5 font-mono">#{d.id}</div>}
+              <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                {d.id && <span className="text-[10px] opacity-90 font-mono">#{d.id}</span>}
+                {d.idChelly && (
+                  <a
+                    href={`https://app.chelly.net/?app=yolico&search_id=${encodeURIComponent(d.idChelly)}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    title={`Ouvrir dans Chelly (id ${d.idChelly})`}
+                    className="inline-flex items-center gap-1 text-[10px] font-bold bg-white/20 hover:bg-white/30 backdrop-blur text-white px-1.5 py-0.5 rounded-md"
+                  >
+                    🔗 Chelly #{d.idChelly}
+                  </a>
+                )}
+              </div>
             </div>
           </div>
           {/* Sélecteur de statut + verrou anti auto-statut */}
