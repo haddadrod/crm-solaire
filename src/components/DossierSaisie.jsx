@@ -96,6 +96,17 @@ const STATUT_ETAPE_INDEX = {
 // selon l'état du dossier. Sinon (SAV, LITIGE, ANNULER, etc.), on ne touche pas.
 const AUTO_STATUTS = ['A_EN_COURS', 'A1_CONTROLE_QUALITE', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC', 'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT', 'G_ATTENTE_ACCORD_DEF', 'F_ATTENTE_DEBLOCAGE', 'F1_CONTROLE_LIV_BANQUE', 'W_DOSSIER_PAYER'];
 
+// Statuts « morts » : le financeur ne nous doit plus rien dessus (annulés,
+// litiges, SAV, déplacement, attente dossier client, contrats à valider…).
+// Utilisé à la fois par le filtre « Posés non payés » et par le calcul
+// « Argent à recevoir par financeur » — pour garantir que les deux vues
+// affichent toujours le MÊME compte.
+const DEAD_STATUTS = ['W2_ANNULER', 'ANNULER', 'W1_DEPOSER', 'B3_REFUS_FINANCEMENT',
+  'C_LITIGE', 'D_SAV', 'Z_DEPLACEMENT', 'CONFORMITE_CONTRAT',
+  'M_ATT_DOSSIER', 'H_NRP_CQ_LIVRAISON',
+  'K_ATTENTE_CONSUEL', 'J_VISITE_CONSUEL', 'E_PASSE_COMPTANT',
+  'F1_ACCEPTE', 'F2_PREFINANCEMENT', 'F3_MANQUE_RECEP'];
+
 // Calcule le statut workflow à partir de l'état du dossier (CQ, envoi banque,
 // retour banque, date pose, poseur, puis phase financière post-pose :
 // originaux reçus → contrôle livraison → appel banque → paiement).
@@ -3307,29 +3318,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     const encaissMap = {};
     dossiersFiltres.forEach(d => {
-      // Dossiers morts → on ne les attend plus chez le financeur.
-      // (Annulé / déposé / refus financement / client a refusé la pose.)
-      // On inclut aussi les statuts "en standby" du tableur historique
-      // (déplacement, litige, SAV, attente dossier, conformité contrat,
-      // visite/attente consuel, passé comptant, NRP CQ livraison) — ces
-      // dossiers ne sont plus dans le pipeline normal banque-déblocage.
+      // Dossiers morts → on ne les attend plus chez le financeur. La liste
+      // partagée DEAD_STATUTS est aussi utilisée par le filtre « Posés non
+      // payés » pour garantir que les 2 vues donnent le même compte.
       // Si déjà payé par le financeur on garde la ligne pour traçabilité du
       // chiffre encaissé, mais on ne l'ajoute jamais au "à recevoir".
-      const isDead = d.statut === 'W2_ANNULER'
-        || d.statut === 'W1_DEPOSER'
-        || d.statut === 'B3_REFUS_FINANCEMENT'
-        || d.statut === 'C_LITIGE'
-        || d.statut === 'D_SAV'
-        || d.statut === 'Z_DEPLACEMENT'
-        || d.statut === 'CONFORMITE_CONTRAT'
-        || d.statut === 'M_ATT_DOSSIER'
-        || d.statut === 'H_NRP_CQ_LIVRAISON'
-        || d.statut === 'K_ATTENTE_CONSUEL'
-        || d.statut === 'J_VISITE_CONSUEL'
-        || d.statut === 'E_PASSE_COMPTANT'
-        || d.statut === 'F1_ACCEPTE'
-        || d.statut === 'F2_PREFINANCEMENT'
-        || d.statut === 'F3_MANQUE_RECEP'
+      const isDead = DEAD_STATUTS.includes(d.statut)
         || d.statutFin === 'refusé'
         || d.statutPose === 'client_refuse';
       if (isDead && !d.payeClient) return;
@@ -4304,12 +4298,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (filterStatut === 'pose_done') return d.statutPose === 'visite_ok';
       // « ⏳ Posés non payés » = posés mais pas encore encaissés par le
       // financeur. C'est le suivi banque actif : travail fait, argent à
-      // venir. Annulés / refus banque exclus (on ne reçoit plus rien).
+      // venir. Exclut les statuts « morts » (cf DEAD_STATUTS) pour rester
+      // aligné avec « Argent à recevoir par financeur ».
       if (filterStatut === 'pose_done_unpaid') {
         if (d.statutPose !== 'visite_ok') return false;
         if (d.payeClient) return false;
-        if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') return false;
+        if (DEAD_STATUTS.includes(d.statut)) return false;
         if (d.statutFin === 'refusé') return false;
+        if (d.statutPose === 'client_refuse') return false;
         return true;
       }
       // Dossiers importés depuis Google Sheets dont la col S n'était pas une
@@ -4750,7 +4746,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       count = dossiers.filter(d => d.statutPose === 'visite_ok').length;
                     } else if (filterStatut === 'pose_done_unpaid') {
                       label = 'Posés non payés'; emoji = '⏳'; color = 'from-amber-500 to-orange-600';
-                      count = dossiers.filter(d => d.statutPose === 'visite_ok' && !d.payeClient && d.statut !== 'W2_ANNULER' && d.statut !== 'ANNULER' && d.statutFin !== 'refusé').length;
+                      count = dossiers.filter(d => d.statutPose === 'visite_ok' && !d.payeClient && !DEAD_STATUTS.includes(d.statut) && d.statutFin !== 'refusé' && d.statutPose !== 'client_refuse').length;
                     } else if (filterStatut === 'needs_import_review') {
                       label = 'À compléter (import)'; emoji = '📋'; color = 'from-rose-500 to-pink-600';
                       count = dossiers.filter(d => d.needsImportReview).length;
@@ -4808,7 +4804,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     {(() => {
                       // 🎯 Raccourci : posés mais pas encore payés par le financeur
                       const sel = filterStatut === 'pose_done_unpaid';
-                      const count = dossiers.filter(d => d.statutPose === 'visite_ok' && !d.payeClient && d.statut !== 'W2_ANNULER' && d.statut !== 'ANNULER' && d.statutFin !== 'refusé').length;
+                      const count = dossiers.filter(d => d.statutPose === 'visite_ok' && !d.payeClient && !DEAD_STATUTS.includes(d.statut) && d.statutFin !== 'refusé' && d.statutPose !== 'client_refuse').length;
                       return (
                         <button onClick={() => setFilterStatut('pose_done_unpaid')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md scale-105' : 'bg-amber-50 text-amber-700'}`} title="Dossiers posés mais pas encore encaissés par le financeur (annulés et refus banque exclus). Le suivi banque actif.">
                           ⏳ Posés non payés
