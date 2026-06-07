@@ -3566,7 +3566,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (isPose) m.nbPoses += 1;
         if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
       };
-      const makeEntry = (nom) => ({ nom, societe: soc, count: 0, totalDu: 0, dejaPaye: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 });
+      const makeEntry = (nom) => ({ nom, societe: soc, count: 0, totalDu: 0, dejaPaye: 0, margeTotale: 0, margeTotaleHt: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 });
+      // Marge du dossier à répartir entre les régies (si plusieurs régies
+      // sur le même dossier, on divise pour ne pas double-compter).
+      const margeShare = (regiesArr.length > 0) ? (d.margeTtc || 0) / regiesArr.length : (d.margeTtc || 0);
+      const margeShareHt = (regiesArr.length > 0) ? (d.margeHt || 0) / regiesArr.length : (d.margeHt || 0);
       // Ce qu'on doit à la régie n'a pas de sens si annulé/refusé.
       const compteCouts = !isAnnule && d.statutFin !== 'refusé';
       if (regiesArr.length === 0) {
@@ -3575,6 +3579,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (!regieMap[key]) regieMap[key] = makeEntry(nom);
         regieMap[key].count += 1;
         regieMap[key].dossierIds.push(d.localId);
+        if (compteCouts) {
+          regieMap[key].margeTotale += margeShare;
+          regieMap[key].margeTotaleHt += margeShareHt;
+        }
         bumpAdvanced(regieMap[key]);
       } else {
         regiesArr.forEach(reg => {
@@ -3586,6 +3594,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
           if (compteCouts) {
             regieMap[key].totalDu += reg.ttc || 0;
             if (reg.paye) regieMap[key].dejaPaye += reg.ttc || 0;
+            regieMap[key].margeTotale += margeShare;
+            regieMap[key].margeTotaleHt += margeShareHt;
           }
           bumpAdvanced(regieMap[key]);
         });
@@ -8533,7 +8543,10 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                   {p.totalDu !== undefined ? (
                     // 🤝 Poseur / Régie : ce qu'on lui doit, ce qu'on lui a déjà payé,
                     // et ce qu'il reste à payer. Pas de CA — c'est nous qui les payons.
-                    <div className="flex gap-3 text-xs" title="Total à payer = somme due sur les dossiers actifs · Déjà payé = factures cochées payées · Reste = différence">
+                    // Sur les régies on affiche aussi la marge totale apportée
+                    // (montant total dossier - fournisseurs - régie - poseur),
+                    // partagée si plusieurs régies sur un même dossier.
+                    <div className="flex gap-3 text-xs flex-wrap" title="Total à payer = somme due sur les dossiers actifs · Déjà payé = factures cochées payées · Reste = différence · Marge = bénéfice net des dossiers de cette régie">
                       <SmallStat label="À payer total" value={formatEuro(p.totalDu)} color="text-amber-600" />
                       <SmallStat label="Déjà payé" value={formatEuro(p.dejaPaye)} color="text-emerald-600" />
                       <SmallStat
@@ -8541,6 +8554,13 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                         value={formatEuro(Math.max(0, p.totalDu - p.dejaPaye))}
                         color={(p.totalDu - p.dejaPaye) > 0 ? 'text-rose-600' : 'text-slate-500'}
                       />
+                      {p.margeTotale !== undefined && (
+                        <SmallStat
+                          label="Marge TTC"
+                          value={formatEuro(p.margeTotale)}
+                          color={p.margeTotale >= 0 ? 'text-violet-600' : 'text-rose-600'}
+                        />
+                      )}
                     </div>
                   ) : (
                     // 💼 Commercial : CA apporté (signé) et ce qui est déjà rentré (payé).
