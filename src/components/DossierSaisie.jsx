@@ -7466,11 +7466,11 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
   );
 }
 
-function SmallStat({ label, value, color }) {
+function SmallStat({ label, value, color, width = 'w-28' }) {
   return (
-    <div className="text-right text-xs">
-      <div className="font-semibold text-slate-500 uppercase text-[10px]">{label}</div>
-      <div className={`font-bold ${color}`}>{value}</div>
+    <div className={`text-right text-xs ${width} flex-shrink-0`}>
+      <div className="font-semibold text-slate-500 uppercase text-[10px] truncate">{label}</div>
+      <div className={`font-bold ${color} tabular-nums whitespace-nowrap`}>{value}</div>
     </div>
   );
 }
@@ -8547,23 +8547,20 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                     </div>
                   </div>
                   {p.totalDu !== undefined ? (
-                    // 🤝 Poseur / Régie : ce qu'on lui doit, ce qu'on lui a déjà payé,
-                    // et ce qu'il reste à payer. Sur les régies on affiche en plus
-                    // le CA apporté (chiffre d'affaires brut), la marge totale
-                    // nette (CA - fournisseurs - régie - poseurs), et la marge
-                    // moyenne par dossier. Tout est divisé si plusieurs régies
-                    // sur le même dossier pour éviter le double-comptage.
-                    <div className="flex gap-3 text-xs flex-wrap" title="À payer = ce qu'on doit à cette régie · CA = montant total des dossiers apportés · Marge = bénéfice net après tous les coûts · Marge moy = par dossier">
-                      <SmallStat label="À payer total" value={formatEuro(p.totalDu)} color="text-amber-600" />
+                    // 🤝 Poseur / Régie : CA apporté, ce qu'on a déjà payé,
+                    // ce qu'il reste à payer, marge totale nette, marge moyenne
+                    // par dossier. CA/marge divisés si plusieurs régies sur le
+                    // même dossier (pas de double-comptage).
+                    // Colonnes à largeur fixe (w-28) pour aligner verticalement
+                    // les chiffres d'une ligne à l'autre.
+                    <div className="flex gap-2 text-xs items-start" title="CA = montant total dossiers apportés · Déjà/Reste = ce qu'on doit à cette régie · Marge = bénéfice net après tous les coûts · Marge moy = par dossier">
+                      <SmallStat label="CA apporté" value={formatEuro(p.caSigne || 0)} color="text-blue-600" />
                       <SmallStat label="Déjà payé" value={formatEuro(p.dejaPaye)} color="text-emerald-600" />
                       <SmallStat
                         label="Reste à payer"
                         value={formatEuro(Math.max(0, p.totalDu - p.dejaPaye))}
                         color={(p.totalDu - p.dejaPaye) > 0 ? 'text-rose-600' : 'text-slate-500'}
                       />
-                      {p.caSigne !== undefined && p.caSigne > 0 && (
-                        <SmallStat label="CA apporté" value={formatEuro(p.caSigne)} color="text-blue-600" />
-                      )}
                       {p.margeTotale !== undefined && (
                         <SmallStat
                           label="Marge TTC"
@@ -8576,6 +8573,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                           label="Marge moy/dossier"
                           value={formatEuro(p.margeTotale / p.count)}
                           color={p.margeTotale >= 0 ? 'text-fuchsia-600' : 'text-rose-600'}
+                          width="w-32"
                         />
                       )}
                     </div>
