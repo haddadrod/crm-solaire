@@ -1390,7 +1390,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const initialTabFromHash = (typeof window !== 'undefined' && window.location.hash)
     ? window.location.hash.replace(/^#/, '').split('/')[0] || 'dossiers'
     : 'dossiers';
-  const VALID_TABS = ['dossiers', 'archives', 'kanban', 'calendrier', 'paiements', 'dashboard', 'reglages'];
+  const VALID_TABS = ['ajourd', 'dossiers', 'archives', 'kanban', 'calendrier', 'paiements', 'dashboard', 'reglages'];
   const [activeTab, setActiveTab] = useState(VALID_TABS.includes(initialTabFromHash) ? initialTabFromHash : 'dossiers');
   const [statutsOrder, setStatutsOrder] = useState(STATUTS.map(s => s.id));
   const [tarifsPoseurs, setTarifsPoseurs] = useState(TARIFS_POSEURS_DEFAULT);
@@ -2482,7 +2482,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
     if (activeTab === 'paiements' && !permissions.voirRapportPaiements) setActiveTab('dossiers');
     if (activeTab === 'dashboard' && !permissions.voirDashboard) setActiveTab('dossiers');
     if (activeTab === 'reglages' && !permissions.voirReglages) setActiveTab('dossiers');
-    if (activeTab === 'ajourd') setActiveTab('dossiers'); // onglet supprimé — rabattre vers dossiers
   }, [permissions, activeTab]);
 
   // Persiste l'onglet courant dans le hash URL pour que F5 / refresh garde
@@ -4599,6 +4598,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
           {/* Onglets — selon permissions du rôle actif */}
           <div className="flex gap-2 mb-3 bg-white rounded-2xl p-1.5 shadow-sm border border-violet-100 max-w-full flex-nowrap overflow-x-auto">
+            {(() => {
+              // Compteur d'actions « Ma journée » pour le badge de l'onglet.
+              const canArgent = isAdmin || currentUserRole === 'compta' || currentUserRole === 'envoi_finance';
+              const baseKeys = ['rappelsClientRappel','rappelsControleQualite','rappelsAEnvoyerBanque','rappelsFinancement','rappelsManqueDoc','rappelsAEnvoyerPose','rappelsPoseurNonAssigne','rappelsPoseNonFinie','rappelsAEnvoyerMairie','rappelsAEnvoyerConsuel','rappelsAEnvoyerRaccordement','rappelsMaterielNonRendu','rappelsLitige','rappelsSav','rappelsStagnation'];
+              const argentKeys = ['rappelsOriginaux','rappelsControleLivraison','rappelsPaiement','rappelsRecupTva','rappelsFacturesManquantes','rappelsPennylaneAEnvoyer'];
+              const keys = canArgent ? [...baseKeys, ...argentKeys] : baseKeys;
+              const cnt = keys.reduce((s, k) => s + ((dashboard[k] || []).length), 0);
+              return (
+                <TabButton active={activeTab === 'ajourd'} onClick={() => setActiveTab('ajourd')} icon={Flame} label="Ma journée" color="from-violet-500 to-fuchsia-500" badge={cnt > 0 ? `${cnt}` : null} badgeColor="bg-rose-100 text-rose-700" highlight={cnt > 0} />
+              );
+            })()}
             <TabButton active={activeTab === 'dossiers'} onClick={() => setActiveTab('dossiers')} icon={FileText} label={`Dossiers (${nbActifs})`} color="from-violet-500 to-pink-500" />
             <TabButton active={activeTab === 'archives'} onClick={() => setActiveTab('archives')} icon={Check} label={`Archivés (${nbArchives})`} color="from-slate-500 to-gray-600" />
             <TabButton active={activeTab === 'kanban'} onClick={() => setActiveTab('kanban')} icon={LayoutGrid} label="Kanban" color="from-violet-500 to-fuchsia-500" />
@@ -4641,7 +4651,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         </div>
 
         {/* DOSSIERS / ARCHIVES — même vue, filtre auto */}
-        {false && activeTab === 'ajourd' && (
+        {activeTab === 'ajourd' && (
           <MaJourneeView
             dashboard={dashboard}
             dossiers={dossiers}
@@ -5288,11 +5298,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
 // ===================== COMPOSANTS =====================
 
-function TabButton({ active, onClick, icon: Icon, label, color, badge, badgeColor }) {
+function TabButton({ active, onClick, icon: Icon, label, color, badge, badgeColor, highlight = false }) {
+  // `highlight` = onglet à mettre en avant même inactif (ex: « Ma journée »).
+  // On garde le fond coloré + pulsation pour qu'il attire l'œil.
+  const baseInactive = highlight
+    ? `bg-gradient-to-r ${color} text-white shadow-md ring-2 ring-white ring-offset-1`
+    : 'text-slate-600 hover:bg-slate-50';
   return (
-    <button onClick={onClick} className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 shrink-0 whitespace-nowrap ${active ? `bg-gradient-to-r ${color} text-white shadow-md` : 'text-slate-600 hover:bg-slate-50'}`}>
+    <button onClick={onClick} className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 shrink-0 whitespace-nowrap ${active ? `bg-gradient-to-r ${color} text-white shadow-md` : baseInactive}`}>
       <Icon className="w-4 h-4" />{label}
-      {badge && <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] ${active ? 'bg-white/30' : badgeColor}`}>{badge}</span>}
+      {badge && <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${active || highlight ? 'bg-white/30 text-white' : badgeColor}`}>{badge}</span>}
     </button>
   );
 }
