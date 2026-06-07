@@ -3566,11 +3566,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (isPose) m.nbPoses += 1;
         if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
       };
-      const makeEntry = (nom) => ({ nom, societe: soc, count: 0, totalDu: 0, dejaPaye: 0, margeTotale: 0, margeTotaleHt: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 });
-      // Marge du dossier à répartir entre les régies (si plusieurs régies
-      // sur le même dossier, on divise pour ne pas double-compter).
-      const margeShare = (regiesArr.length > 0) ? (d.margeTtc || 0) / regiesArr.length : (d.margeTtc || 0);
-      const margeShareHt = (regiesArr.length > 0) ? (d.margeHt || 0) / regiesArr.length : (d.margeHt || 0);
+      const makeEntry = (nom) => ({ nom, societe: soc, count: 0, totalDu: 0, dejaPaye: 0, caSigne: 0, caPaye: 0, margeTotale: 0, margeTotaleHt: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 });
+      // Part du dossier attribuée à la régie : si plusieurs régies sur le
+      // même dossier, on divise pour ne pas double-compter le CA/la marge.
+      const partDossier = (regiesArr.length > 0) ? 1 / regiesArr.length : 1;
+      const caShare = (d.montantTotal || 0) * partDossier;
+      const margeShare = (d.margeTtc || 0) * partDossier;
+      const margeShareHt = (d.margeHt || 0) * partDossier;
       // Ce qu'on doit à la régie n'a pas de sens si annulé/refusé.
       const compteCouts = !isAnnule && d.statutFin !== 'refusé';
       if (regiesArr.length === 0) {
@@ -3580,6 +3582,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
         regieMap[key].count += 1;
         regieMap[key].dossierIds.push(d.localId);
         if (compteCouts) {
+          regieMap[key].caSigne += caShare;
+          if (isPaid) regieMap[key].caPaye += caShare;
           regieMap[key].margeTotale += margeShare;
           regieMap[key].margeTotaleHt += margeShareHt;
         }
@@ -3594,6 +3598,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
           if (compteCouts) {
             regieMap[key].totalDu += reg.ttc || 0;
             if (reg.paye) regieMap[key].dejaPaye += reg.ttc || 0;
+            regieMap[key].caSigne += caShare;
+            if (isPaid) regieMap[key].caPaye += caShare;
             regieMap[key].margeTotale += margeShare;
             regieMap[key].margeTotaleHt += margeShareHt;
           }
@@ -8542,11 +8548,12 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                   </div>
                   {p.totalDu !== undefined ? (
                     // 🤝 Poseur / Régie : ce qu'on lui doit, ce qu'on lui a déjà payé,
-                    // et ce qu'il reste à payer. Pas de CA — c'est nous qui les payons.
-                    // Sur les régies on affiche aussi la marge totale apportée
-                    // (montant total dossier - fournisseurs - régie - poseur),
-                    // partagée si plusieurs régies sur un même dossier.
-                    <div className="flex gap-3 text-xs flex-wrap" title="Total à payer = somme due sur les dossiers actifs · Déjà payé = factures cochées payées · Reste = différence · Marge = bénéfice net des dossiers de cette régie">
+                    // et ce qu'il reste à payer. Sur les régies on affiche en plus
+                    // le CA apporté (chiffre d'affaires brut), la marge totale
+                    // nette (CA - fournisseurs - régie - poseurs), et la marge
+                    // moyenne par dossier. Tout est divisé si plusieurs régies
+                    // sur le même dossier pour éviter le double-comptage.
+                    <div className="flex gap-3 text-xs flex-wrap" title="À payer = ce qu'on doit à cette régie · CA = montant total des dossiers apportés · Marge = bénéfice net après tous les coûts · Marge moy = par dossier">
                       <SmallStat label="À payer total" value={formatEuro(p.totalDu)} color="text-amber-600" />
                       <SmallStat label="Déjà payé" value={formatEuro(p.dejaPaye)} color="text-emerald-600" />
                       <SmallStat
@@ -8554,11 +8561,21 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                         value={formatEuro(Math.max(0, p.totalDu - p.dejaPaye))}
                         color={(p.totalDu - p.dejaPaye) > 0 ? 'text-rose-600' : 'text-slate-500'}
                       />
+                      {p.caSigne !== undefined && p.caSigne > 0 && (
+                        <SmallStat label="CA apporté" value={formatEuro(p.caSigne)} color="text-blue-600" />
+                      )}
                       {p.margeTotale !== undefined && (
                         <SmallStat
                           label="Marge TTC"
                           value={formatEuro(p.margeTotale)}
                           color={p.margeTotale >= 0 ? 'text-violet-600' : 'text-rose-600'}
+                        />
+                      )}
+                      {p.margeTotale !== undefined && p.count > 0 && (
+                        <SmallStat
+                          label="Marge moy/dossier"
+                          value={formatEuro(p.margeTotale / p.count)}
+                          color={p.margeTotale >= 0 ? 'text-fuchsia-600' : 'text-rose-600'}
                         />
                       )}
                     </div>
