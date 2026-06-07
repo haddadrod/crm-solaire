@@ -6849,6 +6849,17 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
   // maintenant (client a payé). Toggle pour voir aussi les "bloqués"
   // (en attente d'encaissement client) et les déjà payés.
   const [showOnlyAPayer, setShowOnlyAPayer] = useState(true);
+  // 📑 Pliage des groupes de la liste « Détail par prestataire » (Fournisseurs,
+  // Régies, Poseurs, Équipe interne) — set des labels pliés. Utile quand un
+  // groupe est très long et qu'on veut consulter les autres sans scroller.
+  const [foldedGroups, setFoldedGroups] = useState(() => new Set());
+  const toggleGroup = (label) => {
+    setFoldedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      return next;
+    });
+  };
 
   // 🏦 Plafond mensuel PROJEXIO par société — version compacte, affichée juste
   // au-dessus de « Argent à recevoir » pour avoir la marge restante sur le mois
@@ -7223,12 +7234,20 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                 { label: '🔧 Poseurs',      match: (p) => p.type === 'Poseur' },
                 { label: '👥 Équipe interne', match: (p) => INTERNES.includes(p.type) },
               ].map(g => ({ ...g, items: rapportPaiements.list.filter(g.match) })).filter(g => g.items.length > 0);
-              return groups.map((g) => (
+              return groups.map((g) => {
+                const isFolded = foldedGroups.has(g.label);
+                return (
                 <div key={g.label}>
-                  <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 sticky top-0 z-[1]">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(g.label)}
+                    className="w-full px-4 py-2 bg-slate-50 border-b border-slate-200 sticky top-0 z-[1] flex items-center justify-between gap-2 hover:bg-slate-100 transition"
+                    title={isFolded ? 'Cliquer pour déplier' : 'Cliquer pour plier'}
+                  >
                     <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">{g.label} ({g.items.length})</span>
-                  </div>
-                  {g.items.map((p, idx) => {
+                    <span className="text-slate-500 text-xs font-bold">{isFolded ? '▶' : '▼'}</span>
+                  </button>
+                  {!isFolded && g.items.map((p, idx) => {
               const isInternal = INTERNES.includes(p.type);
               const colors = p.type === 'Fournisseur' ? 'bg-amber-100 text-amber-700' :
                              p.type === 'Régie' ? 'bg-purple-100 text-purple-700' :
@@ -7356,7 +7375,8 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
               );
             })}
                 </div>
-              ));
+              );
+            });
             })()}
           </div>
         )}
