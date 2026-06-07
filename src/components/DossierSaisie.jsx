@@ -7880,22 +7880,25 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
         <SanteDossiersPanel dossiers={dossiers} produits={produits} activeSociete={activeSociete} onShowQuick={onShowQuick} />
       )}
 
+      {/* 📅 Activité mensuelle — remontée en haut du dashboard (priorité métier) */}
+      {!isRestricted && <ActiviteMensuellePanel data={dashboard.activiteMois || []} />}
+
       {/* 🏦 PROJEXIO — un bandeau de plafond par société émettrice */}
       {projBars.map(b => {
         const isOpen = projOpenSocId === b.socId;
         const dossiersOfMonth = b.data.dossiers || [];
         return (
-        <div key={b.socId} className={`bg-gradient-to-r ${b.colors.bg} rounded-2xl p-4 text-white shadow-md`}>
-          <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
+        <div key={b.socId} className={`bg-gradient-to-r ${b.colors.bg} rounded-xl p-2.5 text-white shadow-md`}>
+          <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
             <div className="flex items-center gap-2">
-              <span className="text-xl">{b.socEmoji}</span>
+              <span className="text-base">{b.socEmoji}</span>
               <div>
-                <div className="text-xs font-semibold uppercase opacity-90">Plafond mensuel PROJEXIO — {b.socLabel}</div>
-                <div className="text-[10px] opacity-75">{b.data.count} dossier{b.data.count > 1 ? 's' : ''} envoyé{b.data.count > 1 ? 's' : ''} ce mois (refus banque inclus, annulés par toi exclus)</div>
+                <div className="text-[11px] font-semibold uppercase opacity-90">Plafond mensuel PROJEXIO — {b.socLabel}</div>
+                <div className="text-[9px] opacity-75">{b.data.count} dossier{b.data.count > 1 ? 's' : ''} envoyé{b.data.count > 1 ? 's' : ''} ce mois (refus banque inclus, annulés par toi exclus)</div>
               </div>
             </div>
             <div className="text-right">
-              <div className="text-2xl font-bold">{formatEuro(b.data.total)}</div>
+              <div className="text-lg font-bold leading-tight">{formatEuro(b.data.total)}</div>
               <div className="text-[11px] opacity-90 flex items-center gap-1 justify-end">
                 <span>/</span>
                 {projEditing && projEditing.socId === b.socId ? (
@@ -7991,36 +7994,36 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
       })}
 
       {!isRestricted && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-2xl p-4 text-white" title="Dossiers payés ce mois (basé sur la date de paiement client)">
-            <div className="flex justify-between items-start mb-2">
-              <div className="text-xs font-semibold opacity-90 uppercase">Encaissé ce mois</div>
-              <Activity className="w-5 h-5 opacity-80" />
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+          <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl p-2.5 text-white" title="Dossiers payés ce mois (basé sur la date de paiement client)">
+            <div className="flex justify-between items-center mb-0.5">
+              <div className="text-[10px] font-semibold opacity-90 uppercase">Encaissé ce mois</div>
+              <Activity className="w-3.5 h-3.5 opacity-80" />
             </div>
-            <div className="text-3xl font-bold">{dashboard.moisCourant.count}</div>
-            <div className="text-xs opacity-90 mt-1">{formatEuro(dashboard.moisCourant.ca)} CA payé</div>
+            <div className="text-xl font-bold leading-tight">{dashboard.moisCourant.count}</div>
+            <div className="text-[10px] opacity-90 mt-0.5">{formatEuro(dashboard.moisCourant.ca)} CA payé</div>
           </div>
-          <div className="bg-gradient-to-br from-slate-500 to-gray-600 rounded-2xl p-4 text-white" title="Dossiers payés le mois précédent">
-            <div className="flex justify-between items-start mb-2">
-              <div className="text-xs font-semibold opacity-90 uppercase">Mois précédent</div>
-              <Calendar className="w-5 h-5 opacity-80" />
+          <div className="bg-gradient-to-br from-slate-500 to-gray-600 rounded-xl p-2.5 text-white" title="Dossiers payés le mois précédent">
+            <div className="flex justify-between items-center mb-0.5">
+              <div className="text-[10px] font-semibold opacity-90 uppercase">Mois précédent</div>
+              <Calendar className="w-3.5 h-3.5 opacity-80" />
             </div>
-            <div className="text-3xl font-bold">{dashboard.moisPrecedent.count}</div>
-            <div className="text-xs opacity-90 mt-1">{formatEuro(dashboard.moisPrecedent.ca)} CA payé</div>
+            <div className="text-xl font-bold leading-tight">{dashboard.moisPrecedent.count}</div>
+            <div className="text-[10px] opacity-90 mt-0.5">{formatEuro(dashboard.moisPrecedent.ca)} CA payé</div>
           </div>
-          <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-4 text-white" title="Marge sur les dossiers payés ce mois">
-            <div className="flex justify-between items-start mb-2">
-              <div className="text-xs font-semibold opacity-90 uppercase">Marge ce mois</div>
-              <TrendingUp className="w-5 h-5 opacity-80" />
+          <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl p-2.5 text-white" title="Marge sur les dossiers payés ce mois">
+            <div className="flex justify-between items-center mb-0.5">
+              <div className="text-[10px] font-semibold opacity-90 uppercase">Marge ce mois</div>
+              <TrendingUp className="w-3.5 h-3.5 opacity-80" />
             </div>
-            <div className="text-2xl font-bold truncate">{formatEuro(dashboard.moisCourant.margeTtc)}</div>
+            <div className="text-lg font-bold truncate leading-tight">{formatEuro(dashboard.moisCourant.margeTtc)}</div>
           </div>
-          <div className={`bg-gradient-to-br ${dashboard.moisCourant.ca >= dashboard.moisPrecedent.ca ? 'from-emerald-500 to-green-500' : 'from-rose-500 to-pink-500'} rounded-2xl p-4 text-white`}>
-            <div className="flex justify-between items-start mb-2">
-              <div className="text-xs font-semibold opacity-90 uppercase">Évolution</div>
-              <Zap className="w-5 h-5 opacity-80" />
+          <div className={`bg-gradient-to-br ${dashboard.moisCourant.ca >= dashboard.moisPrecedent.ca ? 'from-emerald-500 to-green-500' : 'from-rose-500 to-pink-500'} rounded-xl p-2.5 text-white`}>
+            <div className="flex justify-between items-center mb-0.5">
+              <div className="text-[10px] font-semibold opacity-90 uppercase">Évolution</div>
+              <Zap className="w-3.5 h-3.5 opacity-80" />
             </div>
-            <div className="text-3xl font-bold">
+            <div className="text-xl font-bold leading-tight">
               {dashboard.moisPrecedent.ca > 0 ? `${dashboard.moisCourant.ca >= dashboard.moisPrecedent.ca ? '+' : ''}${(((dashboard.moisCourant.ca - dashboard.moisPrecedent.ca) / dashboard.moisPrecedent.ca) * 100).toFixed(0)}%` : '—'}
             </div>
           </div>
@@ -8124,8 +8127,6 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
           )}
         </div>
       )}
-
-      {!isRestricted && <ActiviteMensuellePanel data={dashboard.activiteMois || []} />}
 
       <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
       <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
