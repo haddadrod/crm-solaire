@@ -7383,32 +7383,41 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
       </div>
 
       {/* PÉNALITÉS RÉGIES (poses ratées) */}
-      <div className="bg-white rounded-3xl shadow-md border border-rose-200 overflow-hidden">
-        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-rose-50 to-orange-50">
-          <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-            <AlertTriangle className="w-5 h-5 text-rose-500" />Pénalités régies (poses ratées)
-          </h2>
-          <p className="text-xs text-slate-500 mt-1">💡 Coche dès qu'une régie t'a remboursé sa pénalité</p>
-        </div>
+      <div className="bg-white rounded-2xl shadow-sm border border-rose-200 overflow-hidden">
+        <button
+          type="button"
+          onClick={() => toggleGroup('__penalites__')}
+          className="w-full px-3 py-2 border-b border-slate-100 bg-gradient-to-r from-rose-50 to-orange-50 flex items-start justify-between gap-2 hover:opacity-90 transition text-left"
+          title={foldedGroups.has('__penalites__') ? 'Cliquer pour déplier' : 'Cliquer pour plier'}
+        >
+          <div className="min-w-0">
+            <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
+              <AlertTriangle className="w-4 h-4 text-rose-500" />Pénalités régies (poses ratées)
+              <span className="text-[11px] font-semibold text-slate-500">({rapportPaiements.penalitesList.length})</span>
+            </h2>
+            <p className="text-[10px] text-slate-500 mt-0.5">💡 Coche dès qu'une régie t'a remboursé sa pénalité</p>
+          </div>
+          <span className="text-slate-500 text-xs font-bold flex-shrink-0 mt-1">{foldedGroups.has('__penalites__') ? '▶' : '▼'}</span>
+        </button>
 
-        {rapportPaiements.totalPenalitesDu > 0 && (
-          <div className="p-4 bg-slate-50 border-b border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="bg-gradient-to-br from-rose-500 to-red-500 rounded-2xl p-4 text-white">
-              <div className="text-xs font-semibold opacity-90 uppercase">⚠️ Total dû par les régies</div>
-              <div className="text-2xl font-bold">{formatEuro(rapportPaiements.totalPenalitesDu)}</div>
+        {!foldedGroups.has('__penalites__') && rapportPaiements.totalPenalitesDu > 0 && (
+          <div className="p-2 bg-slate-50 border-b border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-2">
+            <div className="bg-gradient-to-br from-rose-500 to-red-500 rounded-xl p-2.5 text-white">
+              <div className="text-[10px] font-semibold opacity-90 uppercase">⚠️ Total dû par les régies</div>
+              <div className="text-lg font-bold leading-tight">{formatEuro(rapportPaiements.totalPenalitesDu)}</div>
             </div>
-            <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-4 text-white">
-              <div className="text-xs font-semibold opacity-90 uppercase">✅ Déjà remboursé</div>
-              <div className="text-2xl font-bold">{formatEuro(rapportPaiements.totalPenalitesPaye)}</div>
+            <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl p-2.5 text-white">
+              <div className="text-[10px] font-semibold opacity-90 uppercase">✅ Déjà remboursé</div>
+              <div className="text-lg font-bold leading-tight">{formatEuro(rapportPaiements.totalPenalitesPaye)}</div>
             </div>
-            <div className="bg-gradient-to-br from-orange-500 to-amber-500 rounded-2xl p-4 text-white">
-              <div className="text-xs font-semibold opacity-90 uppercase">⏳ Reste à recevoir</div>
-              <div className="text-2xl font-bold">{formatEuro(rapportPaiements.totalPenalitesRestant)}</div>
+            <div className="bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl p-2.5 text-white">
+              <div className="text-[10px] font-semibold opacity-90 uppercase">⏳ Reste à recevoir</div>
+              <div className="text-lg font-bold leading-tight">{formatEuro(rapportPaiements.totalPenalitesRestant)}</div>
             </div>
           </div>
         )}
 
-        {rapportPaiements.penalitesList.length === 0 ? (
+        {!foldedGroups.has('__penalites__') && (rapportPaiements.penalitesList.length === 0 ? (
           <div className="p-8 text-center text-slate-500 text-sm">Aucune pénalité enregistrée.</div>
         ) : (
           <div className="p-4 space-y-3">
@@ -7457,7 +7466,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
               </details>
             ))}
           </div>
-        )}
+        ))}
       </div>
 
       {/* ⚖️ LITIGES CLIENT — remboursements dus par les régies */}
