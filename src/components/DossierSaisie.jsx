@@ -8816,10 +8816,10 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                       catch (err) { alert('Copie impossible : ' + err.message); }
                     };
                     return (
-                      <div className="sticky bottom-0 mt-2 -mx-4 px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-600 text-white shadow-lg flex items-center justify-between gap-3 flex-wrap z-10">
+                      <div className="fixed bottom-0 left-0 right-0 px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-600 text-white shadow-2xl flex items-center justify-between gap-3 flex-wrap z-50">
                         <div className="flex items-center gap-3">
                           <span className="text-2xl font-extrabold">{formatEuro(totalSel)}</span>
-                          <span className="text-xs opacity-90">à virer · {toMark.length} dossier{toMark.length > 1 ? 's' : ''} coché{toMark.length > 1 ? 's' : ''}</span>
+                          <span className="text-xs opacity-90">à virer · {toMark.length} dossier{toMark.length > 1 ? 's' : ''} coché{toMark.length > 1 ? 's' : ''} chez <strong>{p.nom}</strong></span>
                         </div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <button
