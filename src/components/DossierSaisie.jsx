@@ -4618,8 +4618,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
             {permissions.voirReglages && <TabButton active={activeTab === 'reglages'} onClick={() => setActiveTab('reglages')} icon={Settings} label="Réglages" color="from-slate-600 to-slate-700" />}
           </div>
 
-          {/* Barre d'alertes rapides */}
-          <AlertesBar
+          {/* Barre d'alertes rapides — masquée sur les onglets où elles n'apportent
+              rien (Calendrier, Rapport paiements, Tableau de bord, Réglages : ces
+              vues ont leur propre récap et l'alertes barre fait juste du bruit). */}
+          {!['calendrier', 'paiements', 'dashboard', 'reglages'].includes(activeTab) && <AlertesBar
             rappelsControleQualite={dashboard.rappelsControleQualite || []}
             rappelsAEnvoyerBanque={dashboard.rappelsAEnvoyerBanque || []}
             rappelsFinancement={dashboard.rappelsFinancement || []}
@@ -4644,7 +4646,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             isAdmin={isAdmin}
             currentUserRole={currentUserRole}
             onClick={(type) => setShowAlertesType(type)}
-          />
+          />}
 
         </div>
 
@@ -4924,6 +4926,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {activeTab === 'paiements' && <PaiementsView
           rapportPaiements={rapportPaiements}
           societes={societes}
+          dossiers={dossiers}
+          projexioCaps={projexioCaps}
+          activeSociete={activeSociete}
           onMarkPrestaPaye={handleMarkPrestaPaye}
           onMarkClientPaye={handleMarkClientPaye}
           onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }}
@@ -6839,11 +6844,42 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
 
 // ====================== AUTRES VUES (inchangées) ======================
 
-function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onTogglePenalite, onToggleLitige, onMarkPrestaPaye, onMarkClientPaye }) {
+function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexioCaps = {}, activeSociete = '', onShowQuick, onTogglePenalite, onToggleLitige, onMarkPrestaPaye, onMarkClientPaye }) {
   // 🎯 Filtre par défaut : ne montrer que les dossiers qu'on PEUT payer
   // maintenant (client a payé). Toggle pour voir aussi les "bloqués"
   // (en attente d'encaissement client) et les déjà payés.
   const [showOnlyAPayer, setShowOnlyAPayer] = useState(true);
+
+  // 🏦 Plafond mensuel PROJEXIO par société — version compacte, affichée juste
+  // au-dessus de « Argent à recevoir » pour avoir la marge restante sur le mois
+  // sans devoir retourner au dashboard. Calcul identique à DashboardView.
+  const projBarsCompact = useMemo(() => {
+    const todayStr = new Date().toISOString().substring(0, 7);
+    const parSociete = {};
+    (dossiers || []).forEach(d => {
+      if (d.financement !== 'PROJEXIO') return;
+      if (!d.dateEnvoiFin || d.dateEnvoiFin.substring(0, 7) !== todayStr) return;
+      if (d.statut === 'W2_ANNULER') return;
+      const soc = d.societe || '';
+      if (!parSociete[soc]) parSociete[soc] = { total: 0, count: 0 };
+      parSociete[soc].total += parseFloat(d.montantTotal) || 0;
+      parSociete[soc].count += 1;
+    });
+    const societesAvecPlafond = Object.keys(projexioCaps);
+    const list = activeSociete
+      ? (societesAvecPlafond.includes(activeSociete) ? [activeSociete] : [])
+      : societesAvecPlafond;
+    return list.map(socId => {
+      const cap = projexioCaps[socId];
+      const data = parSociete[socId] || { total: 0, count: 0 };
+      const pct = Math.min(100, (data.total / cap) * 100);
+      const over = data.total > cap;
+      const level = over ? 'over' : pct >= 90 ? 'critical' : pct >= 70 ? 'warn' : 'ok';
+      const socMeta = (societes || []).find(s => s.id === socId);
+      const barColor = level === 'over' ? 'bg-rose-500' : level === 'critical' ? 'bg-orange-500' : level === 'warn' ? 'bg-amber-500' : 'bg-emerald-500';
+      return { socId, label: socMeta?.label || socId.toUpperCase(), emoji: socMeta?.emoji || '🏦', cap, total: data.total, count: data.count, pct, over, barColor };
+    });
+  }, [dossiers, projexioCaps, societes, activeSociete]);
   // ☑️ Sélection multi pour virement groupé, namespacée par prestataire
   // (clé = `${type}::${nom}::${societe}`).
   const [selectedByKey, setSelectedByKey] = useState({});
@@ -6967,6 +7003,29 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
           </div>
         );
       })()}
+
+      {/* 🏦 Mini-récap plafond PROJEXIO — juste au-dessus de « Argent à recevoir »
+          pour voir d'un coup d'œil combien il reste à envoyer ce mois sans
+          revenir au dashboard. Très fin (h-1.5) pour ne pas prendre de place. */}
+      {projBarsCompact.length > 0 && (
+        <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-2 space-y-1.5">
+          {projBarsCompact.map(b => (
+            <div key={b.socId} className="flex items-center gap-2 text-[11px]">
+              <span className="flex-shrink-0 w-32 truncate font-semibold text-slate-700">
+                <span>{b.emoji}</span> PROJEXIO {b.label}
+              </span>
+              <div className="flex-1 min-w-0">
+                <div className="h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                  <div className={`h-full ${b.barColor} transition-all`} style={{ width: `${Math.min(100, b.pct)}%` }} />
+                </div>
+              </div>
+              <span className="flex-shrink-0 font-bold text-slate-700 tabular-nums">{formatEuro(b.total)}</span>
+              <span className="flex-shrink-0 text-slate-400 tabular-nums">/ {formatEuro(b.cap)}</span>
+              <span className={`flex-shrink-0 font-bold tabular-nums ${b.over ? 'text-rose-600' : 'text-slate-500'}`}>{b.pct.toFixed(0)}%</span>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="bg-white rounded-2xl shadow-sm border border-emerald-100 overflow-hidden">
         <div className="px-3 py-2 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-teal-50">
