@@ -96,16 +96,21 @@ const STATUT_ETAPE_INDEX = {
 // selon l'état du dossier. Sinon (SAV, LITIGE, ANNULER, etc.), on ne touche pas.
 const AUTO_STATUTS = ['A_EN_COURS', 'A1_CONTROLE_QUALITE', 'B_A_ENVOYER_BANQUE', 'B1_EN_COURS_FINANCEMENT', 'B1_MANQUE_DOC', 'B2_A_ENVOYER_POSE', 'B4_EN_COURS_POSE', 'B3_REFUS_FINANCEMENT', 'G_ATTENTE_ACCORD_DEF', 'F_ATTENTE_DEBLOCAGE', 'F1_CONTROLE_LIV_BANQUE', 'W_DOSSIER_PAYER'];
 
-// Statuts « morts » : le financeur ne nous doit plus rien dessus (annulés,
-// litiges, SAV, déplacement, attente dossier client, contrats à valider…).
+// Statuts « morts » : le financeur ne nous doit plus rien dessus.
+//   - ANNULER / DEPOSER       → dossier fermé définitivement
+//   - REFUS_FINANCEMENT       → banque a dit non
+//   - Z_DEPLACEMENT           → client a refusé sur place, archivé (la régie
+//                                 nous rembourse via pénalité, pas la banque)
+//   - E_PASSE_COMPTANT        → comptant, pas de banque concernée
+//   - F1/F2/F3 legacy         → reliquats anciens dossiers
+// Les autres statuts (LITIGE, SAV, M_ATT_DOSSIER, CONSUEL, CONFORMITE,
+// NRP_CQ_LIVRAISON…) restent comptés dans « à venir » : on attend juste
+// que la situation se débloque pour que la banque verse.
 // Utilisé à la fois par le filtre « Posés non payés » et par le calcul
-// « Argent à recevoir par financeur » — pour garantir que les deux vues
-// affichent toujours le MÊME compte.
+// « Argent à recevoir par financeur » pour garantir un seul chiffre.
 const DEAD_STATUTS = ['W2_ANNULER', 'ANNULER', 'W1_DEPOSER', 'B3_REFUS_FINANCEMENT',
-  'C_LITIGE', 'D_SAV', 'Z_DEPLACEMENT', 'CONFORMITE_CONTRAT',
-  'M_ATT_DOSSIER', 'H_NRP_CQ_LIVRAISON',
-  'K_ATTENTE_CONSUEL', 'J_VISITE_CONSUEL', 'E_PASSE_COMPTANT',
-  'F1_ACCEPTE', 'F2_PREFINANCEMENT', 'F3_MANQUE_RECEP'];
+  'Z_DEPLACEMENT', 'E_PASSE_COMPTANT',
+  'F2_PREFINANCEMENT', 'F3_MANQUE_RECEP'];
 
 // Calcule le statut workflow à partir de l'état du dossier (CQ, envoi banque,
 // retour banque, date pose, poseur, puis phase financière post-pose :
