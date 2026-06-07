@@ -6960,6 +6960,7 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
             {rapportPaiements.encaissList.map((e, idx) => {
               const restant = e.totalRestant > 0;
               const dossiersAttente = e.lignes.filter(l => !l.paye);
+              const dossiersPayes = e.lignes.filter(l => l.paye);
               const progress = e.totalAttendu > 0 ? (e.totalRecu / e.totalAttendu) * 100 : 0;
               const finKey = `${e.nom}::${e.societe || ''}`;
               const finSel = selectedFinanceurByKey[finKey] || new Set();
@@ -6995,9 +6996,13 @@ function PaiementsView({ rapportPaiements, societes = [], onShowQuick, onToggleP
                       </div>
                     </div>
                     <div>
-                      <div className="flex items-center justify-between text-[9px] text-slate-600 mb-0.5">
+                      <div className="flex items-center justify-between text-[9px] text-slate-600 mb-0.5 gap-1.5 flex-wrap">
                         <span className="font-semibold">Progression</span>
-                        <span className="font-bold">{progress.toFixed(0)}%</span>
+                        <span className="flex items-center gap-1.5">
+                          <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold">✓ {dossiersPayes.length} payé{dossiersPayes.length > 1 ? 's' : ''}</span>
+                          {dossiersAttente.length > 0 && <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold">⏳ {dossiersAttente.length}</span>}
+                          <span className="font-bold">{progress.toFixed(0)}%</span>
+                        </span>
                       </div>
                       <div className="h-1.5 bg-slate-200 rounded-full overflow-hidden">
                         <div className="h-full bg-gradient-to-r from-emerald-400 to-teal-500" style={{ width: `${progress}%` }} />
