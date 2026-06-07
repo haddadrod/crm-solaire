@@ -8664,7 +8664,22 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                       const dd = dossierByLocalId.get(lid);
                       return ageDays(dd?.dateInsta || dd?.dateEnvoiPose || dd?.createdAt);
                     };
-                    idsEncaisses.sort((a, b) => ageEncaisse(b) - ageEncaisse(a));
+                    // Dans la section « Client a payé », les non-payés (= à
+                    // virer en priorité) remontent EN HAUT, puis les déjà
+                    // payés en bas. À l'intérieur de chaque sous-groupe, le
+                    // plus ancien d'abord.
+                    const isPresPaid = (lid) => {
+                      const dd = dossierByLocalId.get(lid);
+                      if (!dd) return false;
+                      const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : (dd.regiesDetail || []);
+                      const it = list.find(x => x.nom === p.nom);
+                      return !!(it && it.paye);
+                    };
+                    idsEncaisses.sort((a, b) => {
+                      const pa = isPresPaid(a), pb = isPresPaid(b);
+                      if (pa !== pb) return pa ? 1 : -1; // non-payés d'abord
+                      return ageEncaisse(b) - ageEncaisse(a); // puis vieux d'abord
+                    });
                     idsAttente.sort((a, b) => ageAttente(b) - ageAttente(a));
 
                     const renderLine = (lid, allowSelection, age) => {
@@ -8782,19 +8797,45 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                       toMark.push(lid);
                     });
                     if (toMark.length === 0) return null;
+                    const copyRecap = () => {
+                      const lines = [`Récap virement ${p.nom}${p.societe ? ' · ' + p.societe : ''}`, ''];
+                      lines.push(['Client', 'N° facture', 'Montant TTC'].join('\t'));
+                      toMark.forEach(lid => {
+                        const dd = dossierByLocalId.get(lid); if (!dd) return;
+                        const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : (dd.regiesDetail || []);
+                        const it = list.find(x => x.nom === p.nom); if (!it) return;
+                        lines.push([
+                          `${dd.nom || ''} ${dd.prenom || ''}`.trim(),
+                          it.factureNo || '',
+                          formatEuro(it.ttc || 0),
+                        ].join('\t'));
+                      });
+                      lines.push('');
+                      lines.push(`Total à virer : ${formatEuro(totalSel)} · ${toMark.length} dossier${toMark.length > 1 ? 's' : ''}`);
+                      try { navigator.clipboard.writeText(lines.join('\n')); alert('📋 Récap copié — collable dans un email / Excel'); }
+                      catch (err) { alert('Copie impossible : ' + err.message); }
+                    };
                     return (
-                      <div className="sticky bottom-0 mt-2 -mx-4 px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-600 text-white shadow-lg flex items-center justify-between gap-3 flex-wrap">
+                      <div className="sticky bottom-0 mt-2 -mx-4 px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-600 text-white shadow-lg flex items-center justify-between gap-3 flex-wrap z-10">
                         <div className="flex items-center gap-3">
                           <span className="text-2xl font-extrabold">{formatEuro(totalSel)}</span>
                           <span className="text-xs opacity-90">à virer · {toMark.length} dossier{toMark.length > 1 ? 's' : ''} coché{toMark.length > 1 ? 's' : ''}</span>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setSelectedIds(new Set()); }}
                             className="text-[11px] font-bold text-white/90 bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg"
                           >
                             Tout désélectionner
+                          </button>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); copyRecap(); }}
+                            className="text-xs font-bold bg-white/20 hover:bg-white/30 text-white px-3 py-1.5 rounded-lg"
+                            title="Copier le récap des cochés (client, n° facture, montant) pour le coller dans un email / Excel"
+                          >
+                            📋 Copier le récap
                           </button>
                           <button
                             type="button"
