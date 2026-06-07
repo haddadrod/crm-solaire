@@ -6849,6 +6849,17 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
   // maintenant (client a payé). Toggle pour voir aussi les "bloqués"
   // (en attente d'encaissement client) et les déjà payés.
   const [showOnlyAPayer, setShowOnlyAPayer] = useState(true);
+  // 📑 Pliage des groupes de la liste « Détail par prestataire » (Fournisseurs,
+  // Régies, Poseurs, Équipe interne) — set des labels pliés. Utile quand un
+  // groupe est très long et qu'on veut consulter les autres sans scroller.
+  const [foldedGroups, setFoldedGroups] = useState(() => new Set());
+  const toggleGroup = (label) => {
+    setFoldedGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(label)) next.delete(label); else next.add(label);
+      return next;
+    });
+  };
 
   // 🏦 Plafond mensuel PROJEXIO par société — version compacte, affichée juste
   // au-dessus de « Argent à recevoir » pour avoir la marge restante sur le mois
@@ -7223,12 +7234,20 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                 { label: '🔧 Poseurs',      match: (p) => p.type === 'Poseur' },
                 { label: '👥 Équipe interne', match: (p) => INTERNES.includes(p.type) },
               ].map(g => ({ ...g, items: rapportPaiements.list.filter(g.match) })).filter(g => g.items.length > 0);
-              return groups.map((g) => (
+              return groups.map((g) => {
+                const isFolded = foldedGroups.has(g.label);
+                return (
                 <div key={g.label}>
-                  <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 sticky top-0 z-[1]">
+                  <button
+                    type="button"
+                    onClick={() => toggleGroup(g.label)}
+                    className="w-full px-4 py-2 bg-slate-50 border-b border-slate-200 sticky top-0 z-[1] flex items-center justify-between gap-2 hover:bg-slate-100 transition"
+                    title={isFolded ? 'Cliquer pour déplier' : 'Cliquer pour plier'}
+                  >
                     <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">{g.label} ({g.items.length})</span>
-                  </div>
-                  {g.items.map((p, idx) => {
+                    <span className="text-slate-500 text-xs font-bold">{isFolded ? '▶' : '▼'}</span>
+                  </button>
+                  {!isFolded && g.items.map((p, idx) => {
               const isInternal = INTERNES.includes(p.type);
               const colors = p.type === 'Fournisseur' ? 'bg-amber-100 text-amber-700' :
                              p.type === 'Régie' ? 'bg-purple-100 text-purple-700' :
@@ -7356,7 +7375,8 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
               );
             })}
                 </div>
-              ));
+              );
+            });
             })()}
           </div>
         )}
@@ -7941,116 +7961,6 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
 
       {/* 📅 Activité mensuelle — remontée en haut du dashboard (priorité métier) */}
       {!isRestricted && <ActiviteMensuellePanel data={dashboard.activiteMois || []} />}
-
-      {/* 🏦 PROJEXIO — un bandeau de plafond par société émettrice */}
-      {projBars.map(b => {
-        const isOpen = projOpenSocId === b.socId;
-        const dossiersOfMonth = b.data.dossiers || [];
-        return (
-        <div key={b.socId} className={`bg-gradient-to-r ${b.colors.bg} rounded-xl p-2.5 text-white shadow-md`}>
-          <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
-            <div className="flex items-center gap-2">
-              <span className="text-base">{b.socEmoji}</span>
-              <div>
-                <div className="text-[11px] font-semibold uppercase opacity-90">Plafond mensuel PROJEXIO — {b.socLabel}</div>
-                <div className="text-[9px] opacity-75">{b.data.count} dossier{b.data.count > 1 ? 's' : ''} envoyé{b.data.count > 1 ? 's' : ''} ce mois (refus banque inclus, annulés par toi exclus)</div>
-              </div>
-            </div>
-            <div className="text-right">
-              <div className="text-lg font-bold leading-tight">{formatEuro(b.data.total)}</div>
-              <div className="text-[11px] opacity-90 flex items-center gap-1 justify-end">
-                <span>/</span>
-                {projEditing && projEditing.socId === b.socId ? (
-                  <>
-                    <input
-                      type="text"
-                      autoFocus
-                      value={projEditing.value}
-                      onChange={(e) => setProjEditing({ socId: b.socId, value: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') saveProjCap(b.socId, projEditing.value);
-                        if (e.key === 'Escape') setProjEditing(null);
-                      }}
-                      onBlur={() => saveProjCap(b.socId, projEditing.value)}
-                      className="w-28 px-1.5 py-0.5 bg-white/90 text-slate-800 font-bold rounded text-xs text-right"
-                    />
-                    <span>€</span>
-                  </>
-                ) : (
-                  <>
-                    <span>{formatEuro(b.cap)} ({b.pct.toFixed(0)} %)</span>
-                    {isAdmin && typeof setProjexioCaps === 'function' && (
-                      <button
-                        onClick={() => setProjEditing({ socId: b.socId, value: String(b.cap) })}
-                        className="ml-1 px-1 py-0.5 rounded bg-white/20 hover:bg-white/35 text-[10px] font-semibold"
-                        title="Modifier le plafond (la banque peut le renégocier)"
-                      >
-                        ✏️
-                      </button>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-          <div className="h-2 bg-black/25 rounded-full overflow-hidden">
-            <div className="h-full bg-white transition-all" style={{ width: `${b.pct}%` }} />
-          </div>
-          <div className="flex items-center justify-between mt-1.5 text-[11px]">
-            <span className="opacity-90">{b.colors.hint}</span>
-            <span className="font-semibold">
-              {b.over
-                ? `Dépassement : ${formatEuro(b.data.total - b.cap)}`
-                : `Reste : ${formatEuro(b.reste)}`}
-            </span>
-          </div>
-          {dossiersOfMonth.length > 0 && (
-            <button
-              onClick={() => setProjOpenSocId(isOpen ? null : b.socId)}
-              className="mt-2 text-[11px] font-semibold opacity-90 hover:opacity-100 underline-offset-2 hover:underline"
-            >
-              {isOpen ? '▼ Masquer' : '▶ Voir les'} {dossiersOfMonth.length} dossier{dossiersOfMonth.length > 1 ? 's' : ''} en cours
-            </button>
-          )}
-          {isOpen && dossiersOfMonth.length > 0 && (
-            <div className="mt-2 bg-white/15 rounded-xl p-2 space-y-1 max-h-72 overflow-y-auto">
-              {/* Tri par date d'envoi banque décroissante : le dernier envoyé
-                  apparaît en haut — c'est la date pertinente pour le plafond. */}
-              {[...dossiersOfMonth]
-                .sort((a, b) => (b.dateEnvoiFin || '').localeCompare(a.dateEnvoiFin || ''))
-                .map((d, i) => {
-                const statut = STATUTS.find(s => s.id === d.statut);
-                const envoiLabel = d.dateEnvoiFin
-                  ? new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })
-                  : null;
-                return (
-                  <button
-                    key={d.localId || i}
-                    onClick={() => onShowQuick && onShowQuick(d.localId)}
-                    className="w-full text-left bg-white/10 hover:bg-white/25 rounded-lg px-2.5 py-1.5 transition-colors flex items-center justify-between gap-2"
-                  >
-                    <span className="flex items-center gap-2 min-w-0 flex-1 flex-wrap">
-                      <span className="font-bold text-sm truncate">{(d.nom || '').toUpperCase()} {d.prenom || ''}</span>
-                      {envoiLabel && (
-                        <span className="text-[9px] font-bold bg-black/25 px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap">
-                          🏦 Envoyé banque {envoiLabel}
-                        </span>
-                      )}
-                      {statut && (
-                        <span className="text-[9px] font-bold bg-white/25 px-1.5 py-0.5 rounded uppercase tracking-wide whitespace-nowrap">
-                          {statut.emoji} {statut.label}
-                        </span>
-                      )}
-                    </span>
-                    <span className="font-bold text-sm whitespace-nowrap">{formatEuro(d.montant)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
-        </div>
-        );
-      })}
 
       {!isRestricted && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
