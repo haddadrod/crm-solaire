@@ -7902,6 +7902,32 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
       }
     });
 
+    // 🧾 Index des numéros de facture (fournisseur / régie / poseur) pour
+    // détecter quand un même N° fac est saisi sur plusieurs dossiers — typique
+    // d'une erreur de copie ou d'un import doublonné. On normalise en
+    // majuscules et sans espaces pour pas que "FV26-01-225" et "fv 26 01 225"
+    // soient comptés à part.
+    const normFac = (s) => String(s || '').toUpperCase().replace(/\s+/g, '').trim();
+    const factureMap = {}; // { factureNorm: [{ dossier, type, prestaName, raw }] }
+    actifs.forEach(d => {
+      const push = (raw, type, prestaName) => {
+        const k = normFac(raw);
+        if (!k) return;
+        if (!factureMap[k]) factureMap[k] = [];
+        factureMap[k].push({ d, type, prestaName, raw });
+      };
+      (d.fournisseurs || []).forEach(f => push(f.factureNo, 'Fournisseur', f.nom));
+      (d.regies || []).forEach(r => push(r.factureNo, 'Régie', r.nom));
+      (d.poseurs || []).forEach(p => push(p.factureNo, 'Poseur', p.nom));
+    });
+    // Garde uniquement les N° qui apparaissent sur >1 dossier distinct (un
+    // même N° sur le même dossier 2 lignes n'est pas un doublon métier).
+    const factureDuplicates = {};
+    Object.entries(factureMap).forEach(([k, list]) => {
+      const distinct = new Set(list.map(x => x.d.localId));
+      if (distinct.size > 1) factureDuplicates[k] = list;
+    });
+
     // Le catalogue panneaux a-t-il des variantes (marques/modèles) définies ?
     const catPanneau = findProduit(produits, 'PANNEAU_SOLAIRE');
     const panneauAVariantes = Array.isArray(catPanneau?.variants) && catPanneau.variants.length > 0;
@@ -7931,6 +7957,22 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
           .map(x => `${x.nom || ''} ${x.prenom || ''}`.trim() || 'sans nom').slice(0, 2).join(', ');
         issues.push(`Doublon téléphone (aussi : ${autres})`);
       }
+
+      // 🧾 Doublons N° facture : un N° de ce dossier apparaît aussi sur un
+      // autre. On liste les autres clients pour que tu retrouves la collision.
+      const myFacKeys = new Set();
+      (d.fournisseurs || []).forEach(f => { const k = normFac(f.factureNo); if (k) myFacKeys.add(k); });
+      (d.regies || []).forEach(r => { const k = normFac(r.factureNo); if (k) myFacKeys.add(k); });
+      (d.poseurs || []).forEach(p => { const k = normFac(p.factureNo); if (k) myFacKeys.add(k); });
+      myFacKeys.forEach(k => {
+        if (!factureDuplicates[k]) return;
+        const autresClients = factureDuplicates[k]
+          .filter(x => x.d.localId !== d.localId)
+          .map(x => `${x.d.nom || ''} ${x.d.prenom || ''}`.trim() || 'sans nom');
+        const uniqAutres = [...new Set(autresClients)].slice(0, 2).join(', ');
+        const raw = factureDuplicates[k][0].raw;
+        issues.push(`Doublon N° facture ${raw} (aussi : ${uniqAutres})`);
+      });
 
       if (issues.length > 0) out.push({ d, issues });
     });
