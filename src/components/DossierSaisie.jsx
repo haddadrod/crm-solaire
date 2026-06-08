@@ -4467,6 +4467,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap lg:flex-nowrap">
+            {/* 🆕 « Nouveau dossier » à GAUCHE — remplace l'ancien titre
+                « Saisie de dossiers ». Toujours accessible en un clic. */}
+            <button onClick={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} className="bg-gradient-to-r from-violet-500 to-pink-500 text-white px-5 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center gap-2 whitespace-nowrap flex-shrink-0">
+              <Plus className="w-5 h-5" />Nouveau dossier
+            </button>
             <div className="flex gap-2 items-center flex-wrap lg:flex-nowrap flex-1 lg:justify-end">
               {/* 🏢 Sélecteur société — placé avant le badge utilisateur pour
                   qu'on choisisse SA marque avant de regarder qui on est */}
@@ -4557,9 +4562,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   🗑 Annuler l'import
                 </button>
               )}
-              <button onClick={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} className="bg-gradient-to-r from-violet-500 to-pink-500 text-white px-5 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center gap-2 whitespace-nowrap flex-shrink-0">
-                <Plus className="w-5 h-5" />Nouveau dossier
-              </button>
               {/* Groupe utilisateur poussé tout à droite (ml-auto) — séparé visuellement
                   des boutons d'action. Plus propre. */}
               <div className="flex gap-2 items-center ml-auto">
