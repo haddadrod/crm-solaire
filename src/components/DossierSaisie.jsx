@@ -6950,7 +6950,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
   };
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-5 text-white shadow-lg">
           <div className="text-xs font-semibold opacity-90 uppercase">✅ Reçu des financeurs</div>
           <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalEncaisseClient)}</div>
@@ -6971,6 +6971,22 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
           <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalEncaisseClient - rapportPaiements.totalGeneralPaye)}</div>
           <div className="text-sm opacity-90 mt-2">Reçu − Décaissé</div>
         </div>
+        {/* 🏦 Régies te doivent — somme pénalités (poses ratées) + litiges (remboursements
+            client) que les régies doivent te reverser. Sépare bien le « déjà reçu » du
+            « reste à recevoir » pour piloter le recouvrement. */}
+        {(() => {
+          const totalDu = (rapportPaiements.totalPenalitesDu || 0) + (rapportPaiements.totalLitigesDu || 0);
+          const totalPaye = (rapportPaiements.totalPenalitesPaye || 0) + (rapportPaiements.totalLitigesPaye || 0);
+          const totalRestant = (rapportPaiements.totalPenalitesRestant || 0) + (rapportPaiements.totalLitigesRestant || 0);
+          if (totalDu === 0) return null;
+          return (
+            <div className="bg-gradient-to-br from-amber-500 to-red-500 rounded-2xl p-5 text-white shadow-lg" title="Pénalités (poses ratées / déplacement) + litiges (remboursements clients) — régies te doivent ça en compensation">
+              <div className="text-xs font-semibold opacity-90 uppercase">🏦 Régies te doivent</div>
+              <div className="text-3xl font-bold mt-1">{formatEuro(totalRestant)}</div>
+              <div className="text-sm opacity-90 mt-2">Déjà remboursé : {formatEuro(totalPaye)}</div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* 🔮 TRÉSORERIE PRÉVISIONNELLE — ce qui va rentrer vs ce qui va sortir,
