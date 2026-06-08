@@ -5102,6 +5102,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {currentQuickDossier && (
           <QuickViewPanel
             dossier={currentQuickDossier}
+            dossiers={dossiers}
             scrollTo={quickViewScrollTo}
             onClose={() => { setShowQuickViewId(null); setQuickViewScrollTo(null); }}
             onEdit={() => { startEdit(currentQuickDossier); setShowQuickViewId(null); setQuickViewScrollTo(null); }}
@@ -7881,6 +7882,44 @@ function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onS
 // capte : téléphone vide, prix de vente non saisi, puissance à 0, panneau sans
 // marque/modèle, doublon de téléphone. Tourne en continu pour que l'équipe
 // corrige au fil de l'eau et qu'aucun dossier ne dorme avec un trou de saisie.
+// 🧾 Détecte si un N° de facture est déjà utilisé sur un autre dossier.
+// Renvoie un tableau de noms clients en collision (vide si aucun doublon).
+// Tolérant aux espaces et à la casse pour matcher "FV26-04" et "fv 26 04".
+function findFactureNoDupes(factureNo, allDossiers = [], currentLocalId = null) {
+  const norm = (s) => String(s || '').toUpperCase().replace(/\s+/g, '').trim();
+  const key = norm(factureNo);
+  if (!key) return [];
+  const conflicts = [];
+  allDossiers.forEach(d => {
+    if (!d || d.localId === currentLocalId) return;
+    const facKeys = new Set();
+    (d.fournisseurs || []).forEach(f => { const k = norm(f.factureNo); if (k) facKeys.add(k); });
+    (d.regies || []).forEach(r => { const k = norm(r.factureNo); if (k) facKeys.add(k); });
+    (d.poseurs || []).forEach(p => { const k = norm(p.factureNo); if (k) facKeys.add(k); });
+    if (facKeys.has(key)) {
+      conflicts.push(`${d.nom || ''} ${d.prenom || ''}`.trim() || 'sans nom');
+    }
+  });
+  return conflicts;
+}
+
+// Badge visuel à coller sous (ou à côté de) un input N° facture pour signaler
+// le doublon en direct dès qu'on tape. Discret quand pas de collision.
+function FactureDupeWarning({ factureNo, allDossiers, currentLocalId }) {
+  const conflicts = useMemo(
+    () => findFactureNoDupes(factureNo, allDossiers, currentLocalId),
+    [factureNo, allDossiers, currentLocalId]
+  );
+  if (conflicts.length === 0) return null;
+  const aperc = conflicts.slice(0, 2).join(', ');
+  const reste = conflicts.length > 2 ? ` (+${conflicts.length - 2})` : '';
+  return (
+    <div className="mt-0.5 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 inline-flex items-center gap-1" title={`Doublon de N° facture : ${conflicts.join(', ')}`}>
+      ⚠️ Doublon — aussi sur {aperc}{reste}
+    </div>
+  );
+}
+
 function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onShowQuick }) {
   const [open, setOpen] = useState(false);
 
@@ -13298,6 +13337,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <div>
                           <label className="block text-[10px] font-semibold text-slate-500 mb-1">🧾 N° facture</label>
                           <input type="text" value={p.factureNo || ''} onChange={(e) => upd({ factureNo: e.target.value })} placeholder="Ex: FA24-001" className={inputCls} />
+                          <FactureDupeWarning factureNo={p.factureNo} allDossiers={dossiers} currentLocalId={editingId} />
                         </div>
                         <div>
                           <label className="block text-[10px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
@@ -13392,6 +13432,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <div>
                           <label className="block text-[10px] font-semibold text-slate-500 mb-1">🧾 N° facture</label>
                           <input type="text" value={f.factureNo || ''} onChange={(e) => upd({ factureNo: e.target.value })} placeholder="Ex: FA24-001" className={inputCls} />
+                          <FactureDupeWarning factureNo={f.factureNo} allDossiers={dossiers} currentLocalId={editingId} />
                         </div>
                         <div>
                           <label className="block text-[10px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
@@ -16273,7 +16314,7 @@ function BLMaterielBlock({ d, onUpdate }) {
   );
 }
 
-function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth, societes = [], messageTemplates = [] }) {
+function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth, societes = [], messageTemplates = [], dossiers = [] }) {
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
   const canSeeMarges = isAdmin || permissions?.voirMarges === true;
@@ -18818,6 +18859,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               <input type="text" value={r.bl || ''} onChange={(e) => updateRegie(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
                               <input type="text" value={r.factureNo || ''} onChange={(e) => updateRegie(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
                             </div>
+                            <FactureDupeWarning factureNo={r.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} />
                             <FactureFileInput
                               fileId={r.factureFile || ''}
                               onChange={(id) => updateRegie(i, { factureFile: id })}
@@ -19172,6 +19214,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         <input type="text" value={p.bl || ''} onChange={(e) => updatePoseur(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-amber-200 rounded text-[10px]" />
                         <input type="text" value={p.factureNo || ''} onChange={(e) => updatePoseur(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-amber-200 rounded text-[10px]" />
                       </div>
+                      <FactureDupeWarning factureNo={p.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} />
                       <FactureFileInput
                         fileId={p.factureFile || ''}
                         onChange={(id) => updatePoseur(i, { factureFile: id })}
@@ -19298,6 +19341,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         <input type="text" value={f.bl || ''} onChange={(e) => updateFournisseur(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
                         <input type="text" value={f.factureNo || ''} onChange={(e) => updateFournisseur(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
                       </div>
+                      <FactureDupeWarning factureNo={f.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} />
                       <FactureFileInput
                         fileId={f.factureFile || ''}
                         onChange={(id) => updateFournisseur(i, { factureFile: id })}
