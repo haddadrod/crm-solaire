@@ -2611,6 +2611,29 @@ export default function DossierSaisie({ authUser, onLogout }) {
       return;
     }
 
+    // 🧾 Filet de sécurité : si un N° de facture du dossier est déjà saisi
+    // sur un autre client, on demande confirmation avant d'enregistrer. Évite
+    // les doublons silencieux quand l'IA pré-remplit ou en copier-coller.
+    const dupesDetected = [];
+    [
+      ...(formData.fournisseurs || []),
+      ...(formData.regies || []),
+      ...(formData.poseurs || []),
+    ].forEach(p => {
+      const conflicts = findFactureNoDupes(p.factureNo, dossiers, editingId);
+      if (conflicts.length > 0) {
+        dupesDetected.push({ factureNo: p.factureNo, conflicts });
+      }
+    });
+    if (dupesDetected.length > 0) {
+      const msg = dupesDetected
+        .map(d => `• ${d.factureNo} → déjà sur ${d.conflicts.slice(0, 3).join(', ')}`)
+        .join('\n');
+      if (!window.confirm(`⚠️ Doublon(s) de N° facture détecté(s) :\n\n${msg}\n\nContinuer la sauvegarde quand même ?`)) {
+        return;
+      }
+    }
+
     // 🔍 Détection de doublons — uniquement à la CRÉATION (pas en édition).
     // On signale toute correspondance forte (téléphone identique, email
     // identique, ou nom+prénom identiques) et on demande confirmation.
@@ -18877,6 +18900,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 }
                                 if (data.dateFacture && !r.dateFacture) upd.dateFacture = String(data.dateFacture);
                                 if (Object.keys(upd).length > 0) updateRegie(i, upd);
+                                // Alerte instantanée si l'IA vient d'insérer un N° en doublon.
+                                if (upd.factureNo) {
+                                  const conflicts = findFactureNoDupes(upd.factureNo, dossiers, dossier.localId);
+                                  if (conflicts.length > 0) {
+                                    alert(`⚠️ N° facture ${upd.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.`);
+                                  }
+                                }
                               }}
                               pennylaneInfo={{
                                 societe: d.societe || '',
@@ -19228,6 +19258,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           if (htP > 0 && !p.htCustom) upd.htCustom = String(htP);
                           if (data.dateFacture && !p.dateFacture) upd.dateFacture = String(data.dateFacture);
                           if (Object.keys(upd).length > 0) updatePoseur(i, upd);
+                          if (upd.factureNo) {
+                            const conflicts = findFactureNoDupes(upd.factureNo, dossiers, dossier.localId);
+                            if (conflicts.length > 0) {
+                              alert(`⚠️ N° facture ${upd.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.`);
+                            }
+                          }
                         }}
                         pennylaneInfo={{
                           societe: d.societe || '',
@@ -19359,6 +19395,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           if (htF > 0 && !f.htCustom) upd.htCustom = String(htF);
                           if (data.dateFacture && !f.dateFacture) upd.dateFacture = String(data.dateFacture);
                           if (Object.keys(upd).length > 0) updateFournisseur(i, upd);
+                          if (upd.factureNo) {
+                            const conflicts = findFactureNoDupes(upd.factureNo, dossiers, dossier.localId);
+                            if (conflicts.length > 0) {
+                              alert(`⚠️ N° facture ${upd.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.`);
+                            }
+                          }
                         }}
                         pennylaneInfo={{
                           societe: d.societe || '',
