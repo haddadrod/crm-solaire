@@ -1392,6 +1392,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     : 'dossiers';
   const VALID_TABS = ['ajourd', 'dossiers', 'archives', 'kanban', 'calendrier', 'paiements', 'dashboard', 'reglages'];
   const [activeTab, setActiveTab] = useState(VALID_TABS.includes(initialTabFromHash) ? initialTabFromHash : 'dossiers');
+  // 📦 Sélection multiple sur l'onglet Archivés — pour désarchiver en masse
+  // sans cliquer un par un. Set des localId cochés.
+  const [selectedArchiveIds, setSelectedArchiveIds] = useState(() => new Set());
   const [statutsOrder, setStatutsOrder] = useState(STATUTS.map(s => s.id));
   const [tarifsPoseurs, setTarifsPoseurs] = useState(TARIFS_POSEURS_DEFAULT);
   const [poseursContacts, setPoseursContacts] = useState({}); // { nomPoseur: 'téléphone' } — pour l'envoi WhatsApp
@@ -2482,6 +2485,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     if (activeTab === 'paiements' && !permissions.voirRapportPaiements) setActiveTab('dossiers');
     if (activeTab === 'dashboard' && !permissions.voirDashboard) setActiveTab('dossiers');
     if (activeTab === 'reglages' && !permissions.voirReglages) setActiveTab('dossiers');
+    // Vide la sélection multi-archivage dès qu'on quitte l'onglet Archivés.
+    if (activeTab !== 'archives' && selectedArchiveIds.size > 0) setSelectedArchiveIds(new Set());
   }, [permissions, activeTab]);
 
   // Persiste l'onglet courant dans le hash URL pour que F5 / refresh garde
@@ -4741,11 +4746,47 @@ export default function DossierSaisie({ authUser, onLogout }) {
               </div>
             )}
             {activeTab === 'archives' && (
-              <div className="bg-gradient-to-r from-slate-100 to-gray-100 border border-slate-300 rounded-2xl p-3 mb-3 flex items-center gap-3">
+              <div className="bg-gradient-to-r from-slate-100 to-gray-100 border border-slate-300 rounded-2xl p-3 mb-3 flex items-center gap-3 flex-wrap">
                 <Check className="w-5 h-5 text-slate-600 flex-shrink-0" />
-                <div className="flex-1">
+                <div className="flex-1 min-w-[200px]">
                   <div className="font-bold text-sm text-slate-700">📦 Archivés ({nbArchives})</div>
-                  <div className="text-[11px] text-slate-500">Dossiers payés, annulés ou acceptés définitivement — n'apparaissent plus dans les alertes</div>
+                  <div className="text-[11px] text-slate-500">Coche les dossiers à gauche pour les désarchiver en masse</div>
+                </div>
+                {/* 🔘 Bulk actions désarchivage */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedArchiveIds(new Set(filteredDossiers.map(d => d.localId)))}
+                    className="text-[11px] font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-2.5 py-1.5 rounded-lg whitespace-nowrap"
+                    disabled={filteredDossiers.length === 0}
+                  >
+                    ☑ Tout sélectionner ({filteredDossiers.length})
+                  </button>
+                  {selectedArchiveIds.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setSelectedArchiveIds(new Set())}
+                      className="text-[11px] font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-2.5 py-1.5 rounded-lg whitespace-nowrap"
+                    >
+                      ☐ Désélectionner
+                    </button>
+                  )}
+                  {selectedArchiveIds.size > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!window.confirm(`Désarchiver ${selectedArchiveIds.size} dossier${selectedArchiveIds.size > 1 ? 's' : ''} sélectionné${selectedArchiveIds.size > 1 ? 's' : ''} ?`)) return;
+                        setDossiers(prev => prev.map(d => selectedArchiveIds.has(d.localId)
+                          ? { ...d, archived: false, archivedAt: null, autoArchived: false, manualArchive: false }
+                          : d
+                        ));
+                        setSelectedArchiveIds(new Set());
+                      }}
+                      className="text-xs font-bold bg-gradient-to-r from-violet-500 to-pink-500 hover:from-violet-600 hover:to-pink-600 text-white px-3 py-1.5 rounded-lg shadow-md whitespace-nowrap"
+                    >
+                      📤 Désarchiver ({selectedArchiveIds.size})
+                    </button>
+                  )}
                 </div>
               </div>
             )}
@@ -4912,7 +4953,27 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <p className="text-slate-500 text-sm">{dossiers.length === 0 ? 'Cliquez sur "Nouveau dossier" pour commencer' : 'Modifiez vos filtres'}</p>
                 </div>
               ) : (
-                filteredDossiers.map(d => <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} />)
+                filteredDossiers.map(d => activeTab === 'archives' ? (
+                  <div key={d.localId} className="flex items-start gap-2">
+                    <label className="flex-shrink-0 mt-3 cursor-pointer" title="Cocher pour sélectionner ce dossier (désarchivage en masse)">
+                      <input
+                        type="checkbox"
+                        checked={selectedArchiveIds.has(d.localId)}
+                        onChange={() => setSelectedArchiveIds(prev => {
+                          const next = new Set(prev);
+                          if (next.has(d.localId)) next.delete(d.localId); else next.add(d.localId);
+                          return next;
+                        })}
+                        className="w-4 h-4 accent-violet-600 cursor-pointer"
+                      />
+                    </label>
+                    <div className="flex-1 min-w-0">
+                      <DossierCard d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} />
+                    </div>
+                  </div>
+                ) : (
+                  <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} />
+                ))
               )}
             </div>
 
@@ -6950,7 +7011,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
   };
   return (
     <div className="space-y-4">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-5 text-white shadow-lg">
           <div className="text-xs font-semibold opacity-90 uppercase">✅ Reçu des financeurs</div>
           <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalEncaisseClient)}</div>
@@ -6971,6 +7032,22 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
           <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalEncaisseClient - rapportPaiements.totalGeneralPaye)}</div>
           <div className="text-sm opacity-90 mt-2">Reçu − Décaissé</div>
         </div>
+        {/* 🏦 Régies te doivent — somme pénalités (poses ratées) + litiges (remboursements
+            client) que les régies doivent te reverser. Sépare bien le « déjà reçu » du
+            « reste à recevoir » pour piloter le recouvrement. */}
+        {(() => {
+          const totalDu = (rapportPaiements.totalPenalitesDu || 0) + (rapportPaiements.totalLitigesDu || 0);
+          const totalPaye = (rapportPaiements.totalPenalitesPaye || 0) + (rapportPaiements.totalLitigesPaye || 0);
+          const totalRestant = (rapportPaiements.totalPenalitesRestant || 0) + (rapportPaiements.totalLitigesRestant || 0);
+          if (totalDu === 0) return null;
+          return (
+            <div className="bg-gradient-to-br from-amber-500 to-red-500 rounded-2xl p-5 text-white shadow-lg" title="Pénalités (poses ratées / déplacement) + litiges (remboursements clients) — régies te doivent ça en compensation">
+              <div className="text-xs font-semibold opacity-90 uppercase">🏦 Régies te doivent</div>
+              <div className="text-3xl font-bold mt-1">{formatEuro(totalRestant)}</div>
+              <div className="text-sm opacity-90 mt-2">Déjà remboursé : {formatEuro(totalPaye)}</div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* 🔮 TRÉSORERIE PRÉVISIONNELLE — ce qui va rentrer vs ce qui va sortir,
