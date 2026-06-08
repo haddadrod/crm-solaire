@@ -4467,12 +4467,6 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap lg:flex-nowrap">
-            <div className="flex-shrink-0">
-              <h1 className="text-2xl md:text-3xl font-bold bg-gradient-to-r from-emerald-500 via-green-500 to-teal-500 bg-clip-text text-transparent">
-                Saisie de dossiers ⚡
-              </h1>
-              <p className="text-slate-500 text-sm mt-0.5">Créez vos dossiers d'installation en un clin d'œil</p>
-            </div>
             <div className="flex gap-2 items-center flex-wrap lg:flex-nowrap flex-1 lg:justify-end">
               {/* 🏢 Sélecteur société — placé avant le badge utilisateur pour
                   qu'on choisisse SA marque avant de regarder qui on est */}
