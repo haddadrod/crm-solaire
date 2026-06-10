@@ -5130,7 +5130,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
             onUpdate={(updates) => {
               const now = new Date().toISOString();
               const userTag = currentUser || '(anonyme)';
-              setDossiers(dossiers.map(d => {
+              // ⚠️ setDossiers FONCTIONNEL (prev => …) obligatoire ici : quand
+              // on uploade une facture, onChange (factureFile) PUIS onExtract
+              // (factureNo via IA) appellent onUpdate coup sur coup. Avec un
+              // `dossiers` figé en closure, le 2e appel écrasait le 1er →
+              // factureFile perdu → ni l'œil ni Pennylane visibles. En lisant
+              // `prev`, chaque update part du state le plus à jour.
+              setDossiers(prev => prev.map(d => {
                 if (d.localId !== currentQuickDossier.localId) return d;
                 let merged = { ...d, ...updates, savedAt: now, modifiedBy: userTag, modifiedAt: now };
                 // 📜 Trace tous les changements de champs (hors statut, qui a son
