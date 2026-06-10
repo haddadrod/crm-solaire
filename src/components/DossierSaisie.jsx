@@ -13464,6 +13464,47 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         </div>
                       </div>
                     )}
+                    {/* 📎 Upload facture PDF + IA + Pennylane — même outillage que sur les
+                        poseurs/régies de la QuickView, accessible directement à la création
+                        du dossier (sans devoir passer par la QuickView après-coup). */}
+                    {isAdmin && (
+                      <div className="mt-2">
+                        <FactureFileInput
+                          fileId={f.factureFile || ''}
+                          onChange={(id) => upd({ factureFile: id })}
+                          color="orange"
+                          autoExtract={true}
+                          onExtract={(data) => {
+                            const updIa = {};
+                            if (data.factureNo && !f.factureNo) updIa.factureNo = String(data.factureNo);
+                            if (data.bl && !f.bl) updIa.bl = String(data.bl);
+                            const sansTvaDetecte = (typeof data.tauxTva === 'number' && data.tauxTva === 0);
+                            if (sansTvaDetecte && !f.sansTva) { updIa.sansTva = true; updIa.tauxTva = 0; }
+                            const htF = htFromExtraction(data);
+                            if (htF > 0 && !f.htCustom) updIa.htCustom = String(htF);
+                            if (data.dateFacture && !f.dateFacture) updIa.dateFacture = String(data.dateFacture);
+                            if (Object.keys(updIa).length > 0) upd(updIa);
+                            if (updIa.factureNo) {
+                              const conflicts = findFactureNoDupes(updIa.factureNo, dossiers, editingId);
+                              if (conflicts.length > 0) {
+                                alert(`⚠️ N° facture ${updIa.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.`);
+                              }
+                            }
+                          }}
+                          pennylaneInfo={{
+                            societe: formData.societe || '',
+                            supplierName: f.nom,
+                            factureNo: f.factureNo,
+                            dateFacture: f.dateFacture || new Date().toISOString().slice(0, 10),
+                            montantHt: parseFloat(f.htCustom) || (calculs.fournisseursDetail?.[idx]?.autoHt) || 0,
+                            montantTtc: calculs.fournisseursDetail?.[idx]?.ttc || 0,
+                            tauxTva: f.sansTva ? 0 : 20,
+                            pushedId: f.pennylaneInvoiceId,
+                          }}
+                          onPennylaneSuccess={(id) => upd({ pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                        />
+                      </div>
+                    )}
                   </div>
                 );
               })}
