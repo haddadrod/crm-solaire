@@ -647,6 +647,10 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
   const [extracting, setExtracting] = useState(false);
   const [pushingPennylane, setPushingPennylane] = useState(false);
   const [meta, setMeta] = useState(null);
+  // ✅ Confirmation visuelle éphémère après un upload réussi — rassure
+  // l'utilisateur (« la facture est bien enregistrée ») sans dépendre d'un
+  // système de toast global. S'efface tout seul après 3 s.
+  const [justSaved, setJustSaved] = useState(false);
   // Indique que le fileId est défini mais que le fichier est introuvable
   // dans le storage (rare — ex : ligne supprimée à la main, race condition).
   const [missingFile, setMissingFile] = useState(false);
@@ -720,6 +724,9 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       if (!isMountedRef.current) return; // composant démonté pendant l'upload
       onChange(id);
       setMeta({ name: file.name, type: file.type });
+      // ✅ Confirmation visible : la facture est bien jointe.
+      setJustSaved(true);
+      setTimeout(() => { if (isMountedRef.current) setJustSaved(false); }, 3000);
       // Auto-extraction si activée (ex : Lire la facture dès qu'on l'upload)
       if (autoExtract && onExtract) {
         runExtraction(dataUrl, file.type);
@@ -915,6 +922,11 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
           <button onClick={handleView} className="px-1 py-0.5 hover:bg-white rounded" title="Voir la facture">👁️</button>
           <button onClick={handleRemove} className="px-1 py-0.5 text-rose-500 hover:bg-rose-100 rounded" title="Retirer">🗑️</button>
         </div>
+        {justSaved && (
+          <div className="mt-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 inline-flex items-center gap-1 animate-pulse">
+            ✓ Facture enregistrée
+          </div>
+        )}
         {preview && (
           <FilePreviewOverlay
             preview={preview}
