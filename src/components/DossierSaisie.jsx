@@ -2290,7 +2290,26 @@ export default function DossierSaisie({ authUser, onLogout }) {
         { event: '*', schema: 'public', table: 'storage', filter: 'key=eq.dossiers-data' },
         (payload) => {
           const newValue = payload?.new?.value;
-          if (!newValue) return;
+          // ⚠️ Supabase Realtime TRONQUE les payloads volumineux (limite WAL
+          // ~1 Mo). Quand dossiers-data est gros (centaines de dossiers +
+          // factures), payload.new.value revient vide/tronqué. Avant on faisait
+          // `return` → l'autre appareil ne recevait JAMAIS la mise à jour
+          // (ex : la compta ne voyait pas la facture uploadée par l'admin).
+          // Désormais, payload vide ⇒ on relit la valeur complète depuis la DB.
+          if (!newValue) {
+            (async () => {
+              try {
+                const r = await window.storage.get('dossiers-data');
+                const v = r?.value;
+                if (!v || v === lastWrittenDossiersJson.current) return;
+                const parsed = JSON.parse(v);
+                if (!Array.isArray(parsed)) return;
+                lastWrittenDossiersJson.current = v;
+                setDossiers(normalizeDossiers(parsed));
+              } catch (e) {}
+            })();
+            return;
+          }
           // Ignore les évènements qui matchent notre propre dernière écriture
           // (sinon boucle infinie : on écrit → realtime → on relit → on écrit…)
           if (newValue === lastWrittenDossiersJson.current) return;
