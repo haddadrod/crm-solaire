@@ -13271,6 +13271,52 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             : `⏳ Non payée (${formatEuro(ttcRegie)} TTC)`}
                         </button>
                       )}
+                      {/* 📦 N° BL / N° facture + upload PDF + IA + Pennylane */}
+                      {isAdmin && (
+                        <div className="mt-3 pt-3 border-t border-purple-100 space-y-2">
+                          <div className="grid grid-cols-2 gap-2">
+                            <input type="text" value={r.bl || ''} onChange={(e) => upd({ bl: e.target.value })} placeholder="📦 N° BL" className={inputCls} />
+                            <div>
+                              <input type="text" value={r.factureNo || ''} onChange={(e) => upd({ factureNo: e.target.value })} placeholder="🧾 N° facture" className={inputCls} />
+                              <FactureDupeWarning factureNo={r.factureNo} allDossiers={dossiers} currentLocalId={editingId} />
+                            </div>
+                          </div>
+                          <FactureFileInput
+                            fileId={r.factureFile || ''}
+                            onChange={(id) => upd({ factureFile: id })}
+                            color="purple"
+                            autoExtract={true}
+                            onExtract={(data) => {
+                              const updIa = {};
+                              if (data.factureNo && !r.factureNo) updIa.factureNo = String(data.factureNo);
+                              if (data.bl && !r.bl) updIa.bl = String(data.bl);
+                              const sansTvaDetecte = (typeof data.tauxTva === 'number' && data.tauxTva === 0);
+                              if (sansTvaDetecte && !r.sansTva) { updIa.sansTva = true; updIa.tauxTva = 0; }
+                              const htR = htFromExtraction(data);
+                              if (htR > 0 && !r.htCustom) updIa.htCustom = String(htR);
+                              if (data.dateFacture && !r.dateFacture) updIa.dateFacture = String(data.dateFacture);
+                              if (Object.keys(updIa).length > 0) upd(updIa);
+                              if (updIa.factureNo) {
+                                const conflicts = findFactureNoDupes(updIa.factureNo, dossiers, editingId);
+                                if (conflicts.length > 0) {
+                                  alert(`⚠️ N° facture ${updIa.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.`);
+                                }
+                              }
+                            }}
+                            pennylaneInfo={{
+                              societe: formData.societe || '',
+                              supplierName: r.nom,
+                              factureNo: r.factureNo,
+                              dateFacture: r.dateFacture || new Date().toISOString().slice(0, 10),
+                              montantHt: parseFloat(r.htCustom) || (calculs.regiesDetail?.[idx]?.autoHt) || 0,
+                              montantTtc: calculs.regiesDetail?.[idx]?.ttc || 0,
+                              tauxTva: r.sansTva ? 0 : 20,
+                              pushedId: r.pennylaneInvoiceId,
+                            }}
+                            onPennylaneSuccess={(id) => upd({ pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}
@@ -13373,6 +13419,43 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           </label>
                           <input type="url" value={p.facturePdfUrl || ''} onChange={(e) => upd({ facturePdfUrl: e.target.value })} placeholder="https://drive.google.com/..." className={inputCls} />
                         </div>
+                      </div>
+                    )}
+                    {/* 📎 Upload facture PDF + IA + Pennylane — poseur : toujours sans TVA */}
+                    {isAdmin && (
+                      <div className="mt-2">
+                        <FactureFileInput
+                          fileId={p.factureFile || ''}
+                          onChange={(id) => upd({ factureFile: id })}
+                          color="amber"
+                          autoExtract={true}
+                          onExtract={(data) => {
+                            const updIa = {};
+                            if (data.factureNo && !p.factureNo) updIa.factureNo = String(data.factureNo);
+                            if (data.bl && !p.bl) updIa.bl = String(data.bl);
+                            const htP = htFromExtraction(data);
+                            if (htP > 0 && !p.htCustom) updIa.htCustom = String(htP);
+                            if (data.dateFacture && !p.dateFacture) updIa.dateFacture = String(data.dateFacture);
+                            if (Object.keys(updIa).length > 0) upd(updIa);
+                            if (updIa.factureNo) {
+                              const conflicts = findFactureNoDupes(updIa.factureNo, dossiers, editingId);
+                              if (conflicts.length > 0) {
+                                alert(`⚠️ N° facture ${updIa.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.`);
+                              }
+                            }
+                          }}
+                          pennylaneInfo={{
+                            societe: formData.societe || '',
+                            supplierName: p.nom,
+                            factureNo: p.factureNo,
+                            dateFacture: p.dateFacture || new Date().toISOString().slice(0, 10),
+                            montantHt: parseFloat(p.htCustom) || (calculs.poseursDetail?.[idx]?.autoHt) || 0,
+                            montantTtc: (calculs.poseursDetail?.[idx]?.ttc) || parseFloat(p.htCustom) || (calculs.poseursDetail?.[idx]?.autoHt) || 0,
+                            tauxTva: 0, // poseurs : toujours sans TVA
+                            pushedId: p.pennylaneInvoiceId,
+                          }}
+                          onPennylaneSuccess={(id) => upd({ pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                        />
                       </div>
                     )}
                   </div>
