@@ -13239,7 +13239,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   </button>
                 )}
                 {formData.regies.map((r, idx) => {
-                  const upd = (u) => { const l = [...formData.regies]; l[idx] = { ...l[idx], ...u }; setFormData({ ...formData, regies: l }); };
+                  // setFormData FONCTIONNEL : évite l'écrasement quand upload
+                  // (factureFile) et IA (factureNo) s'enchaînent sur la même ligne.
+                  const upd = (u) => setFormData(prev => { const l = [...prev.regies]; l[idx] = { ...l[idx], ...u }; return { ...prev, regies: l }; });
                   const rm = () => { setFormData({ ...formData, regies: formData.regies.filter((_, i) => i !== idx) }); };
                   const tarifAuto = calculs.regiesDetail[idx]?.autoHt || 0;
                   const ttcRegie = calculs.regiesDetail[idx]?.ttc || 0;
@@ -13366,7 +13368,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </button>
               )}
               {formData.poseurs.map((p, idx) => {
-                const upd = (u) => { const l = [...formData.poseurs]; l[idx] = { ...l[idx], ...u }; setFormData({ ...formData, poseurs: l }); };
+                const upd = (u) => setFormData(prev => { const l = [...prev.poseurs]; l[idx] = { ...l[idx], ...u }; return { ...prev, poseurs: l }; });
                 const rm = () => { setFormData({ ...formData, poseurs: formData.poseurs.filter((_, i) => i !== idx) }); };
                 const tarifAuto = calculs.poseursDetail[idx]?.autoHt || 0;
                 return (
@@ -13499,7 +13501,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </button>
               )}
               {formData.fournisseurs.map((f, idx) => {
-                const upd = (u) => { const l = [...formData.fournisseurs]; l[idx] = { ...l[idx], ...u }; setFormData({ ...formData, fournisseurs: l }); };
+                const upd = (u) => setFormData(prev => { const l = [...prev.fournisseurs]; l[idx] = { ...l[idx], ...u }; return { ...prev, fournisseurs: l }; });
                 const rm = () => { setFormData({ ...formData, fournisseurs: formData.fournisseurs.filter((_, i) => i !== idx) }); };
                 return (
                   <div key={idx} className={`rounded-xl border p-3 ${f.paye ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-amber-200'}`}>
