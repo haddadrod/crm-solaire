@@ -16529,28 +16529,41 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
     onUpdate({ produits: dossierProduits.filter((_, i) => i !== idx) });
   };
 
+  // ⚠️ Ref toujours synchronisée avec le dossier le plus récent. Évite la
+  // race condition entre upload (onChange) et IA (onExtract) qui appellent
+  // tous deux updateFournisseur/Régie/Poseur en chaîne : la 2e closure
+  // travaillait sur le `d` d'AVANT le 1er onChange et écrasait factureFile.
+  const dRef = useRef(dossier);
+  useEffect(() => { dRef.current = dossier; }, [dossier]);
+
   const updatePoseur = (idx, updates) => {
-    const list = [...(d.poseurs || [])];
+    const latest = dRef.current;
+    const list = [...(latest.poseurs || [])];
     list[idx] = { ...list[idx], ...updates };
     onUpdate({ poseurs: list });
   };
   const addPoseur = () => {
-    onUpdate({ poseurs: [...(d.poseurs || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] });
+    const latest = dRef.current;
+    onUpdate({ poseurs: [...(latest.poseurs || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] });
   };
   const removePoseur = (idx) => {
-    onUpdate({ poseurs: (d.poseurs || []).filter((_, i) => i !== idx) });
+    const latest = dRef.current;
+    onUpdate({ poseurs: (latest.poseurs || []).filter((_, i) => i !== idx) });
   };
 
   const updateFournisseur = (idx, updates) => {
-    const list = [...(d.fournisseurs || [])];
+    const latest = dRef.current;
+    const list = [...(latest.fournisseurs || [])];
     list[idx] = { ...list[idx], ...updates };
     onUpdate({ fournisseurs: list });
   };
   const addFournisseur = () => {
-    onUpdate({ fournisseurs: [...(d.fournisseurs || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] });
+    const latest = dRef.current;
+    onUpdate({ fournisseurs: [...(latest.fournisseurs || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] });
   };
   const removeFournisseur = (idx) => {
-    onUpdate({ fournisseurs: (d.fournisseurs || []).filter((_, i) => i !== idx) });
+    const latest = dRef.current;
+    onUpdate({ fournisseurs: (latest.fournisseurs || []).filter((_, i) => i !== idx) });
   };
   // Avoirs fournisseur (notes de crédit) — imbriqués dans chaque fournisseur.
   // Un avoir vient en déduction du coût HT du fournisseur (ex : matériel
@@ -18856,7 +18869,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             <div className="space-y-1.5">
               {(d.regies || []).map((r, i) => {
                 const updateRegie = (idx, upd) => {
-                  const list = [...(d.regies || [])];
+                  const latest = dRef.current;
+                  const list = [...(latest.regies || [])];
                   list[idx] = { ...list[idx], ...upd };
                   onUpdate({ regies: list });
                 };
