@@ -4761,7 +4761,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 icon={Upload}
                 label="Tri factures"
                 color="from-fuchsia-500 to-pink-500"
-                badge={(dashboard.rappelsFacturesManquantes || []).length > 0 ? `🧾 ${(dashboard.rappelsFacturesManquantes || []).length}` : null}
+                badge={(dashboard.rappelsFacturesManquantes || []).length > 0 ? `🧾 ${(dashboard.rappelsFacturesManquantes || []).reduce((s, r) => s + (r.total || 0), 0)}` : null}
                 badgeColor="bg-fuchsia-100 text-fuchsia-700"
               />
             )}
@@ -22445,7 +22445,11 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       type: 'facturesManquantes',
       label: 'Factures manquantes',
       emoji: '🧾',
-      count: (rappelsFacturesManquantes || []).length,
+      // Compte les FACTURES individuelles manquantes (r.total = nb de lignes
+      // prestataires sans facture sur le dossier), pas les dossiers : rattacher
+      // 1 facture fait baisser le compteur de 1, même si le dossier a encore
+      // d'autres factures manquantes.
+      count: (rappelsFacturesManquantes || []).reduce((s, r) => s + (r.total || 0), 0),
       adminOnly: false,
       color: 'from-fuchsia-500 to-pink-500',
       colorBg: 'bg-fuchsia-50',
