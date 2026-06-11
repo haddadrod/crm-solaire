@@ -102,7 +102,7 @@ export default async function handler(req, res) {
 
   try {
     const body = req.body || {};
-    const { id, societe, fields } = body;
+    const { id, societe, fields, prestataires } = body;
 
     if (!id || typeof id !== 'string' && typeof id !== 'number') {
       return json(res, 400, { error: 'id requis (= numéro de dossier, colonne B du sheet)' });
@@ -155,21 +155,70 @@ export default async function handler(req, res) {
       }
     }
 
-    if (appliedCount === 0) {
+    // 🧾 Mise à jour ciblée des paiements prestataires (sans toucher au
+    // reste des lignes : factureNo, htCustom, bl, lien PDF — ces choses
+    // restent gérées dans le CRM exclusivement).
+    //
+    // payload : prestataires = {
+    //   fournisseur1: { paye: true/false, datePaye: 'YYYY-MM-DD' },
+    //   fournisseur2: { ... },
+    //   fournisseur3: { ... },
+    //   regie:        { ... },   // applique au régie #1 seulement
+    //   poseur1:      { ... },
+    //   poseur2:      { ... },
+    // }
+    const before = dossiers[idx];
+    const now = new Date().toISOString();
+    const today = now.slice(0, 10);
+    let prestaTouched = 0;
+    const fournisseursOut = Array.isArray(before.fournisseurs) ? [...before.fournisseurs] : [];
+    const regiesOut = Array.isArray(before.regies) ? [...before.regies] : [];
+    const poseursOut = Array.isArray(before.poseurs) ? [...before.poseurs] : [];
+
+    const applyPaye = (arr, index, ask) => {
+      if (!ask || typeof ask !== 'object') return false;
+      if (index < 0 || index >= arr.length) return false;
+      const cur = arr[index];
+      if (!cur) return false;
+      const askPaye = !!ask.paye;
+      const askDate = typeof ask.datePaye === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(ask.datePaye) ? ask.datePaye : '';
+      // Idempotent : si déjà dans l'état demandé, on ne touche pas.
+      if ((cur.paye === askPaye) && (askDate ? cur.datePaye === askDate : true)) return false;
+      arr[index] = {
+        ...cur,
+        paye: askPaye,
+        datePaye: askPaye ? (askDate || cur.datePaye || today) : '',
+      };
+      return true;
+    };
+
+    if (prestataires && typeof prestataires === 'object') {
+      if (applyPaye(fournisseursOut, 0, prestataires.fournisseur1)) prestaTouched += 1;
+      if (applyPaye(fournisseursOut, 1, prestataires.fournisseur2)) prestaTouched += 1;
+      if (applyPaye(fournisseursOut, 2, prestataires.fournisseur3)) prestaTouched += 1;
+      if (applyPaye(regiesOut,       0, prestataires.regie))        prestaTouched += 1;
+      if (applyPaye(poseursOut,      0, prestataires.poseur1))      prestaTouched += 1;
+      if (applyPaye(poseursOut,      1, prestataires.poseur2))      prestaTouched += 1;
+    }
+
+    if (appliedCount === 0 && prestaTouched === 0) {
       return json(res, 200, {
         ok: true,
         applied: 0,
         ignored,
-        note: 'Aucun champ syncable dans le payload — rien à appliquer.',
+        note: 'Aucun champ syncable + aucun paiement prestataire modifié — rien à appliquer.',
       });
     }
 
-    // Merge : champs scalaires écrasés, tableaux remplacés en entier (atomique).
-    const before = dossiers[idx];
-    const now = new Date().toISOString();
+    // Merge final : on n'écrit fournisseurs/régies/poseurs que si quelque
+    // chose a vraiment changé dedans (sinon on garde le tableau d'origine
+    // intact, important si l'utilisateur a remonté des avoirs/PDFs côté CRM).
     dossiers[idx] = {
       ...before,
       ...sanitized,
+      ...(prestaTouched > 0
+        ? { fournisseurs: fournisseursOut, regies: regiesOut, poseurs: poseursOut }
+        : {}),
       // Trace que ce dossier a été touché par la sync (pour debug + UI future).
       lastSyncedFromSheetAt: now,
       modifiedAt: now,
@@ -187,6 +236,7 @@ export default async function handler(req, res) {
       id: idStr,
       societe: societeNorm,
       applied: appliedCount,
+      prestaTouched,
       ignored,
       syncedAt: now,
     });

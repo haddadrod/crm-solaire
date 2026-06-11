@@ -155,10 +155,48 @@ function syncRow_(sheet, row) {
     }];
   }
 
+  // 🧾 Paiements prestataires (Phase 2) — colonnes PAYER + DATE PAIEMENT
+  // de chaque bloc. On lit la case PAYER (bool) et la date à côté (col -1).
+  // Si la case est cochée mais la date vide, l'API mettra aujourd'hui.
+  // Layout du sheet (validé avec Rodney) :
+  //   F1 : AC date · AD payer · 9 cols (V→AD)
+  //   F2 : AK date · AL payer · 8 cols (AE→AL)
+  //   F3 : AS date · AT payer · 8 cols (AM→AT)
+  //   Régie : BI date · BJ payer · 8 cols (BC→BJ)
+  //   P1  : BQ date · BR payer · 8 cols (BK→BR)
+  //   P2  : BX date · BY payer · 7 cols (BS→BY)
+  function readPaye(payerCol, dateCol) {
+    var payerIdx = letterToIndex_(payerCol);
+    var dateIdx = letterToIndex_(dateCol);
+    if (payerIdx >= lastCol) return null;
+    var raw = rowRaw[payerIdx];
+    var paye = typeof raw === 'boolean' ? raw : /^(true|vrai|oui|1)$/i.test(String(rowValues[payerIdx] || '').trim());
+    var dRaw = rowRaw[dateIdx];
+    var dDisp = rowValues[dateIdx];
+    var datePaye = '';
+    if (dRaw instanceof Date && !isNaN(dRaw.getTime())) {
+      datePaye = Utilities.formatDate(dRaw, 'Europe/Paris', 'yyyy-MM-dd');
+    } else {
+      var m = String(dDisp || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+      if (m) datePaye = m[3] + '-' + pad_(m[2]) + '-' + pad_(m[1]);
+    }
+    return { paye: paye, datePaye: datePaye };
+  }
+
+  var prestataires = {
+    fournisseur1: readPaye('AD', 'AC'),
+    fournisseur2: readPaye('AL', 'AK'),
+    fournisseur3: readPaye('AT', 'AS'),
+    regie:        readPaye('BJ', 'BI'),
+    poseur1:      readPaye('BR', 'BQ'),
+    poseur2:      readPaye('BY', 'BX'),
+  };
+
   var payload = {
     id: dossierId,
     societe: societe,
     fields: fields,
+    prestataires: prestataires,
   };
 
   var endpoint = crmUrl.replace(/\/$/, '') + '/api/sheet-sync';
