@@ -158,6 +158,204 @@ Règles :
 - Si la facture est sans TVA (auto-entrepreneur, société étrangère hors UE), mets tauxTva: 0.`;
 
 // ============================================================================
+//                 MATCHING : RATTACHER UNE FACTURE À UN DOSSIER
+// ============================================================================
+//
+// Une fois la facture extraite (fournisseur + n° + date + HT), on cherche
+// dans la liste des dossiers CRM auquel elle se rattache, ET sur quelle ligne
+// précise (poseur #N, régie #N, ou fournisseur #N).
+//
+// Approche :
+//   1. Pré-filtrage local (sans IA, économique) : ne garde que les dossiers
+//      dont au moins un prestataire (parmi poseurs/régies/fournisseurs) a un
+//      nom qui ressemble au "fournisseur" extrait. On utilise une normalisation
+//      simple (uppercase, retrait des accents/espaces, fuzzy match).
+//   2. On ne garde QUE les prestataires sans facture (factureFile/Url vides),
+//      car on cherche à rattacher une facture manquante.
+//   3. Les ~30 meilleurs candidats sont envoyés à Claude avec la facture
+//      extraite. Claude propose 1 à 3 matchs triés par confiance.
+//
+// Note : la pré-filtration côté serveur évite d'envoyer 700 dossiers à
+// l'IA — on garde le coût bas et la précision haute.
+
+const MATCH_SCHEMA = {
+  type: 'object',
+  properties: {
+    proposals: {
+      type: 'array',
+      description: "1 à 3 propositions de rattachement, triées par confiance décroissante. Vide si aucun candidat ne convient.",
+      items: {
+        type: 'object',
+        properties: {
+          localId: { type: 'string', description: "localId du dossier proposé (exactement comme dans la liste candidats)." },
+          type: { type: 'string', enum: ['fournisseurs', 'regies', 'poseurs'], description: "Type de la liste où se trouve le prestataire." },
+          index: { type: 'number', description: "Index dans la liste (0-based)." },
+          confidence: { type: 'number', description: "Score de confiance entre 0 et 1 (1 = match certain)." },
+          reasoning: { type: 'string', description: "Courte explication (1 phrase) : pourquoi ce match." },
+        },
+        required: ['localId', 'type', 'index', 'confidence', 'reasoning'],
+        additionalProperties: false,
+      },
+    },
+    notes: { type: 'string', description: "Note globale : pourquoi pas de match, ou ambiguïté, ou info utile pour le comptable. Vide si proposal[0] est franchement certaine." },
+  },
+  required: ['proposals', 'notes'],
+  additionalProperties: false,
+};
+
+function normalizeName(s) {
+  return String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, ' ')
+    .trim();
+}
+
+// Fuzzy match : un nom A "ressemble" à un nom B si :
+//   - A normalisé contient B normalisé (ou inverse), OU
+//   - leurs 4 premiers caractères significatifs sont identiques
+function fuzzyMatchName(a, b) {
+  const na = normalizeName(a);
+  const nb = normalizeName(b);
+  if (!na || !nb) return false;
+  if (na === nb) return true;
+  if (na.includes(nb) || nb.includes(na)) return true;
+  const ka = na.replace(/\s/g, '').slice(0, 4);
+  const kb = nb.replace(/\s/g, '').slice(0, 4);
+  return ka.length >= 4 && ka === kb;
+}
+
+// Une ligne prestataire est "facture présente" si l'un de ces champs est rempli.
+function hasFactureLine(p) {
+  return !!(p?.factureFile || p?.facturePdfUrl || p?.factureExternalUrl);
+}
+
+// Construit la liste compacte des candidats à envoyer à Claude.
+// Ne garde que les dossiers posés (statutPose === 'visite_ok') où au moins
+// 1 prestataire correspondant au fournisseur extrait n'a pas encore de facture.
+function buildCandidates(dossiers, extracted) {
+  const target = extracted?.fournisseur || '';
+  if (!target) return [];
+
+  const out = [];
+  for (const d of dossiers || []) {
+    if (!d || d.statutPose !== 'visite_ok') continue;
+
+    const matchingLines = [];
+    const checkLine = (kind, arr) => {
+      (arr || []).forEach((p, idx) => {
+        if (!p || !p.nom) return;
+        if (hasFactureLine(p)) return;
+        if (!fuzzyMatchName(p.nom, target)) return;
+        matchingLines.push({
+          type: kind,
+          index: idx,
+          nom: p.nom,
+          htCustom: Number(p.htCustom) || 0,
+          factureNo: p.factureNo || '',
+          bl: p.bl || '',
+          paye: !!p.paye,
+        });
+      });
+    };
+    checkLine('fournisseurs', d.fournisseurs);
+    checkLine('regies', d.regies);
+    checkLine('poseurs', d.poseurs);
+
+    if (matchingLines.length === 0) continue;
+
+    out.push({
+      localId: String(d.localId || ''),
+      idChelly: String(d.id || ''),
+      client: `${d.nom || ''} ${d.prenom || ''}`.trim(),
+      ville: d.ville || '',
+      societe: d.societe || '',
+      dateInsta: d.dateInsta || '',
+      montantTotal: Number(d.montantTotal) || 0,
+      puissance: d.puissance || '',
+      lines: matchingLines,
+    });
+  }
+
+  // Tri : on met devant les dossiers dont la date de pose est la plus proche
+  // de la date facture (les matchs temporels sont souvent les bons).
+  const facDate = extracted?.dateFacture || '';
+  if (facDate) {
+    const fd = new Date(facDate).getTime();
+    if (!isNaN(fd)) {
+      out.sort((a, b) => {
+        const da = a.dateInsta ? Math.abs(new Date(a.dateInsta).getTime() - fd) : Infinity;
+        const db = b.dateInsta ? Math.abs(new Date(b.dateInsta).getTime() - fd) : Infinity;
+        return da - db;
+      });
+    }
+  }
+
+  return out.slice(0, 30); // cap à 30 pour rester économique côté tokens IA
+}
+
+function buildMatchInstructions(extracted, candidates) {
+  const facLine = [
+    `Émetteur: ${extracted.fournisseur || '(non lu)'}`,
+    `N° facture: ${extracted.factureNo || '(non lu)'}`,
+    `Date: ${extracted.dateFacture || '(non lue)'}`,
+    `HT: ${extracted.montantHt || 0}€`,
+    `TTC: ${extracted.montantTtc || 0}€`,
+    `BL: ${extracted.bl || '(non lu)'}`,
+  ].join('\n');
+
+  // Sérialise les candidats de façon compacte et lisible par l'IA.
+  const candidatesJson = JSON.stringify(candidates, null, 2);
+
+  return `Tu cherches à quel dossier client cette facture prestataire doit être rattachée dans un CRM.
+
+FACTURE EXTRAITE :
+${facLine}
+
+DOSSIERS CANDIDATS (pré-filtrés sur le nom de l'émetteur) :
+${candidatesJson}
+
+RÈGLES DE MATCHING :
+- Chaque candidat est un dossier + des lignes prestataires (poseurs/régies/fournisseurs) sans facture.
+- Tu choisis la meilleure combinaison (localId, type, index) — pas juste le dossier, aussi la BONNE LIGNE.
+- Critères forts par ordre de priorité :
+  1. Nom du prestataire (lines[*].nom) qui correspond exactement à l'émetteur de la facture.
+  2. Montant : si lines[*].htCustom est proche du montantHt facturé → fort indice.
+  3. Date : dossier dont dateInsta est PROCHE (avant ou même peu après) de la date facture.
+  4. Cohérence société (CRM societe vs ce que tu vois sur la facture si visible).
+- Si plusieurs candidats sont quasi-équivalents, retourne-les tous (max 3), triés par confidence.
+- Si AUCUN candidat ne convient (confidence < 0.4 partout), retourne proposals: [] et explique dans notes.
+- Réponds UNIQUEMENT au format JSON demandé. Aucune autre sortie.`;
+}
+
+async function callClaudeMatch(client, extracted, candidates) {
+  const message = await client.messages.create({
+    model: 'claude-opus-4-7',
+    max_tokens: 1500,
+    thinking: { type: 'adaptive' },
+    output_config: {
+      effort: 'medium',
+      format: { type: 'json_schema', schema: MATCH_SCHEMA },
+    },
+    messages: [
+      {
+        role: 'user',
+        content: [
+          { type: 'text', text: buildMatchInstructions(extracted, candidates) },
+        ],
+      },
+    ],
+  });
+  const textBlock = message.content.find((b) => b.type === 'text');
+  if (!textBlock || !textBlock.text) return { proposals: [], notes: 'Réponse IA vide.' };
+  try {
+    return JSON.parse(textBlock.text);
+  } catch {
+    return { proposals: [], notes: 'Réponse IA non parsable.' };
+  }
+}
+
+// ============================================================================
 //                             HANDLER
 // ============================================================================
 export default async function handler(req, res) {
@@ -175,10 +373,13 @@ export default async function handler(req, res) {
   if (!caller) return json(res, 401, { error: 'Connexion requise.' });
 
   const body = req.body || {};
-  const { type, imageBase64, mediaType, storagePath, availableSocietes } = body;
+  const { type, imageBase64, mediaType, storagePath, availableSocietes, withMatch } = body;
   if (type !== 'bon' && type !== 'facture') {
     return json(res, 400, { error: "Paramètre 'type' manquant (attendu : 'bon' ou 'facture')." });
   }
+  // withMatch n'est autorisé QUE pour les factures (cherche le dossier à
+  // rattacher après extraction).
+  const wantMatch = type === 'facture' && withMatch === true;
   if ((!imageBase64 && !storagePath) || !mediaType) {
     return json(res, 400, { error: 'Fichier manquant (imageBase64 ou storagePath requis).' });
   }
@@ -261,6 +462,50 @@ export default async function handler(req, res) {
     } catch (e) {
       return json(res, 502, { error: 'Réponse IA non exploitable.' });
     }
+
+    // 🎯 Mode matching : après extraction, on cherche à quel dossier rattacher
+    // la facture. Si on échoue (lecture storage, IA, etc.) → on renvoie quand
+    // même l'extraction (mieux que rien), avec matching: null pour signaler.
+    if (wantMatch) {
+      try {
+        const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        });
+        const { data: row, error: getErr } = await admin
+          .from('storage')
+          .select('value')
+          .eq('key', 'dossiers-data')
+          .maybeSingle();
+        if (getErr) throw new Error(getErr.message);
+        if (!row?.value) {
+          return json(res, 200, { data: parsed, matching: { proposals: [], notes: 'Aucun dossier dans le CRM.' } });
+        }
+        const dossiers = JSON.parse(row.value);
+        const candidates = buildCandidates(dossiers, parsed);
+        if (candidates.length === 0) {
+          return json(res, 200, {
+            data: parsed,
+            matching: {
+              proposals: [],
+              notes: `Aucun candidat avec un prestataire "${parsed.fournisseur || '?'}" sans facture parmi les dossiers posés.`,
+              candidatesCount: 0,
+            },
+          });
+        }
+        const matching = await callClaudeMatch(client, parsed, candidates);
+        return json(res, 200, {
+          data: parsed,
+          matching: { ...matching, candidatesCount: candidates.length },
+        });
+      } catch (mErr) {
+        console.error('match-facture error:', mErr?.message, mErr?.stack);
+        return json(res, 200, {
+          data: parsed,
+          matching: { proposals: [], notes: `Matching impossible : ${mErr?.message || 'erreur'}` },
+        });
+      }
+    }
+
     return json(res, 200, { data: parsed });
   } catch (e) {
     const msg = e?.message || 'Erreur IA';
