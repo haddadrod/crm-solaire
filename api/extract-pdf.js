@@ -128,13 +128,14 @@ const FACTURE_SCHEMA = {
     factureNo: { type: 'string', description: "Numéro de facture (champs typiques : 'Facture n°', 'N° facture', 'Numéro'). Garde le format d'origine (FA2026-0145, 2026/03/012, etc.)." },
     bl: { type: 'string', description: "Numéro de bon de livraison s'il est mentionné sur la facture (champs : 'BL', 'B/L', 'Bon de livraison n°'). Sinon vide." },
     dateFacture: { type: 'string', description: "Date d'émission de la facture au format AAAA-MM-JJ. Si pas trouvée, vide." },
+    referenceChantier: { type: 'string', description: "Référence du chantier / client final si elle figure sur la facture. Champs typiques : 'Référence Chantier', 'Chantier', 'Réf. chantier', 'Client final', 'Installateur', 'Affaire', ou un NOM DE PERSONNE dans le corps/pied de la facture qui n'est ni l'émetteur ni le destinataire (ex : 'TRIBET ANTHONY - 33782'). Recopie tel quel. Sinon vide." },
     montantHt: { type: 'number', description: "Total HT en euros (nombre, sans symbole ni espace). Si seul un TTC est lisible, mets 0 et précise dans remarques." },
     montantTtc: { type: 'number', description: "Total TTC en euros." },
     tauxTva: { type: 'number', description: "Taux de TVA appliqué en pourcentage (ex : 20, 10, 5.5, 0). 0 si auto-entrepreneur / société étrangère sans TVA." },
     confiance: { type: 'string', enum: ['haute', 'moyenne', 'faible'], description: "Niveau de confiance global de la lecture." },
     remarques: { type: 'string', description: "Notes brèves : champs illisibles, incohérences, ou contexte utile. Sinon vide." },
   },
-  required: ['fournisseur', 'factureNo', 'bl', 'dateFacture', 'montantHt', 'montantTtc', 'tauxTva', 'confiance', 'remarques'],
+  required: ['fournisseur', 'factureNo', 'bl', 'dateFacture', 'referenceChantier', 'montantHt', 'montantTtc', 'tauxTva', 'confiance', 'remarques'],
   additionalProperties: false,
 };
 
@@ -145,6 +146,7 @@ Extrais ces informations depuis la facture :
 - factureNo : numéro de facture exactement comme écrit
 - bl : numéro de bon de livraison s'il est mentionné, sinon vide
 - dateFacture : date d'émission au format AAAA-MM-JJ
+- referenceChantier : ⚠️ TRÈS IMPORTANT — cherche partout sur la facture (corps, pied de page, cadres annexes) une référence chantier / client final : champs 'Référence Chantier', 'Chantier', 'Client final', 'Affaire', 'Installateur', ou un nom de personne qui n'est ni l'émetteur ni le destinataire. C'est la clé qui permet de rattacher la facture au bon dossier client. Recopie la valeur telle quelle.
 - montantHt : total HT en euros (nombre)
 - montantTtc : total TTC en euros (nombre)
 - tauxTva : taux de TVA en pourcentage (20, 10, 5.5, ou 0 pour auto-entrepreneur / sans TVA)
@@ -237,6 +239,49 @@ function hasFactureLine(p) {
 // Normalisation : uppercase + alphanumérique seul (FAC-2026-0711 ≡ fac 2026 0711).
 function normalizeFactureNo(s) {
   return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+// 🎯 Match par RÉFÉRENCE CHANTIER — beaucoup de factures fournisseurs
+// (ECO NEGOCE notamment) portent le nom du client final dans un champ
+// « Référence Chantier » (ex : 'TRIBET ANTHONY - 33782'). Si ce nom
+// correspond au client d'un dossier, c'est un match quasi certain.
+function findByChantierRef(dossiers, extracted) {
+  const ref = normalizeName(extracted?.referenceChantier);
+  if (ref.length < 3) return [];
+  const out = [];
+  for (const d of dossiers || []) {
+    if (!d) continue;
+    const nomN = normalizeName(d.nom);
+    if (nomN.length < 3 || !ref.includes(nomN)) continue;
+    const prenomOk = normalizeName(d.prenom).length >= 3 && ref.includes(normalizeName(d.prenom));
+    const baseConf = prenomOk ? 0.97 : 0.9;
+    // Cible : lignes sans facture dont le nom matche l'émetteur. À défaut,
+    // toute ligne sans facture (l'émetteur facture peut-être sous alias).
+    const target = extracted?.fournisseur || '';
+    const lines = [];
+    const scan = (type, arr) => {
+      (arr || []).forEach((p, index) => {
+        if (!p || !p.nom || hasFactureLine(p)) return;
+        lines.push({ type, index, nom: p.nom, nameMatch: target ? fuzzyMatchName(p.nom, target) : false });
+      });
+    };
+    scan('fournisseurs', d.fournisseurs);
+    scan('regies', d.regies);
+    scan('poseurs', d.poseurs);
+    if (lines.length === 0) continue;
+    const preferred = lines.filter(l => l.nameMatch);
+    (preferred.length > 0 ? preferred : lines).forEach(l => {
+      out.push({
+        localId: String(d.localId || ''),
+        type: l.type,
+        index: l.index,
+        confidence: l.nameMatch ? baseConf : Math.max(0.6, baseConf - 0.25),
+        reasoning: `Référence chantier « ${extracted.referenceChantier} » = client ${`${d.nom || ''} ${d.prenom || ''}`.trim()}${l.nameMatch ? ` · ligne ${l.nom}` : ` · ligne ${l.nom} (émetteur sous un autre nom ?)`}`,
+      });
+    });
+  }
+  out.sort((a, b) => b.confidence - a.confidence);
+  return out.slice(0, 3);
 }
 
 function findByFactureNo(dossiers, extracted) {
@@ -343,6 +388,7 @@ function buildMatchInstructions(extracted, candidates, aliasMode = false) {
     `HT: ${extracted.montantHt || 0}€`,
     `TTC: ${extracted.montantTtc || 0}€`,
     `BL: ${extracted.bl || '(non lu)'}`,
+    `Référence chantier / client final: ${extracted.referenceChantier || '(absente)'}`,
   ].join('\n');
 
   // Sérialise les candidats de façon compacte et lisible par l'IA.
@@ -362,11 +408,13 @@ ${aliasMode ? `⚠️ MODE ALIAS : l'émetteur de la facture ("${extracted.fourn
 - Chaque candidat est un dossier + des lignes prestataires (poseurs/régies/fournisseurs) sans facture.
 - Tu choisis la meilleure combinaison (localId, type, index) — pas juste le dossier, aussi la BONNE LIGNE.
 - Critères forts par ordre de priorité :
-  1. N° DE FACTURE : si lines[*].factureNo ressemble au n° extrait (mêmes chiffres, format légèrement différent) → match quasi certain, confidence ≥ 0.95.
-  2. Nom du prestataire (lines[*].nom) qui correspond exactement à l'émetteur de la facture.
-  3. Montant : si lines[*].htCustom est proche du montantHt facturé → fort indice.
-  4. Date : dossier dont dateInsta est PROCHE (avant ou même peu après) de la date facture.
-  5. Cohérence société (CRM societe vs ce que tu vois sur la facture si visible).
+  1. RÉFÉRENCE CHANTIER : si elle contient le nom du client d'un candidat → match quasi certain, confidence ≥ 0.95.
+  2. N° DE FACTURE : si lines[*].factureNo ressemble au n° extrait (mêmes chiffres, format légèrement différent) → match quasi certain, confidence ≥ 0.95.
+  3. Nom du prestataire (lines[*].nom) qui correspond exactement à l'émetteur de la facture.
+  4. Montant : si lines[*].htCustom est proche du montantHt facturé → fort indice.
+  5. Date : dossier dont dateInsta est PROCHE (avant ou même peu après) de la date facture.
+  6. Cohérence société (CRM societe vs ce que tu vois sur la facture si visible).
+- ⚠️ Si la référence chantier est renseignée mais ne correspond à AUCUN candidat → ne propose RIEN au-dessus de 0.5 par montant/date seuls : le bon dossier n'est probablement pas dans la liste.
 - Si plusieurs candidats sont quasi-équivalents, retourne-les tous (max 3), triés par confidence.
 - Si AUCUN candidat ne convient (confidence < 0.4 partout), retourne proposals: [] et explique dans notes.
 - Réponds UNIQUEMENT au format JSON demandé. Aucune autre sortie.`;
@@ -542,7 +590,22 @@ export default async function handler(req, res) {
           });
         }
 
-        // 2️⃣ Sinon, matching IA par nom de prestataire (puis montant + date).
+        // 2️⃣ Match par référence chantier (nom du client final imprimé sur la
+        // facture — ex champ « Référence Chantier » d'ECO NEGOCE).
+        const byChantier = findByChantierRef(dossiers, parsed);
+        if (byChantier.length > 0 && byChantier[0].confidence >= 0.9) {
+          return json(res, 200, {
+            data: parsed,
+            matching: {
+              proposals: byChantier,
+              notes: 'Le nom du client figure sur la facture (référence chantier) — match direct.',
+              direct: true,
+              candidatesCount: byChantier.length,
+            },
+          });
+        }
+
+        // 3️⃣ Sinon, matching IA par nom de prestataire (puis montant + date).
         let candidates = buildCandidates(dossiers, parsed);
         let aliasMode = false;
         if (candidates.length === 0) {
