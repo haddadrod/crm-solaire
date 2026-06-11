@@ -3549,14 +3549,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (!d.payeClient) return; // dossier non payé → exclu
       if (!d.payeClientDate) return; // pas de date de paiement → on ne sait pas quel mois rattacher
       const k = d.payeClientDate.substring(0, 7);
-      if (!moisMap[k]) moisMap[k] = { mois: k, count: 0, ca: 0, margeTtc: 0 };
+      if (!moisMap[k]) moisMap[k] = { mois: k, count: 0, ca: 0, marge: 0 };
       moisMap[k].count += 1;
       moisMap[k].ca += d.montantTotal || 0;
-      moisMap[k].margeTtc += d.margeTtc || 0;
+      // 📐 Marge TOUJOURS en HT (jamais TTC) — règle métier. La marge TTC
+      // n'a pas de sens comptable (elle inclut la TVA à reverser à l'État).
+      moisMap[k].marge += d.margeHt || 0;
     });
     const statsMois = Object.values(moisMap).sort((a, b) => a.mois.localeCompare(b.mois));
     const todayStr = new Date().toISOString().substring(0, 7);
-    const moisCourant = statsMois.find(m => m.mois === todayStr) || { count: 0, ca: 0, margeTtc: 0 };
+    const moisCourant = statsMois.find(m => m.mois === todayStr) || { count: 0, ca: 0, marge: 0 };
     // Mois précédent : on calcule le « YYYY-MM » du mois -1 SANS passer par
     // toISOString() qui décale d'un jour si on est en début/fin de mois.
     const lastStr = (() => {
@@ -3565,7 +3567,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const pad = (n) => String(n).padStart(2, '0');
       return `${prev.getFullYear()}-${pad(prev.getMonth() + 1)}`;
     })();
-    const moisPrecedent = statsMois.find(m => m.mois === lastStr) || { count: 0, ca: 0, margeTtc: 0 };
+    const moisPrecedent = statsMois.find(m => m.mois === lastStr) || { count: 0, ca: 0, marge: 0 };
 
     // 🏦 PROJEXIO — total d'envois banque du mois, breakdown par société.
     // Règles de comptage demandées :
@@ -3716,7 +3718,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (d.payeClient) {
         m.nbPayes += 1;
         m.ca += d.montantTotal || 0;
-        m.margeApportee += d.margeTtc || 0;
+        m.margeApportee += d.margeHt || 0; // marge toujours en HT
       }
       if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
       if (isAnnule) m.nbAnnules += 1;
@@ -3755,7 +3757,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (d.payeClient) {
         m.nbPayes += 1;
         m.ca += d.montantTotal || 0;
-        m.margeApportee += d.margeTtc || 0;
+        m.margeApportee += d.margeHt || 0; // marge toujours en HT
       }
       const dj = dureeJours(d);
       if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
@@ -4502,7 +4504,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (sortBy === 'createdDesc') return (b.createdAt || b.savedAt || '').localeCompare(a.createdAt || a.savedAt || '');
       if (sortBy === 'createdAsc')  return (a.createdAt || a.savedAt || '').localeCompare(b.createdAt || b.savedAt || '');
       if (sortBy === 'montant') return (b.montantTotal || 0) - (a.montantTotal || 0);
-      if (sortBy === 'marge') return (b.margeTtc || 0) - (a.margeTtc || 0);
+      if (sortBy === 'marge') return (b.margeHt || 0) - (a.margeHt || 0);
       if (sortBy === 'nom') return (a.nom || '').localeCompare(b.nom || '');
       const ia = statutsOrder.indexOf(a.statut), ib = statutsOrder.indexOf(b.statut);
       const ra = ia === -1 ? 999 : ia, rb = ib === -1 ? 999 : ib;
@@ -5362,7 +5364,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   // Équipe interne : tous les rôles renseignés doivent être payés (peu importe typeRegie)
                   const ROLES_KEYS = ['teleprospecteur', 'confirmateur', 'commercial', 'coordinateurProjet', 'responsableEnvoiPose'];
                   const equipeInternePayee = ROLES_KEYS.every(k => !merged[k] || merged[k + 'Paye']);
-                  if (clientPaye && tousPoseursPayes && tousFournPayes && regiePayee && toutesRegiesPayees && equipeInternePayee) {
+                  // 🚩 Exception : un litige ou un SAV ouvert (et pas encore
+                  // traité) garde le dossier ACTIF — on n'a pas vraiment fini
+                  // tant que ce n'est pas réglé, même si tout est payé.
+                  const litigeOuvert = merged.hasLitige === true && merged.litigeTraite !== true;
+                  const savOuvert = merged.hasSav === true && merged.savTraite !== true;
+                  if (clientPaye && tousPoseursPayes && tousFournPayes && regiePayee && toutesRegiesPayees && equipeInternePayee && !litigeOuvert && !savOuvert) {
                     merged.archived = true;
                     merged.archivedAt = now;
                     merged.autoArchived = true; // pour info
@@ -5722,8 +5729,8 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
         <span className="ml-auto inline-flex items-center gap-2">
           {!readOnly && <span className="font-bold text-blue-600 text-sm">{formatEuro(d.montantTotal)}</span>}
           {isAdmin && (
-            <span className={`text-[11px] font-semibold ${d.margeTtc >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-              ({formatEuro(d.margeTtc)})
+            <span className={`text-[11px] font-semibold ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} title="Marge HT">
+              ({formatEuro(d.margeHt)})
             </span>
           )}
           {!readOnly && (
@@ -5902,7 +5909,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-1.5 text-xs">
             <Mini label="Vente TTC" value={formatEuro(d.montantTotal)} color="text-blue-600" />
             <Mini label="Vente HT" value={formatEuro(d.montantHt)} color="text-cyan-600" />
-            {isAdmin && (((d.fournisseurTtc || 0) + (d.regieTtc || 0) + (d.poseurTtc || 0)) > 0) && <Mini label="Marge TTC" value={formatEuro(d.margeTtc)} color={d.margeTtc >= 0 ? 'text-emerald-600' : 'text-rose-600'} />}
+            {isAdmin && (((d.fournisseurTtc || 0) + (d.regieTtc || 0) + (d.poseurTtc || 0)) > 0) && <Mini label="Marge HT" value={formatEuro(d.margeHt)} color={d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'} />}
             {!isAdmin && <Mini label="Financement" value={d.financement} color="text-violet-600" />}
             {!isAdmin && (() => {
               if (dossierProduits.length > 1) {
@@ -8998,7 +9005,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
               <div className="text-[10px] font-semibold opacity-90 uppercase">Marge ce mois</div>
               <TrendingUp className="w-3.5 h-3.5 opacity-80" />
             </div>
-            <div className="text-lg font-bold truncate leading-tight">{formatEuro(dashboard.moisCourant.margeTtc)}</div>
+            <div className="text-lg font-bold truncate leading-tight">{formatEuro(dashboard.moisCourant.marge)}</div>
           </div>
           <div className={`bg-gradient-to-br ${dashboard.moisCourant.ca >= dashboard.moisPrecedent.ca ? 'from-emerald-500 to-green-500' : 'from-rose-500 to-pink-500'} rounded-xl p-2.5 text-white`}>
             <div className="flex justify-between items-center mb-0.5">
@@ -9556,18 +9563,18 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                         value={formatEuro(Math.max(0, p.totalDu - p.dejaPaye))}
                         color={(p.totalDu - p.dejaPaye) > 0 ? 'text-rose-600' : 'text-slate-500'}
                       />
-                      {p.margeTotale !== undefined && (
+                      {p.margeTotaleHt !== undefined && (
                         <SmallStat
-                          label="Marge TTC"
-                          value={formatEuro(p.margeTotale)}
-                          color={p.margeTotale >= 0 ? 'text-violet-600' : 'text-rose-600'}
+                          label="Marge HT"
+                          value={formatEuro(p.margeTotaleHt)}
+                          color={p.margeTotaleHt >= 0 ? 'text-violet-600' : 'text-rose-600'}
                         />
                       )}
-                      {p.margeTotale !== undefined && p.count > 0 && (
+                      {p.margeTotaleHt !== undefined && p.count > 0 && (
                         <SmallStat
                           label="Marge moy/dossier"
-                          value={formatEuro(p.margeTotale / p.count)}
-                          color={p.margeTotale >= 0 ? 'text-fuchsia-600' : 'text-rose-600'}
+                          value={formatEuro(p.margeTotaleHt / p.count)}
+                          color={p.margeTotaleHt >= 0 ? 'text-fuchsia-600' : 'text-rose-600'}
                           width="w-32"
                         />
                       )}
@@ -15984,8 +15991,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <h3 className="font-bold text-lg mb-3 flex items-center gap-2">
                 <TrendingUp className="w-5 h-5" />Calcul des marges
               </h3>
-              <div className="grid grid-cols-3 gap-3 text-sm">
-                <div className="bg-white/20 rounded-xl p-3"><div className="opacity-80 text-xs uppercase">Marge TTC</div><div className="text-xl font-bold">{formatEuro(calculs.margeTtc)}</div></div>
+              <div className="grid grid-cols-2 gap-3 text-sm">
+                {/* Marge TOUJOURS en HT — la marge TTC n'est pas affichée car
+                    elle inclut la TVA à reverser (pas une vraie marge). */}
                 <div className="bg-white/20 rounded-xl p-3"><div className="opacity-80 text-xs uppercase">Marge HT</div><div className="text-xl font-bold">{formatEuro(calculs.margeHt)}</div></div>
                 <div className="bg-white/20 rounded-xl p-3"><div className="opacity-80 text-xs uppercase">TVA</div><div className="text-xl font-bold">{formatEuro(calculs.tva)}</div></div>
               </div>
@@ -19734,10 +19742,10 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   <input type="number" step="0.01" value={d.montantTotal || ''} onChange={(e) => onUpdate({ montantTotal: parseFloat(e.target.value) || 0 })} placeholder="0,00" className={inputCls + ' font-bold text-violet-700'} />
                   <span className="text-xs text-slate-500">€</span>
                 </div>
-                {d.margeTtc !== undefined && (((d.fournisseurTtc || 0) + (d.regieTtc || 0) + (d.poseurTtc || 0)) > 0) && (
+                {d.margeHt !== undefined && (((d.fournisseurTtc || 0) + (d.regieTtc || 0) + (d.poseurTtc || 0)) > 0) && (
                   <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-violet-200">
-                    <span className="text-slate-600 font-semibold">Marge TTC</span>
-                    <span className={`font-bold ${d.margeTtc >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatEuro(d.margeTtc)}</span>
+                    <span className="text-slate-600 font-semibold">Marge HT</span>
+                    <span className={`font-bold ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatEuro(d.margeHt)}</span>
                   </div>
                 )}
               </div>
