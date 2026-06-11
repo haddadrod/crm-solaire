@@ -5189,6 +5189,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             setDossiers={setDossiers}
             currentUserRole={currentUserRole}
             isAdmin={isAdmin}
+            onOpenDossier={(localId) => { setShowQuickViewId(localId); setQuickViewScrollTo('fournisseurs'); }}
           />
         )}
 
@@ -6155,7 +6156,7 @@ function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier
 // Pas d'écrasement auto : si une proposition pointe vers une ligne qui a déjà
 // une facture, on alerte et on demande confirmation explicite (mais en
 // pratique buildCandidates côté API exclut déjà ces lignes — donc rare).
-function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin }) {
+function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onOpenDossier }) {
   const [files, setFiles] = useState([]); // [{ id, file, name, status, extracted, matching, error, pickedIdx }]
   const [dragOver, setDragOver] = useState(false);
   const inputRef = useRef(null);
@@ -6374,6 +6375,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin }) {
               onSkip={() => handleSkip(item.id)}
               onRetry={() => handleRetry(item.id)}
               onRemove={() => handleRemove(item.id)}
+              onOpenDossier={onOpenDossier}
             />
           ))}
         </div>
@@ -6384,7 +6386,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin }) {
 
 // Une carte = un PDF en cours de tri. États : queued → analyzing → ready → confirmed.
 // (saving = entre ready et confirmed, le temps de l'upload bucket.)
-function TriFactureCard({ item, dossiers, onPick, onManualPick, onConfirm, onSkip, onRetry, onRemove }) {
+function TriFactureCard({ item, dossiers, onPick, onManualPick, onConfirm, onSkip, onRetry, onRemove, onOpenDossier }) {
   const e = item.extracted || {};
   const m = item.matching || { proposals: [], notes: '' };
   const proposals = m.proposals || [];
@@ -6648,10 +6650,20 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onConfirm, onSki
             </div>
           )}
 
-          {/* Confirmé : rappel + bouton ouvrir le dossier */}
+          {/* Confirmé : rappel + bouton ouvrir le dossier pour vérifier */}
           {item.status === 'confirmed' && picked && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-[11px] text-emerald-800">
-              ✅ Rattaché à <span className="font-bold">{dossierLabel(picked.localId)}</span> · {picked.type === 'poseurs' ? '🔧 Poseur' : picked.type === 'regies' ? '🤝 Régie' : '📦 Fournisseur'} #{picked.index + 1}
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-[11px] text-emerald-800 flex items-center justify-between gap-2 flex-wrap">
+              <span>
+                ✅ Rattaché à <span className="font-bold">{dossierLabel(picked.localId)}</span> · {picked.type === 'poseurs' ? '🔧 Poseur' : picked.type === 'regies' ? '🤝 Régie' : '📦 Fournisseur'} #{picked.index + 1}
+              </span>
+              {onOpenDossier && (
+                <button
+                  onClick={() => onOpenDossier(picked.localId)}
+                  className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
+                >
+                  👁️ Voir dans le dossier
+                </button>
+              )}
             </div>
           )}
         </div>
