@@ -6159,7 +6159,73 @@ function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier
 function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onOpenDossier }) {
   const [files, setFiles] = useState([]); // [{ id, file, name, status, extracted, matching, error, pickedIdx }]
   const [dragOver, setDragOver] = useState(false);
+  const [repairing, setRepairing] = useState(null); // null | { done, total, fixed, failed }
   const inputRef = useRef(null);
+
+  // 🩹 Réparation des factures confirmées AVANT le correctif de format : elles
+  // ont été uploadées dans le bucket Supabase avec un `factureFile` = chemin
+  // bucket (ex : facture_fournisseurs_xxx.pdf), que le dossier ne sait pas
+  // relire (il attend un id KV `file:<id>`). On les détecte, on les retélécharge
+  // du bucket, et on les re-stocke au bon format. Les fichiers ne sont PAS
+  // perdus — ils sont bien dans le bucket.
+  const looksLikeBucketPath = (v) => typeof v === 'string' && (/\.(pdf|png|jpe?g|webp)$/i.test(v) || v.startsWith('facture_'));
+  const toRepairCount = useMemo(() => {
+    let n = 0;
+    (dossiers || []).forEach(d => ['fournisseurs', 'regies', 'poseurs'].forEach(k => {
+      (d[k] || []).forEach(p => { if (p && looksLikeBucketPath(p.factureFile)) n += 1; });
+    }));
+    return n;
+  }, [dossiers]);
+
+  const handleRepair = async () => {
+    const targets = [];
+    (dossiers || []).forEach(d => ['fournisseurs', 'regies', 'poseurs'].forEach(k => {
+      (d[k] || []).forEach((p, index) => {
+        if (p && looksLikeBucketPath(p.factureFile)) targets.push({ localId: d.localId, type: k, index, path: p.factureFile });
+      });
+    }));
+    if (targets.length === 0) { alert('Aucune facture à réparer ✅'); return; }
+    setRepairing({ done: 0, total: targets.length, fixed: 0, failed: 0 });
+    const remap = {}; // `${localId}::${type}::${index}` -> nouvel id KV
+    for (const t of targets) {
+      try {
+        const { url, error } = await getSignedUrl(t.path, 3600);
+        if (error || !url) throw new Error('URL signée indisponible');
+        const resp = await fetch(url);
+        if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+        const blob = await resp.blob();
+        const dataUrl = await new Promise((res, rej) => {
+          const r = new FileReader();
+          r.onload = () => res(r.result);
+          r.onerror = () => rej(new Error('lecture blob'));
+          r.readAsDataURL(blob);
+        });
+        const fileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const ok = await window.storage.set(`file:${fileId}`, JSON.stringify({ dataUrl, name: 'facture.pdf', type: blob.type || 'application/pdf' }));
+        if (!ok) throw new Error('stockage KV');
+        remap[`${t.localId}::${t.type}::${t.index}`] = fileId;
+        setRepairing(prev => ({ ...prev, done: prev.done + 1, fixed: prev.fixed + 1 }));
+      } catch (e) {
+        setRepairing(prev => ({ ...prev, done: prev.done + 1, failed: prev.failed + 1 }));
+      }
+    }
+    // Applique le remap aux dossiers.
+    const now = new Date().toISOString();
+    setDossiers(prev => prev.map(d => {
+      let changed = false;
+      const nd = { ...d };
+      ['fournisseurs', 'regies', 'poseurs'].forEach(k => {
+        if (!Array.isArray(d[k])) return;
+        const arr = d[k].map((p, index) => {
+          const key = `${d.localId}::${k}::${index}`;
+          if (remap[key]) { changed = true; return { ...p, factureFile: remap[key] }; }
+          return p;
+        });
+        if (changed) nd[k] = arr;
+      });
+      return changed ? { ...nd, savedAt: now, modifiedAt: now } : d;
+    }));
+  };
 
   const onFilesSelected = (fileList) => {
     const arr = Array.from(fileList || []).filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
@@ -6248,12 +6314,20 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onO
       const ok = window.confirm(`⚠️ ${targetLine.nom} a déjà une facture sur ce dossier (${targetDossier.nom || ''} ${targetDossier.prenom || ''}).\n\nRemplacer par celle-ci ?`);
       if (!ok) return;
     }
+    if (item.file && item.file.size > MAX_FILE_SIZE_KV) {
+      setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'ready', error: `Fichier trop lourd (${(item.file.size / 1024 / 1024).toFixed(1)} Mo, max ${(MAX_FILE_SIZE_KV / 1024 / 1024).toFixed(1)} Mo).` } : x));
+      return;
+    }
     setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'saving' } : x));
     try {
-      // 1️⃣ Upload du PDF dans le bucket Supabase.
-      const fileId = `facture_${prop.type}_${prop.localId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      const { path, error: upErr } = await uploadFileToBucket(item.file, fileId);
-      if (upErr || !path) throw new Error(upErr?.message || 'Upload bucket échoué');
+      // 1️⃣ Stockage du PDF AU MÊME FORMAT que l'upload manuel d'une facture
+      // (FactureFileInput) : base64 dans le storage KV sous `file:<id>`, et
+      // `factureFile = id`. C'est CE format que le dossier sait relire. Un
+      // upload bucket (path) ne serait jamais retrouvé → "Fichier introuvable".
+      const dataUrl = await readFileAsDataURL(item.file);
+      const fileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const ok = await window.storage.set(`file:${fileId}`, JSON.stringify({ dataUrl, name: item.file.name, type: item.file.type || 'application/pdf' }));
+      if (!ok) throw new Error('Échec du stockage du fichier (storage KV).');
 
       // 2️⃣ Met à jour le dossier ciblé.
       const e = item.extracted || {};
@@ -6265,7 +6339,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onO
         if (!arr[prop.index]) return d;
         arr[prop.index] = {
           ...arr[prop.index],
-          factureFile: path,
+          factureFile: fileId,
           factureNo: arr[prop.index].factureNo || e.factureNo || '',
           bl: arr[prop.index].bl || e.bl || '',
           tauxTva: (typeof e.tauxTva === 'number') ? e.tauxTva : (arr[prop.index].tauxTva ?? undefined),
@@ -6273,7 +6347,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onO
         return { ...d, [arrKey]: arr, savedAt: now, modifiedAt: now, modifiedBy: '[tri-factures]' };
       }));
 
-      setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'confirmed', savedPath: path } : x));
+      setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'confirmed', savedPath: fileId } : x));
     } catch (e) {
       setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'ready', error: `Sauvegarde : ${e.message}` } : x));
     }
@@ -6315,7 +6389,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onO
               Tri factures prestataires
             </h2>
             <p className="text-xs text-fuchsia-700 mt-1">
-              Drag&drop des PDFs de factures (poseur / régie / fournisseur). L'IA lit chaque facture et propose le dossier à rattacher. Tu confirmes, le PDF est uploadé et le dossier sort de "Factures manquantes".
+              Drag&drop des PDFs de factures (poseur / régie / fournisseur). L'IA lit chaque facture et propose le dossier à rattacher. Tu confirmes, le PDF est enregistré sur la ligne du prestataire et le dossier sort de "Factures manquantes".
             </p>
           </div>
           {stats.total > 0 && (
@@ -6329,6 +6403,31 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onO
           )}
         </div>
       </div>
+
+      {/* 🩹 Bandeau réparation — visible seulement s'il reste des factures
+          rattachées AVANT le correctif de format (fichier dans le bucket mais
+          pas relisible par le dossier). */}
+      {(toRepairCount > 0 || repairing) && (
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-center justify-between gap-3 flex-wrap">
+          <div className="text-xs text-amber-800">
+            <div className="font-bold">🩹 {toRepairCount} facture{toRepairCount > 1 ? 's' : ''} rattachée{toRepairCount > 1 ? 's' : ''} à réparer</div>
+            <div className="mt-0.5">Des factures confirmées avant la correction sont stockées dans l'ancien format — leur PDF n'est pas visible dans le dossier. Clique pour les récupérer (les fichiers ne sont pas perdus).</div>
+            {repairing && (
+              <div className="mt-1 font-semibold">
+                {repairing.done}/{repairing.total} traitées · ✅ {repairing.fixed} réparées{repairing.failed > 0 ? ` · ⚠️ ${repairing.failed} échecs` : ''}
+                {repairing.done === repairing.total && ' — terminé !'}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleRepair}
+            disabled={repairing && repairing.done < repairing.total}
+            className="px-3 py-2 bg-amber-600 hover:bg-amber-700 disabled:bg-amber-300 text-white rounded-xl text-xs font-bold whitespace-nowrap"
+          >
+            {repairing && repairing.done < repairing.total ? '⏳ Réparation…' : '🩹 Réparer les factures'}
+          </button>
+        </div>
+      )}
 
       {/* Zone drag&drop */}
       <div
