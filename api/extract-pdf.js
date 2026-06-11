@@ -230,6 +230,42 @@ function hasFactureLine(p) {
   return !!(p?.factureFile || p?.facturePdfUrl || p?.factureExternalUrl);
 }
 
+// 🎯 Match DIRECT par n° de facture — beaucoup de lignes prestataires ont
+// déjà leur factureNo saisi (importé du sheet) sans le PDF attaché. Si le
+// numéro extrait du PDF correspond exactement à un factureNo connu, c'est
+// LE match : pas besoin d'IA, confiance quasi totale.
+// Normalisation : uppercase + alphanumérique seul (FAC-2026-0711 ≡ fac 2026 0711).
+function normalizeFactureNo(s) {
+  return String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+}
+
+function findByFactureNo(dossiers, extracted) {
+  const target = normalizeFactureNo(extracted?.factureNo);
+  // Trop court = trop de collisions possibles (ex : '12') → on ne tente pas.
+  if (target.length < 4) return [];
+  const out = [];
+  for (const d of dossiers || []) {
+    if (!d) continue;
+    const scan = (type, arr) => {
+      (arr || []).forEach((p, index) => {
+        if (!p || !p.nom || !p.factureNo) return;
+        if (normalizeFactureNo(p.factureNo) !== target) return;
+        out.push({
+          localId: String(d.localId || ''),
+          type,
+          index,
+          confidence: 0.99,
+          reasoning: `N° de facture identique (${p.factureNo} — ${p.nom})${hasFactureLine(p) ? ' ⚠️ un PDF est déjà attaché à cette ligne' : ''}`,
+        });
+      });
+    };
+    scan('fournisseurs', d.fournisseurs);
+    scan('regies', d.regies);
+    scan('poseurs', d.poseurs);
+  }
+  return out.slice(0, 3);
+}
+
 // Construit la liste compacte des candidats à envoyer à Claude.
 // Ne garde que les dossiers posés (statutPose === 'visite_ok') où au moins
 // 1 prestataire correspondant au fournisseur extrait n'a pas encore de facture.
@@ -326,10 +362,11 @@ ${aliasMode ? `⚠️ MODE ALIAS : l'émetteur de la facture ("${extracted.fourn
 - Chaque candidat est un dossier + des lignes prestataires (poseurs/régies/fournisseurs) sans facture.
 - Tu choisis la meilleure combinaison (localId, type, index) — pas juste le dossier, aussi la BONNE LIGNE.
 - Critères forts par ordre de priorité :
-  1. Nom du prestataire (lines[*].nom) qui correspond exactement à l'émetteur de la facture.
-  2. Montant : si lines[*].htCustom est proche du montantHt facturé → fort indice.
-  3. Date : dossier dont dateInsta est PROCHE (avant ou même peu après) de la date facture.
-  4. Cohérence société (CRM societe vs ce que tu vois sur la facture si visible).
+  1. N° DE FACTURE : si lines[*].factureNo ressemble au n° extrait (mêmes chiffres, format légèrement différent) → match quasi certain, confidence ≥ 0.95.
+  2. Nom du prestataire (lines[*].nom) qui correspond exactement à l'émetteur de la facture.
+  3. Montant : si lines[*].htCustom est proche du montantHt facturé → fort indice.
+  4. Date : dossier dont dateInsta est PROCHE (avant ou même peu après) de la date facture.
+  5. Cohérence société (CRM societe vs ce que tu vois sur la facture si visible).
 - Si plusieurs candidats sont quasi-équivalents, retourne-les tous (max 3), triés par confidence.
 - Si AUCUN candidat ne convient (confidence < 0.4 partout), retourne proposals: [] et explique dans notes.
 - Réponds UNIQUEMENT au format JSON demandé. Aucune autre sortie.`;
@@ -488,6 +525,24 @@ export default async function handler(req, res) {
           return json(res, 200, { data: parsed, matching: { proposals: [], notes: 'Aucun dossier dans le CRM.' } });
         }
         const dossiers = JSON.parse(row.value);
+
+        // 1️⃣ Match direct par n° de facture (déterministe, gratuit, prioritaire).
+        const direct = findByFactureNo(dossiers, parsed);
+        if (direct.length > 0) {
+          return json(res, 200, {
+            data: parsed,
+            matching: {
+              proposals: direct,
+              notes: direct.length === 1
+                ? 'N° de facture retrouvé dans le CRM — match certain.'
+                : `${direct.length} lignes portent ce n° de facture — choisis la bonne.`,
+              direct: true,
+              candidatesCount: direct.length,
+            },
+          });
+        }
+
+        // 2️⃣ Sinon, matching IA par nom de prestataire (puis montant + date).
         let candidates = buildCandidates(dossiers, parsed);
         let aliasMode = false;
         if (candidates.length === 0) {
