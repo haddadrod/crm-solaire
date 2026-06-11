@@ -22770,8 +22770,13 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
     },
     facturesManquantes: {
       title: '🧾 Factures manquantes (compta)',
-      subtitle: 'Dossiers posés où les factures poseur / régie / fournisseur ne sont pas encore reçues. Clic 📲 = relance WhatsApp directe.',
+      subtitle: 'Chaque ligne = un dossier posé ; les pastilles sont les factures poseur / régie / fournisseur pas encore reçues. Clic 📲 = relance WhatsApp directe.',
       items: dashboard.rappelsFacturesManquantes || [],
+      // Le badge d'en-tête compte les FACTURES (somme des pastilles), pas les
+      // dossiers — cohérent avec le chip d'alertes et le compteur de l'onglet
+      // Tri factures. Sans ça, l'en-tête montrait le nb de dossiers (ex : 519)
+      // alors que le chip montrait le nb de factures (ex : 1115) → confusion.
+      headerCount: (dashboard.rappelsFacturesManquantes || []).reduce((s, r) => s + (r.total || 0), 0),
       gradient: 'from-fuchsia-500 to-pink-500',
       bgHeader: 'from-fuchsia-50 to-pink-50',
       borderColor: 'border-fuchsia-200',
@@ -22882,7 +22887,7 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-sm font-bold px-3 py-1 rounded-full bg-gradient-to-r ${cfg.gradient} text-white shadow-sm`}>
-              {sortedItems.length}
+              {cfg.headerCount != null ? cfg.headerCount : sortedItems.length}
             </span>
             <button onClick={onClose} className="p-2 hover:bg-white/60 rounded-lg" title="Fermer">
               <X className="w-5 h-5 text-slate-600" />
