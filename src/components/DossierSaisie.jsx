@@ -6221,6 +6221,16 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin }) {
     }
   };
 
+  // Rattachement choisi à la main (recherche dossier) : on l'ajoute aux
+  // propositions et on le sélectionne — même circuit de confirmation ensuite.
+  const handleManualPick = (id, prop) => {
+    setFiles(prev => prev.map(x => {
+      if (x.id !== id) return x;
+      const proposals = [...((x.matching && x.matching.proposals) || []), prop];
+      return { ...x, matching: { ...(x.matching || {}), proposals }, pickedIdx: proposals.length - 1 };
+    }));
+  };
+
   const handleConfirm = async (item) => {
     if (item.pickedIdx == null) {
       alert('Choisis d\'abord une proposition.');
@@ -6228,6 +6238,15 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin }) {
     }
     const prop = item.matching?.proposals?.[item.pickedIdx];
     if (!prop) return;
+    // ⚠️ Garde-fou : si la ligne ciblée a déjà une facture (possible via le
+    // choix manuel — les propositions IA excluent déjà ces lignes), on
+    // demande confirmation explicite avant de remplacer.
+    const targetDossier = dossiers.find(d => d.localId === prop.localId);
+    const targetLine = targetDossier?.[prop.type]?.[prop.index];
+    if (targetLine && (targetLine.factureFile || targetLine.facturePdfUrl || targetLine.factureExternalUrl)) {
+      const ok = window.confirm(`⚠️ ${targetLine.nom} a déjà une facture sur ce dossier (${targetDossier.nom || ''} ${targetDossier.prenom || ''}).\n\nRemplacer par celle-ci ?`);
+      if (!ok) return;
+    }
     setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'saving' } : x));
     try {
       // 1️⃣ Upload du PDF dans le bucket Supabase.
@@ -6350,6 +6369,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin }) {
               item={item}
               dossiers={dossiers}
               onPick={(idx) => setFiles(prev => prev.map(x => x.id === item.id ? { ...x, pickedIdx: idx } : x))}
+              onManualPick={(prop) => handleManualPick(item.id, prop)}
               onConfirm={() => handleConfirm(item)}
               onSkip={() => handleSkip(item.id)}
               onRetry={() => handleRetry(item.id)}
@@ -6364,11 +6384,34 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin }) {
 
 // Une carte = un PDF en cours de tri. États : queued → analyzing → ready → confirmed.
 // (saving = entre ready et confirmed, le temps de l'upload bucket.)
-function TriFactureCard({ item, dossiers, onPick, onConfirm, onSkip, onRetry, onRemove }) {
+function TriFactureCard({ item, dossiers, onPick, onManualPick, onConfirm, onSkip, onRetry, onRemove }) {
   const e = item.extracted || {};
   const m = item.matching || { proposals: [], notes: '' };
   const proposals = m.proposals || [];
   const picked = (item.pickedIdx != null) ? proposals[item.pickedIdx] : null;
+  // 🔍 Recherche manuelle d'un dossier (quand l'IA ne trouve pas, ou propose
+  // faux — ex : prestataire qui facture sous un autre nom commercial).
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualQuery, setManualQuery] = useState('');
+  const [manualDossier, setManualDossier] = useState(null);
+  const manualResults = useMemo(() => {
+    const s = manualQuery.trim().toLowerCase();
+    if (s.length < 2) return [];
+    return dossiers
+      .filter(d => `${d.nom || ''} ${d.prenom || ''} ${d.id || ''}`.toLowerCase().includes(s))
+      .slice(0, 8);
+  }, [manualQuery, dossiers]);
+  // Lignes prestataires du dossier choisi manuellement.
+  const manualLines = useMemo(() => {
+    const d = manualDossier;
+    if (!d) return [];
+    const mk = (type, arr, emoji, label) => (arr || []).map((p, index) => ({ type, index, emoji, label, nom: p?.nom || '', has: !!(p?.factureFile || p?.facturePdfUrl || p?.factureExternalUrl) })).filter(l => l.nom);
+    return [
+      ...mk('poseurs', d.poseurs, '🔧', 'Poseur'),
+      ...mk('regies', d.regies, '🤝', 'Régie'),
+      ...mk('fournisseurs', d.fournisseurs, '📦', 'Fournisseur'),
+    ];
+  }, [manualDossier]);
 
   // Affichage compact d'un dossier candidat à partir de son localId.
   const dossierLabel = (localId) => {
@@ -6491,6 +6534,75 @@ function TriFactureCard({ item, dossiers, onPick, onConfirm, onSkip, onRetry, on
               )}
               {m.notes && proposals.length > 0 && (
                 <div className="text-[10px] text-slate-500 italic px-1">💬 {m.notes}</div>
+              )}
+              {m.aliasMode && proposals.length > 0 && (
+                <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                  ⚠️ L'émetteur « {e.fournisseur || '?'} » ne correspond à aucun prestataire connu — propositions basées sur montant + date uniquement. Vérifie bien avant de confirmer.
+                </div>
+              )}
+
+              {/* 🔍 Choix manuel — cherche n'importe quel dossier et choisis la ligne */}
+              {!manualOpen ? (
+                <button
+                  onClick={() => setManualOpen(true)}
+                  className="text-[11px] font-semibold text-violet-600 hover:text-violet-800 underline px-1"
+                >
+                  🔍 Aucune proposition ne convient ? Chercher un dossier manuellement
+                </button>
+              ) : (
+                <div className="bg-violet-50 border border-violet-200 rounded-lg p-2 space-y-1.5">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-bold text-violet-800">🔍 Rattachement manuel</div>
+                    <button onClick={() => { setManualOpen(false); setManualDossier(null); setManualQuery(''); }} className="text-violet-400 hover:text-violet-700"><X className="w-3.5 h-3.5" /></button>
+                  </div>
+                  {!manualDossier ? (
+                    <>
+                      <input
+                        type="text"
+                        value={manualQuery}
+                        onChange={(ev) => setManualQuery(ev.target.value)}
+                        placeholder="Nom du client ou n° de dossier…"
+                        className="w-full px-2 py-1.5 rounded-lg border border-violet-300 text-xs focus:outline-none focus:ring-2 focus:ring-violet-400"
+                        autoFocus
+                      />
+                      {manualResults.map(d => (
+                        <button
+                          key={d.localId}
+                          onClick={() => setManualDossier(d)}
+                          className="w-full text-left px-2 py-1.5 rounded-lg bg-white hover:bg-violet-100 border border-violet-100 text-[11px] font-semibold text-slate-800"
+                        >
+                          #{d.id || '?'} {d.nom || ''} {d.prenom || ''} {d.dateInsta ? `· posé le ${new Date(d.dateInsta).toLocaleDateString('fr-FR')}` : ''}
+                        </button>
+                      ))}
+                      {manualQuery.trim().length >= 2 && manualResults.length === 0 && (
+                        <div className="text-[10px] text-slate-500 italic px-1">Aucun dossier trouvé.</div>
+                      )}
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-[11px] text-slate-700">
+                        Dossier : <span className="font-bold">#{manualDossier.id || '?'} {manualDossier.nom || ''} {manualDossier.prenom || ''}</span>
+                        <button onClick={() => setManualDossier(null)} className="ml-2 text-violet-600 underline text-[10px]">changer</button>
+                      </div>
+                      <div className="text-[10px] text-slate-500">Choisis la ligne à laquelle rattacher la facture :</div>
+                      {manualLines.length === 0 ? (
+                        <div className="text-[10px] text-amber-700">Ce dossier n'a aucun prestataire renseigné — ajoute-le d'abord dans le dossier.</div>
+                      ) : manualLines.map(l => (
+                        <button
+                          key={`${l.type}:${l.index}`}
+                          onClick={() => {
+                            onManualPick({ localId: manualDossier.localId, type: l.type, index: l.index, confidence: 1, reasoning: 'Choix manuel' });
+                            setManualOpen(false); setManualDossier(null); setManualQuery('');
+                          }}
+                          className="w-full text-left px-2 py-1.5 rounded-lg bg-white hover:bg-emerald-50 border border-violet-100 text-[11px] font-semibold text-slate-800 flex items-center justify-between"
+                        >
+                          <span>{l.emoji} {l.label} #{l.index + 1} — {l.nom}</span>
+                          {l.has && <span className="text-[9px] font-bold text-amber-600">⚠️ a déjà une facture</span>}
+                        </button>
+                      ))}
+                    </>
+                  )}
+                </div>
               )}
             </div>
           )}
