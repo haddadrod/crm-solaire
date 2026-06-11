@@ -50,49 +50,54 @@ export default async function handler(req, res) {
     });
   }
 
-  const admin = makeAdmin();
-
-  // Détection du mode bootstrap : on considère qu'il n'y a pas encore d'admin
-  // *effectif* tant qu'aucun user avec role=admin ne s'est connecté au moins
-  // une fois. Cela couvre le cas d'un admin créé par erreur dans Supabase
-  // (orphelin, jamais utilisé) qui empêcherait un user légitime de revendiquer
-  // le rôle. Dès qu'un admin s'est connecté ne serait-ce qu'une fois, le mode
-  // bootstrap se ferme et toutes les routes redeviennent protégées.
-  const { data: listAll, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
-  if (listErr) return json(res, 500, { error: listErr.message });
-  const allUsers = listAll?.users || [];
-  const activeAdmins = allUsers.filter(u => u.user_metadata?.role === 'admin' && u.last_sign_in_at);
-  const isBootstrap = activeAdmins.length === 0;
-
-  // Caller (peut être null si pas connecté ou pas de JWT)
-  const caller = await getCallerUser(req, admin);
-  const isAdmin = !!(caller && caller.user_metadata?.role === 'admin');
-
-  // 👥 Roster d'équipe — liste LIGHT accessible à TOUT utilisateur connecté
-  // (pas seulement les admins). Sert au chat équipe pour afficher la liste
-  // des collègues. On ne renvoie QUE des champs non sensibles : nom affiché,
-  // emoji, rôle. Pas d'email, pas de téléphone, pas d'id. Court-circuite la
-  // garde admin ci-dessous.
-  if (req.method === 'GET' && req.query?.scope === 'roster') {
-    if (!caller) return json(res, 401, { error: 'JWT requis' });
-    const roster = allUsers.map(u => {
-      const m = u.user_metadata || {};
-      return {
-        name: m.display_name || (u.email ? u.email.split('@')[0] : '') || '(sans nom)',
-        emoji: m.emoji || '👤',
-        role: m.role || 'commercial',
-      };
-    }).filter(r => r.name && r.name !== '(sans nom)');
-    return json(res, 200, { roster });
-  }
-
-  // Garde-fou : hors bootstrap, toute opération exige un admin.
-  if (!isBootstrap && !isAdmin) {
-    if (!caller) return json(res, 401, { error: 'JWT requis' });
-    return json(res, 403, { error: 'Forbidden: admin role required' });
-  }
-
+  // ⚠️ TOUT le corps est sous try/catch. Avant, makeAdmin() + listUsers() +
+  // getCallerUser() étaient hors du try : une SUPABASE_URL malformée (typo,
+  // espace, https:// manquant) faisait crasher la fonction AVANT toute réponse
+  // → Vercel renvoyait un 500 non-JSON et l'UI affichait juste « Erreur 500 »
+  // sans le vrai motif. Maintenant on renvoie toujours un JSON exploitable.
   try {
+    const admin = makeAdmin();
+
+    // Détection du mode bootstrap : on considère qu'il n'y a pas encore d'admin
+    // *effectif* tant qu'aucun user avec role=admin ne s'est connecté au moins
+    // une fois. Cela couvre le cas d'un admin créé par erreur dans Supabase
+    // (orphelin, jamais utilisé) qui empêcherait un user légitime de revendiquer
+    // le rôle. Dès qu'un admin s'est connecté ne serait-ce qu'une fois, le mode
+    // bootstrap se ferme et toutes les routes redeviennent protégées.
+    const { data: listAll, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
+    if (listErr) return json(res, 500, { error: listErr.message });
+    const allUsers = listAll?.users || [];
+    const activeAdmins = allUsers.filter(u => u.user_metadata?.role === 'admin' && u.last_sign_in_at);
+    const isBootstrap = activeAdmins.length === 0;
+
+    // Caller (peut être null si pas connecté ou pas de JWT)
+    const caller = await getCallerUser(req, admin);
+    const isAdmin = !!(caller && caller.user_metadata?.role === 'admin');
+
+    // 👥 Roster d'équipe — liste LIGHT accessible à TOUT utilisateur connecté
+    // (pas seulement les admins). Sert au chat équipe pour afficher la liste
+    // des collègues. On ne renvoie QUE des champs non sensibles : nom affiché,
+    // emoji, rôle. Pas d'email, pas de téléphone, pas d'id. Court-circuite la
+    // garde admin ci-dessous.
+    if (req.method === 'GET' && req.query?.scope === 'roster') {
+      if (!caller) return json(res, 401, { error: 'JWT requis' });
+      const roster = allUsers.map(u => {
+        const m = u.user_metadata || {};
+        return {
+          name: m.display_name || (u.email ? u.email.split('@')[0] : '') || '(sans nom)',
+          emoji: m.emoji || '👤',
+          role: m.role || 'commercial',
+        };
+      }).filter(r => r.name && r.name !== '(sans nom)');
+      return json(res, 200, { roster });
+    }
+
+    // Garde-fou : hors bootstrap, toute opération exige un admin.
+    if (!isBootstrap && !isAdmin) {
+      if (!caller) return json(res, 401, { error: 'JWT requis' });
+      return json(res, 403, { error: 'Forbidden: admin role required' });
+    }
+
     if (req.method === 'GET') {
       // En bootstrap, on renvoie aussi la liste (utile pour que l'UI affiche
       // l'état "aucun admin yet" et propose le bouton de promotion).
@@ -192,6 +197,14 @@ export default async function handler(req, res) {
     res.setHeader('Allow', 'GET, POST, PATCH, DELETE');
     return json(res, 405, { error: 'Method Not Allowed' });
   } catch (e) {
-    return json(res, 500, { error: e.message || 'Erreur serveur' });
+    // Message actionnable pour les erreurs de connexion Supabase : c'est
+    // presque toujours une variable d'env Vercel mal remplie sur CE projet.
+    const msg = e?.message || 'Erreur serveur';
+    const looksLikeConnIssue = /fetch failed|invalid url|enotfound|econnrefused|getaddrinfo/i.test(msg);
+    return json(res, 500, {
+      error: looksLikeConnIssue
+        ? `Connexion Supabase impossible (${msg}) — vérifie SUPABASE_URL et SUPABASE_SERVICE_KEY dans les variables Vercel de ce projet, puis Redeploy.`
+        : msg,
+    });
   }
 }
