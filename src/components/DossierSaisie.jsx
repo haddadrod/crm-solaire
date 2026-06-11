@@ -1407,7 +1407,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const initialTabFromHash = (typeof window !== 'undefined' && window.location.hash)
     ? window.location.hash.replace(/^#/, '').split('/')[0] || 'dossiers'
     : 'dossiers';
-  const VALID_TABS = ['dossiers', 'archives', 'kanban', 'calendrier', 'paiements', 'dashboard', 'reglages'];
+  const VALID_TABS = ['dossiers', 'archives', 'kanban', 'calendrier', 'paiements', 'tri-factures', 'dashboard', 'reglages'];
   const [activeTab, setActiveTab] = useState(VALID_TABS.includes(initialTabFromHash) ? initialTabFromHash : 'dossiers');
   // 📦 Sélection multiple sur l'onglet Archivés — pour désarchiver en masse
   // sans cliquer un par un. Set des localId cochés.
@@ -2542,6 +2542,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     if (activeTab === 'paiements' && !permissions.voirRapportPaiements) setActiveTab('dossiers');
     if (activeTab === 'dashboard' && !permissions.voirDashboard) setActiveTab('dossiers');
     if (activeTab === 'reglages' && !permissions.voirReglages) setActiveTab('dossiers');
+    if (activeTab === 'tri-factures' && !(isAdmin || currentUserRole === 'compta' || currentUserRole === 'envoi_finance')) setActiveTab('dossiers');
     // Vide la sélection multi-archivage dès qu'on quitte l'onglet Archivés.
     if (activeTab !== 'archives' && selectedArchiveIds.size > 0) setSelectedArchiveIds(new Set());
   }, [permissions, activeTab]);
@@ -4241,9 +4242,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
         // manquent (la compta peut avoir besoin de les récupérer même après).
         if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') return;
       }
-      const poseursManquants = (d.poseurs || []).filter(p => p.nom && !p.factureFile).map(p => p.nom);
-      const regiesManquantes = (d.regies || []).filter(r => r.nom && !r.factureFile).map(r => r.nom);
-      const fournisseursManquants = (d.fournisseurs || []).filter(f => f.nom && !f.factureFile).map(f => f.nom);
+      // 🧾 "Facture présente" = soit un PDF uploadé dans le CRM (factureFile),
+      // soit un lien externe (facturePdfUrl, factureExternalUrl → ex : Drive).
+      // Avant on ne checkait que factureFile, donc les liens Drive collés à
+      // la main restaient comptés comme "manquants" — bug.
+      const hasFacture = (p) => !!(p?.factureFile || p?.facturePdfUrl || p?.factureExternalUrl);
+      const poseursManquants = (d.poseurs || []).filter(p => p.nom && !hasFacture(p)).map(p => p.nom);
+      const regiesManquantes = (d.regies || []).filter(r => r.nom && !hasFacture(r)).map(r => r.nom);
+      const fournisseursManquants = (d.fournisseurs || []).filter(f => f.nom && !hasFacture(f)).map(f => f.nom);
       const total = poseursManquants.length + regiesManquantes.length + fournisseursManquants.length;
       if (total === 0) return;
       const ref = d.dateInsta || d.savedAt;
@@ -4743,6 +4749,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
             <TabButton active={activeTab === 'kanban'} onClick={() => setActiveTab('kanban')} icon={LayoutGrid} label="Kanban" color="from-violet-500 to-fuchsia-500" />
             <TabButton active={activeTab === 'calendrier'} onClick={() => setActiveTab('calendrier')} icon={Calendar} label="Calendrier" color="from-orange-500 to-red-500" />
             {permissions.voirRapportPaiements && <TabButton active={activeTab === 'paiements'} onClick={() => setActiveTab('paiements')} icon={Euro} label="Rapport paiements" color="from-emerald-500 to-teal-500" />}
+            {(isAdmin || currentUserRole === 'compta' || currentUserRole === 'envoi_finance') && (
+              <TabButton
+                active={activeTab === 'tri-factures'}
+                onClick={() => setActiveTab('tri-factures')}
+                icon={Upload}
+                label="Tri factures"
+                color="from-fuchsia-500 to-pink-500"
+                badge={(dashboard.rappelsFacturesManquantes || []).length > 0 ? `🧾 ${(dashboard.rappelsFacturesManquantes || []).length}` : null}
+                badgeColor="bg-fuchsia-100 text-fuchsia-700"
+              />
+            )}
             {permissions.voirDashboard && <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={BarChart3} label="Tableau de bord" color="from-blue-500 to-cyan-500" badge={(dashboard.rappelsClient.length + dashboard.rappelsPrestataires.length) > 0 ? `🔔 ${dashboard.rappelsClient.length + dashboard.rappelsPrestataires.length}` : null} badgeColor="bg-amber-100 text-amber-700" />}
             {permissions.voirReglages && <TabButton active={activeTab === 'reglages'} onClick={() => setActiveTab('reglages')} icon={Settings} label="Réglages" color="from-slate-600 to-slate-700" />}
           </div>
@@ -5159,6 +5176,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
             }));
           }}
         />}
+
+        {/* TRI FACTURES — compta drag&drop ses PDFs, l'IA propose le dossier */}
+        {activeTab === 'tri-factures' && (isAdmin || currentUserRole === 'compta' || currentUserRole === 'envoi_finance') && (
+          <TriFacturesPanel
+            dossiers={dossiers}
+            setDossiers={setDossiers}
+            currentUserRole={currentUserRole}
+            isAdmin={isAdmin}
+          />
+        )}
 
         {/* DASHBOARD */}
         {activeTab === 'dashboard' && <DashboardView dossiers={dossiersEnriched} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} onTogglePresta={handleTogglePresta} onMarkPrestaPaye={handleMarkPrestaPaye} />}
@@ -6106,6 +6133,391 @@ function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier
         {uploading ? '⏳ Téléversement…' : label}
       </button>
     </>
+  );
+}
+
+// ====================== TRI FACTURES (compta) ======================
+//
+// Onglet "📥 Tri factures" : la compta drag&drop ses PDFs de factures
+// prestataires (poseur / régie / fournisseur). Pour chaque PDF :
+//   1. Claude lit la facture → extrait fournisseur, n°, date, HT/TTC, TVA.
+//   2. Claude propose 1 à 3 rattachements (dossier × ligne prestataire) basés
+//      sur le nom du fournisseur + montant + proximité date.
+//   3. Compta confirme → le PDF est uploadé dans le bucket Supabase, et la
+//      ligne prestataire correspondante reçoit factureFile + factureNo + bl
+//      + tauxTva. Le dossier sort automatiquement de "Factures manquantes".
+//
+// Pas d'écrasement auto : si une proposition pointe vers une ligne qui a déjà
+// une facture, on alerte et on demande confirmation explicite (mais en
+// pratique buildCandidates côté API exclut déjà ces lignes — donc rare).
+function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin }) {
+  const [files, setFiles] = useState([]); // [{ id, file, name, status, extracted, matching, error, pickedIdx }]
+  const [dragOver, setDragOver] = useState(false);
+  const inputRef = useRef(null);
+
+  const onFilesSelected = (fileList) => {
+    const arr = Array.from(fileList || []).filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
+    if (arr.length === 0) return;
+    const newItems = arr.map(f => ({
+      id: `tf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      file: f,
+      name: f.name,
+      sizeKb: Math.round(f.size / 1024),
+      status: 'queued',
+      extracted: null,
+      matching: null,
+      error: null,
+      pickedIdx: null,
+    }));
+    setFiles(prev => [...newItems, ...prev]);
+    // Lance l'analyse en série (évite de saturer l'API IA si on drop 50 PDFs).
+    runAnalysis(newItems);
+  };
+
+  const runAnalysis = async (items) => {
+    for (const it of items) {
+      try {
+        setFiles(prev => prev.map(x => x.id === it.id ? { ...x, status: 'analyzing' } : x));
+        const base64 = await new Promise((resolve, reject) => {
+          const r = new FileReader();
+          r.onload = () => {
+            const result = r.result || '';
+            const idx = String(result).indexOf('base64,');
+            resolve(idx >= 0 ? String(result).slice(idx + 7) : '');
+          };
+          r.onerror = () => reject(new Error('Lecture fichier échouée'));
+          r.readAsDataURL(it.file);
+        });
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers = { 'Content-Type': 'application/json' };
+        if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+        const res = await fetch('/api/extract-pdf', {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            type: 'facture',
+            imageBase64: base64,
+            mediaType: 'application/pdf',
+            withMatch: true,
+          }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+        setFiles(prev => prev.map(x => x.id === it.id ? {
+          ...x,
+          status: 'ready',
+          extracted: payload.data || {},
+          matching: payload.matching || { proposals: [], notes: '' },
+          pickedIdx: (payload.matching?.proposals?.length || 0) > 0 ? 0 : null,
+        } : x));
+      } catch (e) {
+        setFiles(prev => prev.map(x => x.id === it.id ? { ...x, status: 'error', error: e.message } : x));
+      }
+    }
+  };
+
+  const handleConfirm = async (item) => {
+    if (item.pickedIdx == null) {
+      alert('Choisis d\'abord une proposition.');
+      return;
+    }
+    const prop = item.matching?.proposals?.[item.pickedIdx];
+    if (!prop) return;
+    setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'saving' } : x));
+    try {
+      // 1️⃣ Upload du PDF dans le bucket Supabase.
+      const fileId = `facture_${prop.type}_${prop.localId}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const { path, error: upErr } = await uploadFileToBucket(item.file, fileId);
+      if (upErr || !path) throw new Error(upErr?.message || 'Upload bucket échoué');
+
+      // 2️⃣ Met à jour le dossier ciblé.
+      const e = item.extracted || {};
+      const now = new Date().toISOString();
+      setDossiers(prev => prev.map(d => {
+        if (d.localId !== prop.localId) return d;
+        const arrKey = prop.type; // 'fournisseurs' | 'regies' | 'poseurs'
+        const arr = Array.isArray(d[arrKey]) ? [...d[arrKey]] : [];
+        if (!arr[prop.index]) return d;
+        arr[prop.index] = {
+          ...arr[prop.index],
+          factureFile: path,
+          factureNo: arr[prop.index].factureNo || e.factureNo || '',
+          bl: arr[prop.index].bl || e.bl || '',
+          tauxTva: (typeof e.tauxTva === 'number') ? e.tauxTva : (arr[prop.index].tauxTva ?? undefined),
+        };
+        return { ...d, [arrKey]: arr, savedAt: now, modifiedAt: now, modifiedBy: '[tri-factures]' };
+      }));
+
+      setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'confirmed', savedPath: path } : x));
+    } catch (e) {
+      setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'ready', error: `Sauvegarde : ${e.message}` } : x));
+    }
+  };
+
+  const handleSkip = (id) => {
+    setFiles(prev => prev.map(x => x.id === id ? { ...x, status: 'skipped' } : x));
+  };
+
+  const handleRemove = (id) => {
+    setFiles(prev => prev.filter(x => x.id !== id));
+  };
+
+  const handleRetry = (id) => {
+    const it = files.find(f => f.id === id);
+    if (!it) return;
+    runAnalysis([it]);
+  };
+
+  const stats = useMemo(() => {
+    return {
+      total: files.length,
+      analyzing: files.filter(f => f.status === 'analyzing' || f.status === 'queued').length,
+      ready: files.filter(f => f.status === 'ready').length,
+      confirmed: files.filter(f => f.status === 'confirmed').length,
+      error: files.filter(f => f.status === 'error').length,
+      skipped: files.filter(f => f.status === 'skipped').length,
+    };
+  }, [files]);
+
+  return (
+    <div className="space-y-4">
+      {/* En-tête + stats */}
+      <div className="bg-gradient-to-r from-fuchsia-50 to-pink-50 border border-fuchsia-200 rounded-2xl p-4">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-lg font-bold text-fuchsia-900 flex items-center gap-2">
+              <Upload className="w-5 h-5" />
+              Tri factures prestataires
+            </h2>
+            <p className="text-xs text-fuchsia-700 mt-1">
+              Drag&drop des PDFs de factures (poseur / régie / fournisseur). L'IA lit chaque facture et propose le dossier à rattacher. Tu confirmes, le PDF est uploadé et le dossier sort de "Factures manquantes".
+            </p>
+          </div>
+          {stats.total > 0 && (
+            <div className="flex items-center gap-2 text-[11px] font-bold flex-wrap">
+              {stats.analyzing > 0 && <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg">⏳ {stats.analyzing} en cours</span>}
+              {stats.ready > 0 && <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-lg">🤔 {stats.ready} à valider</span>}
+              {stats.confirmed > 0 && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg">✅ {stats.confirmed} OK</span>}
+              {stats.skipped > 0 && <span className="px-2 py-1 bg-slate-100 text-slate-700 rounded-lg">⏭️ {stats.skipped} ignorés</span>}
+              {stats.error > 0 && <span className="px-2 py-1 bg-rose-100 text-rose-700 rounded-lg">⚠️ {stats.error} erreurs</span>}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Zone drag&drop */}
+      <div
+        onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setDragOver(false);
+          onFilesSelected(e.dataTransfer.files);
+        }}
+        onClick={() => inputRef.current?.click()}
+        className={`rounded-2xl border-2 border-dashed cursor-pointer p-8 text-center transition ${
+          dragOver ? 'border-fuchsia-500 bg-fuchsia-50' : 'border-slate-300 bg-slate-50 hover:bg-slate-100'
+        }`}
+      >
+        <Upload className={`w-10 h-10 mx-auto ${dragOver ? 'text-fuchsia-500' : 'text-slate-400'}`} />
+        <div className="mt-2 font-bold text-slate-700">Drag&drop des PDFs ici</div>
+        <div className="text-xs text-slate-500 mt-1">… ou clique pour choisir des fichiers. Tu peux en sélectionner plusieurs d'un coup.</div>
+        <input
+          type="file"
+          accept="application/pdf,.pdf"
+          multiple
+          ref={inputRef}
+          className="hidden"
+          onChange={(e) => { onFilesSelected(e.target.files); e.target.value = ''; }}
+        />
+      </div>
+
+      {/* Liste des cartes */}
+      {files.length === 0 ? (
+        <div className="text-center text-xs text-slate-400 py-6 italic">
+          Aucune facture en cours de tri. Dépose des PDFs ci-dessus pour commencer.
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {files.map(item => (
+            <TriFactureCard
+              key={item.id}
+              item={item}
+              dossiers={dossiers}
+              onPick={(idx) => setFiles(prev => prev.map(x => x.id === item.id ? { ...x, pickedIdx: idx } : x))}
+              onConfirm={() => handleConfirm(item)}
+              onSkip={() => handleSkip(item.id)}
+              onRetry={() => handleRetry(item.id)}
+              onRemove={() => handleRemove(item.id)}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Une carte = un PDF en cours de tri. États : queued → analyzing → ready → confirmed.
+// (saving = entre ready et confirmed, le temps de l'upload bucket.)
+function TriFactureCard({ item, dossiers, onPick, onConfirm, onSkip, onRetry, onRemove }) {
+  const e = item.extracted || {};
+  const m = item.matching || { proposals: [], notes: '' };
+  const proposals = m.proposals || [];
+  const picked = (item.pickedIdx != null) ? proposals[item.pickedIdx] : null;
+
+  // Affichage compact d'un dossier candidat à partir de son localId.
+  const dossierLabel = (localId) => {
+    const d = dossiers.find(x => x.localId === localId);
+    if (!d) return localId;
+    const date = d.dateInsta ? new Date(d.dateInsta).toLocaleDateString('fr-FR') : '?';
+    return `#${d.id || '?'} ${d.nom || ''} ${d.prenom || ''}`.trim() + ` · posé le ${date}`;
+  };
+
+  // Couleur d'état pour la bordure gauche de la carte.
+  const stateColor = {
+    queued: 'border-slate-200',
+    analyzing: 'border-blue-400 bg-blue-50/30',
+    ready: 'border-amber-400',
+    saving: 'border-amber-400',
+    confirmed: 'border-emerald-400 bg-emerald-50/30',
+    skipped: 'border-slate-300 bg-slate-50 opacity-60',
+    error: 'border-rose-400 bg-rose-50/30',
+  }[item.status] || 'border-slate-200';
+
+  return (
+    <div className={`rounded-xl border-l-4 ${stateColor} bg-white border border-slate-200 p-3 shadow-sm`}>
+      {/* En-tête : nom du fichier + statut + close */}
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0 flex-1">
+          <div className="text-sm font-bold text-slate-800 truncate" title={item.name}>
+            📄 {item.name}
+          </div>
+          <div className="text-[10px] text-slate-500">{item.sizeKb} Ko</div>
+        </div>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {item.status === 'analyzing' && <span className="text-[10px] font-bold text-blue-600 animate-pulse">⏳ Analyse IA…</span>}
+          {item.status === 'saving' && <span className="text-[10px] font-bold text-amber-600 animate-pulse">💾 Sauvegarde…</span>}
+          {item.status === 'confirmed' && <span className="text-[10px] font-bold text-emerald-600">✅ Rattaché</span>}
+          {item.status === 'skipped' && <span className="text-[10px] font-bold text-slate-500">⏭️ Mis de côté</span>}
+          {item.status === 'error' && <span className="text-[10px] font-bold text-rose-600">⚠️ Erreur</span>}
+          <button onClick={onRemove} className="text-slate-400 hover:text-rose-600" title="Retirer cette carte">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Erreur */}
+      {item.status === 'error' && (
+        <div className="mt-2 bg-rose-50 border border-rose-200 rounded-lg p-2 text-[11px] text-rose-700">
+          <div className="font-bold">Échec de l'analyse :</div>
+          <div className="mt-1">{item.error || 'Erreur inconnue'}</div>
+          <button onClick={onRetry} className="mt-2 px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold">
+            🔄 Réessayer
+          </button>
+        </div>
+      )}
+
+      {/* Extraction + propositions */}
+      {(item.status === 'ready' || item.status === 'saving' || item.status === 'confirmed') && (
+        <div className="mt-3 space-y-2">
+          {/* Bloc extraction */}
+          <div className="bg-slate-50 rounded-lg p-2 text-[11px]">
+            <div className="font-bold text-slate-700 mb-1">Lecture IA :</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-x-3 gap-y-0.5 text-slate-700">
+              <div><span className="text-slate-500">Émetteur :</span> <span className="font-semibold">{e.fournisseur || '—'}</span></div>
+              <div><span className="text-slate-500">N° facture :</span> <span className="font-semibold">{e.factureNo || '—'}</span></div>
+              <div><span className="text-slate-500">Date :</span> <span className="font-semibold">{e.dateFacture || '—'}</span></div>
+              <div><span className="text-slate-500">HT :</span> <span className="font-semibold">{e.montantHt ? `${e.montantHt} €` : '—'}</span></div>
+              <div><span className="text-slate-500">TTC :</span> <span className="font-semibold">{e.montantTtc ? `${e.montantTtc} €` : '—'}</span></div>
+              <div><span className="text-slate-500">TVA :</span> <span className="font-semibold">{e.tauxTva != null ? `${e.tauxTva} %` : '—'}</span></div>
+              {e.bl && <div className="col-span-full"><span className="text-slate-500">BL :</span> <span className="font-semibold">{e.bl}</span></div>}
+              {e.remarques && <div className="col-span-full text-amber-700"><span className="text-slate-500">Note IA :</span> {e.remarques}</div>}
+            </div>
+          </div>
+
+          {/* Propositions de rattachement */}
+          {item.status !== 'confirmed' && (
+            <div className="space-y-1.5">
+              <div className="font-bold text-slate-700 text-[11px]">Rattacher à :</div>
+              {proposals.length === 0 ? (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-[11px] text-amber-800">
+                  🤷 Aucun dossier candidat trouvé.
+                  {m.notes && <div className="italic mt-1">{m.notes}</div>}
+                </div>
+              ) : (
+                proposals.map((p, idx) => {
+                  const isPicked = item.pickedIdx === idx;
+                  const typeEmoji = p.type === 'poseurs' ? '🔧' : p.type === 'regies' ? '🤝' : '📦';
+                  const typeLabel = p.type === 'poseurs' ? 'Poseur' : p.type === 'regies' ? 'Régie' : 'Fournisseur';
+                  return (
+                    <button
+                      key={`${p.localId}:${p.type}:${p.index}`}
+                      onClick={() => onPick(idx)}
+                      disabled={item.status === 'saving'}
+                      className={`w-full text-left rounded-lg border p-2 transition ${
+                        isPicked
+                          ? 'border-emerald-500 bg-emerald-50 ring-2 ring-emerald-300'
+                          : 'border-slate-200 bg-white hover:border-emerald-300 hover:bg-emerald-50/50'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div className="text-[11px] font-bold text-slate-800">
+                          {dossierLabel(p.localId)}
+                        </div>
+                        <div className="flex items-center gap-1 shrink-0">
+                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                            {typeEmoji} {typeLabel} #{p.index + 1}
+                          </span>
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                            p.confidence >= 0.85 ? 'bg-emerald-100 text-emerald-700' :
+                            p.confidence >= 0.6 ? 'bg-amber-100 text-amber-700' :
+                            'bg-rose-100 text-rose-700'
+                          }`}>
+                            {Math.round((p.confidence || 0) * 100)}%
+                          </span>
+                        </div>
+                      </div>
+                      {p.reasoning && (
+                        <div className="text-[10px] text-slate-500 mt-1 italic">{p.reasoning}</div>
+                      )}
+                    </button>
+                  );
+                })
+              )}
+              {m.notes && proposals.length > 0 && (
+                <div className="text-[10px] text-slate-500 italic px-1">💬 {m.notes}</div>
+              )}
+            </div>
+          )}
+
+          {/* Actions */}
+          {item.status === 'ready' && (
+            <div className="flex items-center gap-2 pt-1">
+              <button
+                onClick={onConfirm}
+                disabled={item.pickedIdx == null}
+                className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold"
+              >
+                ✓ Confirmer le rattachement
+              </button>
+              <button
+                onClick={onSkip}
+                className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold"
+              >
+                ⏭️ Mettre de côté
+              </button>
+            </div>
+          )}
+
+          {/* Confirmé : rappel + bouton ouvrir le dossier */}
+          {item.status === 'confirmed' && picked && (
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-[11px] text-emerald-800">
+              ✅ Rattaché à <span className="font-bold">{dossierLabel(picked.localId)}</span> · {picked.type === 'poseurs' ? '🔧 Poseur' : picked.type === 'regies' ? '🤝 Régie' : '📦 Fournisseur'} #{picked.index + 1}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
