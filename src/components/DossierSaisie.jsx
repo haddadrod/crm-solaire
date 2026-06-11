@@ -3,10 +3,15 @@ import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, T
 import { supabase, uploadFileToBucket, getSignedUrl, deleteFileFromBucket } from '../supabase.js';
 import { TEMPLATES_CATALOG } from '../pdfTemplates.js';
 
-// Listes par défaut — modifiables dans Réglages
-const POSEURS_DEFAULT = ['IONERGIK 2', 'IONERGIK', 'TEK', 'RV SERVICE', 'ECO ENERGY', 'MAFATEC', 'RBM', 'RL CONSEILS', 'MASTEROVIT', 'SKY', 'INTERNE', 'LEH', 'CAP SOLEIL', 'INNOVA', 'DDI', 'ALLAN', 'AUTRE'];
-const REGIES_DEFAULT = ['ELON', 'DYLAN CARBON', 'YONI COHEN', 'ISAAC', 'ES CAPITAL', 'DUMONT', 'OREN', 'YC CONSEIL', 'JOHN SULTAN', 'REGIE YE', 'MARTIAL', 'LYA', 'SAMUEL LEVY', 'RL ELON', 'AUTRE'];
-const FOURNISSEURS_DEFAULT = ['IONERGIK', 'ECO NEGOCE', 'LEH', 'SYNEXIUM', 'CAP SOLEIL', 'INNOVA', 'RBM', 'ORALED', 'BG MATERIAUX', 'BROTHER NEGOCE', 'AXDIS', 'ERP', 'AUTRE'];
+// Listes par défaut — VIDES volontairement. Chaque installation (CRM Solaire,
+// CRM LMR, …) configure SES poseurs/régies/fournisseurs dans Réglages ; ils
+// sont alors persistés dans SA base Supabase (clés tarifs-poseurs,
+// tarifs-regies, liste-fournisseurs). Avant, ces listes contenaient les
+// prestataires réels de la 1re société — toute nouvelle installation héritait
+// de données confidentielles (noms + structure tarifaire). Plus maintenant.
+const POSEURS_DEFAULT = [];
+const REGIES_DEFAULT = [];
+const FOURNISSEURS_DEFAULT = [];
 
 const TARIFS_POSEURS_DEFAULT = Object.fromEntries(POSEURS_DEFAULT.map(n => [n, {}]));
 const TARIFS_REGIES_DEFAULT = Object.fromEntries(REGIES_DEFAULT.map(n => [n, {}]));
