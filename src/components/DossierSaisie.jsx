@@ -1577,6 +1577,26 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Mode équipe : permissions selon rôle
     const role = currentUserRole || 'equipe';
     switch (role) {
+      case 'responsable':
+        // 👔 Bras droit / directeur d'exploitation : gère TOUT le workflow
+        // (création, modification, toutes les étapes) et voit le prix de
+        // vente — mais AUCUNE donnée de rentabilité : pas de marges, pas de
+        // coûts prestataires (BL/factures), pas de rapport paiements, pas de
+        // dashboard (rempli de CA/marges). Suppression réservée à l'admin.
+        return {
+          voirTousDossiers: true,
+          voirMarges: false,
+          voirBLFactures: false,
+          creerDossier: true,
+          supprimerDossier: false,
+          modifierTous: true,
+          voirRapportPaiements: false,
+          voirDashboard: false,
+          voirReglages: false,
+          cocherPaiements: false,
+          voirCA: true, // prix de vente visible
+          filtreDossiers: 'tous',
+        };
       case 'commercial':
         return {
           voirTousDossiers: true,
@@ -11085,6 +11105,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
 
   const ROLES = [
     { id: 'admin', label: '👑 Admin', desc: 'Accès complet, voit tout, fait tout', color: 'bg-violet-100 text-violet-700 border-violet-300' },
+    { id: 'responsable', label: '👔 Responsable', desc: 'Gère tous les dossiers comme un admin, voit le prix de vente — sans marges, coûts, paiements ni réglages', color: 'bg-indigo-100 text-indigo-700 border-indigo-300' },
     { id: 'commercial', label: '💼 Commercial', desc: 'Voit tous les dossiers, sans les marges ni les coûts', color: 'bg-blue-100 text-blue-700 border-blue-300' },
     { id: 'envoi_finance', label: '🏦 Envoi finance', desc: 'Gère l\'envoi des dossiers aux banques, sans compta ni tableau de bord', color: 'bg-rose-100 text-rose-700 border-rose-300' },
     { id: 'poseur', label: '🔧 Poseur', desc: 'Voit uniquement ses chantiers + récap paiements, lecture seule', color: 'bg-amber-100 text-amber-700 border-amber-300' },
