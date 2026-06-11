@@ -4903,6 +4903,45 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 </div>
                 {/* 🔘 Bulk actions désarchivage */}
                 <div className="flex items-center gap-2 flex-wrap">
+                  {/* 🔧 Ré-évaluation : l'import a archivé sur le STATUT seul
+                      (sans vérifier que les prestataires étaient payés). On
+                      ramène en actif les dossiers archivés à tort : tout ce qui
+                      n'est PAS soit annulé, soit réellement fini (client payé +
+                      tous prestataires payés + aucun litige/SAV ouvert). */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const ROLES = ['teleprospecteur', 'confirmateur', 'commercial', 'coordinateurProjet', 'responsableEnvoiPose'];
+                      const doitResterArchive = (d) => {
+                        // Annulé → reste archivé (choix métier).
+                        if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') return true;
+                        // Sinon : réellement fini = client payé + tous prestataires payés + pas de litige/SAV ouvert.
+                        const clientPaye = d.payeClient === true;
+                        const poseursOk = (d.poseurs || []).every(p => !p.nom || p.paye);
+                        const fournOk = (d.fournisseurs || []).every(f => !f.nom || f.paye);
+                        const regieOk = !d.regie || d.regiePaye === true;
+                        const regiesOk = (d.regies || []).every(r => !r.nom || r.paye);
+                        const internOk = ROLES.every(k => !d[k] || d[k + 'Paye']);
+                        const litigeOuvert = d.hasLitige === true && d.litigeTraite !== true;
+                        const savOuvert = d.hasSav === true && d.savTraite !== true;
+                        return clientPaye && poseursOk && fournOk && regieOk && regiesOk && internOk && !litigeOuvert && !savOuvert;
+                      };
+                      const aDesarchiver = dossiers.filter(d => isArchived(d) && !doitResterArchive(d));
+                      if (aDesarchiver.length === 0) { alert('✅ Rien à corriger : tous les dossiers archivés sont soit annulés, soit réellement terminés.'); return; }
+                      if (!window.confirm(`🔧 Ré-évaluation des archives\n\n${aDesarchiver.length} dossier(s) ont été archivés alors qu'ils ne sont pas terminés (client pas payé, prestataires pas tous payés, ou litige/SAV ouvert).\n\nLes ramener en actif ?\n\n(Les dossiers annulés et ceux réellement payés en entier restent archivés.)`)) return;
+                      const ids = new Set(aDesarchiver.map(d => d.localId));
+                      const now = new Date().toISOString();
+                      setDossiers(prev => prev.map(d => ids.has(d.localId)
+                        ? { ...d, archived: false, archivedAt: null, autoArchived: false, manualArchive: false, autoArchivedReason: null, reprisDuArchive: now }
+                        : d
+                      ));
+                      alert(`✅ ${aDesarchiver.length} dossier(s) ramené(s) en actif.`);
+                    }}
+                    className="text-[11px] font-bold bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-sm"
+                    title="Ramène en actif les dossiers archivés à tort (pas réellement terminés). Annulés et dossiers entièrement payés restent archivés."
+                  >
+                    🔧 Ré-évaluer les archives
+                  </button>
                   <button
                     type="button"
                     onClick={() => setSelectedArchiveIds(new Set(filteredDossiers.map(d => d.localId)))}
