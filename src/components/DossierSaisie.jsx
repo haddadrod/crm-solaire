@@ -5153,6 +5153,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             onClose={() => setShowDocsForId(null)}
             onUpdate={updateDossier}
             isAdmin={isAdmin}
+            canSeeBLFactures={isAdmin || permissions?.voirBLFactures === true}
           />
         )}
 
@@ -6023,7 +6024,12 @@ function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier
 
 // ====================== MODAL DOCUMENTS ======================
 
-function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
+function DocumentsModal({ dossier, onClose, onUpdate, isAdmin, canSeeBLFactures = false }) {
+  // 🧾 Catégories Poseur / Régie / Fournisseur : pilotées par canSeeBLFactures
+  // (admin OU rôle métier avec voirBLFactures). Avant, c'était gaté en dur
+  // sur isAdmin → la compta voyait UNIQUEMENT l'onglet Client (alors qu'elle
+  // a besoin des factures prestataires pour la compta, Pennylane, etc.).
+  const showPrestaCategories = isAdmin || canSeeBLFactures;
   const documents = dossier.documents || [];
   // On lit poseurs/fournisseurs/regies directement (pas les versions ...Detail enrichies)
   // car le dossier passé ici est brut (state), pas dossiersEnriched.
@@ -6039,8 +6045,10 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
     const cats = [
       { id: 'client', key: 'client', subCategory: null, label: 'Client', sublabel: `${dossier.nom}${dossier.prenom ? ' ' + dossier.prenom : ''}`, emoji: '👤', color: 'from-blue-500 to-cyan-500', bg: 'bg-blue-50', border: 'border-blue-200', accent: 'text-blue-700', desc: 'Bons de commande, contrat, mandat...' },
     ];
-    // Catégories sensibles : admin uniquement (factures = révèlent les coûts)
-    if (isAdmin) {
+    // Catégories sensibles : admin + tout rôle avec voirBLFactures (compta).
+    // Sans la permission, on ne voit que l'onglet Client → cohérent avec ce
+    // que voient déjà commercial / poseur / régie / responsable.
+    if (showPrestaCategories) {
       poseursUniques.forEach(nom => {
         cats.push({ id: `poseur:${nom}`, key: 'poseur', subCategory: nom, label: 'Poseur', sublabel: nom, emoji: '🔧', color: 'from-amber-500 to-orange-500', bg: 'bg-amber-50', border: 'border-amber-200', accent: 'text-amber-700', desc: `Factures ${nom}` });
       });
@@ -6051,7 +6059,7 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin }) {
       });
     }
     return cats;
-  }, [dossier, fournisseursUniques, poseursUniques, regiesUniques, isAdmin]);
+  }, [dossier, fournisseursUniques, poseursUniques, regiesUniques, isAdmin, showPrestaCategories]);
 
   const [activeCatId, setActiveCatId] = useState(categories[0].id);
   const activeCat = categories.find(c => c.id === activeCatId) || categories[0];
