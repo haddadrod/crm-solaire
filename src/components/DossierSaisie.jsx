@@ -4373,6 +4373,61 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const nbActifs = dossiersVisibles.filter(d => !isArchived(d)).length;
   const nbArchives = dossiersVisibles.filter(d => isArchived(d)).length;
 
+  // 🔍 Index des doublons — utilisé par le filtre "Doublons" et le badge sur
+  // chaque fiche pour aider à faire le ménage après un import en masse. On
+  // détecte trois familles de collisions :
+  //   - id partagé (numéro Chelly réutilisé entre dossiers)
+  //   - nom + prénom (sans accent, casse ignorée)
+  //   - téléphone normalisé (au moins 6 chiffres communs)
+  // Un dossier est "en doublon" s'il partage au moins UNE de ces clés avec
+  // un autre dossier de la liste visible. On garde la liste des autres
+  // localId par groupe pour pouvoir naviguer entre eux.
+  const doublonsIndex = useMemo(() => {
+    const stripAccents = (s) => String(s || '')
+      .normalize('NFD').replace(/[̀-ͯ]/g, '')
+      .toLowerCase().trim();
+    const byId = new Map();         // id Chelly → [localId, …]
+    const byNomPrenom = new Map();  // "dupont|jean" → [localId, …]
+    const byTel = new Map();        // chiffres tel → [localId, …]
+    dossiersVisibles.forEach(d => {
+      if (d.id) {
+        const k = String(d.id).trim();
+        if (k) {
+          if (!byId.has(k)) byId.set(k, []);
+          byId.get(k).push(d.localId);
+        }
+      }
+      const nom = stripAccents(d.nom);
+      const prenom = stripAccents(d.prenom);
+      if (nom || prenom) {
+        const k = `${nom}|${prenom}`;
+        if (!byNomPrenom.has(k)) byNomPrenom.set(k, []);
+        byNomPrenom.get(k).push(d.localId);
+      }
+      const tel = String(d.telephone || '').replace(/\D/g, '');
+      if (tel.length >= 6) {
+        if (!byTel.has(tel)) byTel.set(tel, []);
+        byTel.get(tel).push(d.localId);
+      }
+    });
+    // Par localId : { reasons: Set<'id'|'nomprenom'|'tel'>, others: Set<localId> }
+    const result = new Map();
+    const mark = (group, reason) => {
+      if (group.length < 2) return;
+      group.forEach(localId => {
+        if (!result.has(localId)) result.set(localId, { reasons: new Set(), others: new Set() });
+        const entry = result.get(localId);
+        entry.reasons.add(reason);
+        group.forEach(other => { if (other !== localId) entry.others.add(other); });
+      });
+    };
+    byId.forEach(g => mark(g, 'id'));
+    byNomPrenom.forEach(g => mark(g, 'nomprenom'));
+    byTel.forEach(g => mark(g, 'tel'));
+    return result;
+  }, [dossiersVisibles]);
+  const nbDoublons = doublonsIndex.size;
+
   const filteredDossiers = dossiersEnriched
     // Filtre actifs/archivés selon l'onglet
     .filter(d => activeTab === 'archives' ? isArchived(d) : !isArchived(d))
@@ -4417,6 +4472,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // Dossiers importés depuis Google Sheets dont la col S n'était pas une
       // puissance numérique (PAC, ballon, déplacement…) → à compléter à la main.
       if (filterStatut === 'needs_import_review') return !!d.needsImportReview;
+      // 🔍 Doublons : dossiers qui partagent id Chelly / nom+prénom / téléphone
+      // avec au moins un autre dossier visible. Pratique après un import en
+      // masse pour faire le ménage.
+      if (filterStatut === 'doublons') return doublonsIndex.has(d.localId);
       return d.statut === filterStatut;
     })
     .filter(d => {
@@ -4880,6 +4939,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     } else if (filterStatut === 'needs_import_review') {
                       label = 'À compléter (import)'; emoji = '📋'; color = 'from-rose-500 to-pink-600';
                       count = dossiers.filter(d => d.needsImportReview).length;
+                    } else if (filterStatut === 'doublons') {
+                      label = 'Doublons'; emoji = '🔍'; color = 'from-fuchsia-500 to-violet-600';
+                      count = nbDoublons;
                     } else {
                       const cur = STATUTS_ORDERED.find(s => s.id === filterStatut);
                       if (!cur) return null;
@@ -4953,6 +5015,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
                         <button onClick={() => setFilterStatut('needs_import_review')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow-md scale-105' : 'bg-rose-50 text-rose-700'}`} title="Dossiers importés dont le produit/puissance n'a pas pu être déterminé automatiquement — à compléter à la main.">
                           📋 À compléter (import)
                           <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${sel ? 'bg-white/30' : 'bg-white text-rose-700'}`}>{count}</span>
+                        </button>
+                      );
+                    })()}
+                    {(() => {
+                      // 🔍 Doublons : dossiers qui partagent id Chelly / nom+prénom
+                      // / téléphone avec un autre. Caché s'il n'y en a aucun.
+                      if (nbDoublons === 0) return null;
+                      const sel = filterStatut === 'doublons';
+                      return (
+                        <button onClick={() => setFilterStatut('doublons')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white shadow-md scale-105' : 'bg-fuchsia-50 text-fuchsia-700'}`} title="Dossiers qui partagent un id, un nom/prénom ou un téléphone avec un autre — pour faire le ménage après un import en masse.">
+                          🔍 Doublons
+                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${sel ? 'bg-white/30' : 'bg-white text-fuchsia-700'}`}>{nbDoublons}</span>
                         </button>
                       );
                     })()}
@@ -5034,11 +5108,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       />
                     </label>
                     <div className="flex-1 min-w-0">
-                      <DossierCard d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} />
+                      <DossierCard d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} doublonInfo={doublonsIndex.get(d.localId)} />
                     </div>
                   </div>
                 ) : (
-                  <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} />
+                  <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} doublonInfo={doublonsIndex.get(d.localId)} />
                 ))
               )}
             </div>
@@ -5518,7 +5592,15 @@ function SocieteBadge({ societe, variant = 'inline', active = false, onClick = n
   );
 }
 
-function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs, onShowHist, onShowQuick, viewMode, isAdmin, produits, readOnly, societes = [] }) {
+function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs, onShowHist, onShowQuick, viewMode, isAdmin, produits, readOnly, societes = [], doublonInfo = null }) {
+  // 🔍 Doublon : libellé compact des raisons + nombre d'autres dossiers similaires.
+  const doublonBadge = (() => {
+    if (!doublonInfo) return null;
+    const reasonLabels = { id: 'même #id', nomprenom: 'même nom', tel: 'même tél' };
+    const reasons = [...doublonInfo.reasons].map(r => reasonLabels[r] || r).join(' · ');
+    const n = doublonInfo.others.size;
+    return { reasons, n };
+  })();
   const docCount = (d.documents || []).length;
   // 🏢 Badge société (Yolico / Elsun) — visible si dossier rattaché à une société
   const societeMeta = d.societe ? societes.find(s => s.id === d.societe) : null;
@@ -5669,6 +5751,11 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
               {d.needsImportReview && (
                 <span title={d.importNote ? `À compléter — ${d.importNote}` : 'Dossier importé à vérifier'} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-300">
                   📋 À compléter{d.importNote ? ` · ${d.importNote}` : ''}
+                </span>
+              )}
+              {doublonBadge && (
+                <span title={`Doublon — ${doublonBadge.n} autre${doublonBadge.n > 1 ? 's' : ''} dossier${doublonBadge.n > 1 ? 's' : ''} partage${doublonBadge.n > 1 ? 'nt' : ''} ${doublonBadge.reasons}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-300">
+                  🔍 Doublon ×{doublonBadge.n + 1}
                 </span>
               )}
               {dossierProduits.map((p, i) => {
