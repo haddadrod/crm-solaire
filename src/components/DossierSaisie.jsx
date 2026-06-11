@@ -7608,10 +7608,14 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
           <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalGeneralPaye)}</div>
           <div className="text-sm opacity-90 mt-2">Déjà payé aux prestataires</div>
         </div>
+        {/* 🔥 Chiffre principal = ce qui est exigible MAINTENANT (clients ayant
+            payé). Le total à terme (lignes des dossiers pas encore encaissés)
+            passe en sous-titre : tant que le client n'a pas payé, on ne doit
+            rien — il ne doit pas s'afficher en gros comme une dette. */}
         <div className="bg-gradient-to-br from-rose-500 to-pink-500 rounded-2xl p-5 text-white shadow-lg">
-          <div className="text-xs font-semibold opacity-90 uppercase">⏳ Reste à payer</div>
-          <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalGeneralRestant)}</div>
-          <div className="text-sm opacity-90 mt-2">Dont à payer maintenant : {formatEuro(rapportPaiements.totalAPayerMaintenant)}</div>
+          <div className="text-xs font-semibold opacity-90 uppercase">🔥 À payer maintenant</div>
+          <div className="text-3xl font-bold mt-1">{formatEuro(rapportPaiements.totalAPayerMaintenant)}</div>
+          <div className="text-sm opacity-90 mt-2">À terme (clients pas encore encaissés) : {formatEuro(rapportPaiements.totalGeneralRestant)}</div>
         </div>
         <div className="bg-gradient-to-br from-violet-500 to-purple-500 rounded-2xl p-5 text-white shadow-lg">
           <div className="text-xs font-semibold opacity-90 uppercase">💰 Trésorerie nette</div>
