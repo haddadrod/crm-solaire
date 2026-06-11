@@ -6497,6 +6497,24 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onConfirm, onSki
                   const isPicked = item.pickedIdx === idx;
                   const typeEmoji = p.type === 'poseurs' ? '🔧' : p.type === 'regies' ? '🤝' : '📦';
                   const typeLabel = p.type === 'poseurs' ? 'Poseur' : p.type === 'regies' ? 'Régie' : 'Fournisseur';
+                  // 🔎 Vérification visuelle : compare les n° facture / BL déjà
+                  // saisis sur la ligne CRM ciblée avec ceux lus sur le PDF.
+                  // ✅ identiques · ❌ différents · — l'un des deux est vide.
+                  const normNo = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+                  const propDossier = dossiers.find(x => x.localId === p.localId);
+                  const propLine = propDossier?.[p.type]?.[p.index];
+                  const renderCompare = (label, crmVal, pdfVal) => {
+                    if (!crmVal && !pdfVal) return null;
+                    const both = !!crmVal && !!pdfVal;
+                    const same = both && normNo(crmVal) === normNo(pdfVal);
+                    return (
+                      <div className={`text-[10px] rounded px-1.5 py-0.5 inline-flex items-center gap-1 mr-1 mt-1 ${
+                        same ? 'bg-emerald-100 text-emerald-800' : both ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-600'
+                      }`}>
+                        {same ? '✅' : both ? '❌' : '➖'} {label} : CRM <span className="font-bold">{crmVal || '—'}</span> · PDF <span className="font-bold">{pdfVal || '—'}</span>
+                      </div>
+                    );
+                  };
                   return (
                     <button
                       key={`${p.localId}:${p.type}:${p.index}`}
@@ -6514,7 +6532,7 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onConfirm, onSki
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
-                            {typeEmoji} {typeLabel} #{p.index + 1}
+                            {typeEmoji} {typeLabel} #{p.index + 1}{propLine?.nom ? ` — ${propLine.nom}` : ''}
                           </span>
                           <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
                             p.confidence >= 0.85 ? 'bg-emerald-100 text-emerald-700' :
@@ -6524,6 +6542,10 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onConfirm, onSki
                             {Math.round((p.confidence || 0) * 100)}%
                           </span>
                         </div>
+                      </div>
+                      <div className="flex flex-wrap">
+                        {renderCompare('N° facture', propLine?.factureNo, e.factureNo)}
+                        {renderCompare('BL', propLine?.bl, e.bl)}
                       </div>
                       {p.reasoning && (
                         <div className="text-[10px] text-slate-500 mt-1 italic">{p.reasoning}</div>

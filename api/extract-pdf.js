@@ -284,8 +284,10 @@ function findByChantierRef(dossiers, extracted) {
   return out.slice(0, 3);
 }
 
-function findByFactureNo(dossiers, extracted) {
-  const target = normalizeFactureNo(extracted?.factureNo);
+// Match exact générique sur un champ de la ligne prestataire (factureNo ou
+// bl), avec la même normalisation. labelFr sert au reasoning affiché.
+function findByLineField(dossiers, value, field, labelFr) {
+  const target = normalizeFactureNo(value);
   // Trop court = trop de collisions possibles (ex : '12') → on ne tente pas.
   if (target.length < 4) return [];
   const out = [];
@@ -293,14 +295,14 @@ function findByFactureNo(dossiers, extracted) {
     if (!d) continue;
     const scan = (type, arr) => {
       (arr || []).forEach((p, index) => {
-        if (!p || !p.nom || !p.factureNo) return;
-        if (normalizeFactureNo(p.factureNo) !== target) return;
+        if (!p || !p.nom || !p[field]) return;
+        if (normalizeFactureNo(p[field]) !== target) return;
         out.push({
           localId: String(d.localId || ''),
           type,
           index,
           confidence: 0.99,
-          reasoning: `N° de facture identique (${p.factureNo} — ${p.nom})${hasFactureLine(p) ? ' ⚠️ un PDF est déjà attaché à cette ligne' : ''}`,
+          reasoning: `${labelFr} identique (${p[field]} — ${p.nom})${hasFactureLine(p) ? ' ⚠️ un PDF est déjà attaché à cette ligne' : ''}`,
         });
       });
     };
@@ -309,6 +311,14 @@ function findByFactureNo(dossiers, extracted) {
     scan('poseurs', d.poseurs);
   }
   return out.slice(0, 3);
+}
+
+function findByFactureNo(dossiers, extracted) {
+  return findByLineField(dossiers, extracted?.factureNo, 'factureNo', 'N° de facture');
+}
+
+function findByBl(dossiers, extracted) {
+  return findByLineField(dossiers, extracted?.bl, 'bl', 'N° de BL');
 }
 
 // Construit la liste compacte des candidats à envoyer à Claude.
@@ -574,7 +584,23 @@ export default async function handler(req, res) {
         }
         const dossiers = JSON.parse(row.value);
 
-        // 1️⃣ Match direct par n° de facture (déterministe, gratuit, prioritaire).
+        // 1️⃣ Match direct par n° de BL puis n° de facture (déterministe,
+        // gratuit, prioritaire) — même logique que l'ancien site : le BL
+        // d'abord, le n° de facture sinon.
+        const byBl = findByBl(dossiers, parsed);
+        if (byBl.length > 0) {
+          return json(res, 200, {
+            data: parsed,
+            matching: {
+              proposals: byBl,
+              notes: byBl.length === 1
+                ? 'N° de BL retrouvé dans le CRM — match certain.'
+                : `${byBl.length} lignes portent ce n° de BL — choisis la bonne.`,
+              direct: true,
+              candidatesCount: byBl.length,
+            },
+          });
+        }
         const direct = findByFactureNo(dossiers, parsed);
         if (direct.length > 0) {
           return json(res, 200, {
