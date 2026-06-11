@@ -233,9 +233,14 @@ function hasFactureLine(p) {
 // Construit la liste compacte des candidats à envoyer à Claude.
 // Ne garde que les dossiers posés (statutPose === 'visite_ok') où au moins
 // 1 prestataire correspondant au fournisseur extrait n'a pas encore de facture.
-function buildCandidates(dossiers, extracted) {
+//
+// relax=true : mode « alias » — l'émetteur de la facture ne correspond à
+// aucun prestataire connu (ex : OREN qui facture sous le nom commercial
+// FLEX). On garde alors TOUTES les lignes sans facture des dossiers posés,
+// et c'est Claude qui devra matcher par montant + proximité de date.
+function buildCandidates(dossiers, extracted, relax = false) {
   const target = extracted?.fournisseur || '';
-  if (!target) return [];
+  if (!target && !relax) return [];
 
   const out = [];
   for (const d of dossiers || []) {
@@ -246,7 +251,7 @@ function buildCandidates(dossiers, extracted) {
       (arr || []).forEach((p, idx) => {
         if (!p || !p.nom) return;
         if (hasFactureLine(p)) return;
-        if (!fuzzyMatchName(p.nom, target)) return;
+        if (!relax && !fuzzyMatchName(p.nom, target)) return;
         matchingLines.push({
           type: kind,
           index: idx,
@@ -294,7 +299,7 @@ function buildCandidates(dossiers, extracted) {
   return out.slice(0, 30); // cap à 30 pour rester économique côté tokens IA
 }
 
-function buildMatchInstructions(extracted, candidates) {
+function buildMatchInstructions(extracted, candidates, aliasMode = false) {
   const facLine = [
     `Émetteur: ${extracted.fournisseur || '(non lu)'}`,
     `N° facture: ${extracted.factureNo || '(non lu)'}`,
@@ -315,7 +320,9 @@ ${facLine}
 DOSSIERS CANDIDATS (pré-filtrés sur le nom de l'émetteur) :
 ${candidatesJson}
 
-RÈGLES DE MATCHING :
+${aliasMode ? `⚠️ MODE ALIAS : l'émetteur de la facture ("${extracted.fournisseur || '?'}") ne correspond à AUCUN nom de prestataire connu dans le CRM. Il facture probablement sous un autre nom commercial (raison sociale ≠ nom d'usage — ex : une régie "OREN" qui émet ses factures au nom "FLEX"). Les candidats ci-dessus sont TOUTES les lignes sans facture des dossiers posés. Matche par MONTANT (htCustom vs HT facturé, critère dominant) et proximité de DATE. Plafonne la confiance à 0.75, sauf montant strictement identique ET date très proche (max 0.85).
+
+` : ''}RÈGLES DE MATCHING :
 - Chaque candidat est un dossier + des lignes prestataires (poseurs/régies/fournisseurs) sans facture.
 - Tu choisis la meilleure combinaison (localId, type, index) — pas juste le dossier, aussi la BONNE LIGNE.
 - Critères forts par ordre de priorité :
@@ -328,7 +335,7 @@ RÈGLES DE MATCHING :
 - Réponds UNIQUEMENT au format JSON demandé. Aucune autre sortie.`;
 }
 
-async function callClaudeMatch(client, extracted, candidates) {
+async function callClaudeMatch(client, extracted, candidates, aliasMode = false) {
   const message = await client.messages.create({
     model: 'claude-opus-4-7',
     max_tokens: 1500,
@@ -341,7 +348,7 @@ async function callClaudeMatch(client, extracted, candidates) {
       {
         role: 'user',
         content: [
-          { type: 'text', text: buildMatchInstructions(extracted, candidates) },
+          { type: 'text', text: buildMatchInstructions(extracted, candidates, aliasMode) },
         ],
       },
     ],
@@ -481,21 +488,30 @@ export default async function handler(req, res) {
           return json(res, 200, { data: parsed, matching: { proposals: [], notes: 'Aucun dossier dans le CRM.' } });
         }
         const dossiers = JSON.parse(row.value);
-        const candidates = buildCandidates(dossiers, parsed);
+        let candidates = buildCandidates(dossiers, parsed);
+        let aliasMode = false;
+        if (candidates.length === 0) {
+          // 🔁 Fallback « alias » : l'émetteur ne matche aucun prestataire
+          // connu (il facture sans doute sous un autre nom commercial).
+          // On élargit à toutes les lignes sans facture et Claude matchera
+          // par montant + date, avec une confiance plafonnée.
+          candidates = buildCandidates(dossiers, parsed, true);
+          aliasMode = true;
+        }
         if (candidates.length === 0) {
           return json(res, 200, {
             data: parsed,
             matching: {
               proposals: [],
-              notes: `Aucun candidat avec un prestataire "${parsed.fournisseur || '?'}" sans facture parmi les dossiers posés.`,
+              notes: 'Aucune ligne prestataire sans facture parmi les dossiers posés.',
               candidatesCount: 0,
             },
           });
         }
-        const matching = await callClaudeMatch(client, parsed, candidates);
+        const matching = await callClaudeMatch(client, parsed, candidates, aliasMode);
         return json(res, 200, {
           data: parsed,
-          matching: { ...matching, candidatesCount: candidates.length },
+          matching: { ...matching, candidatesCount: candidates.length, aliasMode },
         });
       } catch (mErr) {
         console.error('match-facture error:', mErr?.message, mErr?.stack);
