@@ -3371,15 +3371,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (!map[key]) map[key] = { nom, type, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, totalAPayerMaintenant: 0, totalEnAttenteFinanceur: 0, totalPayeAvance: 0, lignes: [] };
       map[key].totalDu += ttc;
       const isInterne = ROLES_INTERNES_LABELS.includes(type);
-      const payeAvance = paye && !dossier.payeClient && !isInterne;
+      const payeAvance = paye && !dossier.payeClient;
       if (paye) {
         map[key].totalPaye += ttc;
         if (payeAvance) map[key].totalPayeAvance += ttc;
       } else {
         map[key].totalRestant += ttc;
-        // Équipe interne : à payer maintenant dès qu'il y a une commission due (peu importe paiement client)
-        // Externes : à payer maintenant SEULEMENT si le client a payé
-        if (isInterne || dossier.payeClient) map[key].totalAPayerMaintenant += ttc;
+        // Règle unique (interne comme externe) : rien n'est « à payer » tant
+        // que le client / financeur n'a pas payé. Avant, l'équipe interne
+        // était comptée due dès la saisie du nom → le « à décaisser » et le
+        // solde prévisionnel explosaient avec des commissions pas encore
+        // exigibles.
+        if (dossier.payeClient) map[key].totalAPayerMaintenant += ttc;
         else map[key].totalEnAttenteFinanceur += ttc;
       }
       map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne, prestataireType: type, societe: soc });
@@ -3795,7 +3798,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
         });
       }
 
-      // Commissions équipe interne : dès qu'un nom est rempli (peu importe pose / paiement client)
+      // Commissions équipe interne : même règle que les externes — dues
+      // UNIQUEMENT quand le client / financeur a payé. Avant, elles
+      // apparaissaient « à payer » dès la saisie du nom.
+      if (!d.payeClient) return;
       // Si pas de date de pose, on calcule l'attente depuis la création du dossier
       const refDate = d.dateInsta || d.createdAt || d.modifiedAt;
       const j = refDate ? joursEcoules(refDate) : 0;
