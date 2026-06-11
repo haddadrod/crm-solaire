@@ -343,15 +343,11 @@ function fmtFieldVal(v) {
 // son propre quota négocié avec Projexio ; au-delà du plafond ils ne
 // traitent plus les dossiers du mois pour cette société.
 // Clés alignées sur l'id des sociétés (cf state `societes`).
-// ⚠️ Ces valeurs ne sont QUE les défauts au premier démarrage. Une fois la
-// clé 'projexio-caps' présente dans Supabase, c'est elle qui pilote (et
-// l'utilisateur l'édite directement depuis le dashboard). La banque peut
-// renégocier ces plafonds du jour au lendemain — d'où le besoin d'édition
-// inline.
-const PROJEXIO_CAP_MENSUEL_PAR_SOCIETE = {
-  yolico: 1_000_000,
-  elsun:  2_500_000,
-};
+// VIDE volontairement : chaque installation définit SES plafonds depuis le
+// dashboard (admin, édition inline), persistés dans SA clé 'projexio-caps'.
+// Avant, les plafonds réels de la 1re société étaient en dur ici → toute
+// nouvelle installation (ex : CRM LMR) héritait de données confidentielles.
+const PROJEXIO_CAP_MENSUEL_PAR_SOCIETE = {};
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
 // Prérequis avant de pouvoir saisir le contrôle de livraison (= étape qui
@@ -2076,7 +2072,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
         const r = bgData['projexio-caps'];
         if (r?.value) {
           const obj = JSON.parse(r.value);
-          if (obj && typeof obj === 'object') setProjexioCaps({ ...PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, ...obj });
+          // On prend la valeur stockée TELLE QUELLE (pas de re-merge des
+          // défauts du code : ils réinjectaient les plafonds d'une autre
+          // société dans les installations fraîches).
+          if (obj && typeof obj === 'object') setProjexioCaps(obj);
         }
       } catch (e) {}
       try {
@@ -7528,7 +7527,11 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
       parSociete[soc].total += parseFloat(d.montantTotal) || 0;
       parSociete[soc].count += 1;
     });
-    const societesAvecPlafond = Object.keys(projexioCaps);
+    // Filtre sur les sociétés déclarées dans CETTE installation : une clé de
+    // plafond orpheline (ex : héritée des anciens défauts en dur, persistée
+    // dans la base d'une autre installation) ne doit pas afficher de barre.
+    const societesAvecPlafond = Object.keys(projexioCaps)
+      .filter(id => (societes || []).some(s => s.id === id));
     const list = activeSociete
       ? (societesAvecPlafond.includes(activeSociete) ? [activeSociete] : [])
       : societesAvecPlafond;
@@ -8692,7 +8695,11 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
     critical: { bg: 'from-orange-500 to-rose-500',   hint: '🚨 Plus que 10 % de marge' },
     over:     { bg: 'from-rose-600 to-red-700',      hint: '⛔ Plafond dépassé — Projexio ne traite plus' },
   };
-  const societesAvecPlafond = Object.keys(projexioCaps);
+  // Même filtre que PaiementsView : seules les sociétés déclarées dans cette
+  // installation peuvent afficher une barre de plafond (les clés orphelines
+  // héritées d'anciens défauts en dur sont ignorées).
+  const societesAvecPlafond = Object.keys(projexioCaps)
+    .filter(id => societes.some(s => s.id === id));
   const societesAAfficher = activeSociete
     ? (societesAvecPlafond.includes(activeSociete) ? [activeSociete] : [])
     : societesAvecPlafond;
