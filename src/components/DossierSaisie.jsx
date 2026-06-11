@@ -12716,7 +12716,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         let done = 0;
         for (const s of aScruter) {
           try {
-            const fres = await fetch('/api/fraud-check', {
+            const fres = await fetch('/api/classify-dossier?action=fraud', {
               method: 'POST',
               headers,
               body: JSON.stringify({ storagePath: s.bucketPath, category: s.subCategory, label: s.label }),
