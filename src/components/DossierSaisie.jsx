@@ -1897,6 +1897,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (REMOVED_STATUSES.includes(dossier.statut)) {
           dossier = { ...dossier, statut: 'A_EN_COURS' };
         }
+        // 🔁 Renommage régie OREN → FLEX : le prestataire facture sous le nom
+        // FLEX et l'entrée a été renommée dans Réglages → Régies. On aligne
+        // tous les dossiers (avant le fallback regies[] ci-dessous, pour que
+        // l'ancien format d.regie soit aussi couvert). Idempotent : une fois
+        // renommé, plus aucun 'OREN' à matcher. Montants / payé / factures
+        // de la ligne inchangés.
+        if (dossier.regie === 'OREN') {
+          dossier = { ...dossier, regie: 'FLEX' };
+        }
+        if (Array.isArray(dossier.regies) && dossier.regies.some(r => r && r.nom === 'OREN')) {
+          dossier = { ...dossier, regies: dossier.regies.map(r => r && r.nom === 'OREN' ? { ...r, nom: 'FLEX' } : r) };
+        }
         // ⚠️ Ne PAS auto-désarchiver les dossiers ANNULÉS : ils sont censés
         // rester archivés (avec leur archivedAt d'origine). Sinon la ligne
         // « auto-archive ANNULÉ » plus bas les ré-archive avec un new Date(),
