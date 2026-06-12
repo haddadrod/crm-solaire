@@ -6225,9 +6225,90 @@ function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier
 // pratique buildCandidates côté API exclut déjà ces lignes — donc rare).
 function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onOpenDossier }) {
   const [files, setFiles] = useState([]); // [{ id, file, name, status, extracted, matching, error, pickedIdx }]
+  // 📦 Factures mises de côté — persistées dans Supabase (bucket pour le PDF +
+  // clé 'tri-factures-pending' pour les métadonnées). Survit aux refresh, aux
+  // changements de machine, aux fermetures d'onglet. C'est ICI que l'utilisateur
+  // retrouve les factures sans dossier correspondant pour les retrier plus tard
+  // (après avoir créé le dossier manquant, par ex.).
+  const [pendingFactures, setPendingFactures] = useState([]);
+  const [pendingOpen, setPendingOpen] = useState(false);
   const [dragOver, setDragOver] = useState(false);
   const [repairing, setRepairing] = useState(null); // null | { done, total, fixed, failed }
   const inputRef = useRef(null);
+
+  // Chargement initial des factures « mises de côté » depuis Supabase.
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await window.storage.get('tri-factures-pending');
+        if (r?.value) {
+          const parsed = JSON.parse(r.value);
+          if (Array.isArray(parsed?.items)) setPendingFactures(parsed.items);
+        }
+      } catch (e) {}
+    })();
+  }, []);
+
+  const savePendingToStorage = async (next) => {
+    try {
+      await window.storage.set('tri-factures-pending', JSON.stringify({ items: next }));
+    } catch (e) {}
+  };
+
+  // Reprendre une facture mise de côté : on retélécharge le PDF du bucket,
+  // on le ré-injecte comme une nouvelle carte active et l'analyse IA tourne
+  // à neuf (intéressant car le matching a pu s'améliorer entre temps, OU le
+  // bon dossier a été créé entre temps). On la garde dans 'pending' jusqu'à
+  // confirmation effective — comme ça si l'utilisateur ferme la page sans
+  // confirmer, rien n'est perdu.
+  const handleResumePending = async (p) => {
+    try {
+      const { url, error } = await getSignedUrl(p.bucketPath, 3600);
+      if (error || !url) throw new Error(error?.message || 'URL signée indisponible');
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const blob = await resp.blob();
+      const file = new File([blob], p.name || 'facture.pdf', { type: blob.type || 'application/pdf' });
+      const newItem = {
+        id: `tf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        file,
+        name: p.name || 'facture.pdf',
+        sizeKb: p.sizeKb || Math.round(blob.size / 1024),
+        status: 'queued',
+        extracted: null,
+        matching: null,
+        error: null,
+        pickedIdx: null,
+        // Marqueur d'origine : à la confirmation, on supprime aussi l'entrée
+        // pending + le PDF du bucket. Pas avant : l'utilisateur peut revenir
+        // en arrière sans rien perdre.
+        fromPendingId: p.id,
+        fromPendingPath: p.bucketPath,
+      };
+      setFiles(prev => [newItem, ...prev]);
+      runAnalysis([newItem]);
+    } catch (e) {
+      alert('Reprise impossible : ' + e.message);
+    }
+  };
+
+  const handleViewPending = async (p) => {
+    try {
+      const { url, error } = await getSignedUrl(p.bucketPath, 3600);
+      if (error || !url) throw new Error(error?.message || 'URL signée indisponible');
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } catch (e) {
+      alert('Impossible d\'ouvrir : ' + e.message);
+    }
+  };
+
+  const handleDeletePending = async (p) => {
+    if (!window.confirm(`Supprimer définitivement « ${p.name} » ?\n\nLe PDF sera retiré du bucket et la facture ne sera plus jamais traitée.`)) return;
+    try { await deleteFileFromBucket(p.bucketPath); } catch (e) {}
+    const next = pendingFactures.filter(x => x.id !== p.id);
+    setPendingFactures(next);
+    await savePendingToStorage(next);
+  };
 
   // 🩹 Réparation des factures confirmées AVANT le correctif de format : elles
   // ont été uploadées dans le bucket Supabase avec un `factureFile` = chemin
@@ -6415,13 +6496,55 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onO
       }));
 
       setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'confirmed', savedPath: fileId } : x));
+      // Si la carte vient d'une mise de côté reprise → nettoyage : retire
+      // l'entrée pending + supprime le PDF du bucket (plus utile, le PDF est
+      // désormais en storage KV sur la ligne du prestataire).
+      if (item.fromPendingId && item.fromPendingPath) {
+        try { await deleteFileFromBucket(item.fromPendingPath); } catch (e) {}
+        const next = pendingFactures.filter(p => p.id !== item.fromPendingId);
+        setPendingFactures(next);
+        savePendingToStorage(next);
+      }
     } catch (e) {
       setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'ready', error: `Sauvegarde : ${e.message}` } : x));
     }
   };
 
-  const handleSkip = (id) => {
-    setFiles(prev => prev.map(x => x.id === id ? { ...x, status: 'skipped' } : x));
+  // Mettre de côté = persister dans la section « 📦 Mises de côté » (bucket
+  // pour le PDF + métadonnées dans Supabase). La facture survit aux refresh et
+  // l'utilisateur peut la reprendre plus tard (ex : après avoir créé le
+  // dossier manquant), la consulter, ou la supprimer.
+  const handleSkip = async (item) => {
+    if (!item) return;
+    // Si la carte vient déjà d'une mise de côté reprise, on la remet juste
+    // dans pending : pas besoin de re-uploader (le PDF est déjà dans le bucket).
+    if (item.fromPendingPath) {
+      setFiles(prev => prev.filter(x => x.id !== item.id));
+      return;
+    }
+    setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'saving' } : x));
+    try {
+      const fileId = `pending_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const { path, error } = await uploadFileToBucket(item.file, fileId);
+      if (error || !path) throw new Error(error?.message || 'Upload bucket échoué');
+      const entry = {
+        id: `p_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        name: item.name,
+        sizeKb: item.sizeKb,
+        bucketPath: path,
+        extracted: item.extracted || null,
+        matching: item.matching || null,
+        skippedAt: new Date().toISOString(),
+      };
+      const next = [entry, ...pendingFactures];
+      setPendingFactures(next);
+      await savePendingToStorage(next);
+      setFiles(prev => prev.filter(x => x.id !== item.id));
+      // Ouvre la section automatiquement pour confirmer visuellement.
+      setPendingOpen(true);
+    } catch (e) {
+      setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'ready', error: `Mise de côté : ${e.message}` } : x));
+    }
   };
 
   const handleRemove = (id) => {
@@ -6523,6 +6646,74 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onO
         />
       </div>
 
+      {/* 📦 Section « Mises de côté » — factures persistées en attendant que tu
+          retrouves ou crées le bon dossier. Survit aux refresh. */}
+      {pendingFactures.length > 0 && (
+        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3">
+          <button
+            type="button"
+            onClick={() => setPendingOpen(!pendingOpen)}
+            className="w-full flex items-center justify-between gap-2"
+          >
+            <div className="text-sm font-bold text-amber-900 flex items-center gap-2">
+              📦 {pendingFactures.length} facture{pendingFactures.length > 1 ? 's' : ''} mise{pendingFactures.length > 1 ? 's' : ''} de côté
+            </div>
+            <span className="text-xs text-amber-700">{pendingOpen ? '▲ Masquer' : '▼ Afficher'}</span>
+          </button>
+          <div className="text-[11px] text-amber-700 mt-1 text-left">
+            Tu retrouves ici les factures sans dossier identifié. Clique « 🔁 Reprendre » après avoir créé le dossier manquant (ou si le matching a depuis été amélioré).
+          </div>
+          {pendingOpen && (
+            <div className="mt-3 space-y-2">
+              {pendingFactures.map(p => (
+                <div key={p.id} className="bg-white rounded-lg p-2 border border-amber-100">
+                  <div className="text-[11px] font-bold text-slate-800 truncate" title={p.name}>📄 {p.name}</div>
+                  <div className="text-[10px] text-slate-600 mt-0.5 flex flex-wrap gap-x-2">
+                    {p.extracted?.fournisseur && <span>Émetteur : <b>{p.extracted.fournisseur}</b></span>}
+                    {p.extracted?.factureNo && <span>N° : <b>{p.extracted.factureNo}</b></span>}
+                    {p.extracted?.dateFacture && <span>Date : <b>{p.extracted.dateFacture}</b></span>}
+                    {p.extracted?.referenceChantier && <span>Chantier : <b>{p.extracted.referenceChantier}</b></span>}
+                    {p.extracted?.montantHt > 0 && <span>HT : <b>{p.extracted.montantHt} €</b></span>}
+                  </div>
+                  {p.matching?.notes && (
+                    <div className="text-[10px] text-amber-700 italic mt-0.5">💬 {p.matching.notes}</div>
+                  )}
+                  <div className="text-[10px] text-slate-400 mt-0.5">
+                    Mise de côté le {p.skippedAt ? new Date(p.skippedAt).toLocaleString('fr-FR') : '—'}
+                  </div>
+                  <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={() => handleResumePending(p)}
+                      className="px-2 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded text-[10px] font-bold"
+                      title="Re-lance le matching IA (utile si tu as créé le bon dossier entre temps)"
+                    >
+                      🔁 Reprendre
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleViewPending(p)}
+                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold"
+                      title="Ouvre le PDF dans un nouvel onglet"
+                    >
+                      👁️ Voir le PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDeletePending(p)}
+                      className="ml-auto px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[10px] font-bold"
+                      title="Supprime définitivement la facture du bucket"
+                    >
+                      🗑️ Supprimer
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Liste des cartes */}
       {files.length === 0 ? (
         <div className="text-center text-xs text-slate-400 py-6 italic">
@@ -6538,7 +6729,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onO
               onPick={(idx) => setFiles(prev => prev.map(x => x.id === item.id ? { ...x, pickedIdx: idx } : x))}
               onManualPick={(prop) => handleManualPick(item.id, prop)}
               onConfirm={() => handleConfirm(item)}
-              onSkip={() => handleSkip(item.id)}
+              onSkip={() => handleSkip(item)}
               onRetry={() => handleRetry(item.id)}
               onRemove={() => handleRemove(item.id)}
               onOpenDossier={onOpenDossier}
