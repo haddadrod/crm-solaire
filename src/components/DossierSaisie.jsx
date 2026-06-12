@@ -14123,7 +14123,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <span className={`flex-shrink-0 self-center text-xs font-bold rounded-full w-7 h-7 flex items-center justify-center ${r.paye ? 'bg-emerald-200 text-emerald-700' : 'bg-purple-100 text-purple-600'}`}>{idx + 1}</span>
                         <div className="flex-1 min-w-[180px]">
                           <label className="block text-[10px] font-semibold text-slate-500 mb-1">Régie</label>
-                          <select value={r.nom} onChange={(e) => upd({ nom: e.target.value, htCustom: '' })} className={inputCls}>
+                          <select value={r.nom} onChange={(e) => upd({ nom: e.target.value })} className={inputCls}>
                             <option value="">— Choisir une régie —</option>
                             {REGIES.map(re => <option key={re} value={re}>{re}</option>)}
                           </select>
@@ -14249,7 +14249,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       <span className={`flex-shrink-0 self-center text-xs font-bold rounded-full w-7 h-7 flex items-center justify-center ${p.paye ? 'bg-emerald-200 text-emerald-700' : 'bg-amber-100 text-amber-600'}`}>{idx + 1}</span>
                       <div className="flex-1 min-w-[180px]">
                         <label className="block text-[10px] font-semibold text-slate-500 mb-1">Poseur</label>
-                        <select value={p.nom} onChange={(e) => upd({ nom: e.target.value, htCustom: '' })} className={inputCls}>
+                        <select value={p.nom} onChange={(e) => upd({ nom: e.target.value })} className={inputCls}>
                           <option value="">— Choisir un poseur —</option>
                           {POSEURS.map(n => <option key={n} value={n}>{n}</option>)}
                         </select>
@@ -19845,7 +19845,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 return (
                   <div key={i} className={`rounded-xl border p-2 space-y-1.5 ${r.paye ? 'bg-emerald-50 border-emerald-300' : 'bg-purple-50 border-purple-200'}`}>
                     <div className="flex items-center gap-1">
-                      <select value={r.nom || ''} onChange={(e) => updateRegie(i, { nom: e.target.value, htCustom: '' })} className={inputCls + ' flex-1 font-bold text-purple-700'}>
+                      <select value={r.nom || ''} onChange={(e) => updateRegie(i, { nom: e.target.value })} className={inputCls + ' flex-1 font-bold text-purple-700'}>
                         <option value="">— Choisir une régie —</option>
                         {REGIES.map(re => <option key={re} value={re}>{re}</option>)}
                       </select>
