@@ -1931,6 +1931,15 @@ export default function DossierSaisie({ authUser, onLogout }) {
             dossier = { ...dossier, documents: dossier.documents.map(doc => doc.category === 'poseur' && !doc.subCategory ? { ...doc, subCategory: firstPoseurName } : doc) };
           }
         }
+        // 🧹 Correction import : le « surplus » poseur a été importé à tort
+        // depuis le sheet (souvent = prix de pose en double). Le coût poseur =
+        // PRIX POSE (htCustom) uniquement. On efface le surplus des dossiers
+        // importés. Idempotent : une fois à 0, plus rien à changer.
+        if (dossier.createdBy === 'import_sheet'
+            && Array.isArray(dossier.poseurs)
+            && dossier.poseurs.some(p => p && (parseFloat(p.surplus) || 0) !== 0)) {
+          dossier = { ...dossier, poseurs: dossier.poseurs.map(p => ({ ...p, surplus: 0 })) };
+        }
         dossier = applyAutoStatut(dossier);
         if (dossier.statut === 'W2_ANNULER' && !dossier.archived) {
           dossier = { ...dossier, archived: true, archivedAt: dossier.archivedAt || new Date().toISOString(), autoArchived: true, autoArchivedReason: 'annule' };
