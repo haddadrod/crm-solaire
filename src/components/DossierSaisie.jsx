@@ -1286,31 +1286,38 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
   // 💬 Toast preview : quand un NOUVEAU message arrive d'un collègue et que le
   // panel est fermé (ou que c'est un autre peer que l'actif), on affiche une
   // bulle qui glisse depuis la droite pendant ~6s, façon notification iPhone.
-  // Bien plus visible que la petite pastille rouge tout en bas.
+  //
+  // 🛠️ Source de vérité = readBy (persisté en Supabase, partagé entre tabs).
+  // Un message est « à notifier » si :
+  //   - reçu (m.to === currentUser, on ignore mes envois),
+  //   - PAS encore lu par moi (m.readBy[currentUser] absent),
+  //   - panel pas ouvert sur ce peer (sinon je le lis tout de suite),
+  //   - pas déjà notifié dans CETTE session (sinon un re-fetch/visibilitychange
+  //     déclenchait un nouveau ding sur le même message → c'était le bug).
   const [recentToast, setRecentToast] = useState(null); // { from, body, sentAt } | null
-  const lastSeenSentAtRef = useRef(null);
-  // Init : au 1er mount on note le dernier message qu'on a déjà → on n'affiche
-  // un toast QUE pour les messages reçus APRÈS l'ouverture de l'app (pas un
-  // toast au démarrage pour tous les vieux non-lus, ce serait du spam).
+  const notifiedIdsRef = useRef(null);
   useEffect(() => {
-    if (lastSeenSentAtRef.current !== null) return;
-    let latest = '';
-    myMessages.forEach(m => { if ((m.sentAt || '') > latest) latest = m.sentAt || ''; });
-    lastSeenSentAtRef.current = latest;
-  }, [myMessages]);
-  useEffect(() => {
-    // On cherche le plus récent message reçu (m.to === currentUser) qui est
-    // postérieur à ce qu'on a déjà vu et que l'utilisateur n'est pas en train
-    // de lire (panel ouvert sur ce peer = il le voit déjà).
+    // Premier mount : on initialise le set avec TOUS les messages non-lus
+    // existants → pas de spam de toasts au démarrage pour les vieux msgs.
+    // L'utilisateur les verra quand même via le badge rouge + l'animation.
+    if (notifiedIdsRef.current === null) {
+      const init = new Set();
+      myMessages.forEach(m => {
+        if (m && m.id && m.to === currentUser && !(m.readBy || {})[currentUser]) init.add(m.id);
+      });
+      notifiedIdsRef.current = init;
+      return; // on attend le prochain render pour voir d'éventuels NOUVEAUX msgs
+    }
     let newest = null;
     myMessages.forEach(m => {
-      if (!m || m.from === currentUser) return; // mes envois ne triggerent rien
-      if (!m.sentAt || m.sentAt <= (lastSeenSentAtRef.current || '')) return;
-      if (open && activePeer === m.from) return; // conversation déjà ouverte
-      if (!newest || m.sentAt > newest.sentAt) newest = m;
+      if (!m || !m.id || m.from === currentUser) return;
+      if ((m.readBy || {})[currentUser]) return; // déjà lu → jamais de toast
+      if (notifiedIdsRef.current.has(m.id)) return; // déjà notifié cette session
+      if (open && activePeer === m.from) return; // conv ouverte → il va le lire
+      if (!newest || (m.sentAt || '') > (newest.sentAt || '')) newest = m;
     });
     if (newest) {
-      lastSeenSentAtRef.current = newest.sentAt;
+      notifiedIdsRef.current.add(newest.id);
       setRecentToast({ from: newest.from, body: newest.body || '', sentAt: newest.sentAt });
       // 🔔 Petit « ding » deux-tons à l'arrivée d'un message (Web Audio API
       // → pas de fichier mp3 à charger). Échoue silencieusement si le
@@ -1535,12 +1542,25 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
                 ) : (
                   activeMessages.map(m => {
                     const mine = m.from === currentUser;
+                    // ✓ / ✓✓ style WhatsApp sur MES messages : ✓ = envoyé,
+                    // ✓✓ = lu par le destinataire (m.readBy[m.to] existe).
+                    // Sur les messages reçus → pas d'icône (c'est moi qui les lis,
+                    // pas d'intérêt d'afficher si j'ai lu mon propre message reçu).
+                    const readByPeer = mine && m.to && !!(m.readBy || {})[m.to];
                     return (
                       <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[80%] px-3 py-1.5 rounded-2xl text-sm ${mine ? 'bg-blue-500 text-white rounded-br-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-sm'}`}>
                           <div className="whitespace-pre-wrap break-words">{m.body}</div>
-                          <div className={`text-[9px] mt-0.5 ${mine ? 'text-blue-100' : 'text-slate-400'} text-right`}>
-                            {formatTime(m.sentAt)}
+                          <div className={`text-[9px] mt-0.5 ${mine ? 'text-blue-100' : 'text-slate-400'} text-right flex items-center justify-end gap-1`}>
+                            <span>{formatTime(m.sentAt)}</span>
+                            {mine && (
+                              <span
+                                className={readByPeer ? 'text-cyan-200 font-bold' : 'text-blue-200'}
+                                title={readByPeer ? `Lu par ${m.to}${m.readBy[m.to] ? ' le ' + new Date(m.readBy[m.to]).toLocaleString('fr-FR') : ''}` : 'Envoyé — non lu'}
+                              >
+                                {readByPeer ? '✓✓' : '✓'}
+                              </span>
+                            )}
                           </div>
                         </div>
                       </div>
