@@ -22926,6 +22926,13 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
   // emoji centré, libellé court SOUS l'icône, badge rouge minuscule façon
   // notification iOS. Pas de carré tout coloré qui prend tout l'espace.
   // Taille de l'icône : ~56px (équivalent iPhone), comme l'App Store.
+  // Mappe une classe Tailwind bg-*-50 / bg-*-100 vers bg-*-200 pour que le
+  // highlight blanc des pastilles 3D ressorte sur un fond suffisamment
+  // saturé (sinon ça paraît fade, retour utilisateur).
+  const boostBg = (cls) => {
+    if (!cls) return 'bg-slate-200';
+    return cls.replace(/-(50|100)\b/g, '-200');
+  };
   const Pastille = ({ id, emoji, label, count, bg }) => (
     <button
       type="button"
@@ -22936,7 +22943,7 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
       {/* Squircle icône style iOS — relief 3D via .pastille-3d : ombre portée
           + highlight glassy en haut + gradient assombrissant en bas. */}
       <div
-        className={`pastille-3d w-14 h-14 rounded-[1.15rem] flex items-center justify-center text-3xl transition-transform duration-150 active:scale-90 group-hover:scale-105 ${bg || 'bg-white'}`}
+        className={`pastille-3d w-14 h-14 rounded-[1.15rem] flex items-center justify-center text-3xl transition-transform duration-150 active:scale-90 group-hover:scale-105 ${boostBg(bg)}`}
       >
         {/* Emoji avec drop-shadow pour qu'il se détache de la pastille */}
         <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]">{emoji}</span>
