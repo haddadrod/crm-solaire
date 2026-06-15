@@ -22943,13 +22943,18 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
       {/* Squircle icône style iOS — relief 3D via .pastille-3d : ombre portée
           + highlight glassy en haut + gradient assombrissant en bas. */}
       <div
-        className={`pastille-3d w-14 h-14 rounded-[1.15rem] flex items-center justify-center text-3xl transition-transform duration-150 active:scale-90 group-hover:scale-105 ${boostBg(bg)}`}
+        className={`pastille-3d w-14 h-14 rounded-[1.15rem] flex items-center justify-center transition-transform duration-150 active:scale-90 group-hover:scale-105 ${boostBg(bg)}`}
       >
-        {/* Emoji avec drop-shadow pour qu'il se détache de la pastille */}
-        <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]">{emoji}</span>
-        {/* Badge rouge notification (haut droit, dépasse légèrement) */}
+        {/* Emoji centré verticalement avec leading-none + line-height fixe pour
+            corriger la métrique des emojis qui les décale vers le bas sinon. */}
+        <span className="text-[28px] leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.18)]" style={{ lineHeight: 1 }}>
+          {emoji}
+        </span>
+        {/* Badge rouge notification — collé au coin haut-droit du squircle
+            (top-0 right-0) au lieu de déborder (-top-1 -right-1) → ne chevauche
+            plus la pastille voisine ni le label de la ligne au-dessus. */}
         {count > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-rose-500 ring-2 ring-white shadow-md">
+          <span className="absolute top-0 right-0 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold leading-none text-white bg-rose-500 ring-2 ring-white shadow-sm translate-x-1 -translate-y-1">
             {count > 999 ? '999+' : count}
           </span>
         )}
@@ -22973,7 +22978,7 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
       {/* Vue globale */}
       <div>
         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Vue globale</h3>
-        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-3 gap-x-2 justify-items-center">
+        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-5 gap-x-3 justify-items-center">
           <Pastille id="all" emoji="📋" label="Tous" count={nbTotal} bg="bg-violet-50" />
           <Pastille id="pose_done" emoji="✅" label="Posés" count={nbPoses} bg="bg-emerald-50" />
           <Pastille id="pose_done_unpaid" emoji="⏳" label="Posés non payés" count={nbPosesUnpaid} bg="bg-amber-50" />
@@ -22989,7 +22994,7 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
       {/* Par statut — réutilise STATUTS_ORDERED tel quel */}
       <div>
         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Par statut</h3>
-        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-3 gap-x-2 justify-items-center">
+        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-5 gap-x-3 justify-items-center">
           {STATUTS_ORDERED.map(s => {
             const count = dossiers.filter(d => d.statut === s.id).length;
             return (
