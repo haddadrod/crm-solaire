@@ -5707,7 +5707,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             onEdit={() => { startEdit(currentQuickDossier); setShowQuickViewId(null); setQuickViewScrollTo(null); }}
             onShowDocs={() => { setShowDocsForId(currentQuickDossier.localId); setShowQuickViewId(null); setQuickViewScrollTo(null); }}
             onShowHist={() => { setShowHistForId(currentQuickDossier.localId); setShowQuickViewId(null); setQuickViewScrollTo(null); }}
-            onUpdate={(updates) => {
+            onUpdate={(updatesOrFn) => {
               const now = new Date().toISOString();
               const userTag = currentUser || '(anonyme)';
               // ⚠️ setDossiers FONCTIONNEL (prev => …) obligatoire ici : quand
@@ -5716,8 +5716,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
               // `dossiers` figé en closure, le 2e appel écrasait le 1er →
               // factureFile perdu → ni l'œil ni Pennylane visibles. En lisant
               // `prev`, chaque update part du state le plus à jour.
+              //
+              // 🛠️ updatesOrFn peut être un OBJET ({ poseurs: [...] }) OU une
+              // FONCTION (dCurrent => ({ poseurs: [...] })). La forme fonction
+              // est obligatoire pour les updates qui RÉECRIVENT un tableau
+              // existant (poseurs/régies/fournisseurs) : si on lit la liste
+              // depuis une closure obsolète (dRef pas encore re-synced), on
+              // écrase les modifs entre temps. La forme fonction reçoit le
+              // dossier ACTUEL depuis prev → reconstruit list depuis le frais.
               setDossiers(prev => prev.map(d => {
                 if (d.localId !== currentQuickDossier.localId) return d;
+                const updates = typeof updatesOrFn === 'function' ? updatesOrFn(d) : updatesOrFn;
                 let merged = { ...d, ...updates, savedAt: now, modifiedBy: userTag, modifiedAt: now };
                 // 📜 Trace tous les changements de champs (hors statut, qui a son
                 // entrée dédiée juste après). Une entrée d'historique par appel
@@ -18078,59 +18087,78 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const dRef = useRef(dossier);
   useEffect(() => { dRef.current = dossier; }, [dossier]);
 
+  // 🛠️ Patch fonctionnel : on lit la liste depuis le dossier ACTUEL (passé par
+  // onUpdate via prev), pas via la closure de dRef. Indispensable quand 2
+  // updates s'enchaînent vite (ex : onChange(factureFile) puis onExtract(IA)
+  // sur un FactureFileInput) → sinon la 2e closure réécrit la liste depuis un
+  // snapshot d'avant la 1re et perd factureFile.
   const updatePoseur = (idx, updates) => {
-    const latest = dRef.current;
-    const list = [...(latest.poseurs || [])];
-    list[idx] = { ...list[idx], ...updates };
-    onUpdate({ poseurs: list });
+    onUpdate((dCurrent) => {
+      const list = [...(dCurrent.poseurs || [])];
+      list[idx] = { ...list[idx], ...updates };
+      return { poseurs: list };
+    });
   };
   const addPoseur = () => {
-    const latest = dRef.current;
-    onUpdate({ poseurs: [...(latest.poseurs || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] });
+    onUpdate((dCurrent) => ({
+      poseurs: [...(dCurrent.poseurs || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }],
+    }));
   };
   const removePoseur = (idx) => {
-    const latest = dRef.current;
-    onUpdate({ poseurs: (latest.poseurs || []).filter((_, i) => i !== idx) });
+    onUpdate((dCurrent) => ({
+      poseurs: (dCurrent.poseurs || []).filter((_, i) => i !== idx),
+    }));
   };
 
   const updateFournisseur = (idx, updates) => {
-    const latest = dRef.current;
-    const list = [...(latest.fournisseurs || [])];
-    list[idx] = { ...list[idx], ...updates };
-    onUpdate({ fournisseurs: list });
+    onUpdate((dCurrent) => {
+      const list = [...(dCurrent.fournisseurs || [])];
+      list[idx] = { ...list[idx], ...updates };
+      return { fournisseurs: list };
+    });
   };
   const addFournisseur = () => {
-    const latest = dRef.current;
-    onUpdate({ fournisseurs: [...(latest.fournisseurs || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] });
+    onUpdate((dCurrent) => ({
+      fournisseurs: [...(dCurrent.fournisseurs || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }],
+    }));
   };
   const removeFournisseur = (idx) => {
-    const latest = dRef.current;
-    onUpdate({ fournisseurs: (latest.fournisseurs || []).filter((_, i) => i !== idx) });
+    onUpdate((dCurrent) => ({
+      fournisseurs: (dCurrent.fournisseurs || []).filter((_, i) => i !== idx),
+    }));
   };
   // Avoirs fournisseur (notes de crédit) — imbriqués dans chaque fournisseur.
   // Un avoir vient en déduction du coût HT du fournisseur (ex : matériel
   // récupéré chez le poseur puis rendu au fournisseur). Plusieurs possibles.
+  // Patches fonctionnels (cf updatePoseur) pour éviter d'écraser des updates
+  // récents (factureFile, factureNo IA…) en lisant depuis une closure obsolète.
   const addAvoirFournisseur = (idx) => {
-    const list = [...(d.fournisseurs || [])];
-    const f = list[idx]; if (!f) return;
-    const avoirs = [...(f.avoirs || []), { montantHt: '', avoirNo: '', date: new Date().toISOString().slice(0, 10), file: '' }];
-    list[idx] = { ...f, avoirs };
-    onUpdate({ fournisseurs: list });
+    onUpdate((dCurrent) => {
+      const list = [...(dCurrent.fournisseurs || [])];
+      const f = list[idx]; if (!f) return {};
+      const avoirs = [...(f.avoirs || []), { montantHt: '', avoirNo: '', date: new Date().toISOString().slice(0, 10), file: '' }];
+      list[idx] = { ...f, avoirs };
+      return { fournisseurs: list };
+    });
   };
   const updateAvoirFournisseur = (idx, aIdx, updates) => {
-    const list = [...(d.fournisseurs || [])];
-    const f = list[idx]; if (!f) return;
-    const avoirs = [...(f.avoirs || [])];
-    avoirs[aIdx] = { ...avoirs[aIdx], ...updates };
-    list[idx] = { ...f, avoirs };
-    onUpdate({ fournisseurs: list });
+    onUpdate((dCurrent) => {
+      const list = [...(dCurrent.fournisseurs || [])];
+      const f = list[idx]; if (!f) return {};
+      const avoirs = [...(f.avoirs || [])];
+      avoirs[aIdx] = { ...avoirs[aIdx], ...updates };
+      list[idx] = { ...f, avoirs };
+      return { fournisseurs: list };
+    });
   };
   const removeAvoirFournisseur = (idx, aIdx) => {
-    const list = [...(d.fournisseurs || [])];
-    const f = list[idx]; if (!f) return;
-    const avoirs = (f.avoirs || []).filter((_, i) => i !== aIdx);
-    list[idx] = { ...f, avoirs };
-    onUpdate({ fournisseurs: list });
+    onUpdate((dCurrent) => {
+      const list = [...(dCurrent.fournisseurs || [])];
+      const f = list[idx]; if (!f) return {};
+      const avoirs = (f.avoirs || []).filter((_, i) => i !== aIdx);
+      list[idx] = { ...f, avoirs };
+      return { fournisseurs: list };
+    });
   };
 
   return (
@@ -20403,21 +20431,27 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   );
                 })()}
               </button>
-              <button onClick={() => { openStep('regies'); onUpdate({ regies: [...(d.regies || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] }); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('regies'); onUpdate((dCurrent) => ({ regies: [...(dCurrent.regies || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] })); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
             {!foldedSteps.regies && (
             <div className="space-y-1.5">
               {(d.regies || []).map((r, i) => {
+                // Patch fonctionnel (cf updatePoseur) : lit la liste depuis le
+                // dossier ACTUEL au moment du setDossiers, pas via closure → fix
+                // race condition upload PDF + extraction IA qui s'enchaînent.
                 const updateRegie = (idx, upd) => {
-                  const latest = dRef.current;
-                  const list = [...(latest.regies || [])];
-                  list[idx] = { ...list[idx], ...upd };
-                  onUpdate({ regies: list });
+                  onUpdate((dCurrent) => {
+                    const list = [...(dCurrent.regies || [])];
+                    list[idx] = { ...list[idx], ...upd };
+                    return { regies: list };
+                  });
                 };
                 const rmRegie = (idx) => {
-                  onUpdate({ regies: (d.regies || []).filter((_, j) => j !== idx) });
+                  onUpdate((dCurrent) => ({
+                    regies: (dCurrent.regies || []).filter((_, j) => j !== idx),
+                  }));
                 };
                 const ttcRegie = (d.regiesDetail && d.regiesDetail[i]?.ttc) || 0;
                 return (
