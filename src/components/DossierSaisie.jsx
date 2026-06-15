@@ -22693,24 +22693,28 @@ function ChantierPhotosPanel({ photos }) {
 // Dossiers avec le filtre pré-réglé. Toute la logique de filtrage existante
 // est réutilisée — on n'ajoute QUE cet écran d'entrée.
 function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
-  // Pastille générique : carré arrondi, emoji énorme en haut, compteur en
-  // badge, libellé en bas. Plus la couleur est saturée, plus l'élément a
-  // d'importance (Tous, Doublons, etc.).
-  const Pastille = ({ id, emoji, label, count, gradient, lightBg, textColor, badgeColor }) => (
+  // 🍎 Pastille style iPhone : petite icône CARRÉE arrondie (squircle) avec
+  // emoji centré, libellé court SOUS l'icône, badge rouge minuscule façon
+  // notification iOS. Pas de carré tout coloré qui prend tout l'espace.
+  // Taille de l'icône : ~56px (équivalent iPhone), comme l'App Store.
+  const Pastille = ({ id, emoji, label, count, bg }) => (
     <button
       type="button"
       onClick={() => onPick(id)}
-      className={`group relative aspect-square flex flex-col items-center justify-center gap-2 rounded-3xl p-3 shadow-md border border-white transition active:scale-95 hover:shadow-xl ${lightBg}`}
-      title={`${count} dossier${count > 1 ? 's' : ''} dans « ${label} »`}
+      className="group flex flex-col items-center gap-1.5 focus:outline-none"
+      title={`${count} dossier${count > 1 ? 's' : ''} — ${label}`}
     >
-      {/* Compteur en pastille flottante (haut droit) */}
-      {count > 0 && (
-        <span className={`absolute top-1.5 right-1.5 min-w-[28px] h-6 px-1.5 rounded-full flex items-center justify-center text-[11px] font-bold text-white shadow-sm bg-gradient-to-br ${badgeColor || gradient}`}>
-          {count}
-        </span>
-      )}
-      <div className="text-4xl md:text-5xl drop-shadow-sm group-hover:scale-110 transition">{emoji}</div>
-      <div className={`text-[10px] md:text-[11px] font-bold text-center leading-tight px-1 ${textColor}`}>
+      {/* Squircle icône (carré arrondi style iOS) */}
+      <div className={`relative w-14 h-14 rounded-[1.1rem] flex items-center justify-center text-3xl shadow-sm border border-black/5 transition active:scale-90 group-hover:shadow-md group-hover:scale-105 ${bg || 'bg-white'}`}>
+        {emoji}
+        {/* Badge rouge notification (haut droit, dépasse légèrement) */}
+        {count > 0 && (
+          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-rose-500 ring-2 ring-white shadow-sm">
+            {count > 999 ? '999+' : count}
+          </span>
+        )}
+      </div>
+      <div className="text-[10px] font-medium text-slate-700 text-center leading-tight max-w-[72px] line-clamp-2">
         {label}
       </div>
     </button>
@@ -22721,36 +22725,31 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
   const nbPosesUnpaid = dossiers.filter(d => d.statutPose === 'visite_ok' && !d.payeClient && !DEAD_STATUTS.includes(d.statut) && d.statutFin !== 'refusé' && d.statutPose !== 'client_refuse').length;
   const nbNeedsImport = dossiers.filter(d => d.needsImportReview).length;
 
+  // Fonds pastels pour les squircles (façon icônes d'app iOS — chaque app a sa
+  // teinte douce). On dérive depuis le `bg` des statuts pour rester cohérent
+  // avec le code couleur existant.
   return (
-    <div className="space-y-4">
-      <div className="bg-gradient-to-br from-violet-50 via-pink-50 to-fuchsia-50 rounded-3xl p-4 shadow-sm border border-violet-100">
-        <h2 className="text-base font-bold text-slate-800 mb-1">Bienvenue 👋</h2>
-        <p className="text-xs text-slate-600">
-          Choisis une catégorie pour voir les dossiers. Le compteur en haut à droite indique combien il y en a dans chaque catégorie.
-        </p>
-      </div>
-
-      {/* Vue globale (toujours en premier, gros bouton) */}
+    <div className="space-y-5">
+      {/* Vue globale */}
       <div>
-        <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 px-1">🌐 Vue globale</h3>
-        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
-          <Pastille id="all" emoji="📋" label="Tous" count={nbTotal} gradient="from-violet-500 to-pink-500" lightBg="bg-gradient-to-br from-violet-100 to-pink-100" textColor="text-violet-800" />
-          <Pastille id="pose_done" emoji="✅" label="Posés" count={nbPoses} gradient="from-emerald-500 to-green-600" lightBg="bg-gradient-to-br from-emerald-100 to-green-100" textColor="text-emerald-800" />
-          <Pastille id="pose_done_unpaid" emoji="⏳" label="Posés non payés" count={nbPosesUnpaid} gradient="from-amber-500 to-orange-600" lightBg="bg-gradient-to-br from-amber-100 to-orange-100" textColor="text-amber-800" />
+        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Vue globale</h3>
+        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-3 gap-x-2 justify-items-center">
+          <Pastille id="all" emoji="📋" label="Tous" count={nbTotal} bg="bg-violet-50" />
+          <Pastille id="pose_done" emoji="✅" label="Posés" count={nbPoses} bg="bg-emerald-50" />
+          <Pastille id="pose_done_unpaid" emoji="⏳" label="Posés non payés" count={nbPosesUnpaid} bg="bg-amber-50" />
           {nbDoublons > 0 && (
-            <Pastille id="doublons" emoji="🔍" label="Doublons" count={nbDoublons} gradient="from-fuchsia-500 to-rose-500" lightBg="bg-gradient-to-br from-fuchsia-100 to-rose-100" textColor="text-fuchsia-800" />
+            <Pastille id="doublons" emoji="🔍" label="Doublons" count={nbDoublons} bg="bg-fuchsia-50" />
           )}
           {nbNeedsImport > 0 && (
-            <Pastille id="needs_import_review" emoji="📋" label="À compléter (import)" count={nbNeedsImport} gradient="from-rose-500 to-pink-600" lightBg="bg-gradient-to-br from-rose-100 to-pink-100" textColor="text-rose-800" />
+            <Pastille id="needs_import_review" emoji="📋" label="À compléter" count={nbNeedsImport} bg="bg-rose-50" />
           )}
         </div>
       </div>
 
-      {/* Par statut — réutilise STATUTS_ORDERED tel quel. Tous affichés, même
-          ceux à 0 (l'utilisateur veut voir TOUTES les pastilles). */}
+      {/* Par statut — réutilise STATUTS_ORDERED tel quel */}
       <div>
-        <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 px-1">📌 Par statut</h3>
-        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Par statut</h3>
+        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-3 gap-x-2 justify-items-center">
           {STATUTS_ORDERED.map(s => {
             const count = dossiers.filter(d => d.statut === s.id).length;
             return (
@@ -22760,9 +22759,7 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
                 emoji={s.emoji}
                 label={s.label}
                 count={count}
-                gradient={s.color || 'from-slate-400 to-slate-500'}
-                lightBg={count > 0 ? (s.bg || 'bg-slate-50') : 'bg-slate-50 opacity-70'}
-                textColor={count > 0 ? (s.text || 'text-slate-700') : 'text-slate-400'}
+                bg={s.bg || 'bg-slate-50'}
               />
             );
           })}
