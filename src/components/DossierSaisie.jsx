@@ -22943,7 +22943,11 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
       {/* Squircle icône style iOS — relief 3D via .pastille-3d : ombre portée
           + highlight glassy en haut + gradient assombrissant en bas. */}
       <div
+<<<<<<< HEAD
         className={`pastille-3d w-14 h-14 rounded-[1.15rem] flex items-center justify-center text-3xl transition-transform duration-150 active:scale-90 group-hover:scale-105 ${boostBg(bg)}`}
+=======
+        className={`pastille-3d w-14 h-14 rounded-[1.15rem] flex items-center justify-center text-3xl transition-transform duration-150 active:scale-90 group-hover:scale-105 ${bg || 'bg-white'}`}
+>>>>>>> origin/main
       >
         {/* Emoji avec drop-shadow pour qu'il se détache de la pastille */}
         <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]">{emoji}</span>
