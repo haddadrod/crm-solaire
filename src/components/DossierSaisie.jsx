@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, LayoutGrid, MessageCircle } from 'lucide-react';
+import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, LayoutGrid, MessageCircle, Home, ArrowLeft } from 'lucide-react';
 import { supabase, uploadFileToBucket, getSignedUrl, deleteFileFromBucket } from '../supabase.js';
 import { TEMPLATES_CATALOG } from '../pdfTemplates.js';
 
@@ -1401,10 +1401,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Init depuis le hash URL pour qu'un refresh F5 garde l'onglet courant.
   // Format : #onglet ou #onglet/sous-section (ex : #reglages/utilisateurs)
   const initialTabFromHash = (typeof window !== 'undefined' && window.location.hash)
-    ? window.location.hash.replace(/^#/, '').split('/')[0] || 'dossiers'
-    : 'dossiers';
-  const VALID_TABS = ['dossiers', 'archives', 'kanban', 'calendrier', 'paiements', 'tri-factures', 'dashboard', 'reglages'];
-  const [activeTab, setActiveTab] = useState(VALID_TABS.includes(initialTabFromHash) ? initialTabFromHash : 'dossiers');
+    ? window.location.hash.replace(/^#/, '').split('/')[0] || 'accueil'
+    : 'accueil';
+  const VALID_TABS = ['accueil', 'dossiers', 'archives', 'kanban', 'calendrier', 'paiements', 'tri-factures', 'dashboard', 'reglages'];
+  const [activeTab, setActiveTab] = useState(VALID_TABS.includes(initialTabFromHash) ? initialTabFromHash : 'accueil');
   // 📦 Sélection multiple sur l'onglet Archivés — pour désarchiver en masse
   // sans cliquer un par un. Set des localId cochés.
   const [selectedArchiveIds, setSelectedArchiveIds] = useState(() => new Set());
@@ -4813,6 +4813,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
           {/* Onglets — selon permissions du rôle actif */}
           <div className="flex gap-2 mb-3 bg-white rounded-2xl p-1.5 shadow-sm border border-violet-100 max-w-full flex-nowrap overflow-x-auto">
+            <TabButton active={activeTab === 'accueil'} onClick={() => setActiveTab('accueil')} icon={Home} label="Accueil" color="from-violet-500 to-pink-500" />
             <TabButton active={activeTab === 'dossiers'} onClick={() => setActiveTab('dossiers')} icon={FileText} label={`Dossiers (${nbActifs})`} color="from-violet-500 to-pink-500" />
             <TabButton active={activeTab === 'archives'} onClick={() => setActiveTab('archives')} icon={Check} label={`Archivés (${nbArchives})`} color="from-slate-500 to-gray-600" />
             <TabButton active={activeTab === 'kanban'} onClick={() => setActiveTab('kanban')} icon={LayoutGrid} label="Kanban" color="from-violet-500 to-fuchsia-500" />
@@ -4836,7 +4837,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           {/* Barre d'alertes rapides — masquée sur les onglets où elles n'apportent
               rien (Calendrier, Rapport paiements, Tableau de bord, Réglages : ces
               vues ont leur propre récap et l'alertes barre fait juste du bruit). */}
-          {!['calendrier', 'paiements', 'dashboard', 'reglages'].includes(activeTab) && <AlertesBar
+          {!['accueil', 'calendrier', 'paiements', 'dashboard', 'reglages'].includes(activeTab) && <AlertesBar
             rappelsControleQualite={dashboard.rappelsControleQualite || []}
             rappelsAEnvoyerBanque={dashboard.rappelsAEnvoyerBanque || []}
             rappelsFinancement={dashboard.rappelsFinancement || []}
@@ -4904,6 +4905,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 ? { ...d, historique: [...(d.historique || []), { date: now, user: userTag, action: 'relance_whatsapp', cible_kind: 'client', cible_nom: `${d.nom || ''} ${d.prenom || ''}`.trim(), channel: entry.channel, motif: copilotCtx.action?.label || 'copilote_ia' }] }
                 : d
               ));
+            }}
+          />
+        )}
+
+        {/* 🏠 ACCUEIL — écran lanceur façon iPhone : grosses pastilles avec
+            compteurs. Clic = on bascule sur l'onglet Dossiers avec le filtre
+            pré-réglé. Toute la logique de filtrage existante est réutilisée
+            telle quelle, on n'ajoute QUE l'écran d'entrée. */}
+        {activeTab === 'accueil' && (
+          <AccueilPastilles
+            dossiers={dossiers}
+            STATUTS_ORDERED={STATUTS_ORDERED}
+            nbDoublons={nbDoublons}
+            onPick={(filterId) => {
+              setFilterStatut(filterId);
+              setActiveTab('dossiers');
+              setShowStatutFilter(false);
             }}
           />
         )}
@@ -5052,6 +5070,22 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     <span className="text-xs font-semibold text-slate-600 uppercase">Filtrer par statut</span>
                     <span className="text-[10px] text-slate-500">{showStatutFilter ? '▲' : '▼'}</span>
                   </button>
+
+                  {/* ← Retour à l'accueil (visible uniquement quand on est
+                      arrivé ici depuis une pastille de l'écran Accueil — i.e.
+                      avec un filtre actif). Façon iPhone : tu rentres dans une
+                      catégorie, tu peux toujours en sortir. */}
+                  {!showStatutFilter && filterStatut !== 'all' && (
+                    <button
+                      type="button"
+                      onClick={() => { setFilterStatut('all'); setActiveTab('accueil'); }}
+                      className="px-2.5 py-1.5 rounded-xl text-xs font-bold bg-white hover:bg-violet-50 text-violet-700 border border-violet-200 flex items-center gap-1 shadow-sm"
+                      title="Retour à l'écran d'accueil (pastilles)"
+                    >
+                      <ArrowLeft className="w-3.5 h-3.5" />
+                      Accueil
+                    </button>
+                  )}
 
                   {/* Indicateur du filtre actif quand replié */}
                   {!showStatutFilter && filterStatut !== 'all' && (() => {
@@ -22649,6 +22683,90 @@ function ChantierPhotosPanel({ photos }) {
             </a>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+// 🏠 Écran d'accueil « lanceur » façon iPhone : grosses pastilles cliquables
+// avec emoji + libellé + compteur. Pas de liste. Clic = on passe sur l'onglet
+// Dossiers avec le filtre pré-réglé. Toute la logique de filtrage existante
+// est réutilisée — on n'ajoute QUE cet écran d'entrée.
+function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
+  // Pastille générique : carré arrondi, emoji énorme en haut, compteur en
+  // badge, libellé en bas. Plus la couleur est saturée, plus l'élément a
+  // d'importance (Tous, Doublons, etc.).
+  const Pastille = ({ id, emoji, label, count, gradient, lightBg, textColor, badgeColor }) => (
+    <button
+      type="button"
+      onClick={() => onPick(id)}
+      className={`group relative aspect-square flex flex-col items-center justify-center gap-2 rounded-3xl p-3 shadow-md border border-white transition active:scale-95 hover:shadow-xl ${lightBg}`}
+      title={`${count} dossier${count > 1 ? 's' : ''} dans « ${label} »`}
+    >
+      {/* Compteur en pastille flottante (haut droit) */}
+      {count > 0 && (
+        <span className={`absolute top-1.5 right-1.5 min-w-[28px] h-6 px-1.5 rounded-full flex items-center justify-center text-[11px] font-bold text-white shadow-sm bg-gradient-to-br ${badgeColor || gradient}`}>
+          {count}
+        </span>
+      )}
+      <div className="text-4xl md:text-5xl drop-shadow-sm group-hover:scale-110 transition">{emoji}</div>
+      <div className={`text-[10px] md:text-[11px] font-bold text-center leading-tight px-1 ${textColor}`}>
+        {label}
+      </div>
+    </button>
+  );
+
+  const nbTotal = dossiers.length;
+  const nbPoses = dossiers.filter(d => d.statutPose === 'visite_ok').length;
+  const nbPosesUnpaid = dossiers.filter(d => d.statutPose === 'visite_ok' && !d.payeClient && !DEAD_STATUTS.includes(d.statut) && d.statutFin !== 'refusé' && d.statutPose !== 'client_refuse').length;
+  const nbNeedsImport = dossiers.filter(d => d.needsImportReview).length;
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-gradient-to-br from-violet-50 via-pink-50 to-fuchsia-50 rounded-3xl p-4 shadow-sm border border-violet-100">
+        <h2 className="text-base font-bold text-slate-800 mb-1">Bienvenue 👋</h2>
+        <p className="text-xs text-slate-600">
+          Choisis une catégorie pour voir les dossiers. Le compteur en haut à droite indique combien il y en a dans chaque catégorie.
+        </p>
+      </div>
+
+      {/* Vue globale (toujours en premier, gros bouton) */}
+      <div>
+        <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 px-1">🌐 Vue globale</h3>
+        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+          <Pastille id="all" emoji="📋" label="Tous" count={nbTotal} gradient="from-violet-500 to-pink-500" lightBg="bg-gradient-to-br from-violet-100 to-pink-100" textColor="text-violet-800" />
+          <Pastille id="pose_done" emoji="✅" label="Posés" count={nbPoses} gradient="from-emerald-500 to-green-600" lightBg="bg-gradient-to-br from-emerald-100 to-green-100" textColor="text-emerald-800" />
+          <Pastille id="pose_done_unpaid" emoji="⏳" label="Posés non payés" count={nbPosesUnpaid} gradient="from-amber-500 to-orange-600" lightBg="bg-gradient-to-br from-amber-100 to-orange-100" textColor="text-amber-800" />
+          {nbDoublons > 0 && (
+            <Pastille id="doublons" emoji="🔍" label="Doublons" count={nbDoublons} gradient="from-fuchsia-500 to-rose-500" lightBg="bg-gradient-to-br from-fuchsia-100 to-rose-100" textColor="text-fuchsia-800" />
+          )}
+          {nbNeedsImport > 0 && (
+            <Pastille id="needs_import_review" emoji="📋" label="À compléter (import)" count={nbNeedsImport} gradient="from-rose-500 to-pink-600" lightBg="bg-gradient-to-br from-rose-100 to-pink-100" textColor="text-rose-800" />
+          )}
+        </div>
+      </div>
+
+      {/* Par statut — réutilise STATUTS_ORDERED tel quel. Tous affichés, même
+          ceux à 0 (l'utilisateur veut voir TOUTES les pastilles). */}
+      <div>
+        <h3 className="text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2 px-1">📌 Par statut</h3>
+        <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2.5">
+          {STATUTS_ORDERED.map(s => {
+            const count = dossiers.filter(d => d.statut === s.id).length;
+            return (
+              <Pastille
+                key={s.id}
+                id={s.id}
+                emoji={s.emoji}
+                label={s.label}
+                count={count}
+                gradient={s.color || 'from-slate-400 to-slate-500'}
+                lightBg={count > 0 ? (s.bg || 'bg-slate-50') : 'bg-slate-50 opacity-70'}
+                textColor={count > 0 ? (s.text || 'text-slate-700') : 'text-slate-400'}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
