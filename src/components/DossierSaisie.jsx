@@ -5614,6 +5614,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             setDossiers={setDossiers}
             currentUserRole={currentUserRole}
             isAdmin={isAdmin}
+            gmailOAuth={gmailOAuth}
             onOpenDossier={(localId) => { setShowQuickViewId(localId); setQuickViewScrollTo('fournisseurs'); }}
           />
         )}
@@ -6607,8 +6608,18 @@ function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier
 // Pas d'écrasement auto : si une proposition pointe vers une ligne qui a déjà
 // une facture, on alerte et on demande confirmation explicite (mais en
 // pratique buildCandidates côté API exclut déjà ces lignes — donc rare).
-function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onOpenDossier }) {
+function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gmailOAuth, onOpenDossier }) {
   const [files, setFiles] = useState([]); // [{ id, file, name, status, extracted, matching, error, pickedIdx }]
+  // 📧 Scan Gmail — état du scan en cours + résultats par boîte. On stocke
+  // sous forme de Map<attachmentKey, { selected, mail, inbox, attachment }>
+  // pour pouvoir cocher/décocher avant l'import dans la queue d'analyse.
+  const [gmailScanning, setGmailScanning] = useState(false);
+  const [gmailScanResults, setGmailScanResults] = useState(null); // { results, errors } | null
+  const [gmailSelection, setGmailSelection] = useState(new Set()); // Set d'attachmentKey cochés
+  const [gmailImporting, setGmailImporting] = useState(false);
+  const gmailConnected = !!gmailOAuth?.connected;
+  const gmailScannableInboxes = (gmailOAuth?.inboxes || []).filter(b => b.canScan);
+  const gmailAttachmentKey = (inboxEmail, messageId, attachmentId) => `${inboxEmail}::${messageId}::${attachmentId}`;
   // 📦 Factures mises de côté — persistées dans Supabase (bucket pour le PDF +
   // clé 'tri-factures-pending' pour les métadonnées). Survit aux refresh, aux
   // changements de machine, aux fermetures d'onglet. C'est ICI que l'utilisateur
@@ -6776,6 +6787,106 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onO
     setFiles(prev => [...newItems, ...prev]);
     // Lance l'analyse en série (évite de saturer l'API IA si on drop 50 PDFs).
     runAnalysis(newItems);
+  };
+
+  // 📧 Scan Gmail : appelle l'endpoint qui liste TOUS les emails récents avec
+  // pièces jointes PDF, sur toutes les boîtes connectées de l'utilisateur.
+  // Le résultat est affiché sous forme de liste interactive — l'utilisateur
+  // coche les factures à importer, puis clique « Importer » → on télécharge
+  // chaque PDF (base64) et on l'injecte dans la queue d'analyse comme un
+  // drag&drop manuel. Le pipeline IA + matching + Mises de côté reste
+  // inchangé en aval — c'est juste un drag&drop automatisé.
+  const handleGmailScan = async () => {
+    setGmailScanning(true);
+    setGmailScanResults(null);
+    setGmailSelection(new Set());
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/gmail-oauth?action=scan', { method: 'POST', headers });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      const data = payload.data || { results: [], errors: [] };
+      setGmailScanResults(data);
+      // Pré-sélectionne TOUT par défaut (l'utilisateur décoche ce qu'il ne
+      // veut pas) — plus ergonomique que tout décocher si la majorité sont OK.
+      const next = new Set();
+      (data.results || []).forEach(r => {
+        (r.messages || []).forEach(m => {
+          (m.attachments || []).forEach(a => {
+            next.add(gmailAttachmentKey(r.email, m.messageId, a.attachmentId));
+          });
+        });
+      });
+      setGmailSelection(next);
+    } catch (e) {
+      setGmailScanResults({ results: [], errors: [{ email: '(global)', error: e?.message || 'Scan échoué' }] });
+    } finally {
+      setGmailScanning(false);
+    }
+  };
+
+  // Bascule la sélection d'un attachment précis.
+  const toggleGmailSelected = (key) => {
+    setGmailSelection(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
+  // 📥 Importe les attachments cochés : pour chacun, on télécharge le PDF
+  // (base64) depuis Gmail puis on le convertit en File pour l'injecter dans
+  // la queue d'analyse via onFilesSelected (pipeline existant inchangé).
+  const handleGmailImport = async () => {
+    if (!gmailScanResults || gmailSelection.size === 0) return;
+    setGmailImporting(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const filesToImport = [];
+      for (const r of gmailScanResults.results || []) {
+        for (const m of r.messages || []) {
+          for (const a of m.attachments || []) {
+            const key = gmailAttachmentKey(r.email, m.messageId, a.attachmentId);
+            if (!gmailSelection.has(key)) continue;
+            try {
+              const resp = await fetch('/api/gmail-oauth?action=fetch-attachment', {
+                method: 'POST', headers,
+                body: JSON.stringify({ email: r.email, messageId: m.messageId, attachmentId: a.attachmentId }),
+              });
+              const payload = await resp.json().catch(() => ({}));
+              if (!resp.ok) throw new Error(payload.error || `Erreur ${resp.status}`);
+              const base64 = payload.data?.base64 || '';
+              if (!base64) throw new Error('PDF vide');
+              // Convertit le base64 → Blob → File (le pipeline d'analyse
+              // utilise FileReader sur ce File pour faire le base64 → IA).
+              const bin = atob(base64);
+              const bytes = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+              const blob = new Blob([bytes], { type: 'application/pdf' });
+              const fileName = a.filename || `gmail_${m.messageId}.pdf`;
+              const file = new File([blob], fileName, { type: 'application/pdf' });
+              filesToImport.push(file);
+            } catch (e) {
+              console.warn(`Import attachment échoué (${a.filename}):`, e?.message);
+            }
+          }
+        }
+      }
+      if (filesToImport.length > 0) {
+        onFilesSelected(filesToImport);
+      }
+      // Reset l'UI scan : on a importé, plus besoin d'afficher la liste.
+      setGmailScanResults(null);
+      setGmailSelection(new Set());
+    } catch (e) {
+      alert(`Erreur import Gmail : ${e?.message || 'inconnu'}`);
+    } finally {
+      setGmailImporting(false);
+    }
   };
 
   const runAnalysis = async (items) => {
@@ -7000,6 +7111,111 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, onO
           >
             {repairing && repairing.done < repairing.total ? '⏳ Réparation…' : '🩹 Réparer les factures'}
           </button>
+        </div>
+      )}
+
+      {/* 📧 Section Scanner Gmail — automatise le drag&drop en allant chercher
+          les PDFs récents dans les boîtes Gmail connectées (Yolico, Elsun…).
+          Visible UNIQUEMENT si au moins une boîte Gmail est connectée. */}
+      {gmailConnected && (
+        <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-200 rounded-2xl p-3">
+          <div className="flex items-start justify-between gap-3 flex-wrap">
+            <div className="min-w-0 flex-1">
+              <div className="text-sm font-bold text-blue-900 flex items-center gap-2">
+                📧 Scanner les factures reçues par Gmail
+              </div>
+              <div className="text-[11px] text-blue-700 mt-0.5">
+                {gmailScannableInboxes.length > 0
+                  ? <>{gmailScannableInboxes.length} boîte{gmailScannableInboxes.length > 1 ? 's' : ''} prête{gmailScannableInboxes.length > 1 ? 's' : ''} au scan — cherche les PDFs reçus dans les 60 derniers jours et les ajoute à la queue d'analyse.</>
+                  : <>⚠️ Aucune boîte n'a le scope lecture activé. Reconnecte tes Gmail dans Réglages → Email pour activer le scan (1 clic, autorisation Google).</>
+                }
+              </div>
+            </div>
+            {gmailScannableInboxes.length > 0 && (
+              <button
+                type="button"
+                onClick={handleGmailScan}
+                disabled={gmailScanning || gmailImporting}
+                className="flex-shrink-0 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-xs font-bold whitespace-nowrap"
+              >
+                {gmailScanning ? '⏳ Scan…' : '🔍 Scanner Gmail'}
+              </button>
+            )}
+          </div>
+          {/* Résultats du scan : liste interactive avec checkboxes */}
+          {gmailScanResults && (
+            <div className="mt-3 space-y-2">
+              {(gmailScanResults.errors || []).map((e, i) => (
+                <div key={i} className="text-[11px] bg-rose-50 border border-rose-200 rounded-lg px-2 py-1.5 text-rose-700">
+                  ⚠️ <span className="font-bold">{e.email}</span> : {e.error}
+                </div>
+              ))}
+              {(gmailScanResults.results || []).length === 0 && (gmailScanResults.errors || []).length === 0 && (
+                <div className="text-[11px] italic text-blue-700">Aucun PDF trouvé dans les boîtes connectées.</div>
+              )}
+              {(gmailScanResults.results || []).map(r => {
+                const totalAttachments = (r.messages || []).reduce((s, m) => s + (m.attachments || []).length, 0);
+                if (totalAttachments === 0) return null;
+                return (
+                  <div key={r.email} className="bg-white border border-blue-200 rounded-lg p-2">
+                    <div className="text-[11px] font-bold text-blue-800 mb-1.5">
+                      📥 {r.email} — {totalAttachments} PDF{totalAttachments > 1 ? 's' : ''}
+                    </div>
+                    <div className="space-y-1">
+                      {(r.messages || []).map(m => (m.attachments || []).map(a => {
+                        const key = gmailAttachmentKey(r.email, m.messageId, a.attachmentId);
+                        const checked = gmailSelection.has(key);
+                        const sizeKb = Math.round((a.sizeBytes || 0) / 1024);
+                        const dateLabel = m.internalDate
+                          ? new Date(parseInt(m.internalDate, 10)).toLocaleDateString('fr-FR')
+                          : (m.date ? new Date(m.date).toLocaleDateString('fr-FR') : '');
+                        return (
+                          <label
+                            key={key}
+                            className={`flex items-start gap-2 p-1.5 rounded border cursor-pointer transition ${
+                              checked ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 border-slate-200 hover:bg-blue-50/50'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleGmailSelected(key)}
+                              className="mt-0.5 flex-shrink-0 accent-blue-600"
+                            />
+                            <div className="min-w-0 flex-1 text-[10px]">
+                              <div className="font-semibold text-slate-800 truncate" title={a.filename}>📄 {a.filename} <span className="font-normal text-slate-500">· {sizeKb} Ko</span></div>
+                              <div className="text-slate-600 truncate" title={m.subject}>✉️ {m.subject || '(sans sujet)'}</div>
+                              <div className="text-slate-500 truncate" title={m.from}>De {m.from || '?'} {dateLabel ? `· ${dateLabel}` : ''}</div>
+                            </div>
+                          </label>
+                        );
+                      }))}
+                    </div>
+                  </div>
+                );
+              })}
+              {gmailSelection.size > 0 && (
+                <div className="flex items-center gap-2 flex-wrap pt-1">
+                  <button
+                    type="button"
+                    onClick={handleGmailImport}
+                    disabled={gmailImporting}
+                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-emerald-300 text-white rounded-lg text-xs font-bold"
+                  >
+                    {gmailImporting ? `⏳ Import (${gmailSelection.size})…` : `📥 Importer les ${gmailSelection.size} cochés`}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setGmailScanResults(null); setGmailSelection(new Set()); }}
+                    disabled={gmailImporting}
+                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold"
+                  >
+                    Annuler
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -10978,16 +11194,36 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
     }
   };
 
-  const disconnectGmail = async () => {
-    if (!window.confirm('Déconnecter Gmail du CRM ? Tu pourras te reconnecter en 1 clic ensuite.')) return;
+  // ✋ Déconnexion : si targetEmail précisé → ne déconnecte QUE cette boîte.
+  //   Sinon (ancien comportement), déconnecte tout. Mise à jour locale du
+  //   state pour refléter sans attendre le re-fetch.
+  const disconnectGmail = async (targetEmail) => {
+    const label = targetEmail ? `la boîte ${targetEmail}` : 'Gmail du CRM';
+    if (!window.confirm(`Déconnecter ${label} ? Tu pourras te reconnecter en 1 clic ensuite.`)) return;
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const headers = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const res = await fetch('/api/gmail-oauth', { method: 'DELETE', headers });
+      const url = targetEmail
+        ? `/api/gmail-oauth?email=${encodeURIComponent(targetEmail)}`
+        : '/api/gmail-oauth';
+      const res = await fetch(url, { method: 'DELETE', headers });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
-      setGmailOAuth({ connected: false, email: null, connectedAt: null });
+      if (targetEmail) {
+        // Retire juste cette boîte de la liste locale.
+        setGmailOAuth(prev => {
+          const nextInboxes = (prev?.inboxes || []).filter(b => (b.email || '').toLowerCase() !== targetEmail.toLowerCase());
+          return {
+            connected: nextInboxes.length > 0,
+            email: nextInboxes[0]?.email || null,
+            connectedAt: nextInboxes[0]?.connectedAt || null,
+            inboxes: nextInboxes,
+          };
+        });
+      } else {
+        setGmailOAuth({ connected: false, email: null, connectedAt: null, inboxes: [] });
+      }
     } catch (e) {
       alert(`Erreur déconnexion : ${e.message}`);
     }
@@ -11185,14 +11421,48 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
           {showAdvanced && (
             <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
               {gmailOAuth?.connected ? (
-                <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-lg">
-                  <div className="text-xs font-bold text-emerald-800">✅ OAuth Gmail connecté : {gmailOAuth.email}</div>
-                  <button onClick={disconnectGmail} className="mt-2 px-3 py-1 bg-white border border-rose-300 text-rose-600 rounded text-xs font-semibold hover:bg-rose-50">🔌 Déconnecter OAuth</button>
+                <div className="space-y-2">
+                  <div className="text-[11px] font-bold text-emerald-700">
+                    ✅ {(gmailOAuth.inboxes || [{ email: gmailOAuth.email }]).length} boîte{(gmailOAuth.inboxes || []).length > 1 ? 's' : ''} Gmail connectée{(gmailOAuth.inboxes || []).length > 1 ? 's' : ''}
+                  </div>
+                  {/* Liste des boîtes : compat ascendante via fallback sur l'ancien
+                      shape { email } si inboxes pas encore propagé par le backend. */}
+                  {(gmailOAuth.inboxes && gmailOAuth.inboxes.length > 0
+                    ? gmailOAuth.inboxes
+                    : [{ email: gmailOAuth.email, connectedAt: gmailOAuth.connectedAt, canScan: false }]
+                  ).map((b) => (
+                    <div key={b.email} className="p-2 bg-emerald-50 border border-emerald-300 rounded-lg flex items-center justify-between gap-2">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-bold text-emerald-800 truncate">📧 {b.email}</div>
+                        <div className="text-[10px] text-emerald-600 flex items-center gap-2 mt-0.5">
+                          {b.connectedAt && <span>Connectée le {new Date(b.connectedAt).toLocaleDateString('fr-FR')}</span>}
+                          {b.canScan
+                            ? <span className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded font-bold">📥 Scan factures actif</span>
+                            : <span className="px-1 py-0.5 bg-amber-100 text-amber-700 rounded font-bold">⚠️ Reconnecte pour activer le scan factures</span>}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => disconnectGmail(b.email)}
+                        className="flex-shrink-0 px-2 py-1 bg-white border border-rose-300 text-rose-600 rounded text-[10px] font-bold hover:bg-rose-50"
+                        title={`Déconnecter ${b.email}`}
+                      >
+                        🔌
+                      </button>
+                    </div>
+                  ))}
+                  <button
+                    onClick={connectGmail}
+                    disabled={oauthBusy}
+                    className="w-full px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
+                    title="Connecte une 2e (ou 3e…) adresse Gmail — utile pour scanner les factures qui arrivent dans Yolico ET Elsun par exemple"
+                  >
+                    {oauthBusy ? '⏳ Redirection…' : '➕ Connecter une autre adresse Gmail'}
+                  </button>
                 </div>
               ) : (
                 <>
                   <div className="text-[11px] text-slate-600 leading-relaxed">
-                    Avec OAuth, pas de mot de passe à copier — tu cliques "Connecter Gmail" → consent screen Google → fini. Mais ça nécessite un setup Google Cloud côté admin (~30 min, 1 fois).
+                    Avec OAuth, pas de mot de passe à copier — tu cliques "Connecter Gmail" → consent screen Google → fini. Tu peux connecter <strong>plusieurs adresses</strong> (ex : Yolico + Elsun) pour scanner les factures reçues automatiquement.
                   </div>
                   <button
                     onClick={connectGmail}

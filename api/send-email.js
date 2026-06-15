@@ -99,9 +99,28 @@ async function sendViaGmailOAuth(res, { user, admin }, body) {
   if (!row?.value) {
     return json(res, 400, { error: "Gmail pas connecté. Va dans Réglages → Email d'envoi → 'Connecter Gmail'." });
   }
-  let creds;
-  try { creds = JSON.parse(row.value); } catch (e) {
+  // 📦 Format storage : ARRAY de boîtes Gmail (multi-comptes) depuis la
+  //   migration multi-Gmail. Compat ascendante : si on lit l'ancien format
+  //   objet (1 seul compte), on le wrap en array.
+  let inboxes = [];
+  try {
+    const parsed = JSON.parse(row.value);
+    if (Array.isArray(parsed)) inboxes = parsed;
+    else if (parsed && parsed.refreshToken) inboxes = [parsed]; // legacy
+  } catch (e) {
     return json(res, 502, { error: 'Credentials OAuth corrompus, reconnecte Gmail.' });
+  }
+  if (inboxes.length === 0) {
+    return json(res, 400, { error: 'Aucune boîte Gmail connectée. Va dans Réglages → Email d\'envoi.' });
+  }
+  // Sélection de l'expéditeur : si le body précise `fromEmail`, on l'utilise.
+  // Sinon, on prend la 1re boîte connectée (rétro-compat avec l'existant).
+  const fromEmail = (body.fromEmail || '').trim().toLowerCase();
+  let creds = fromEmail
+    ? inboxes.find(b => (b.email || '').toLowerCase() === fromEmail)
+    : inboxes[0];
+  if (!creds) {
+    return json(res, 400, { error: `Boîte ${fromEmail || '(non précisée)'} non trouvée parmi les Gmail connectés.` });
   }
   if (!creds.refreshToken) {
     return json(res, 400, { error: 'Refresh token manquant, reconnecte Gmail.' });
@@ -113,14 +132,20 @@ async function sendViaGmailOAuth(res, { user, admin }, body) {
     try {
       const refreshed = await refreshAccessToken(creds.refreshToken);
       accessToken = refreshed.accessToken;
-      const newCreds = {
-        ...creds,
-        accessToken,
-        expiresAt: Date.now() + (refreshed.expiresIn || 3600) * 1000,
-      };
+      // Met à jour les credentials de la boîte courante DANS l'array, et
+      // réécrit l'array complet. Évite d'écraser les AUTRES boîtes.
+      const idx = inboxes.findIndex(b => (b.email || '').toLowerCase() === (creds.email || '').toLowerCase());
+      if (idx >= 0) {
+        inboxes[idx] = {
+          ...creds,
+          accessToken,
+          expiresAt: Date.now() + (refreshed.expiresIn || 3600) * 1000,
+        };
+        creds = inboxes[idx];
+      }
       await admin.from('storage').upsert({
         key: `gmail-oauth:${user.id}`,
-        value: JSON.stringify(newCreds),
+        value: JSON.stringify(inboxes),
         updated_at: new Date().toISOString(),
       });
     } catch (e) {
