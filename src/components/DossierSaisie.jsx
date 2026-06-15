@@ -22941,6 +22941,7 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
       title={`${count} dossier${count > 1 ? 's' : ''} — ${label}`}
     >
       {/* Squircle icône style iOS — rendu épuré inspiré des vraies icônes
+<<<<<<< HEAD
           d'app iPhone (Calendrier, App Store…). On wrap dans un <span> en
           position relative pour que le badge soit positionné par rapport au
           squircle (pas au flex container), et qu'il puisse vraiment déborder
@@ -22964,6 +22965,25 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
         {count > 0 && (
           <span
             className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center text-[11px] font-bold leading-none text-white shadow-[0_2px_4px_rgba(0,0,0,0.18)] pointer-events-none"
+=======
+          d'app iPhone (Calendrier, App Store…). */}
+      <div
+        className={`pastille-3d w-14 h-14 rounded-[1.4rem] flex items-center justify-center transition-transform duration-150 active:scale-90 group-hover:scale-105 ${boostBg(bg)}`}
+      >
+        {/* Emoji parfaitement centré au milieu du squircle. */}
+        <span
+          className="block drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]"
+          style={{ fontSize: '28px', lineHeight: 1 }}
+        >
+          {emoji}
+        </span>
+        {/* Badge rouge style iOS : grand, déborde clairement du coin haut-
+            droit, sans bordure blanche, rouge iOS. La taille est calibrée pour
+            avoir le centre du badge ~à l'angle du squircle. */}
+        {count > 0 && (
+          <span
+            className="absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center text-[11px] font-bold leading-none text-white shadow-[0_2px_4px_rgba(0,0,0,0.18)]"
+>>>>>>> origin/main
             style={{ backgroundColor: 'rgb(255, 59, 48)' }}
           >
             {count > 999 ? '999+' : count}
