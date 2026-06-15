@@ -968,6 +968,93 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
   );
 }
 
+// 🚗 Bloc « Déplacements » d'un poseur — liste éditable + bouton « + Ajouter ».
+// Chaque entrée = { id, date, montant, note }. Le total s'ajoute au coût HT
+// du poseur dans enrichDossier → marge HT se recalcule auto. Compact, pliable
+// si vide (pour ne pas encombrer la fiche).
+function DeplacementsPoseurBloc({ deplacements = [], onChange }) {
+  const [open, setOpen] = useState(deplacements.length > 0);
+  const total = deplacements.reduce((s, d) => s + (parseFloat(d?.montant) || 0), 0);
+  const today = new Date().toISOString().slice(0, 10);
+
+  const addDeplacement = () => {
+    const id = `dep_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    onChange([...deplacements, { id, date: today, montant: '', note: '' }]);
+    setOpen(true);
+  };
+  const updateOne = (idx, patch) => {
+    onChange(deplacements.map((d, i) => i === idx ? { ...d, ...patch } : d));
+  };
+  const removeOne = (idx) => {
+    onChange(deplacements.filter((_, i) => i !== idx));
+  };
+
+  // Si vide ET replié : un seul bouton discret « + Déplacement »
+  if (deplacements.length === 0 && !open) {
+    return (
+      <button
+        type="button"
+        onClick={addDeplacement}
+        className="text-[10px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded border border-dashed border-amber-300 inline-flex items-center gap-1 w-fit"
+        title="Ajouter un coût de déplacement (RDV raté facturé par le poseur)"
+      >
+        🚗 + Déplacement
+      </button>
+    );
+  }
+
+  return (
+    <div className="bg-amber-50/50 border border-amber-200 rounded-lg p-1.5 space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <button type="button" onClick={() => setOpen(o => !o)} className="text-[10px] font-bold text-amber-700 flex items-center gap-1 hover:opacity-80">
+          <span>{open ? '▼' : '▶'}</span>
+          🚗 Déplacements ({deplacements.length})
+          {total > 0 && <span className="text-amber-900">— {total.toFixed(0)} €</span>}
+        </button>
+        <button type="button" onClick={addDeplacement} className="text-[10px] font-bold text-amber-700 bg-white hover:bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+          + Ajouter
+        </button>
+      </div>
+      {open && deplacements.map((d, idx) => (
+        <div key={d.id || idx} className="bg-white border border-amber-100 rounded p-1.5 space-y-1">
+          <div className="grid grid-cols-[auto_1fr_auto] gap-1 items-center">
+            <input
+              type="date"
+              value={d.date || ''}
+              onChange={(e) => updateOne(idx, { date: e.target.value })}
+              className="px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[10px]"
+              title="Date du déplacement"
+            />
+            <input
+              type="number"
+              step="0.01"
+              value={d.montant || ''}
+              onChange={(e) => updateOne(idx, { montant: e.target.value })}
+              placeholder="Montant € (500, 750, 1000…)"
+              className="px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[10px] w-full"
+            />
+            <button
+              type="button"
+              onClick={() => removeOne(idx)}
+              className="p-0.5 text-rose-500 hover:bg-rose-100 rounded"
+              title="Supprimer ce déplacement"
+            >
+              <Trash2 className="w-3 h-3" />
+            </button>
+          </div>
+          <input
+            type="text"
+            value={d.note || ''}
+            onChange={(e) => updateOne(idx, { note: e.target.value })}
+            placeholder="Note (ex : client absent, refus sur place…)"
+            className="w-full px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[10px]"
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 const findClosestTarif = (tarifs, puissance) => {
   if (!tarifs || Object.keys(tarifs).length === 0) return 0;
   if (tarifs[puissance]) return tarifs[puissance];
@@ -1049,9 +1136,13 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
     const autoHt = computeAutoTarif((tarifsPoseurs || {})[p.nom]);
     const baseHt = (p.htCustom !== '' && p.htCustom !== undefined && p.htCustom !== null) ? (parseFloat(p.htCustom) || 0) : autoHt;
     const surplus = parseFloat(p.surplus) || 0;
-    const ht = baseHt + surplus;
+    // 🚗 Déplacements : pose annulée sur place / RDV ratés où le poseur s'est
+    // déplacé pour rien et nous facture quand même (500€ / 750€ / 1000€…).
+    // S'ajoute au coût total du poseur — la marge HT se recalcule auto.
+    const deplacementsHt = (p.deplacements || []).reduce((s, dep) => s + (parseFloat(dep?.montant) || 0), 0);
+    const ht = baseHt + surplus + deplacementsHt;
     // Poseurs : jamais de TVA (toujours HT). TTC = HT.
-    return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, baseHt, surplus, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '' };
+    return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, baseHt, surplus, deplacementsHt, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '' };
   });
   const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
   const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
@@ -1074,6 +1165,39 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
 // 💬 Chat équipe — bulle flottante bottom-right + panneau DM 1-à-1.
 // Stocké dans la clé 'chat-messages' (Supabase storage), synced via Realtime.
 // Le merge anti-perte est géré côté setChatMessages dans DossierSaisie.
+// 🔔 « Ding » deux-tons pour les nouveaux messages chat — généré à la volée
+// avec Web Audio API (pas de fichier mp3 à embarquer). Volume bas (~12%), son
+// court et discret style iOS. Échoue silencieusement si le navigateur bloque
+// l'audio (autoplay policy : l'utilisateur doit avoir cliqué au moins une
+// fois dans la page avant que le son passe).
+function playChatDing() {
+  try {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    const now = ctx.currentTime;
+    const playTone = (freq, startOffset, duration) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = freq;
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      // Enveloppe attaque-décay rapide pour un son « cloche »
+      gain.gain.setValueAtTime(0, now + startOffset);
+      gain.gain.linearRampToValueAtTime(0.12, now + startOffset + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, now + startOffset + duration);
+      osc.start(now + startOffset);
+      osc.stop(now + startOffset + duration + 0.02);
+    };
+    // 2 tons rapprochés (do6 puis mi6) → effet "coucou" sympa et identifiable
+    playTone(1046.5, 0,    0.18); // C6
+    playTone(1318.5, 0.10, 0.20); // E6
+    // Ferme le contexte au bout d'une seconde (sinon ils s'accumulent).
+    setTimeout(() => { try { ctx.close(); } catch (e) {} }, 1000);
+  } catch (e) { /* navigateur ne supporte pas / bloque → on ignore */ }
+}
+
 function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages }) {
   const [open, setOpen] = useState(false);
   const [activePeer, setActivePeer] = useState(null); // nom du collègue actif
@@ -1188,6 +1312,10 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
     if (newest) {
       lastSeenSentAtRef.current = newest.sentAt;
       setRecentToast({ from: newest.from, body: newest.body || '', sentAt: newest.sentAt });
+      // 🔔 Petit « ding » deux-tons à l'arrivée d'un message (Web Audio API
+      // → pas de fichier mp3 à charger). Échoue silencieusement si le
+      // navigateur bloque l'audio (autoplay policy avant 1ère interaction).
+      playChatDing();
       // Disparaît tout seul après 6s.
       const t = setTimeout(() => setRecentToast(null), 6000);
       return () => clearTimeout(t);
@@ -2725,9 +2853,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const autoHt = computeAutoTarif(tarifsPoseurs[p.nom]);
       const baseHt = p.htCustom !== '' ? (parseFloat(p.htCustom) || 0) : autoHt;
       const surplus = parseFloat(p.surplus) || 0;
-      const ht = baseHt + surplus;
+      // 🚗 Déplacements (RDV ratés où le poseur facture quand même). Voir
+      // commentaire dans enrichDossier — coût qui s'ajoute au total poseur.
+      const deplacementsHt = (p.deplacements || []).reduce((s, dep) => s + (parseFloat(dep?.montant) || 0), 0);
+      const ht = baseHt + surplus + deplacementsHt;
       // Poseurs : jamais de TVA (toujours HT). TTC = HT.
-      return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, baseHt, surplus, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '' };
+      return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, baseHt, surplus, deplacementsHt, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '' };
     });
     const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
     const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
@@ -3095,7 +3226,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       provenanceLead: d.provenanceLead || '',
       regiePaye: d.regiePaye || false, regieDatePaye: d.regieDatePaye || '',
       poseurs: d.poseurs?.length > 0
-        ? d.poseurs.map(p => ({ nom: p.nom, htCustom: p.htCustom || '', paye: p.paye || false, datePaye: p.datePaye || '', bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '', surplus: p.surplus || 0 }))
+        ? d.poseurs.map(p => ({ nom: p.nom, htCustom: p.htCustom || '', paye: p.paye || false, datePaye: p.datePaye || '', bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '', surplus: p.surplus || 0, deplacements: Array.isArray(p.deplacements) ? p.deplacements : [] }))
         : (d.poseur
             ? [{ nom: d.poseur, htCustom: d.poseurHtCustom || '', paye: d.poseurPaye || false, datePaye: d.poseurDatePaye || '', bl: '', factureNo: '', facturePdfUrl: '', factureExternalUrl: '', surplus: 0 }]
             : []),
@@ -20612,6 +20743,16 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       </div>
                     );
                   })()}
+                  {/* 🚗 Déplacements : RDV où le poseur s'est déplacé pour
+                      rien (client absent/refusé) et nous facture quand même.
+                      Avant, l'utilisateur créait un 2e dossier doublon — d'où
+                      la pertinence d'avoir ça directement sur la fiche poseur. */}
+                  {canSeeMarges && p.nom && (
+                    <DeplacementsPoseurBloc
+                      deplacements={p.deplacements || []}
+                      onChange={(next) => updatePoseur(i, { deplacements: next })}
+                    />
+                  )}
                   {canSeeBLFactures && (
                     <>
                       <div className="grid grid-cols-2 gap-1">
