@@ -88,17 +88,43 @@ export default async function handler(req, res) {
       return redirectHome(res, { gmail_error: 'userinfo_failed' });
     }
 
-    // 4. Stocker les credentials dans Supabase (clé scopée à l'user_id CRM)
+    // 4. Stocker les credentials dans Supabase (clé scopée à l'user_id CRM).
+    //    📦 Format ARRAY pour supporter plusieurs comptes Gmail par
+    //    utilisateur CRM (ex : un Yolico, un Elsun pour scanner les factures).
+    //    Compat ascendante : si l'ancien format objet existait, on le wrap
+    //    en array avant d'ajouter/mettre à jour le nouveau compte.
     const stored = {
       email: gmailEmail,
       refreshToken: tokens.refresh_token,
       accessToken: tokens.access_token,
       expiresAt: Date.now() + (tokens.expires_in || 3600) * 1000,
       connectedAt: new Date().toISOString(),
+      // Trace les scopes accordés — utile côté UI pour savoir si la lecture
+      // (scan factures) est dispo, vs envoi uniquement.
+      scopes: (tokens.scope || '').split(' ').filter(Boolean),
     };
+
+    // Lis ce qui est déjà là (peut être null, objet legacy, ou array).
+    const { data: prevRow } = await admin.from('storage')
+      .select('value')
+      .eq('key', `gmail-oauth:${userId}`)
+      .maybeSingle();
+    let inboxes = [];
+    if (prevRow?.value) {
+      try {
+        const parsed = JSON.parse(prevRow.value);
+        if (Array.isArray(parsed)) inboxes = parsed;
+        else if (parsed && parsed.refreshToken) inboxes = [parsed]; // legacy
+      } catch (e) {}
+    }
+    // Met à jour si l'email existe déjà, sinon append.
+    const existingIdx = inboxes.findIndex(b => b && b.email === gmailEmail);
+    if (existingIdx >= 0) inboxes[existingIdx] = stored;
+    else inboxes.push(stored);
+
     const { error: setErr } = await admin.from('storage').upsert({
       key: `gmail-oauth:${userId}`,
-      value: JSON.stringify(stored),
+      value: JSON.stringify(inboxes),
       updated_at: new Date().toISOString(),
     });
     if (setErr) {

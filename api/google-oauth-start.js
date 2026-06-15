@@ -53,9 +53,13 @@ export default async function handler(req, res) {
     return html(res, 502, 'Erreur validation token.');
   }
 
-  // Construit l'URL d'autorisation Google
+  // Construit l'URL d'autorisation Google.
+  // 📥 gmail.readonly : permet de SCANNER les emails reçus (factures
+  // prestataires arrivant dans les boîtes Yolico, Elsun…) pour les injecter
+  // dans Tri factures sans drag&drop manuel. gmail.send reste pour l'envoi.
   const scopes = [
     'https://www.googleapis.com/auth/gmail.send',
+    'https://www.googleapis.com/auth/gmail.readonly',
     'https://www.googleapis.com/auth/userinfo.email',
   ];
   const params = new URLSearchParams({
