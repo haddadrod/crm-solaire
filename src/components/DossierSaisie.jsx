@@ -22940,21 +22940,26 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
       className="group flex flex-col items-center gap-1.5 focus:outline-none"
       title={`${count} dossier${count > 1 ? 's' : ''} — ${label}`}
     >
-      {/* Squircle icône style iOS — relief 3D via .pastille-3d : ombre portée
-          + highlight glassy en haut + gradient assombrissant en bas. */}
+      {/* Squircle icône style iOS — rendu épuré inspiré des vraies icônes
+          d'app iPhone (Calendrier, App Store…). */}
       <div
-        className={`pastille-3d w-14 h-14 rounded-[1.15rem] flex items-center justify-center transition-transform duration-150 active:scale-90 group-hover:scale-105 ${boostBg(bg)}`}
+        className={`pastille-3d w-14 h-14 rounded-[1.4rem] flex items-center justify-center transition-transform duration-150 active:scale-90 group-hover:scale-105 ${boostBg(bg)}`}
       >
-        {/* Emoji centré verticalement avec leading-none + line-height fixe pour
-            corriger la métrique des emojis qui les décale vers le bas sinon. */}
-        <span className="text-[28px] leading-none drop-shadow-[0_1px_1px_rgba(0,0,0,0.18)]" style={{ lineHeight: 1 }}>
+        {/* Emoji parfaitement centré au milieu du squircle. */}
+        <span
+          className="block drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]"
+          style={{ fontSize: '28px', lineHeight: 1 }}
+        >
           {emoji}
         </span>
-        {/* Badge rouge notification — collé au coin haut-droit du squircle
-            (top-0 right-0) au lieu de déborder (-top-1 -right-1) → ne chevauche
-            plus la pastille voisine ni le label de la ligne au-dessus. */}
+        {/* Badge rouge style iOS : grand, déborde clairement du coin haut-
+            droit, sans bordure blanche, rouge iOS. La taille est calibrée pour
+            avoir le centre du badge ~à l'angle du squircle. */}
         {count > 0 && (
-          <span className="absolute top-0 right-0 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold leading-none text-white bg-rose-500 ring-2 ring-white shadow-sm translate-x-1 -translate-y-1">
+          <span
+            className="absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center text-[11px] font-bold leading-none text-white shadow-[0_2px_4px_rgba(0,0,0,0.18)]"
+            style={{ backgroundColor: 'rgb(255, 59, 48)' }}
+          >
             {count > 999 ? '999+' : count}
           </span>
         )}
@@ -22978,7 +22983,7 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
       {/* Vue globale */}
       <div>
         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Vue globale</h3>
-        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-5 gap-x-3 justify-items-center">
+        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-6 gap-x-4 justify-items-center">
           <Pastille id="all" emoji="📋" label="Tous" count={nbTotal} bg="bg-violet-50" />
           <Pastille id="pose_done" emoji="✅" label="Posés" count={nbPoses} bg="bg-emerald-50" />
           <Pastille id="pose_done_unpaid" emoji="⏳" label="Posés non payés" count={nbPosesUnpaid} bg="bg-amber-50" />
@@ -22994,7 +22999,7 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
       {/* Par statut — réutilise STATUTS_ORDERED tel quel */}
       <div>
         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Par statut</h3>
-        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-5 gap-x-3 justify-items-center">
+        <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-6 gap-x-4 justify-items-center">
           {STATUTS_ORDERED.map(s => {
             const count = dossiers.filter(d => d.statut === s.id).length;
             return (
