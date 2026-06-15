@@ -1159,6 +1159,41 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
   const totalUnread = Object.values(conversationsByPeer).reduce((s, c) => s + c.unread, 0);
   const activeMessages = activePeer ? (conversationsByPeer[activePeer]?.messages || []) : [];
 
+  // 💬 Toast preview : quand un NOUVEAU message arrive d'un collègue et que le
+  // panel est fermé (ou que c'est un autre peer que l'actif), on affiche une
+  // bulle qui glisse depuis la droite pendant ~6s, façon notification iPhone.
+  // Bien plus visible que la petite pastille rouge tout en bas.
+  const [recentToast, setRecentToast] = useState(null); // { from, body, sentAt } | null
+  const lastSeenSentAtRef = useRef(null);
+  // Init : au 1er mount on note le dernier message qu'on a déjà → on n'affiche
+  // un toast QUE pour les messages reçus APRÈS l'ouverture de l'app (pas un
+  // toast au démarrage pour tous les vieux non-lus, ce serait du spam).
+  useEffect(() => {
+    if (lastSeenSentAtRef.current !== null) return;
+    let latest = '';
+    myMessages.forEach(m => { if ((m.sentAt || '') > latest) latest = m.sentAt || ''; });
+    lastSeenSentAtRef.current = latest;
+  }, [myMessages]);
+  useEffect(() => {
+    // On cherche le plus récent message reçu (m.to === currentUser) qui est
+    // postérieur à ce qu'on a déjà vu et que l'utilisateur n'est pas en train
+    // de lire (panel ouvert sur ce peer = il le voit déjà).
+    let newest = null;
+    myMessages.forEach(m => {
+      if (!m || m.from === currentUser) return; // mes envois ne triggerent rien
+      if (!m.sentAt || m.sentAt <= (lastSeenSentAtRef.current || '')) return;
+      if (open && activePeer === m.from) return; // conversation déjà ouverte
+      if (!newest || m.sentAt > newest.sentAt) newest = m;
+    });
+    if (newest) {
+      lastSeenSentAtRef.current = newest.sentAt;
+      setRecentToast({ from: newest.from, body: newest.body || '', sentAt: newest.sentAt });
+      // Disparaît tout seul après 6s.
+      const t = setTimeout(() => setRecentToast(null), 6000);
+      return () => clearTimeout(t);
+    }
+  }, [myMessages, open, activePeer, currentUser]);
+
   // Marque comme lus les msgs du peer actif quand on ouvre la conversation.
   useEffect(() => {
     if (!open || !activePeer) return;
@@ -1228,15 +1263,48 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
 
   return (
     <>
+      {/* 💬 Toast preview — apparaît au-dessus du bouton chat quand un nouveau
+          message arrive d'un autre user et que le panel est fermé/sur un autre
+          peer. Glisse depuis la droite, affiche auteur + extrait du message,
+          clic = ouvre la conversation. Disparaît seul après 6s. */}
+      {recentToast && !(open && activePeer === recentToast.from) && (() => {
+        const emoji = (users || []).find(u => (u.fullName || '').toLowerCase() === recentToast.from.toLowerCase())?.emoji || '👤';
+        const short = (recentToast.body || '').length > 90 ? recentToast.body.slice(0, 90) + '…' : recentToast.body;
+        return (
+          <button
+            onClick={() => { setOpen(true); setActivePeer(recentToast.from); setRecentToast(null); }}
+            className="fixed bottom-44 right-6 z-50 w-72 max-w-[calc(100vw-3rem)] bg-white rounded-2xl shadow-2xl border border-blue-200 px-3 py-2.5 text-left chat-toast-in"
+            title="Ouvrir la conversation"
+          >
+            <div className="flex items-start gap-2">
+              <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-100 to-cyan-100 flex items-center justify-center text-lg flex-shrink-0">{emoji}</div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 mb-0.5">
+                  <span className="text-[11px] font-bold text-blue-700 truncate">{recentToast.from}</span>
+                  <span className="text-[9px] text-slate-400 whitespace-nowrap">vient d'écrire</span>
+                </div>
+                <div className="text-xs text-slate-700 leading-snug line-clamp-2 break-words">
+                  {short || '(message vide)'}
+                </div>
+              </div>
+            </div>
+          </button>
+        );
+      })()}
+
       {/* Bulle bouton (au-dessus du bouton Assistant IA) */}
       <button
         onClick={() => setOpen(o => !o)}
         title={`Chat équipe${totalUnread > 0 ? ` — ${totalUnread} non lu${totalUnread > 1 ? 's' : ''}` : ''}`}
-        className="fixed bottom-24 right-6 z-40 w-14 h-14 bg-gradient-to-br from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center"
+        className={`fixed bottom-24 right-6 z-40 w-14 h-14 bg-gradient-to-br from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center justify-center ${totalUnread > 0 && !open ? 'chat-bounce' : ''}`}
       >
-        <MessageCircle className="w-6 h-6" />
+        {/* Halo qui pulse en continu quand il y a des non-lus (et panel fermé) */}
+        {totalUnread > 0 && !open && (
+          <span className="absolute inset-0 rounded-full bg-blue-400/60 chat-halo pointer-events-none" />
+        )}
+        <MessageCircle className="w-6 h-6 relative z-10" />
         {totalUnread > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white">
+          <span className={`absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white z-10 ${!open ? 'chat-badge-pulse' : ''}`}>
             {totalUnread > 9 ? '9+' : totalUnread}
           </span>
         )}
