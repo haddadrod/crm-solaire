@@ -5137,6 +5137,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             dossiers={dossiers}
             STATUTS_ORDERED={STATUTS_ORDERED}
             nbDoublons={nbDoublons}
+            currentUser={currentUser}
             onPick={(filterId) => {
               setFilterStatut(filterId);
               setActiveTab('dossiers');
@@ -22921,101 +22922,160 @@ function ChantierPhotosPanel({ photos }) {
 // avec emoji + libellé + compteur. Pas de liste. Clic = on passe sur l'onglet
 // Dossiers avec le filtre pré-réglé. Toute la logique de filtrage existante
 // est réutilisée — on n'ajoute QUE cet écran d'entrée.
-function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
-  // 🍎 Pastille style iPhone : petite icône CARRÉE arrondie (squircle) avec
-  // emoji centré, libellé court SOUS l'icône, badge rouge minuscule façon
-  // notification iOS. Pas de carré tout coloré qui prend tout l'espace.
-  // Taille de l'icône : ~56px (équivalent iPhone), comme l'App Store.
+function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, currentUser, onPick }) {
   // Mappe une classe Tailwind bg-*-50 / bg-*-100 vers bg-*-200 pour que le
-  // highlight blanc des pastilles 3D ressorte sur un fond suffisamment
-  // saturé (sinon ça paraît fade, retour utilisateur).
+  // highlight blanc des pastilles 3D ressorte sur un fond suffisamment saturé.
   const boostBg = (cls) => {
     if (!cls) return 'bg-slate-200';
     return cls.replace(/-(50|100)\b/g, '-200');
   };
-  const Pastille = ({ id, emoji, label, count, bg }) => (
-    <button
-      type="button"
-      onClick={() => onPick(id)}
-      className="group flex flex-col items-center gap-1.5 focus:outline-none"
-      title={`${count} dossier${count > 1 ? 's' : ''} — ${label}`}
-    >
-      {/* Squircle icône style iOS skeuomorphique. On wrap dans un <span> en
-          position:relative pour que le badge soit positionné par rapport au
-          wrapper (pas au squircle qui contient l'emoji centré en flex). Ainsi
-          le badge déborde du coin haut-droit SANS interférer avec le
-          centrage de l'emoji, et l'emoji reste vraiment au milieu. */}
-      <span className="relative inline-block">
-        <span
-          className={`pastille-3d w-14 h-14 rounded-[1.4rem] flex items-center justify-center transition-transform duration-150 active:scale-90 group-hover:scale-105 ${boostBg(bg)}`}
-        >
+
+  // 🖐️ Ordre custom des pastilles — drag & drop comme sur iPhone. Persisté
+  // PAR UTILISATEUR (clé 'pastilles-order:<user>') pour que chacun ait son
+  // organisation. Structure : { global: [id1, id2, …], byStatut: [id1, id2, …] }.
+  // Si null → ordre par défaut. Les ids absents tombent à la fin.
+  const [order, setOrder] = useState({ global: null, byStatut: null });
+  const [draggedId, setDraggedId] = useState(null);
+  const [dragOverId, setDragOverId] = useState(null);
+
+  // Chargement à l'init (par user). On charge même les ordres custom déjà
+  // sauvegardés à la dernière session — pas besoin de re-réorganiser.
+  useEffect(() => {
+    if (!currentUser) return;
+    (async () => {
+      try {
+        const r = await window.storage.get(`pastilles-order:${currentUser}`);
+        if (r?.value) {
+          const parsed = JSON.parse(r.value);
+          if (parsed && typeof parsed === 'object') setOrder(parsed);
+        }
+      } catch (e) {}
+    })();
+  }, [currentUser]);
+
+  const saveOrder = (next) => {
+    setOrder(next);
+    if (!currentUser) return;
+    window.storage.set(`pastilles-order:${currentUser}`, JSON.stringify(next)).catch(() => {});
+  };
+
+  // Réordonne `items` selon `idsOrder` (les ids manquants vont à la fin dans
+  // leur ordre d'origine — sécurité : on perd jamais une pastille).
+  const applyOrder = (items, idsOrder) => {
+    if (!Array.isArray(idsOrder) || idsOrder.length === 0) return items;
+    const byId = new Map(items.map(it => [it.id, it]));
+    const out = [];
+    idsOrder.forEach(id => {
+      if (byId.has(id)) { out.push(byId.get(id)); byId.delete(id); }
+    });
+    byId.forEach(v => out.push(v)); // nouveaux items pas encore dans l'ordre custom
+    return out;
+  };
+
+  // Quand on lâche sur une pastille, on déplace la draggée AVANT celle-ci.
+  const reorderSection = (section, items, droppedOnId) => {
+    if (!draggedId || draggedId === droppedOnId) return;
+    const allIds = items.map(it => it.id);
+    const fromIdx = allIds.indexOf(draggedId);
+    const toIdx = allIds.indexOf(droppedOnId);
+    if (fromIdx < 0 || toIdx < 0) return;
+    const next = [...allIds];
+    next.splice(fromIdx, 1);
+    next.splice(toIdx, 0, draggedId);
+    saveOrder({ ...order, [section]: next });
+  };
+
+  const Pastille = ({ id, emoji, label, count, bg, section, items }) => {
+    const isDragging = draggedId === id;
+    const isDragOver = dragOverId === id && draggedId !== null && draggedId !== id;
+    return (
+      <button
+        type="button"
+        draggable
+        onDragStart={(e) => {
+          setDraggedId(id);
+          // Permet le drop dans Firefox + indique un déplacement (pas une copie).
+          try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', id); } catch (_) {}
+        }}
+        onDragEnd={() => { setDraggedId(null); setDragOverId(null); }}
+        onDragOver={(e) => { e.preventDefault(); if (draggedId && draggedId !== id) setDragOverId(id); }}
+        onDragLeave={() => { if (dragOverId === id) setDragOverId(null); }}
+        onDrop={(e) => { e.preventDefault(); reorderSection(section, items, id); setDragOverId(null); }}
+        onClick={() => { if (!draggedId) onPick(id); }}
+        className={`group flex flex-col items-center gap-1.5 focus:outline-none cursor-grab active:cursor-grabbing transition-opacity ${isDragging ? 'opacity-40' : ''}`}
+        title={`${count} dossier${count > 1 ? 's' : ''} — ${label}\n(Glisse pour réorganiser)`}
+      >
+        <span className={`relative inline-block transition-transform ${isDragOver ? 'scale-110 ring-4 ring-violet-300 rounded-[1.4rem]' : ''}`}>
           <span
-            className="block drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]"
-            style={{ fontSize: '28px', lineHeight: 1 }}
+            className={`pastille-3d w-14 h-14 rounded-[1.4rem] flex items-center justify-center transition-transform duration-150 active:scale-90 group-hover:scale-105 ${boostBg(bg)}`}
           >
-            {emoji}
+            <span
+              className="block drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]"
+              style={{ fontSize: '28px', lineHeight: 1 }}
+            >
+              {emoji}
+            </span>
           </span>
+          {count > 0 && (
+            <span
+              className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center text-[11px] font-bold leading-none text-white shadow-[0_2px_4px_rgba(0,0,0,0.18)] pointer-events-none"
+              style={{ backgroundColor: 'rgb(255, 59, 48)' }}
+            >
+              {count > 999 ? '999+' : count}
+            </span>
+          )}
         </span>
-        {/* Badge rouge style iOS : grand, déborde clairement du coin haut-
-            droit (du wrapper), sans bordure blanche, vraie couleur rouge iOS. */}
-        {count > 0 && (
-          <span
-            className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center text-[11px] font-bold leading-none text-white shadow-[0_2px_4px_rgba(0,0,0,0.18)] pointer-events-none"
-            style={{ backgroundColor: 'rgb(255, 59, 48)' }}
-          >
-            {count > 999 ? '999+' : count}
-          </span>
-        )}
-      </span>
-      <div className="text-[10px] font-medium text-slate-700 text-center leading-tight max-w-[72px] line-clamp-2">
-        {label}
-      </div>
-    </button>
-  );
+        <div className="text-[10px] font-medium text-slate-700 text-center leading-tight max-w-[72px] line-clamp-2">
+          {label}
+        </div>
+      </button>
+    );
+  };
 
   const nbTotal = dossiers.length;
   const nbPoses = dossiers.filter(d => d.statutPose === 'visite_ok').length;
   const nbPosesUnpaid = dossiers.filter(d => d.statutPose === 'visite_ok' && !d.payeClient && !DEAD_STATUTS.includes(d.statut) && d.statutFin !== 'refusé' && d.statutPose !== 'client_refuse').length;
   const nbNeedsImport = dossiers.filter(d => d.needsImportReview).length;
 
-  // Fonds pastels pour les squircles (façon icônes d'app iOS — chaque app a sa
-  // teinte douce). On dérive depuis le `bg` des statuts pour rester cohérent
-  // avec le code couleur existant.
+  // Items des 2 sections (id + props), construits à l'identique de l'ancien
+  // rendu mais en list pour pouvoir appliquer un ordre custom.
+  const globalItems = [
+    { id: 'all', emoji: '📋', label: 'Tous', count: nbTotal, bg: 'bg-violet-50' },
+    { id: 'pose_done', emoji: '✅', label: 'Posés', count: nbPoses, bg: 'bg-emerald-50' },
+    { id: 'pose_done_unpaid', emoji: '⏳', label: 'Posés non payés', count: nbPosesUnpaid, bg: 'bg-amber-50' },
+    ...(nbDoublons > 0 ? [{ id: 'doublons', emoji: '🔍', label: 'Doublons', count: nbDoublons, bg: 'bg-fuchsia-50' }] : []),
+    ...(nbNeedsImport > 0 ? [{ id: 'needs_import_review', emoji: '📋', label: 'À compléter', count: nbNeedsImport, bg: 'bg-rose-50' }] : []),
+  ];
+  const statutItems = STATUTS_ORDERED.map(s => ({
+    id: s.id,
+    emoji: s.emoji,
+    label: s.label,
+    count: dossiers.filter(d => d.statut === s.id).length,
+    bg: s.bg || 'bg-slate-50',
+  }));
+
+  const orderedGlobal = applyOrder(globalItems, order.global);
+  const orderedStatut = applyOrder(statutItems, order.byStatut);
+
   return (
     <div className="space-y-5">
-      {/* Vue globale */}
+      <div className="text-[10px] text-slate-400 text-center italic px-1">
+        💡 Glisse les icônes pour les réorganiser comme tu veux — l'ordre est sauvegardé pour ton compte.
+      </div>
       <div>
         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Vue globale</h3>
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-6 gap-x-4 justify-items-center">
-          <Pastille id="all" emoji="📋" label="Tous" count={nbTotal} bg="bg-violet-50" />
-          <Pastille id="pose_done" emoji="✅" label="Posés" count={nbPoses} bg="bg-emerald-50" />
-          <Pastille id="pose_done_unpaid" emoji="⏳" label="Posés non payés" count={nbPosesUnpaid} bg="bg-amber-50" />
-          {nbDoublons > 0 && (
-            <Pastille id="doublons" emoji="🔍" label="Doublons" count={nbDoublons} bg="bg-fuchsia-50" />
-          )}
-          {nbNeedsImport > 0 && (
-            <Pastille id="needs_import_review" emoji="📋" label="À compléter" count={nbNeedsImport} bg="bg-rose-50" />
-          )}
+          {orderedGlobal.map(it => (
+            <Pastille key={it.id} {...it} section="global" items={orderedGlobal} />
+          ))}
         </div>
       </div>
-
-      {/* Par statut — réutilise STATUTS_ORDERED tel quel */}
       <div>
         <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Par statut</h3>
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-6 gap-x-4 justify-items-center">
-          {STATUTS_ORDERED.map(s => {
-            const count = dossiers.filter(d => d.statut === s.id).length;
-            return (
-              <Pastille
-                key={s.id}
-                id={s.id}
-                emoji={s.emoji}
-                label={s.label}
-                count={count}
-                bg={s.bg || 'bg-slate-50'}
-              />
-            );
-          })}
+          {orderedStatut.map(it => (
+            <Pastille key={it.id} {...it} section="byStatut" items={orderedStatut} />
+          ))}
         </div>
       </div>
     </div>
