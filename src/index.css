@@ -50,3 +50,41 @@ body {
 .chat-toast-out {
   animation: chat-toast-out 0.3s ease-in both;
 }
+
+/* 🍎 Pastilles iPhone — effet 3D / relief façon icônes iOS.
+   Combine 3 couches :
+   1. Ombre portée douce + ombre de proximité + trait clair en haut interne.
+   2. Overlay de gradient (couche ::after) qui assombrit le bas → effet 3D.
+   3. Highlight glassy en haut (couche ::before) → reflet brillant iOS.
+   La couleur du fond reste pilotée par bg-*-50 sur l'élément lui-même. */
+.pastille-3d {
+  position: relative;
+  box-shadow:
+    0 6px 12px -3px rgba(15, 23, 42, 0.18),
+    0 2px 4px -1px rgba(15, 23, 42, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.85),
+    inset 0 -2px 4px rgba(15, 23, 42, 0.07);
+  isolation: isolate;
+}
+.pastille-3d::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0.55) 0%, rgba(255, 255, 255, 0.15) 45%, rgba(255, 255, 255, 0) 60%);
+  pointer-events: none;
+  z-index: 1;
+}
+.pastille-3d::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(to bottom, rgba(255, 255, 255, 0) 50%, rgba(15, 23, 42, 0.08) 100%);
+  pointer-events: none;
+  z-index: 1;
+}
+.pastille-3d > * {
+  position: relative;
+  z-index: 2;
+}

@@ -22933,12 +22933,16 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
       className="group flex flex-col items-center gap-1.5 focus:outline-none"
       title={`${count} dossier${count > 1 ? 's' : ''} — ${label}`}
     >
-      {/* Squircle icône (carré arrondi style iOS) */}
-      <div className={`relative w-14 h-14 rounded-[1.1rem] flex items-center justify-center text-3xl shadow-sm border border-black/5 transition active:scale-90 group-hover:shadow-md group-hover:scale-105 ${bg || 'bg-white'}`}>
-        {emoji}
+      {/* Squircle icône style iOS — relief 3D via .pastille-3d : ombre portée
+          + highlight glassy en haut + gradient assombrissant en bas. */}
+      <div
+        className={`pastille-3d w-14 h-14 rounded-[1.15rem] flex items-center justify-center text-3xl transition-transform duration-150 active:scale-90 group-hover:scale-105 ${bg || 'bg-white'}`}
+      >
+        {/* Emoji avec drop-shadow pour qu'il se détache de la pastille */}
+        <span className="drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]">{emoji}</span>
         {/* Badge rouge notification (haut droit, dépasse légèrement) */}
         {count > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-rose-500 ring-2 ring-white shadow-sm">
+          <span className="absolute -top-1 -right-1 min-w-[20px] h-5 px-1 rounded-full flex items-center justify-center text-[10px] font-bold text-white bg-rose-500 ring-2 ring-white shadow-md">
             {count > 999 ? '999+' : count}
           </span>
         )}
