@@ -51,16 +51,19 @@ body {
   animation: chat-toast-out 0.3s ease-in both;
 }
 
-/* 🍎 Pastilles façon icône iOS (Calendrier, App Store…) — rendu épuré :
-   léger éclairage subtil sur le haut, ombre douce et étendue en dessous,
-   PAS de gradient marqué ni d'effet « glassy » exagéré. */
+/* 🍎 Pastilles iPhone — relief 3D marqué (préféré par l'utilisateur).
+   Combine ombres prononcées, highlight glassy radial visible et gradient
+   interne assombrissant en bas → effet « bouton bombé » style iOS 6 /
+   App Store ancien. */
 .pastille-3d {
   position: relative;
-  /* Ombre portée douce et longue, pas forte (style iOS minimal) */
   box-shadow:
-    0 12px 28px -8px rgba(0, 0, 0, 0.22),
-    0 6px 12px -4px rgba(0, 0, 0, 0.10),
-    0 0 0 1px rgba(0, 0, 0, 0.04);
+    0 10px 24px -6px rgba(15, 23, 42, 0.40),
+    0 4px 10px -2px rgba(15, 23, 42, 0.20),
+    0 1px 2px rgba(15, 23, 42, 0.15),
+    inset 0 2px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -3px 8px rgba(15, 23, 42, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.35);
   isolation: isolate;
 }
 .pastille-3d::before {
@@ -68,13 +71,13 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  /* Éclairage subtil en haut : juste une légère illumination diffuse,
-     pas un reflet glassy marqué. */
+  /* Highlight glassy fort en haut : très blanc, descend en demi-lune */
   background:
-    linear-gradient(
-      to bottom,
-      rgba(255, 255, 255, 0.35) 0%,
-      rgba(255, 255, 255, 0.10) 35%,
+    radial-gradient(
+      ellipse 110% 70% at 50% -10%,
+      rgba(255, 255, 255, 0.95) 0%,
+      rgba(255, 255, 255, 0.55) 35%,
+      rgba(255, 255, 255, 0.18) 55%,
       rgba(255, 255, 255, 0) 65%
     );
   pointer-events: none;
@@ -85,12 +88,13 @@ body {
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  /* Discret assombrissement en bas pour donner du « poids » */
+  /* Gradient sombre en bas → renforce l'effet 3D */
   background:
     linear-gradient(
       to bottom,
-      rgba(0, 0, 0, 0) 60%,
-      rgba(0, 0, 0, 0.08) 100%
+      rgba(0, 0, 0, 0) 50%,
+      rgba(0, 0, 0, 0.12) 85%,
+      rgba(0, 0, 0, 0.22) 100%
     );
   pointer-events: none;
   z-index: 1;

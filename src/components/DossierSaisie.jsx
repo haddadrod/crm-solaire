@@ -22940,30 +22940,33 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, onPick }) {
       className="group flex flex-col items-center gap-1.5 focus:outline-none"
       title={`${count} dossier${count > 1 ? 's' : ''} — ${label}`}
     >
-      {/* Squircle icône style iOS — rendu épuré inspiré des vraies icônes
-          d'app iPhone (Calendrier, App Store…). */}
-      <div
-        className={`pastille-3d w-14 h-14 rounded-[1.4rem] flex items-center justify-center transition-transform duration-150 active:scale-90 group-hover:scale-105 ${boostBg(bg)}`}
-      >
-        {/* Emoji parfaitement centré au milieu du squircle. */}
+      {/* Squircle icône style iOS skeuomorphique. On wrap dans un <span> en
+          position:relative pour que le badge soit positionné par rapport au
+          wrapper (pas au squircle qui contient l'emoji centré en flex). Ainsi
+          le badge déborde du coin haut-droit SANS interférer avec le
+          centrage de l'emoji, et l'emoji reste vraiment au milieu. */}
+      <span className="relative inline-block">
         <span
-          className="block drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]"
-          style={{ fontSize: '28px', lineHeight: 1 }}
+          className={`pastille-3d w-14 h-14 rounded-[1.4rem] flex items-center justify-center transition-transform duration-150 active:scale-90 group-hover:scale-105 ${boostBg(bg)}`}
         >
-          {emoji}
+          <span
+            className="block drop-shadow-[0_1px_1px_rgba(0,0,0,0.15)]"
+            style={{ fontSize: '28px', lineHeight: 1 }}
+          >
+            {emoji}
+          </span>
         </span>
         {/* Badge rouge style iOS : grand, déborde clairement du coin haut-
-            droit, sans bordure blanche, rouge iOS. La taille est calibrée pour
-            avoir le centre du badge ~à l'angle du squircle. */}
+            droit (du wrapper), sans bordure blanche, vraie couleur rouge iOS. */}
         {count > 0 && (
           <span
-            className="absolute -top-2 -right-2 min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center text-[11px] font-bold leading-none text-white shadow-[0_2px_4px_rgba(0,0,0,0.18)]"
+            className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center text-[11px] font-bold leading-none text-white shadow-[0_2px_4px_rgba(0,0,0,0.18)] pointer-events-none"
             style={{ backgroundColor: 'rgb(255, 59, 48)' }}
           >
             {count > 999 ? '999+' : count}
           </span>
         )}
-      </div>
+      </span>
       <div className="text-[10px] font-medium text-slate-700 text-center leading-tight max-w-[72px] line-clamp-2">
         {label}
       </div>
