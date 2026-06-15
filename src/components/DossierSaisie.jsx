@@ -4462,6 +4462,47 @@ export default function DossierSaisie({ authUser, onLogout }) {
   }, [dossiersVisibles]);
   const nbDoublons = doublonsIndex.size;
 
+  // 🔍 Groupes de doublons pour la modale dédiée. À partir de doublonsIndex
+  // (qui dit « ce dossier est doublon de X, Y, Z pour les raisons R1, R2 »), on
+  // reconstruit des composantes connexes : chaque groupe contient tous les
+  // dossiers qui se réfèrent mutuellement, avec l'union des raisons. Ainsi A
+  // doublon de B (tel) et B doublon de C (nom) → 1 groupe {A,B,C}.
+  const doublonsGroupes = useMemo(() => {
+    if (doublonsIndex.size === 0) return [];
+    const visited = new Set();
+    const groups = [];
+    const dossierByLocalId = new Map(dossiersVisibles.map(d => [d.localId, d]));
+    doublonsIndex.forEach((_, startId) => {
+      if (visited.has(startId)) return;
+      const stack = [startId];
+      const groupIds = new Set();
+      const reasons = new Set();
+      while (stack.length) {
+        const cur = stack.pop();
+        if (visited.has(cur)) continue;
+        visited.add(cur);
+        groupIds.add(cur);
+        const entry = doublonsIndex.get(cur);
+        if (!entry) continue;
+        entry.reasons.forEach(r => reasons.add(r));
+        entry.others.forEach(o => { if (!visited.has(o)) stack.push(o); });
+      }
+      const dossiers = [...groupIds]
+        .map(id => dossierByLocalId.get(id))
+        .filter(Boolean)
+        // Tri : par date de création décroissante (les plus récents d'abord)
+        // pour qu'on voie immédiatement « le dernier doublon créé ».
+        .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+      if (dossiers.length >= 2) {
+        groups.push({ ids: groupIds, reasons: [...reasons], dossiers });
+      }
+    });
+    // Tri global : groupes avec le plus de dossiers en premier (les vrais
+    // « gros doublons » à traiter en priorité).
+    groups.sort((a, b) => b.dossiers.length - a.dossiers.length);
+    return groups;
+  }, [doublonsIndex, dossiersVisibles]);
+
   const filteredDossiers = dossiersEnriched
     // Filtre actifs/archivés selon l'onglet
     .filter(d => activeTab === 'archives' ? isArchived(d) : !isArchived(d))
@@ -4817,6 +4858,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsLitige={dashboard.rappelsLitige || []}
             rappelsSav={dashboard.rappelsSav || []}
             rappelsClientRappel={dashboard.rappelsClientRappel || []}
+            nbDoublons={nbDoublons}
             isAdmin={isAdmin}
             currentUserRole={currentUserRole}
             onClick={(type) => setShowAlertesType(type)}
@@ -5552,8 +5594,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
           <span className="hidden sm:inline">Assistant IA</span>
         </button>
 
+        {/* MODAL DOUBLONS — format différent (groupes vs liste) → composant à part */}
+        {showAlertesType === 'doublons' && (
+          <DoublonsModal
+            groupes={doublonsGroupes}
+            STATUTS={STATUTS}
+            isAdmin={isAdmin}
+            onClose={() => setShowAlertesType(null)}
+            onSelect={(localId) => { setShowQuickViewId(localId); }}
+            onDelete={(localId) => deleteDossier(localId)}
+          />
+        )}
+
         {/* MODAL ALERTES (financement, consuel, paiement, stagnation) */}
-        {showAlertesType && (
+        {showAlertesType && showAlertesType !== 'doublons' && (
           <AlertesModal
             type={showAlertesType}
             dashboard={dashboard}
@@ -22600,7 +22654,7 @@ function ChantierPhotosPanel({ photos }) {
   );
 }
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer = [], rappelsMaterielNonRendu = [], rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer = [], rappelsMaterielNonRendu = [], rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], nbDoublons = 0, isAdmin, currentUserRole, onClick }) {
   // showAll : si true, on affiche aussi les alertes à 0 (déplié via la flèche).
   const [showAll, setShowAll] = useState(false);
   // Définition des badges
@@ -22800,6 +22854,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       tooltip: 'Clients à rappeler (pour ne pas oublier)',
     },
     {
+      type: 'doublons',
+      label: 'Doublons',
+      emoji: '🔍',
+      count: nbDoublons,
+      adminOnly: false,
+      color: 'from-rose-500 to-fuchsia-500',
+      colorBg: 'bg-rose-50',
+      colorBorder: 'border-rose-300',
+      colorText: 'text-rose-700',
+      tooltip: 'Clients en double détectés (même ID Chelly, nom/prénom ou téléphone)',
+    },
+    {
       type: 'stagnation',
       label: 'Stagnation',
       emoji: '⏰',
@@ -22916,6 +22982,116 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
 }
 
 // ===================== MODAL ALERTES =====================
+
+// 🔍 Modale dédiée aux doublons clients : affiche les dossiers GROUPÉS pour
+// pouvoir les comparer côte à côte et décider lesquels supprimer.
+// Format différent des autres alertes (une carte = un groupe de 2+ dossiers,
+// pas un dossier par ligne) → composant séparé d'AlertesModal.
+function DoublonsModal({ groupes, STATUTS, onClose, onSelect, onDelete, isAdmin }) {
+  // Étiquette lisible pour les raisons du match.
+  const reasonChip = (r) => {
+    const cfg = {
+      id: { label: 'Même n° Chelly', color: 'bg-violet-100 text-violet-800' },
+      nomprenom: { label: 'Même nom + prénom', color: 'bg-blue-100 text-blue-800' },
+      tel: { label: 'Même téléphone', color: 'bg-amber-100 text-amber-800' },
+    }[r] || { label: r, color: 'bg-slate-100 text-slate-700' };
+    return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cfg.color}`}>{cfg.label}</span>;
+  };
+  const statutBadge = (d) => {
+    const s = STATUTS.find(x => x.id === d.statut);
+    if (!s) return null;
+    return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${s.color || 'bg-slate-100 text-slate-700'}`}>{s.label}</span>;
+  };
+  const fmtDate = (s) => s ? new Date(s).toLocaleDateString('fr-FR') : '—';
+  const handleDelete = (d) => {
+    if (!isAdmin) { alert('Suppression réservée à l\'admin.'); return; }
+    // onDelete (= deleteDossier du parent) gère déjà sa propre confirmation
+    // avec liste des documents associés — on ne dédouble pas.
+    onDelete(d.localId);
+  };
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-start justify-center p-4 pt-16" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-5xl max-h-[85vh] overflow-hidden flex flex-col border-2 border-rose-200" onClick={(e) => e.stopPropagation()}>
+        <div className="p-5 border-b border-rose-200 bg-gradient-to-r from-rose-50 to-fuchsia-50 flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <h2 className="text-lg font-bold text-slate-800">🔍 Clients en double</h2>
+            <p className="text-xs text-slate-600 mt-1">
+              Chaque carte = un groupe de dossiers qui se ressemblent (même n° Chelly, nom+prénom, ou téléphone). Ouvre chaque dossier pour vérifier puis supprime les vrais doublons.
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold px-3 py-1 rounded-full bg-gradient-to-r from-rose-500 to-fuchsia-500 text-white shadow-sm">
+              {groupes.length}
+            </span>
+            <button onClick={onClose} className="p-2 hover:bg-white/60 rounded-lg" title="Fermer">
+              <X className="w-5 h-5 text-slate-600" />
+            </button>
+          </div>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          {groupes.length === 0 ? (
+            <div className="p-8 text-center">
+              <div className="text-4xl mb-2">✨</div>
+              <p className="text-sm font-bold text-emerald-700">Aucun doublon détecté — top !</p>
+            </div>
+          ) : groupes.map((g, gi) => (
+            <div key={gi} className="border-2 border-rose-200 rounded-2xl bg-rose-50/30 p-3">
+              <div className="flex items-center gap-2 flex-wrap mb-2">
+                <div className="text-xs font-bold text-rose-800">
+                  Groupe #{gi + 1} · {g.dossiers.length} dossiers
+                </div>
+                <div className="flex items-center gap-1 flex-wrap">
+                  {g.reasons.map(r => <React.Fragment key={r}>{reasonChip(r)}</React.Fragment>)}
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                {g.dossiers.map(d => (
+                  <div key={d.localId} className="bg-white rounded-xl border border-slate-200 p-3 shadow-sm">
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-bold text-slate-800 truncate">
+                          {d.nom || '(sans nom)'} {d.prenom || ''}
+                        </div>
+                        <div className="text-[11px] text-slate-500">
+                          #{d.id || '?'} · {d.societe ? d.societe.toUpperCase() : '—'}
+                        </div>
+                      </div>
+                      {statutBadge(d)}
+                    </div>
+                    <div className="text-[11px] text-slate-600 space-y-0.5">
+                      <div>📞 {d.telephone || '—'}</div>
+                      <div className="truncate">📍 {[d.adresse, d.codePostal, d.ville].filter(Boolean).join(' · ') || '—'}</div>
+                      <div>📅 Créé le {fmtDate(d.createdAt)} {d.createdBy ? <span className="text-slate-400">· par {d.createdBy}</span> : null}</div>
+                      <div>🛠️ Pose : {fmtDate(d.dateInsta)}</div>
+                      <div>💰 {d.montantTotal ? formatEuro(d.montantTotal) + ' TTC' : 'pas de montant'} {d.payeClient ? <span className="text-emerald-700 font-bold">· ✓ payé</span> : null}</div>
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+                      <button
+                        onClick={() => { onSelect(d.localId); onClose(); }}
+                        className="px-2 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded text-[10px] font-bold"
+                      >
+                        👁️ Ouvrir
+                      </button>
+                      {isAdmin && (
+                        <button
+                          onClick={() => handleDelete(d)}
+                          className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[10px] font-bold ml-auto"
+                          title="Supprimer définitivement ce dossier"
+                        >
+                          🗑️ Supprimer
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onLogAction, onClose, onSelect }) {
   const config = {
