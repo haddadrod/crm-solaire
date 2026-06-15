@@ -4747,8 +4747,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
   }, [doublonsIndex, dossiersVisibles]);
 
   const filteredDossiers = dossiersEnriched
-    // Filtre actifs/archivés selon l'onglet
-    .filter(d => activeTab === 'archives' ? isArchived(d) : !isArchived(d))
+    // Filtre actifs/archivés selon l'onglet.
+    // 🔍 Exception : quand l'utilisateur a tapé un terme de recherche, on
+    // mélange actifs ET archivés dans la liste pour qu'il les voit tous d'un
+    // coup. Un badge « 📦 archivé » apparaît sur les cartes archivées pour
+    // distinguer. Résout le besoin « pouvoir voir les archivés sans changer
+    // d'onglet en mode recherche ».
+    .filter(d => searchTerm ? true : (activeTab === 'archives' ? isArchived(d) : !isArchived(d)))
     // 🏢 Filtre société : si une société est sélectionnée, on ne voit que ses
     // dossiers. Les dossiers sans société assignée (legacy) sont toujours visibles.
     .filter(d => !activeSociete || !d.societe || d.societe === activeSociete)
@@ -5486,29 +5491,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     </button>
                   )}
                 </div>
-                {/* 🔍 Bandeau « recherche globale » : quand un terme est tapé
-                    ET qu'il y a des matches dans l'AUTRE catégorie (actifs ↔
-                    archivés), on propose de basculer sans perdre la recherche.
-                    Résout le besoin : « quand je recherche je suis obligé
-                    d'aller dans l'onglet archivé pour vérifier les doublons ». */}
+                {/* 🔍 Bandeau d'info en mode recherche globale : on signale
+                    que les archivés sont inclus dans la liste avec un badge sur
+                    chaque ligne. Pas de bouton (on les voit déjà directement). */}
                 {searchTerm && searchMatchesInOtherTab > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setActiveTab(activeTab === 'archives' ? 'dossiers' : 'archives')}
-                    className="mt-2 w-full bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl px-3 py-2 flex items-center justify-between gap-2 hover:from-amber-100 hover:to-orange-100 transition"
-                    title={activeTab === 'archives' ? 'Voir aussi les actifs' : 'Voir aussi les archivés'}
-                  >
-                    <div className="flex items-center gap-2 text-xs text-amber-800 font-semibold">
-                      <Search className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
-                      <span>
-                        🗃️ <span className="font-bold">{searchMatchesInOtherTab}</span> autre{searchMatchesInOtherTab > 1 ? 's' : ''} dossier{searchMatchesInOtherTab > 1 ? 's' : ''}{' '}
-                        {activeTab === 'archives' ? 'dans les actifs' : 'dans les archivés'} correspond{searchMatchesInOtherTab > 1 ? 'ent' : ''} à « {searchTerm} »
-                      </span>
-                    </div>
-                    <span className="text-[11px] font-bold text-amber-700 whitespace-nowrap">
-                      Voir → {activeTab === 'archives' ? 'Actifs' : 'Archivés'}
+                  <div className="mt-2 w-full bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl px-3 py-2 text-xs text-amber-800">
+                    🔍 Recherche globale : {searchMatchesInOtherTab} dossier{searchMatchesInOtherTab > 1 ? 's' : ''}{' '}
+                    {activeTab === 'archives' ? 'actif' : 'archivé'}{searchMatchesInOtherTab > 1 ? 's' : ''}{' '}
+                    inclus{searchMatchesInOtherTab > 1 ? '' : ''} dans la liste — repérés par le badge{' '}
+                    <span className={`inline-block ml-1 text-[9px] font-bold px-1.5 py-0.5 rounded ${activeTab === 'archives' ? 'bg-violet-600' : 'bg-slate-700'} text-white`}>
+                      {activeTab === 'archives' ? '📁 ACTIF' : '📦 ARCHIVÉ'}
                     </span>
-                  </button>
+                  </div>
                 )}
               </div>
             )}
@@ -5521,8 +5515,34 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <p className="text-slate-500 text-sm">{dossiers.length === 0 ? 'Cliquez sur "Nouveau dossier" pour commencer' : 'Modifiez vos filtres'}</p>
                 </div>
               ) : (
-                filteredDossiers.map(d => activeTab === 'archives' ? (
-                  <div key={d.localId} className="flex items-start gap-2">
+                filteredDossiers.map(d => {
+                  const dArch = isArchived(d);
+                  // 🏷️ Badge « provenance » quand on est en recherche globale
+                  // (mélange actifs + archivés). Évite l'ambiguïté visuelle.
+                  const showProvenanceBadge = !!searchTerm && (
+                    (activeTab === 'dossiers' && dArch) ||
+                    (activeTab === 'archives' && !dArch)
+                  );
+                  const provenanceBadge = showProvenanceBadge ? (
+                    <span className={`absolute top-2 right-2 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm ${dArch ? 'bg-slate-700 text-white' : 'bg-violet-600 text-white'}`}>
+                      {dArch ? '📦 ARCHIVÉ' : '📁 ACTIF'}
+                    </span>
+                  ) : null;
+                  // Wrapper de sélection multi (checkbox désarchivage) : UNIQUEMENT
+                  // pour les dossiers réellement archivés affichés sur l'onglet
+                  // Archivés (pas pour les actifs qu'on voit en mode recherche).
+                  const wrapWithSelection = activeTab === 'archives' && dArch;
+                  if (!wrapWithSelection) {
+                    return (
+                      <div key={d.localId} className="relative">
+                        {provenanceBadge}
+                        <DossierCard d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} doublonInfo={doublonsIndex.get(d.localId)} />
+                      </div>
+                    );
+                  }
+                  return (
+                  <div key={d.localId} className="flex items-start gap-2 relative">
+                    {provenanceBadge}
                     <label className="flex-shrink-0 mt-3 cursor-pointer" title="Cocher pour sélectionner ce dossier (désarchivage en masse)">
                       <input
                         type="checkbox"
@@ -5539,9 +5559,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       <DossierCard d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} doublonInfo={doublonsIndex.get(d.localId)} />
                     </div>
                   </div>
-                ) : (
-                  <DossierCard key={d.localId} d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} doublonInfo={doublonsIndex.get(d.localId)} />
-                ))
+                  );
+                })
               )}
             </div>
 
