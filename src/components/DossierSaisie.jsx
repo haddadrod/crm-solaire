@@ -4626,6 +4626,30 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const nbActifs = dossiersVisibles.filter(d => !isArchived(d)).length;
   const nbArchives = dossiersVisibles.filter(d => isArchived(d)).length;
 
+  // 🔍 Recherche globale (actifs ↔ archivés) : quand l'utilisateur cherche un
+  // client par nom/téléphone/etc., on compte les matches dans l'AUTRE catégorie
+  // que celle affichée. Si > 0, un bandeau cliquable apparaît pour basculer →
+  // évite d'aller manuellement dans l'autre onglet pour le retrouver.
+  const searchMatchesInOtherTab = useMemo(() => {
+    if (!searchTerm || !searchTerm.trim()) return 0;
+    const s = searchTerm.toLowerCase();
+    const matches = (d) => (
+      d.nom?.toLowerCase().includes(s) || d.prenom?.toLowerCase().includes(s)
+      || d.id?.toString().includes(s) || d.telephone?.includes(s)
+      || d.email?.toLowerCase().includes(s) || d.ville?.toLowerCase().includes(s)
+      || d.codePostal?.includes(s)
+    );
+    // Quand on est sur "dossiers" → on cherche dans les archivés. Inverse pour
+    // l'onglet Archivés. (Sur les autres onglets, pas de recherche → 0.)
+    if (activeTab === 'dossiers') {
+      return dossiersVisibles.filter(d => isArchived(d) && matches(d)).length;
+    }
+    if (activeTab === 'archives') {
+      return dossiersVisibles.filter(d => !isArchived(d) && matches(d)).length;
+    }
+    return 0;
+  }, [searchTerm, dossiersVisibles, activeTab]);
+
   // 🔍 Index des doublons — utilisé par le filtre "Doublons" et le badge sur
   // chaque fiche pour aider à faire le ménage après un import en masse. On
   // détecte trois familles de collisions :
@@ -5462,6 +5486,30 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     </button>
                   )}
                 </div>
+                {/* 🔍 Bandeau « recherche globale » : quand un terme est tapé
+                    ET qu'il y a des matches dans l'AUTRE catégorie (actifs ↔
+                    archivés), on propose de basculer sans perdre la recherche.
+                    Résout le besoin : « quand je recherche je suis obligé
+                    d'aller dans l'onglet archivé pour vérifier les doublons ». */}
+                {searchTerm && searchMatchesInOtherTab > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab(activeTab === 'archives' ? 'dossiers' : 'archives')}
+                    className="mt-2 w-full bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-300 rounded-xl px-3 py-2 flex items-center justify-between gap-2 hover:from-amber-100 hover:to-orange-100 transition"
+                    title={activeTab === 'archives' ? 'Voir aussi les actifs' : 'Voir aussi les archivés'}
+                  >
+                    <div className="flex items-center gap-2 text-xs text-amber-800 font-semibold">
+                      <Search className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                      <span>
+                        🗃️ <span className="font-bold">{searchMatchesInOtherTab}</span> autre{searchMatchesInOtherTab > 1 ? 's' : ''} dossier{searchMatchesInOtherTab > 1 ? 's' : ''}{' '}
+                        {activeTab === 'archives' ? 'dans les actifs' : 'dans les archivés'} correspond{searchMatchesInOtherTab > 1 ? 'ent' : ''} à « {searchTerm} »
+                      </span>
+                    </div>
+                    <span className="text-[11px] font-bold text-amber-700 whitespace-nowrap">
+                      Voir → {activeTab === 'archives' ? 'Actifs' : 'Archivés'}
+                    </span>
+                  </button>
+                )}
               </div>
             )}
 
