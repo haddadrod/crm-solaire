@@ -11170,10 +11170,52 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
   const [showPass, setShowPass] = useState(false);
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [oauthBusy, setOauthBusy] = useState(false);
+  // 🔑 Connexion par mot de passe d'application (IMAP) — la voie simple.
+  const [imapEmail, setImapEmail] = useState('');
+  const [imapPass, setImapPass] = useState('');
+  const [imapBusy, setImapBusy] = useState(false);
+  const [imapErr, setImapErr] = useState(null);
 
   // Functional setState pour éviter les race conditions React 18 quand
   // l'utilisateur tape vite (chaque update voit toujours le dernier state).
   const update = (patch) => setConfig(prev => ({ ...prev, ...patch }));
+
+  // Connecte une boîte via email + mot de passe d'application (16 car. Google).
+  // Pas de Google Cloud Console. Le backend teste la connexion IMAP avant de
+  // stocker → feedback immédiat si le mot de passe est faux.
+  const connectImap = async () => {
+    setImapErr(null);
+    const email = imapEmail.trim().toLowerCase();
+    const appPassword = imapPass.replace(/\s+/g, '');
+    if (!email || !appPassword) { setImapErr('Renseigne l\'email et le mot de passe d\'application.'); return; }
+    setImapBusy(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/gmail-oauth?action=imap-connect', {
+        method: 'POST', headers,
+        body: JSON.stringify({ email, appPassword }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      // Maj locale : ajoute/maj la boîte dans gmailOAuth.inboxes.
+      setGmailOAuth(prev => {
+        const inboxes = [...((prev?.inboxes) || [])];
+        const idx = inboxes.findIndex(b => (b.email || '').toLowerCase() === email);
+        const box = { email, connectedAt: new Date().toISOString(), method: 'imap', canScan: true };
+        if (idx >= 0) inboxes[idx] = box; else inboxes.push(box);
+        return { connected: true, email: inboxes[0]?.email || email, connectedAt: inboxes[0]?.connectedAt || null, inboxes };
+      });
+      setImapEmail('');
+      setImapPass('');
+      alert(`✅ ${email} connectée ! Tu peux maintenant scanner ses factures dans Tri factures.`);
+    } catch (e) {
+      setImapErr(e.message);
+    } finally {
+      setImapBusy(false);
+    }
+  };
 
   // Démarre le flow OAuth Google : on passe par /api/google-oauth-start
   // qui valide le JWT et redirige vers Google.
@@ -11409,6 +11451,67 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
           )}
         </div>
 
+        {/* 📥 Récupérer les factures depuis Gmail — méthode SIMPLE par mot de
+            passe d'application (pas de Google Cloud Console). Met en avant les
+            boîtes IMAP déjà connectées + un formulaire pour en ajouter. */}
+        <div className="border-t border-slate-200 pt-3">
+          <div className="text-xs font-bold text-slate-700 mb-1">📥 Récupérer les factures reçues par email (Yolico, Elsun…)</div>
+          <div className="text-[11px] text-slate-500 mb-2">
+            Connecte chaque boîte mail avec son <strong>mot de passe d'application</strong> (16 caractères généré par Google). Aucune config Google Cloud. Ensuite : onglet <strong>Tri factures → 🔍 Scanner Gmail</strong>.
+          </div>
+
+          {/* Boîtes IMAP déjà connectées */}
+          {(gmailOAuth?.inboxes || []).filter(b => b.method === 'imap').map(b => (
+            <div key={b.email} className="mb-2 p-2 bg-emerald-50 border border-emerald-300 rounded-lg flex items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="text-xs font-bold text-emerald-800 truncate">📧 {b.email}</div>
+                <div className="text-[10px] text-emerald-600">🔑 Mot de passe d'application · 📥 scan factures actif</div>
+              </div>
+              <button
+                onClick={() => disconnectGmail(b.email)}
+                className="flex-shrink-0 px-2 py-1 bg-white border border-rose-300 text-rose-600 rounded text-[10px] font-bold hover:bg-rose-50"
+                title={`Déconnecter ${b.email}`}
+              >🔌</button>
+            </div>
+          ))}
+
+          {/* Formulaire d'ajout */}
+          <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl space-y-2">
+            <input
+              type="email"
+              value={imapEmail}
+              onChange={(e) => setImapEmail(e.target.value)}
+              placeholder="adresse@gmail.com (ou yolico@…)"
+              className="w-full px-2 py-1.5 border border-blue-200 rounded text-xs focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            <input
+              type="text"
+              value={imapPass}
+              onChange={(e) => setImapPass(e.target.value)}
+              placeholder="Mot de passe d'application (16 caractères)"
+              className="w-full px-2 py-1.5 border border-blue-200 rounded text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
+            />
+            {imapErr && <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">⚠️ {imapErr}</div>}
+            <button
+              onClick={connectImap}
+              disabled={imapBusy}
+              className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-lg text-xs font-bold"
+            >
+              {imapBusy ? '⏳ Connexion…' : '🔗 Connecter cette boîte'}
+            </button>
+            <details className="text-[11px] text-slate-600">
+              <summary className="cursor-pointer font-bold text-blue-700">❓ Comment obtenir un mot de passe d'application ?</summary>
+              <ol className="list-decimal ml-5 space-y-0.5 mt-2">
+                <li>Va sur <a href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">myaccount.google.com/security</a></li>
+                <li>Active la <strong>validation en 2 étapes</strong> si ce n'est pas déjà fait (obligatoire).</li>
+                <li>Va sur <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">myaccount.google.com/apppasswords</a></li>
+                <li>Donne un nom (ex : "CRM Solaire") → Google génère un code de <strong>16 caractères</strong>.</li>
+                <li>Copie-le et colle-le ci-dessus (les espaces n'ont pas d'importance).</li>
+              </ol>
+            </details>
+          </div>
+        </div>
+
         {/* Méthode alternative OAuth (1 clic sans password mais setup Google Cloud) */}
         <div className="border-t border-slate-200 pt-3">
           <button
@@ -11416,7 +11519,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
             onClick={() => setShowAdvanced(!showAdvanced)}
             className="text-[11px] text-slate-500 hover:text-slate-700 underline"
           >
-            {showAdvanced ? '▾ Masquer' : '▸ Voir'} la méthode alternative (OAuth Google — sans password mais setup ~30 min)
+            {showAdvanced ? '▾ Masquer' : '▸ Voir'} la méthode alternative (OAuth Google — setup ~30 min)
           </button>
           {showAdvanced && (
             <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">

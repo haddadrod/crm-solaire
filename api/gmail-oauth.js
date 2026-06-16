@@ -23,6 +23,7 @@
 //   - GOOGLE_CLIENT_SECRET  (pour refresh access tokens)
 
 import { createClient } from '@supabase/supabase-js';
+import { ImapFlow } from 'imapflow';
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
@@ -46,10 +47,20 @@ async function getUserIdFromAuth(req) {
   return { userId: userData.user.id, admin };
 }
 
-// 📦 Helper : lit le storage et renvoie TOUJOURS un array de boîtes.
+// Méthode de connexion d'une boîte : 'imap' (mot de passe d'application) si
+// elle a un appPassword, sinon 'oauth' (refreshToken Google).
+function boxMethod(b) {
+  if (b && b.appPassword) return 'imap';
+  if (b && b.refreshToken) return 'oauth';
+  return null;
+}
+
+// 📦 Helper : lit le storage et renvoie TOUJOURS un array de boîtes valides.
 //   - null → []
 //   - objet legacy {refreshToken, email...} → [objet]
 //   - array → array
+// Une boîte est valide si elle a SOIT un refreshToken (OAuth), SOIT un
+// appPassword (IMAP / mot de passe d'application).
 async function readInboxes(admin, userId) {
   const { data: row } = await admin.from('storage')
     .select('value')
@@ -58,10 +69,103 @@ async function readInboxes(admin, userId) {
   if (!row?.value) return [];
   try {
     const parsed = JSON.parse(row.value);
-    if (Array.isArray(parsed)) return parsed.filter(b => b && b.refreshToken);
-    if (parsed && parsed.refreshToken) return [parsed];
+    if (Array.isArray(parsed)) return parsed.filter(b => b && boxMethod(b));
+    if (parsed && boxMethod(parsed)) return [parsed];
   } catch (e) {}
   return [];
+}
+
+// ─── IMAP (mot de passe d'application) ──────────────────────────────────────
+// Bien plus simple côté utilisateur : email + mot de passe d'application
+// (16 caractères généré par Google), pas de Google Cloud Console. On lit les
+// emails via IMAP (imap.gmail.com:993).
+
+function makeImapClient(inbox) {
+  return new ImapFlow({
+    host: 'imap.gmail.com',
+    port: 993,
+    secure: true,
+    auth: { user: inbox.email, pass: inbox.appPassword },
+    logger: false,
+    // Timeouts courts : on est dans une fonction serverless (budget limité).
+    socketTimeout: 20000,
+    greetingTimeout: 8000,
+  });
+}
+
+// Teste la connexion IMAP (au moment de connecter une boîte) → feedback
+// immédiat si le mot de passe d'application est faux.
+async function imapTestConnection(inbox) {
+  const client = makeImapClient(inbox);
+  await client.connect();
+  await client.logout();
+}
+
+// Scan IMAP : liste les messages récents (60j) avec pièce jointe PDF.
+async function imapScan(inbox, maxMessages = 60) {
+  const client = makeImapClient(inbox);
+  await client.connect();
+  const messages = [];
+  try {
+    const lock = await client.getMailboxLock('INBOX');
+    try {
+      const since = new Date(Date.now() - 60 * 24 * 3600 * 1000);
+      const uids = await client.search({ since }, { uid: true });
+      const recent = (uids || []).slice(-maxMessages);
+      if (recent.length === 0) return [];
+      for await (const msg of client.fetch(recent, { uid: true, envelope: true, bodyStructure: true, internalDate: true }, { uid: true })) {
+        const attachments = [];
+        const walk = (node) => {
+          if (!node) return;
+          if (Array.isArray(node.childNodes)) node.childNodes.forEach(walk);
+          const fname = node.dispositionParameters?.filename || node.parameters?.name || '';
+          if (fname && /\.pdf$/i.test(fname)) {
+            attachments.push({
+              attachmentId: node.part || '1', // numéro de part IMAP (ex '2', '1.2')
+              filename: fname,
+              sizeBytes: node.size || 0,
+            });
+          }
+        };
+        walk(msg.bodyStructure);
+        if (attachments.length > 0) {
+          messages.push({
+            messageId: String(msg.uid), // côté IMAP = UID
+            subject: msg.envelope?.subject || '(sans sujet)',
+            from: (msg.envelope?.from || []).map(a => (a.name ? `${a.name} <${a.address}>` : a.address)).join(', '),
+            internalDate: msg.internalDate ? new Date(msg.internalDate).getTime().toString() : '',
+            attachments,
+          });
+        }
+      }
+    } finally {
+      lock.release();
+    }
+  } finally {
+    try { await client.logout(); } catch (e) {}
+  }
+  return messages;
+}
+
+// Télécharge une pièce jointe IMAP (par UID + numéro de part) → base64.
+async function imapFetchAttachment(inbox, uid, part) {
+  const client = makeImapClient(inbox);
+  await client.connect();
+  try {
+    const lock = await client.getMailboxLock('INBOX');
+    try {
+      const dl = await client.download(uid, part, { uid: true });
+      if (!dl?.content) throw new Error('Pièce jointe introuvable');
+      const chunks = [];
+      for await (const chunk of dl.content) chunks.push(chunk);
+      const buf = Buffer.concat(chunks);
+      return { base64: buf.toString('base64'), sizeBytes: buf.length };
+    } finally {
+      lock.release();
+    }
+  } finally {
+    try { await client.logout(); } catch (e) {}
+  }
 }
 
 async function writeInboxes(admin, userId, inboxes) {
@@ -202,12 +306,18 @@ export default async function handler(req, res) {
           // Compat ascendante avec l'ancien shape { email, connectedAt }
           email: inboxes[0]?.email || null,
           connectedAt: inboxes[0]?.connectedAt || null,
-          inboxes: inboxes.map(b => ({
-            email: b.email,
-            connectedAt: b.connectedAt || null,
-            // Précise si la lecture (scan factures) est dispo pour cette boîte.
-            canScan: (b.scopes || []).some(s => s.includes('gmail.readonly')),
-          })),
+          inboxes: inboxes.map(b => {
+            const method = boxMethod(b);
+            return {
+              email: b.email,
+              connectedAt: b.connectedAt || null,
+              method, // 'imap' (mot de passe d'application) ou 'oauth'
+              // Scan dispo : toujours pour IMAP ; pour OAuth il faut le scope lecture.
+              canScan: method === 'imap'
+                ? true
+                : (b.scopes || []).some(s => s.includes('gmail.readonly')),
+            };
+          }),
         },
       });
     }
@@ -225,23 +335,68 @@ export default async function handler(req, res) {
       return json(res, 200, { data: { disconnected: targetEmail, remaining: next.length } });
     }
 
-    // ───── POST : actions de scan / fetch ─────
+    // ───── POST : actions de scan / fetch / imap-connect ─────
     const action = (req.query?.action || '').toString();
     const body = req.body || {};
 
-    if (action === 'scan') {
-      if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-        return json(res, 503, { error: 'OAuth Google non configuré (variables Vercel).' });
+    // 🔑 Connexion par mot de passe d'application (IMAP) — la voie simple
+    // sans Google Cloud Console. On teste la connexion puis on stocke la boîte.
+    if (action === 'imap-connect') {
+      const email = (body.email || '').toString().trim().toLowerCase();
+      const appPassword = (body.appPassword || '').toString().replace(/\s+/g, ''); // Google affiche le code par groupes de 4 → on retire les espaces
+      if (!email || !appPassword) {
+        return json(res, 400, { error: 'Email et mot de passe d\'application requis.' });
       }
+      if (appPassword.length < 12) {
+        return json(res, 400, { error: 'Le mot de passe d\'application Google fait 16 caractères. Vérifie ce que tu as collé.' });
+      }
+      const candidate = { email, appPassword };
+      try {
+        await imapTestConnection(candidate);
+      } catch (e) {
+        return json(res, 400, {
+          error: `Connexion IMAP échouée : ${e?.message || 'vérifie l\'email + le mot de passe d\'application'}. (La validation en 2 étapes doit être activée sur ce compte Google.)`,
+        });
+      }
+      // Connexion OK → on stocke (en ajoutant ou remplaçant si l'email existe).
+      const inboxes = await readInboxes(admin, userId);
+      const stored = {
+        email,
+        appPassword,
+        method: 'imap',
+        connectedAt: new Date().toISOString(),
+      };
+      const idx = inboxes.findIndex(b => (b.email || '').toLowerCase() === email);
+      if (idx >= 0) inboxes[idx] = stored; else inboxes.push(stored);
+      await writeInboxes(admin, userId, inboxes);
+      return json(res, 200, { data: { connected: true, email } });
+    }
+
+    if (action === 'scan') {
       const inboxes = await readInboxes(admin, userId);
       if (inboxes.length === 0) {
-        return json(res, 200, { data: { results: [], notes: 'Aucune boîte Gmail connectée.' } });
+        return json(res, 200, { data: { results: [], errors: [], notes: 'Aucune boîte Gmail connectée.' } });
       }
       const results = [];
       const errors = [];
-      // Scan séquentiel par boîte (parallèle = risque de quota Gmail trop vite).
+      // Scan séquentiel par boîte (parallèle = risque de quota / timeout).
       for (const inbox of inboxes) {
-        // Seulement les boîtes avec scope readonly.
+        const method = boxMethod(inbox);
+        // ── Boîte IMAP (mot de passe d'application) ──
+        if (method === 'imap') {
+          try {
+            const enriched = await imapScan(inbox, 60);
+            results.push({ email: inbox.email, messages: enriched, count: enriched.length, method: 'imap' });
+          } catch (e) {
+            errors.push({ email: inbox.email, error: e?.message || 'Scan IMAP échoué' });
+          }
+          continue;
+        }
+        // ── Boîte OAuth ──
+        if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+          errors.push({ email: inbox.email, error: 'OAuth Google non configuré (variables Vercel).' });
+          continue;
+        }
         const canScan = (inbox.scopes || []).some(s => s.includes('gmail.readonly'));
         if (!canScan) {
           errors.push({ email: inbox.email, error: 'Pas de scope lecture — reconnecte cette boîte pour activer le scan.' });
@@ -264,6 +419,7 @@ export default async function handler(req, res) {
             email: inbox.email,
             messages: enriched,
             count: enriched.length,
+            method: 'oauth',
           });
         } catch (e) {
           errors.push({ email: inbox.email, error: e?.message || 'Scan échoué' });
@@ -273,9 +429,6 @@ export default async function handler(req, res) {
     }
 
     if (action === 'fetch-attachment') {
-      if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
-        return json(res, 503, { error: 'OAuth Google non configuré.' });
-      }
       const { email: inboxEmail, messageId, attachmentId } = body;
       if (!inboxEmail || !messageId || !attachmentId) {
         return json(res, 400, { error: 'email, messageId, attachmentId requis.' });
@@ -283,12 +436,22 @@ export default async function handler(req, res) {
       const inboxes = await readInboxes(admin, userId);
       const inbox = inboxes.find(b => (b.email || '').toLowerCase() === String(inboxEmail).toLowerCase());
       if (!inbox) return json(res, 404, { error: 'Boîte Gmail non trouvée.' });
+      const method = boxMethod(inbox);
+      // ── IMAP : download par UID (messageId) + numéro de part (attachmentId) ──
+      if (method === 'imap') {
+        const { base64, sizeBytes } = await imapFetchAttachment(inbox, parseInt(messageId, 10), attachmentId);
+        return json(res, 200, { data: { base64, sizeBytes, mimeType: 'application/pdf' } });
+      }
+      // ── OAuth ──
+      if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+        return json(res, 503, { error: 'OAuth Google non configuré.' });
+      }
       const accessToken = await ensureAccessToken(admin, userId, inbox, inboxes);
       const { base64, sizeBytes } = await getAttachment(accessToken, messageId, attachmentId);
       return json(res, 200, { data: { base64, sizeBytes, mimeType: 'application/pdf' } });
     }
 
-    return json(res, 400, { error: `Action inconnue : ${action || '(vide)'}. Utilise scan ou fetch-attachment.` });
+    return json(res, 400, { error: `Action inconnue : ${action || '(vide)'}. Utilise scan, fetch-attachment ou imap-connect.` });
   } catch (e) {
     console.error('gmail-oauth error:', e?.message || e);
     return json(res, 502, { error: e?.message || 'Erreur Gmail OAuth' });
