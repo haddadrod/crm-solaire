@@ -5001,6 +5001,31 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   🗑 Annuler l'import
                 </button>
               )}
+              {isAdmin && dossiers.some(d => d.createdBy === 'import_sheet' && d.statutControleQualite !== 'ok' && d.statutControleQualite !== 'pas_ok') && (
+                <button
+                  onClick={() => {
+                    const candidats = dossiers.filter(d => d.createdBy === 'import_sheet' && d.statutControleQualite !== 'ok' && d.statutControleQualite !== 'pas_ok');
+                    if (candidats.length === 0) { alert('Aucun dossier importé sans décision CQ.'); return; }
+                    const msg = `Marquer le contrôle qualité comme VALIDÉ sur ${candidats.length} dossier${candidats.length > 1 ? 's' : ''} importé${candidats.length > 1 ? 's' : ''} ?\n\nIls disparaîtront de l'alerte « 📋 Contrôle qualité ».\n\n(Seuls les dossiers importés via le sheet sans décision CQ sont concernés.)`;
+                    if (!window.confirm(msg)) return;
+                    const todayIso = new Date().toISOString().split('T')[0];
+                    setDossiers(prev => prev.map(d => {
+                      if (d.createdBy !== 'import_sheet') return d;
+                      if (d.statutControleQualite === 'ok' || d.statutControleQualite === 'pas_ok') return d;
+                      const refDate = d.dateInsta
+                        || (typeof d.createdAt === 'string' ? d.createdAt.split('T')[0] : '')
+                        || (typeof d.savedAt === 'string' ? d.savedAt.split('T')[0] : '')
+                        || todayIso;
+                      return { ...d, statutControleQualite: 'ok', dateControleQualite: d.dateControleQualite || refDate };
+                    }));
+                    alert(`✅ CQ marqué validé sur ${candidats.length} dossier${candidats.length > 1 ? 's' : ''}.`);
+                  }}
+                  className="bg-white hover:bg-emerald-50 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-emerald-200 whitespace-nowrap flex-shrink-0"
+                  title="Marque le contrôle qualité comme validé (statut OK) sur tous les dossiers importés depuis le sheet qui n'ont pas encore de décision CQ. Les retire de l'alerte « 📋 Contrôle qualité »."
+                >
+                  ✓ CQ fait sur importés
+                </button>
+              )}
               {/* Groupe utilisateur poussé tout à droite (ml-auto) — séparé visuellement
                   des boutons d'action. Plus propre. */}
               <div className="flex gap-2 items-center ml-auto">
@@ -5951,6 +5976,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 ? { ...d, historique: [...(d.historique || []), { date: new Date().toISOString(), user: userTag, ...entry }] }
                 : d
               ));
+            }}
+            onMarkAllCQDone={(localIds) => {
+              const ids = new Set(localIds || []);
+              if (ids.size === 0) return;
+              const todayIso = new Date().toISOString().split('T')[0];
+              setDossiers(prev => prev.map(d => {
+                if (!ids.has(d.localId)) return d;
+                if (d.statutControleQualite === 'ok' || d.statutControleQualite === 'pas_ok') return d;
+                return { ...d, statutControleQualite: 'ok', dateControleQualite: d.dateControleQualite || todayIso };
+              }));
+              setShowAlertesType(null);
             }}
             onClose={() => setShowAlertesType(null)}
             onSelect={(localId) => {
@@ -23995,7 +24031,7 @@ function DoublonsModal({ groupes, STATUTS, onClose, onSelect, onDelete, isAdmin 
   );
 }
 
-function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onLogAction, onClose, onSelect }) {
+function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onLogAction, onMarkAllCQDone, onClose, onSelect }) {
   const config = {
     controleQualite: {
       title: '📋 Contrôle qualité — dossiers à valider',
@@ -24334,6 +24370,19 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
             <p className="text-xs text-slate-600 mt-1">{cfg.subtitle}</p>
           </div>
           <div className="flex items-center gap-2">
+            {type === 'controleQualite' && sortedItems.length > 0 && onMarkAllCQDone && (
+              <button
+                onClick={() => {
+                  const msg = `Marquer le contrôle qualité comme VALIDÉ sur les ${sortedItems.length} dossier${sortedItems.length > 1 ? 's' : ''} affiché${sortedItems.length > 1 ? 's' : ''} ?\n\nIls disparaîtront de cette liste.`;
+                  if (!window.confirm(msg)) return;
+                  onMarkAllCQDone(sortedItems.map(r => r.dossier.localId));
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm whitespace-nowrap"
+                title="Passe statutControleQualite='ok' sur tous les dossiers affichés ici, avec dateControleQualite = aujourd'hui."
+              >
+                ✓ Tout marquer fait
+              </button>
+            )}
             <span className={`text-sm font-bold px-3 py-1 rounded-full bg-gradient-to-r ${cfg.gradient} text-white shadow-sm`}>
               {cfg.headerCount != null ? cfg.headerCount : sortedItems.length}
             </span>
