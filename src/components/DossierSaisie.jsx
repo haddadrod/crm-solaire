@@ -5515,7 +5515,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   )}
 
                   {showStatutFilter && (() => {
-                    const emptyCount = STATUTS_ORDERED.filter(s => dossiers.filter(d => d.statut === s.id).length === 0).length;
+                    const dForCount = dossiers.filter(d =>
+                      (!activeSociete || !d.societe || d.societe === activeSociete) &&
+                      (activeTab === 'archives' ? isArchived(d) : !isArchived(d))
+                    );
+                    const emptyCount = STATUTS_ORDERED.filter(s => dForCount.filter(d => d.statut === s.id).length === 0).length;
                     if (emptyCount === 0) return null;
                     return (
                       <button onClick={() => setShowEmptyStatuts(!showEmptyStatuts)} className="ml-auto text-[10px] font-semibold text-slate-500 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg flex items-center gap-1">
@@ -5525,16 +5529,25 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   })()}
                 </div>
 
-                {showStatutFilter && (
+                {showStatutFilter && (() => {
+                  // 🏢 Compteurs scopés à la société active + onglet (Dossiers/Archives).
+                  // Avant, les chips comptaient TOUS les dossiers → cliquer
+                  // Yolico/Elsun ne faisait pas bouger les nombres et le filtre PAYÉ
+                  // sortait des dossiers déjà archivés ou d'une autre société.
+                  const dForCount = dossiers.filter(d =>
+                    (!activeSociete || !d.societe || d.societe === activeSociete) &&
+                    (activeTab === 'archives' ? isArchived(d) : !isArchived(d))
+                  );
+                  return (
                   <div className="flex gap-2 flex-wrap mt-2">
                     <button onClick={() => setFilterStatut('all')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${filterStatut === 'all' ? 'bg-gradient-to-r from-violet-500 to-pink-500 text-white shadow-md scale-105' : 'bg-slate-100 text-slate-600'}`}>
                       📋 Tous
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${filterStatut === 'all' ? 'bg-white/30' : 'bg-white text-slate-700'}`}>{dossiers.length}</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${filterStatut === 'all' ? 'bg-white/30' : 'bg-white text-slate-700'}`}>{dForCount.length}</span>
                     </button>
                     {(() => {
                       // 🎯 Raccourci : tous les dossiers posés (statutPose === 'visite_ok')
                       const sel = filterStatut === 'pose_done';
-                      const count = dossiers.filter(d => d.statutPose === 'visite_ok').length;
+                      const count = dForCount.filter(d => d.statutPose === 'visite_ok').length;
                       return (
                         <button onClick={() => setFilterStatut('pose_done')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-md scale-105' : 'bg-emerald-50 text-emerald-700'}`} title="Tous les dossiers avec le bouton « ✓ Posé » coché, peu importe l'étape banque/paiement">
                           ✓ Posés
@@ -5545,7 +5558,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     {(() => {
                       // 🎯 Raccourci : posés mais pas encore payés par le financeur
                       const sel = filterStatut === 'pose_done_unpaid';
-                      const count = dossiers.filter(d => d.statutPose === 'visite_ok' && !d.payeClient && !DEAD_STATUTS.includes(d.statut) && d.statutFin !== 'refusé' && d.statutPose !== 'client_refuse').length;
+                      const count = dForCount.filter(d => d.statutPose === 'visite_ok' && !d.payeClient && !DEAD_STATUTS.includes(d.statut) && d.statutFin !== 'refusé' && d.statutPose !== 'client_refuse').length;
                       return (
                         <button onClick={() => setFilterStatut('pose_done_unpaid')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md scale-105' : 'bg-amber-50 text-amber-700'}`} title="Dossiers posés mais pas encore encaissés par le financeur (annulés et refus banque exclus). Le suivi banque actif.">
                           ⏳ Posés non payés
@@ -5557,7 +5570,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       // 📋 Dossiers importés depuis Google Sheets dont la col S n'était pas
                       // un nombre (PAC, ballon, déplacement…) → à compléter manuellement.
                       // Bouton affiché uniquement s'il y en a au moins un.
-                      const count = dossiers.filter(d => d.needsImportReview).length;
+                      const count = dForCount.filter(d => d.needsImportReview).length;
                       if (count === 0) return null;
                       const sel = filterStatut === 'needs_import_review';
                       return (
@@ -5580,7 +5593,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       );
                     })()}
                     {STATUTS_ORDERED.map(s => {
-                      const count = dossiers.filter(d => d.statut === s.id).length;
+                      // PAYÉ : exige aussi payeClient===true. Aligné avec le filtre
+                      // et la pastille Accueil. Sans ça, un dossier importé au statut
+                      // W_DOSSIER_PAYER sans paiement banque pollue le compteur.
+                      const count = s.id === 'W_DOSSIER_PAYER'
+                        ? dForCount.filter(d => d.statut === 'W_DOSSIER_PAYER' && d.payeClient === true).length
+                        : dForCount.filter(d => d.statut === s.id).length;
                       const sel = filterStatut === s.id;
                       const empty = count === 0;
                       if (empty && !showEmptyStatuts && !sel) return null;
@@ -5592,7 +5610,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       );
                     })}
                   </div>
-                )}
+                  );
+                })()}
               </div>
             )}
 
