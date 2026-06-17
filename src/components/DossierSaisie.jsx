@@ -24370,19 +24370,23 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
             <p className="text-xs text-slate-600 mt-1">{cfg.subtitle}</p>
           </div>
           <div className="flex items-center gap-2">
-            {type === 'controleQualite' && sortedItems.length > 0 && onMarkAllCQDone && (
-              <button
-                onClick={() => {
-                  const msg = `Marquer le contrôle qualité comme VALIDÉ sur les ${sortedItems.length} dossier${sortedItems.length > 1 ? 's' : ''} affiché${sortedItems.length > 1 ? 's' : ''} ?\n\nIls disparaîtront de cette liste.`;
-                  if (!window.confirm(msg)) return;
-                  onMarkAllCQDone(sortedItems.map(r => r.dossier.localId));
-                }}
-                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm whitespace-nowrap"
-                title="Passe statutControleQualite='ok' sur tous les dossiers affichés ici, avec dateControleQualite = aujourd'hui."
-              >
-                ✓ Tout marquer fait
-              </button>
-            )}
+            {type === 'controleQualite' && onMarkAllCQDone && (() => {
+              const importes = sortedItems.filter(r => r.dossier?.createdBy === 'import_sheet');
+              if (importes.length === 0) return null;
+              return (
+                <button
+                  onClick={() => {
+                    const msg = `Marquer le contrôle qualité comme VALIDÉ sur les ${importes.length} dossier${importes.length > 1 ? 's' : ''} IMPORTÉ${importes.length > 1 ? 'S' : ''} ?\n\nSeuls les dossiers ajoutés via le sheet (createdBy=import_sheet) sont concernés — les autres restent dans la liste.`;
+                    if (!window.confirm(msg)) return;
+                    onMarkAllCQDone(importes.map(r => r.dossier.localId));
+                  }}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm whitespace-nowrap"
+                  title="Passe statutControleQualite='ok' UNIQUEMENT sur les dossiers importés (createdBy=import_sheet) affichés ici."
+                >
+                  ✓ Marquer fait sur {importes.length} importé{importes.length > 1 ? 's' : ''}
+                </button>
+              );
+            })()}
             <span className={`text-sm font-bold px-3 py-1 rounded-full bg-gradient-to-r ${cfg.gradient} text-white shadow-sm`}>
               {cfg.headerCount != null ? cfg.headerCount : sortedItems.length}
             </span>
