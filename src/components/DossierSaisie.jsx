@@ -6823,6 +6823,10 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
   // 📅 Fenêtre de scan (en jours). Modifiable via le sélecteur juste avant
   //    le bouton « Scanner Gmail ». 60 par défaut, 1095 max (3 ans).
   const [gmailScanDays, setGmailScanDays] = useState(60);
+  // 🔍 Set des PDFs scannés détectés comme « déjà en CRM » via match
+  //    nom de fichier contre factureNo/BL des lignes existantes. Pré-filtre
+  //    LOCAL gratuit — sert à éviter de lancer l'IA sur ces PDFs.
+  const [gmailKnownInCrm, setGmailKnownInCrm] = useState(new Set());
   const [gmailSelection, setGmailSelection] = useState(new Set()); // Set d'attachmentKey cochés
   const [gmailImporting, setGmailImporting] = useState(false);
   const gmailConnected = !!gmailOAuth?.connected;
@@ -7041,16 +7045,43 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
       const data = payload.data || { results: [], errors: [] };
       setGmailScanResults(data);
-      // Pré-sélectionne TOUT par défaut (l'utilisateur décoche ce qu'il ne
-      // veut pas) — plus ergonomique que tout décocher si la majorité sont OK.
+
+      // 🔍 Pré-filtre LOCAL (gratuit, instantané) : match du nom de fichier
+      //    contre les n° de facture / BL DÉJÀ dans le CRM. Évite de lancer
+      //    l'IA sur des PDFs déjà attachés à un dossier (« facture_FAC00004048.pdf »
+      //    → si une ligne prestataire a factureNo=FAC00004048 + PDF, on saute).
+      const normalize = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const knownRefs = new Set();
+      for (const d of dossiers) {
+        for (const arr of [d.poseurs, d.regies, d.fournisseurs]) {
+          for (const l of (arr || [])) {
+            if (!l) continue;
+            if (!(l.factureFile || l.facturePdfUrl || l.factureExternalUrl)) continue;
+            const fn = normalize(l.factureNo);
+            if (fn.length >= 5) knownRefs.add(fn);
+            const bl = normalize(l.bl);
+            if (bl.length >= 5) knownRefs.add(bl);
+          }
+        }
+      }
+      const knownAttKeys = new Set();
+      // Pré-sélectionne TOUT par défaut SAUF les déjà-en-CRM (auto-décochés).
       const next = new Set();
       (data.results || []).forEach(r => {
         (r.messages || []).forEach(m => {
           (m.attachments || []).forEach(a => {
-            next.add(gmailAttachmentKey(r.email, m.messageId, a.attachmentId));
+            const key = gmailAttachmentKey(r.email, m.messageId, a.attachmentId);
+            const norm = normalize(a.filename);
+            let already = false;
+            for (const ref of knownRefs) {
+              if (norm.includes(ref)) { already = true; break; }
+            }
+            if (already) knownAttKeys.add(key);
+            else next.add(key);
           });
         });
       });
+      setGmailKnownInCrm(knownAttKeys);
       setGmailSelection(next);
     } catch (e) {
       setGmailScanResults({ results: [], errors: [{ email: '(global)', error: e?.message || 'Scan échoué' }] });
@@ -7736,6 +7767,35 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                       {allChecked ? '☐ Tout décocher' : '☑ Tout cocher'} ({allKeys.length})
                     </button>
                     <span className="text-[10px] text-blue-600">{gmailSelection.size} sélectionné{gmailSelection.size > 1 ? 's' : ''}</span>
+                    {/* 🔍 Bilan pré-filtre + bouton pour marquer définitivement les
+                        détectés « déjà en CRM » → ne reviennent plus aux scans suivants. */}
+                    {gmailKnownInCrm.size > 0 && (
+                      <button
+                        onClick={async () => {
+                          const targets = entries.filter(en => gmailKnownInCrm.has(gmailAttachmentKey(en.inboxEmail, en.messageId, en.attachmentId)));
+                          if (targets.length === 0) return;
+                          if (!window.confirm(`Marquer ${targets.length} PDFs détectés « déjà en CRM » côté serveur ? Ils ne reviendront plus aux prochains scans Gmail.`)) return;
+                          try {
+                            const { data: { session } } = await supabase.auth.getSession();
+                            const headers = { 'Content-Type': 'application/json' };
+                            if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                            const res = await fetch('/api/gmail-oauth?action=mark-imported', {
+                              method: 'POST', headers,
+                              body: JSON.stringify({ entries: targets }),
+                            });
+                            const payload = await res.json().catch(() => ({}));
+                            if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+                            alert(`✅ ${targets.length} PDFs marqués. Ils ne reviendront plus.`);
+                            // On rescanne pour rafraîchir l'affichage (les marqués vont disparaître).
+                            handleGmailScan();
+                          } catch (e) { alert(`Erreur : ${e?.message || 'inconnu'}`); }
+                        }}
+                        className="px-2 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-bold"
+                        title="Marque côté serveur les PDFs détectés comme déjà en CRM (badge ✅). Ils ne reviendront plus dans les scans futurs."
+                      >
+                        ✅ Marquer {gmailKnownInCrm.size} déjà-en-CRM
+                      </button>
+                    )}
                     <button
                       onClick={handleIgnoreAll}
                       className="ml-auto px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 text-[10px] font-bold"
@@ -7762,11 +7822,13 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                         const dateLabel = m.internalDate
                           ? new Date(parseInt(m.internalDate, 10)).toLocaleDateString('fr-FR')
                           : (m.date ? new Date(m.date).toLocaleDateString('fr-FR') : '');
+                        const alreadyInCrm = gmailKnownInCrm.has(key);
                         return (
                           <label
                             key={key}
                             className={`flex items-start gap-2 p-1.5 rounded border cursor-pointer transition ${
-                              checked ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 border-slate-200 hover:bg-blue-50/50'
+                              alreadyInCrm ? 'bg-emerald-50 border-emerald-200 hover:bg-emerald-100/50'
+                              : checked ? 'bg-blue-50 border-blue-300' : 'bg-slate-50 border-slate-200 hover:bg-blue-50/50'
                             }`}
                           >
                             <input
@@ -7776,7 +7838,11 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                               className="mt-0.5 flex-shrink-0 accent-blue-600"
                             />
                             <div className="min-w-0 flex-1 text-[10px]">
-                              <div className="font-semibold text-slate-800 truncate" title={a.filename}>📄 {a.filename} <span className="font-normal text-slate-500">· {sizeKb} Ko</span></div>
+                              <div className="font-semibold text-slate-800 truncate flex items-center gap-1.5" title={a.filename}>
+                                📄 {a.filename}
+                                <span className="font-normal text-slate-500">· {sizeKb} Ko</span>
+                                {alreadyInCrm && <span className="flex-shrink-0 px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-800 text-[9px] font-bold" title="Une ligne dans le CRM a déjà ce n° de facture + un PDF attaché">✅ Déjà en CRM</span>}
+                              </div>
                               <div className="text-slate-600 truncate" title={m.subject}>✉️ {m.subject || '(sans sujet)'}</div>
                               <div className="text-slate-500 truncate" title={m.from}>De {m.from || '?'} {dateLabel ? `· ${dateLabel}` : ''}</div>
                             </div>
