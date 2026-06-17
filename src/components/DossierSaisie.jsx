@@ -6985,14 +6985,17 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
     }));
   };
 
-  const onFilesSelected = (fileList) => {
+  const onFilesSelected = (fileList, gmailMeta = []) => {
     const arr = Array.from(fileList || []).filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
     if (arr.length === 0) return;
     // 🔁 Si un fichier vient d'une recherche Gmail externe (alerte Factures
     //    manquantes), il atterrit ici par cette même route. On ne distingue
     //    pas la provenance — pipeline IA identique.
-    const newItems = arr.map(f => ({
-      id: `tf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    // gmailMeta[i] = { fromEmail, fromName, subject } pour les fichiers venus
+    //    d'un scan Gmail. Sert au bouton « 🚫 Plus jamais » qui blackliste
+    //    l'expéditeur côté backend.
+    const newItems = arr.map((f, idx) => ({
+      id: `tf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}_${idx}`,
       file: f,
       name: f.name,
       sizeKb: Math.round(f.size / 1024),
@@ -7001,6 +7004,8 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
       matching: null,
       error: null,
       pickedIdx: null,
+      gmailFromEmail: gmailMeta?.[idx]?.fromEmail || '',
+      gmailFromName: gmailMeta?.[idx]?.fromName || '',
     }));
     setFiles(prev => [...newItems, ...prev]);
     // Lance l'analyse en série (évite de saturer l'API IA si on drop 50 PDFs).
@@ -7065,6 +7070,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
       const headers = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
       const filesToImport = [];
+      const gmailMeta = [];
       for (const r of gmailScanResults.results || []) {
         for (const m of r.messages || []) {
           for (const a of m.attachments || []) {
@@ -7088,6 +7094,13 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
               const fileName = a.filename || `gmail_${m.messageId}.pdf`;
               const file = new window.File([blob], fileName, { type: 'application/pdf' });
               filesToImport.push(file);
+              // Aligne le meta sur l'index du fichier dans filesToImport pour
+              // que onFilesSelected sache d'où vient chaque PDF (→ bouton 🚫).
+              gmailMeta.push({
+                fromEmail: m.fromEmail || '',
+                fromName: m.from || '',
+                subject: m.subject || '',
+              });
             } catch (e) {
               console.warn(`Import attachment échoué (${a.filename}):`, e?.message);
             }
@@ -7095,7 +7108,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
         }
       }
       if (filesToImport.length > 0) {
-        onFilesSelected(filesToImport);
+        onFilesSelected(filesToImport, gmailMeta);
       }
       // Reset l'UI scan : on a importé, plus besoin d'afficher la liste.
       setGmailScanResults(null);
@@ -7180,6 +7193,45 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
       const proposals = [...((x.matching && x.matching.proposals) || []), prop];
       return { ...x, matching: { ...(x.matching || {}), proposals }, pickedIdx: proposals.length - 1 };
     }));
+  };
+
+  // 🚫 Blacklist : ajoute l'expéditeur Gmail à la liste noire partagée
+  //    (toute l'équipe ne reverra plus ses factures aux prochains scans),
+  //    et retire les cartes courantes du même expéditeur de la queue.
+  const handleIgnoreSender = async (item) => {
+    const fromEmail = (item.gmailFromEmail || '').trim().toLowerCase();
+    if (!fromEmail) {
+      alert("Impossible de blacklister : aucun email d'expéditeur connu pour ce PDF (il ne vient peut-être pas d'un scan Gmail).");
+      return;
+    }
+    const domain = '@' + fromEmail.split('@')[1];
+    const choice = window.prompt(
+      `Blacklister l'expéditeur ?\n\n  • Tape "1" pour bloquer SEULEMENT ${fromEmail}\n  • Tape "2" pour bloquer TOUT le domaine ${domain}\n  • Tape "n" pour annuler`,
+      '1'
+    );
+    if (!choice || /^n$/i.test(choice.trim())) return;
+    const target = choice.trim() === '2' ? domain : fromEmail;
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/gmail-oauth?action=ignore-sender', {
+        method: 'POST', headers,
+        body: JSON.stringify({ sender: target }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      // Retire de la queue toutes les cartes du MÊME expéditeur.
+      setFiles(prev => prev.filter(x => {
+        const e = (x.gmailFromEmail || '').toLowerCase();
+        if (!e) return true; // pas de meta → on garde
+        if (target.startsWith('@')) return !e.endsWith(target);
+        return e !== target;
+      }));
+      alert(`✅ ${target} ajouté à la liste noire. Les futurs scans Gmail l'ignoreront.`);
+    } catch (e) {
+      alert(`Erreur : ${e?.message || 'inconnu'}`);
+    }
   };
 
   // ➕ Crée une nouvelle ligne prestataire (poseurs/regies/fournisseurs)
@@ -7646,6 +7698,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
               onPick={(idx) => setFiles(prev => prev.map(x => x.id === item.id ? { ...x, pickedIdx: idx } : x))}
               onManualPick={(prop) => handleManualPick(item.id, prop)}
               onCreateAndPickLine={(dossierLocalId, type, nom) => handleCreateAndPickLine(item.id, dossierLocalId, type, nom)}
+              onIgnoreSender={() => handleIgnoreSender(item)}
               onConfirm={() => handleConfirm(item)}
               onSkip={() => handleSkip(item)}
               onRetry={() => handleRetry(item.id)}
@@ -7661,7 +7714,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
 
 // Une carte = un PDF en cours de tri. États : queued → analyzing → ready → confirmed.
 // (saving = entre ready et confirmed, le temps de l'upload bucket.)
-function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickLine, onConfirm, onSkip, onRetry, onRemove, onOpenDossier }) {
+function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickLine, onIgnoreSender, onConfirm, onSkip, onRetry, onRemove, onOpenDossier }) {
   const e = item.extracted || {};
   const m = item.matching || { proposals: [], notes: '' };
   const proposals = m.proposals || [];
@@ -7964,11 +8017,11 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
 
           {/* Actions */}
           {item.status === 'ready' && (
-            <div className="flex items-center gap-2 pt-1">
+            <div className="flex items-center gap-2 pt-1 flex-wrap">
               <button
                 onClick={onConfirm}
                 disabled={item.pickedIdx == null}
-                className="flex-1 px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold"
+                className="flex-1 min-w-[180px] px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-lg text-xs font-bold"
               >
                 ✓ Confirmer le rattachement
               </button>
@@ -7978,6 +8031,18 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
               >
                 ⏭️ Mettre de côté
               </button>
+              {/* 🚫 Plus jamais : blackliste l'expéditeur Gmail (équipe).
+                  Visible UNIQUEMENT si la carte vient d'un scan Gmail
+                  (item.gmailFromEmail renseigné). */}
+              {item.gmailFromEmail && onIgnoreSender && (
+                <button
+                  onClick={onIgnoreSender}
+                  className="px-3 py-1.5 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-lg text-xs font-bold"
+                  title={`Bloquer ${item.gmailFromEmail} pour toute l'équipe — il n'apparaîtra plus dans les scans Gmail.`}
+                >
+                  🚫 Plus jamais
+                </button>
+              )}
             </div>
           )}
 
