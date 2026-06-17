@@ -5001,6 +5001,31 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   🗑 Annuler l'import
                 </button>
               )}
+              {isAdmin && dossiers.some(d => d.createdBy === 'import_sheet' && d.statutControleQualite !== 'ok' && d.statutControleQualite !== 'pas_ok') && (
+                <button
+                  onClick={() => {
+                    const candidats = dossiers.filter(d => d.createdBy === 'import_sheet' && d.statutControleQualite !== 'ok' && d.statutControleQualite !== 'pas_ok');
+                    if (candidats.length === 0) { alert('Aucun dossier importé sans décision CQ.'); return; }
+                    const msg = `Marquer le contrôle qualité comme VALIDÉ sur ${candidats.length} dossier${candidats.length > 1 ? 's' : ''} importé${candidats.length > 1 ? 's' : ''} ?\n\nIls disparaîtront de l'alerte « 📋 Contrôle qualité ».\n\n(Seuls les dossiers importés via le sheet sans décision CQ sont concernés.)`;
+                    if (!window.confirm(msg)) return;
+                    const todayIso = new Date().toISOString().split('T')[0];
+                    setDossiers(prev => prev.map(d => {
+                      if (d.createdBy !== 'import_sheet') return d;
+                      if (d.statutControleQualite === 'ok' || d.statutControleQualite === 'pas_ok') return d;
+                      const refDate = d.dateInsta
+                        || (typeof d.createdAt === 'string' ? d.createdAt.split('T')[0] : '')
+                        || (typeof d.savedAt === 'string' ? d.savedAt.split('T')[0] : '')
+                        || todayIso;
+                      return { ...d, statutControleQualite: 'ok', dateControleQualite: d.dateControleQualite || refDate };
+                    }));
+                    alert(`✅ CQ marqué validé sur ${candidats.length} dossier${candidats.length > 1 ? 's' : ''}.`);
+                  }}
+                  className="bg-white hover:bg-emerald-50 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-emerald-200 whitespace-nowrap flex-shrink-0"
+                  title="Marque le contrôle qualité comme validé (statut OK) sur tous les dossiers importés depuis le sheet qui n'ont pas encore de décision CQ. Les retire de l'alerte « 📋 Contrôle qualité »."
+                >
+                  ✓ CQ fait sur importés
+                </button>
+              )}
               {/* Groupe utilisateur poussé tout à droite (ml-auto) — séparé visuellement
                   des boutons d'action. Plus propre. */}
               <div className="flex gap-2 items-center ml-auto">
