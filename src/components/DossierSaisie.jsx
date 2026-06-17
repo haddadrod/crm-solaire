@@ -1148,9 +1148,14 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
 
   const montantTotal = parseFloat(d.montantTotal) || 0;
   const tauxTvaForm = parseFloat(d.tauxTvaVente) || 20;
-  const montantHt = (d.montantHtCustom !== '' && d.montantHtCustom !== undefined && d.montantHtCustom !== null)
-    ? (parseFloat(d.montantHtCustom) || 0)
-    : montantTotal / (1 + tauxTvaForm / 100);
+  // 🧮 Si le TTC est à 0, on force HT à 0 (et marge à 0 plus bas). Évite que
+  // d'anciens dossiers importés sans montant TTC affichent un HT/marge
+  // hérités de leur ligne import (= incohérent et trompeur dans les KPI).
+  const montantHt = montantTotal === 0
+    ? 0
+    : (d.montantHtCustom !== '' && d.montantHtCustom !== undefined && d.montantHtCustom !== null)
+      ? (parseFloat(d.montantHtCustom) || 0)
+      : montantTotal / (1 + tauxTvaForm / 100);
   const tvaVente = montantTotal - montantHt;
   const tauxTva = montantHt > 0 ? ((tvaVente / montantHt) * 100) : 0;
 
@@ -1207,8 +1212,9 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
   const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
   const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
 
-  const margeTtc = montantTotal - fournisseurTtc - regieTtc - poseurTtc;
-  const margeHt = montantHt - fournisseurHt - regieHt - poseurHt;
+  // Marge nulle si pas de vente (TTC=0). Sinon = vente − coûts.
+  const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc);
+  const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt);
   const tva = margeTtc - margeHt;
 
   return {
@@ -2917,7 +2923,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     const montantTotal = parseFloat(formData.montantTotal) || 0;
     const tauxTvaForm = parseFloat(formData.tauxTvaVente) || 20;
-    const montantHt = formData.montantHtCustom !== '' ? (parseFloat(formData.montantHtCustom) || 0) : montantTotal / (1 + tauxTvaForm / 100);
+    // 🧮 TTC=0 → HT=0 forcé (cohérent avec enrichDossier). Empêche les
+    // dossiers sans vente d'afficher un HT hérité du sheet d'import.
+    const montantHt = montantTotal === 0
+      ? 0
+      : (formData.montantHtCustom !== '' ? (parseFloat(formData.montantHtCustom) || 0) : montantTotal / (1 + tauxTvaForm / 100));
     const tvaVente = montantTotal - montantHt;
     const tauxTva = montantHt > 0 ? ((tvaVente / montantHt) * 100) : 0;
 
@@ -2955,8 +2965,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
     const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
 
-    const margeTtc = montantTotal - fournisseurTtc - regieTtc - poseurTtc;
-    const margeHt = montantHt - fournisseurHt - regieHt - poseurHt;
+    const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc);
+    const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt);
     const tva = margeTtc - margeHt;
 
     // useAutoTarif : indique si AU MOINS un produit a un tarif auto défini quelque part
