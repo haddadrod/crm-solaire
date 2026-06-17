@@ -1,13 +1,17 @@
-// Fonction serverless Vercel : assistant IA façon "secrétaire" pour le CRM.
-// Reçoit un ordre en langage naturel + un mini-annuaire des clients du dossier,
-// renvoie : { targetLocalId, subject, body, reasoning, ambiguous? }
+// Fonction serverless Vercel : assistant IA multi-intentions pour le CRM.
+// Reçoit un ordre en langage naturel + un mini-annuaire des clients,
+// renvoie une action structurée :
 //
-// L'utilisateur tape par exemple :
-//   "Envoie un mail à Marage pour confirmer la pose mardi prochain"
-// Claude :
-//   1. identifie le client (parmi les clients fournis)
-//   2. rédige sujet + corps de mail dans un ton pro mais cordial
-//   3. signale si plusieurs clients matchent (ambiguous=true → on demande à l'user)
+//   - intent='email'        → rédige sujet+corps pour le client identifié
+//   - intent='open_dossier' → identifie le dossier à ouvrir
+//   - intent='answer'       → répond à une question (CA, comptage, stats simples)
+//   - intent='ambiguous'    → plusieurs clients possibles, demande à l'user
+//
+// Exemples d'ordres :
+//   "Envoie un mail à Marage pour confirmer la pose"   → email
+//   "Ouvre le dossier de Borbeau"                       → open_dossier
+//   "Combien de dossiers j'ai en cours ce mois ?"      → answer
+//   "Marage est où dans le workflow ?"                  → answer + open_dossier
 //
 // Variables d'env requises :
 //   - ANTHROPIC_API_KEY
@@ -46,51 +50,62 @@ async function getCaller(req) {
 const SCHEMA = {
   type: 'object',
   properties: {
+    intent: {
+      type: 'string',
+      enum: ['email', 'open_dossier', 'answer', 'ambiguous'],
+      description: "Type d'action déduite de l'ordre. 'email' pour rédiger un mail, 'open_dossier' pour juste ouvrir un dossier, 'answer' pour répondre à une question/donner une info, 'ambiguous' si plusieurs clients matchent ou ordre trop vague.",
+    },
     targetLocalId: {
       type: 'string',
-      description: "localId du client identifié (depuis la liste 'dossiers' fournie). Vide si aucun match clair.",
-    },
-    ambiguous: {
-      type: 'boolean',
-      description: "true si plusieurs clients matchent l'ordre (ex: 2 dossiers Martin) ou si l'ordre est trop vague pour choisir.",
+      description: "localId du client identifié (depuis la liste 'dossiers'). Vide pour 'answer' sans client précis ou 'ambiguous'.",
     },
     candidateLocalIds: {
       type: 'array',
       items: { type: 'string' },
-      description: "Si ambiguous=true, liste des localId candidats (max 5) pour que l'user puisse choisir.",
+      description: "Si intent='ambiguous', liste des localId candidats (max 5).",
     },
     subject: {
       type: 'string',
-      description: "Sujet de l'email — court et explicite (ex : 'Confirmation de la date de pose').",
+      description: "Sujet de l'email (uniquement si intent='email'). Vide sinon.",
     },
     body: {
       type: 'string',
-      description: "Corps du mail en français, ton pro et cordial. Format : Bonjour [Prénom],\\n\\n[contenu]\\n\\nCordialement,\\n[nom de l'expéditeur si fourni, sinon laisse '[Ton nom]']. Utilise \\n pour les sauts de ligne.",
+      description: "Corps du mail (si intent='email') OU réponse à la question (si intent='answer'). Format mail : Bonjour [Prénom],\\n\\n[contenu]\\n\\nCordialement,\\n[Ton nom]. Format réponse : texte libre en français.",
     },
     reasoning: {
       type: 'string',
-      description: "Brève explication (1 phrase) de comment tu as identifié le client et choisi le contenu — affichée à l'user pour transparence.",
+      description: "1 phrase expliquant ce que tu as compris de l'ordre.",
     },
   },
-  required: ['targetLocalId', 'ambiguous', 'candidateLocalIds', 'subject', 'body', 'reasoning'],
+  required: ['intent', 'targetLocalId', 'candidateLocalIds', 'subject', 'body', 'reasoning'],
   additionalProperties: false,
 };
 
-const SYSTEM_PROMPT = `Tu es la secrétaire d'un commercial qui gère une activité de vente et pose de panneaux solaires en France. L'utilisateur te donne un ordre en français pour envoyer un email à un de ses clients. Tu dois :
+const SYSTEM_PROMPT = `Tu es l'assistant IA du CRM d'une activité de vente et pose de panneaux solaires en France. L'utilisateur te donne un ordre en français — tu dois deviner ce qu'il veut faire et structurer la réponse.
 
-1. Identifier le client parmi la liste fournie (par nom, prénom, ID, ou contexte). Si plusieurs clients matchent, mets ambiguous=true et liste les candidates dans candidateLocalIds.
+4 intentions possibles :
 
-2. Rédiger un sujet d'email court et un corps clair, dans un français professionnel mais cordial (tutoiement seulement si l'ordre le suggère).
+1. **intent='email'** — l'ordre dit clairement "envoie un mail", "réponds à", "écris à" un client.
+   → Identifie le client, rédige sujet court + corps de mail.
+   → Format body : "Bonjour [Prénom],\\n\\n[contenu]\\n\\nCordialement,\\n[Ton nom]"
+   → N'invente pas de date ou de chiffre absents du dossier ou de l'ordre.
 
-3. Tenir compte du contexte du dossier (statut, date de pose si pertinente, etc.) pour personnaliser. N'invente pas de date ou de chiffre qui ne sont pas dans le dossier ou dans l'ordre.
+2. **intent='open_dossier'** — l'ordre dit "ouvre", "montre", "trouve", "va sur" le dossier d'un client.
+   → Identifie le client. subject et body vides.
 
-4. Signer "[Ton nom]" — l'utilisateur remplacera par son vrai nom. Sauf si l'ordre donne un nom d'expéditeur.
+3. **intent='answer'** — l'ordre est une question (combien, quel statut, etc.) ou un constat sans action sur un dossier.
+   → Réponds en français dans le champ "body" (1-3 phrases max, pas de mail).
+   → Utilise les données fournies (liste dossiers, stats si fournies) pour répondre.
+   → targetLocalId optionnel : si la question porte sur 1 client précis, mets son id (le front pourra proposer d'ouvrir le dossier).
 
-5. Ne PAS répéter l'ordre dans le corps. Concentre-toi sur ce que le client doit lire.
+4. **intent='ambiguous'** — plusieurs clients matchent l'ordre OU l'ordre est trop vague pour décider.
+   → Liste les candidats dans candidateLocalIds. reasoning explique pourquoi.
 
-6. Format du body : utilise des sauts de ligne \\n (pas de balises HTML). Commence par "Bonjour [Prénom]," et finis par "Cordialement,\\n[Ton nom]".
-
-Si l'ordre est trop vague ou si aucun client clairement identifié → ambiguous=true, targetLocalId vide, et reasoning explique ce qui manque.`;
+Règles globales :
+- Si l'ordre est une question pure ("combien", "quel", "qui", "où est"), c'est 'answer'.
+- Si l'ordre commence par un verbe d'envoi de mail, c'est 'email'.
+- Si l'ordre dit juste "ouvre", "affiche", "montre" un nom, c'est 'open_dossier'.
+- En cas de doute entre email et open_dossier, choisis email seulement si "mail", "message", "écris" ou "envoie" est explicite.`;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -111,10 +126,10 @@ export default async function handler(req, res) {
   if (!Array.isArray(dossiers) || dossiers.length === 0) {
     return json(res, 400, { error: 'Aucun dossier fourni en contexte.' });
   }
-  // Sécurité : on limite la taille du contexte envoyé à Claude.
-  // On envoie nom, prénom, email, statut, dateInsta, financement (max 100 dossiers).
-  // Pas de chiffres financiers, pas de tarifs internes.
-  const lightDossiers = dossiers.slice(0, 100).map(d => ({
+  // Pour permettre les questions de stats ("combien ce mois"), on envoie un peu
+  // plus de dossiers que pour l'email (qui n'a besoin que de chercher un nom).
+  // Garde-fou taille : 200 max + champs réduits.
+  const lightDossiers = dossiers.slice(0, 200).map(d => ({
     localId: d.localId,
     nom: d.nom || '',
     prenom: d.prenom || '',
@@ -123,6 +138,7 @@ export default async function handler(req, res) {
     statut: d.statut || '',
     dateInsta: d.dateInsta || '',
     financement: d.financement || '',
+    payeClient: !!d.payeClient,
   }));
 
   const userMsg = [
@@ -130,7 +146,7 @@ export default async function handler(req, res) {
     JSON.stringify(lightDossiers),
     '',
     `Mon ordre : ${command.trim()}`,
-    senderName ? `\nSignature à utiliser : ${senderName}` : '',
+    senderName ? `\nSignature à utiliser pour les mails : ${senderName}` : '',
   ].filter(Boolean).join('\n');
 
   try {
