@@ -6356,8 +6356,12 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                 {isCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
               </button>
               <DocsBtn size="small" /><HistBtn size="small" />
-              {d.idChelly && (
+              {d.idChelly ? (
                 <a href={`https://app.chelly.net/?app=yolico&search_id=${encodeURIComponent(d.idChelly)}`} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} aria-label="Voir dans Chelly" title={`Voir dans Chelly (id ${d.idChelly})`} className="p-1 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded text-xs">🔗</a>
+              ) : (
+                // Placeholder cliquable → ouvre l'édition pour ajouter l'ID Chelly.
+                // Garde l'alignement constant entre les dossiers avec/sans lien.
+                <button onClick={() => onEdit(d)} aria-label="Ajouter le lien Chelly" title="Ajouter l'ID Chelly (dans l'édition du dossier)" className="p-1 text-slate-200 hover:text-indigo-500 hover:bg-indigo-50 rounded text-xs opacity-60 hover:opacity-100">🔗</button>
               )}
               <button onClick={() => onEdit(d)} aria-label="Modifier le dossier" title="Modifier le dossier" className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded"><Edit3 className="w-3.5 h-3.5" /></button>
               {isAdmin && <button onClick={() => onDelete(d.localId)} aria-label="Supprimer le dossier" title="Supprimer le dossier" className="p-1 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded"><Trash2 className="w-3.5 h-3.5" /></button>}
