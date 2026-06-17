@@ -88,6 +88,46 @@ const SHARED_INBOX_KEY = 'gmail-shared-inboxes';
 // domaine (si l'entrée commence par '@').
 const IGNORED_SENDERS_KEY = 'gmail-ignored-senders';
 
+// 📥 Attachments DÉJÀ IMPORTÉS (partagée équipe). Chaque entrée est une
+// clé `<inboxEmail>|<messageId>|<attachmentId>` qu'on a déjà rattachée à
+// un dossier. Sert à NE PAS les re-proposer aux prochains scans —
+// fonctionne même quand le n° de facture est trop court pour un match
+// direct côté IA (ex : "27", "8", refusés par findByFactureNo).
+const IMPORTED_ATTS_KEY = 'gmail-imported-attachments';
+
+async function readImportedAttachments(admin) {
+  const { data: row } = await admin.from('storage')
+    .select('value')
+    .eq('key', IMPORTED_ATTS_KEY)
+    .maybeSingle();
+  if (!row?.value) return new Set();
+  try {
+    const parsed = JSON.parse(row.value);
+    if (Array.isArray(parsed)) return new Set(parsed.map(s => String(s || '')).filter(Boolean));
+  } catch (e) {}
+  return new Set();
+}
+
+async function writeImportedAttachments(admin, setOrList) {
+  const arr = Array.from(setOrList || []).map(s => String(s || '')).filter(Boolean);
+  if (arr.length === 0) {
+    await admin.from('storage').delete().eq('key', IMPORTED_ATTS_KEY);
+    return;
+  }
+  // Cap : on garde les 5000 derniers pour ne pas exploser la taille de la ligne.
+  // 5000 × ~80 chars = 400 Ko, largement sous la limite Supabase.
+  const capped = arr.slice(-5000);
+  await admin.from('storage').upsert({
+    key: IMPORTED_ATTS_KEY,
+    value: JSON.stringify(capped),
+    updated_at: new Date().toISOString(),
+  });
+}
+
+function attachmentKey(inboxEmail, messageId, attachmentId) {
+  return `${String(inboxEmail || '').toLowerCase()}|${String(messageId || '')}|${String(attachmentId || '')}`;
+}
+
 // Extrait l'email pur d'une chaîne « Name <foo@bar.com>, Other <x@y.com> ».
 function extractFirstEmail(header) {
   const m = String(header || '').match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/);
@@ -221,7 +261,7 @@ function isLikelyFacture(filename, subject) {
 
 // Scan IMAP : liste les messages récents (60j) avec pièce jointe PDF
 // ressemblant à une facture/avoir (filtre côté serveur via isLikelyFacture).
-async function imapScan(inbox, maxMessages = 60, ignoredSenders = []) {
+async function imapScan(inbox, maxMessages = 60, ignoredSenders = [], importedSet = new Set()) {
   const client = makeImapClient(inbox);
   await client.connect();
   const messages = [];
@@ -253,9 +293,11 @@ async function imapScan(inbox, maxMessages = 60, ignoredSenders = []) {
         const senderEmail = (msg.envelope?.from?.[0]?.address || '').toLowerCase();
         if (isSenderIgnored(senderEmail, ignoredSenders)) continue;
         // 🧹 Filtre serveur : on ne garde que les pièces qui ressemblent à
-        //    une facture/avoir. Les relevés, relances, contrats, BL, etc.
-        //    sont éliminés avant même d'arriver au front.
-        const factureAtts = attachments.filter(a => isLikelyFacture(a.filename, subject));
+        //    une facture/avoir + qui n'ont pas DÉJÀ été importées.
+        const factureAtts = attachments.filter(a => {
+          if (importedSet.has(attachmentKey(inbox.email, msg.uid, a.attachmentId))) return false;
+          return isLikelyFacture(a.filename, subject);
+        });
         if (factureAtts.length > 0) {
           messages.push({
             messageId: String(msg.uid), // côté IMAP = UID
@@ -279,7 +321,7 @@ async function imapScan(inbox, maxMessages = 60, ignoredSenders = []) {
 // Recherche IMAP par mot-clé (text = sujet+from+body) sur 180 derniers jours.
 // Sert aux boutons « 🔍 Gmail » sur une ligne dossier/prestataire : on ne
 // scanne pas tout, on cible un nom (client ou prestataire).
-async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = []) {
+async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = [], importedSet = new Set()) {
   const client = makeImapClient(inbox);
   await client.connect();
   const messages = [];
@@ -309,7 +351,10 @@ async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = []) {
         const senderEmail = (msg.envelope?.from?.[0]?.address || '').toLowerCase();
         if (isSenderIgnored(senderEmail, ignoredSenders)) continue;
         const subject = msg.envelope?.subject || '(sans sujet)';
-        const factureAtts = attachments.filter(a => isLikelyFacture(a.filename, subject));
+        const factureAtts = attachments.filter(a => {
+          if (importedSet.has(attachmentKey(inbox.email, msg.uid, a.attachmentId))) return false;
+          return isLikelyFacture(a.filename, subject);
+        });
         if (factureAtts.length > 0) {
           messages.push({
             messageId: String(msg.uid),
@@ -417,7 +462,7 @@ async function listMessagesWithPdf(accessToken, maxResults = 50) {
 }
 
 // 📩 Récupère les métadonnées d'un message (sujet, expéditeur, date, attachments).
-async function getMessageMeta(accessToken, messageId, ignoredSenders = []) {
+async function getMessageMeta(accessToken, messageId, ignoredSenders = [], importedSet = new Set(), inboxEmail = '') {
   const r = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -462,8 +507,11 @@ async function getMessageMeta(accessToken, messageId, ignoredSenders = []) {
     return { messageId, subject, from: fromHeader, fromEmail: senderEmail, date: headers['date'] || '', internalDate: data.internalDate || '', attachments: [] };
   }
   // 🧹 Filtre : on garde uniquement les pièces qui ressemblent à une facture
-  //    ou un avoir. Les relevés, relances, contrats, BL sont éliminés.
-  const factureAtts = attachments.filter(a => isLikelyFacture(a.filename, subject));
+  //    ou un avoir, et qui n'ont pas DÉJÀ été importées.
+  const factureAtts = attachments.filter(a => {
+    if (importedSet.has(attachmentKey(inboxEmail, messageId, a.attachmentId))) return false;
+    return isLikelyFacture(a.filename, subject);
+  });
   return {
     messageId,
     subject,
@@ -635,6 +683,7 @@ export default async function handler(req, res) {
         return json(res, 200, { data: { results: [], errors: [], notes: 'Aucune boîte Gmail connectée.' } });
       }
       const ignoredSenders = await readIgnoredSenders(admin);
+      const importedSet = await readImportedAttachments(admin);
       const results = [];
       const errors = [];
       // Scan séquentiel par boîte (parallèle = risque de quota / timeout).
@@ -643,7 +692,7 @@ export default async function handler(req, res) {
         // ── Boîte IMAP (mot de passe d'application) ──
         if (method === 'imap') {
           try {
-            const enriched = await imapScan(inbox, 60, ignoredSenders);
+            const enriched = await imapScan(inbox, 60, ignoredSenders, importedSet);
             results.push({ email: inbox.email, messages: enriched, count: enriched.length, method: 'imap' });
           } catch (e) {
             errors.push({ email: inbox.email, error: e?.message || 'Scan IMAP échoué' });
@@ -667,7 +716,7 @@ export default async function handler(req, res) {
           const enriched = [];
           for (const m of messages) {
             try {
-              const meta = await getMessageMeta(accessToken, m.id, ignoredSenders);
+              const meta = await getMessageMeta(accessToken, m.id, ignoredSenders, importedSet, inbox.email);
               if (meta.attachments.length > 0) enriched.push(meta);
             } catch (e) {
               // Un message qui foire ne casse pas le reste.
@@ -699,13 +748,14 @@ export default async function handler(req, res) {
         return json(res, 200, { data: { results: [], errors: [], notes: 'Aucune boîte Gmail connectée.' } });
       }
       const ignoredSenders = await readIgnoredSenders(admin);
+      const importedSet = await readImportedAttachments(admin);
       const results = [];
       const errors = [];
       for (const inbox of inboxes) {
         const method = boxMethod(inbox);
         if (method === 'imap') {
           try {
-            const enriched = await imapSearch(inbox, query, 20, ignoredSenders);
+            const enriched = await imapSearch(inbox, query, 20, ignoredSenders, importedSet);
             results.push({ email: inbox.email, messages: enriched, count: enriched.length, method: 'imap' });
           } catch (e) {
             errors.push({ email: inbox.email, error: e?.message || 'Recherche IMAP échouée' });
@@ -727,7 +777,7 @@ export default async function handler(req, res) {
           const enriched = [];
           for (const m of messages) {
             try {
-              const meta = await getMessageMeta(accessToken, m.id, ignoredSenders);
+              const meta = await getMessageMeta(accessToken, m.id, ignoredSenders, importedSet, inbox.email);
               if (meta.attachments.length > 0) enriched.push(meta);
             } catch (e) {}
           }
@@ -789,7 +839,25 @@ export default async function handler(req, res) {
       return json(res, 200, { data: { ignored: next } });
     }
 
-    return json(res, 400, { error: `Action inconnue : ${action || '(vide)'}. Utilise scan, search, fetch-attachment, imap-connect, ignored-list, ignore-sender ou unignore-sender.` });
+    // 📥 Marque un attachment Gmail comme déjà importé (rattaché à un dossier).
+    //    Les futurs scans/searches le filtreront. body.entries = array de
+    //    {inboxEmail, messageId, attachmentId} pour pouvoir batcher plusieurs
+    //    confirms en un seul appel (utile à la fin d'un gros import).
+    if (action === 'mark-imported') {
+      const entries = Array.isArray(body.entries) ? body.entries : (body.inboxEmail ? [body] : []);
+      if (entries.length === 0) {
+        return json(res, 400, { error: 'entries (ou inboxEmail/messageId/attachmentId) requis.' });
+      }
+      const set = await readImportedAttachments(admin);
+      for (const e of entries) {
+        if (!e || !e.inboxEmail || !e.messageId || !e.attachmentId) continue;
+        set.add(attachmentKey(e.inboxEmail, e.messageId, e.attachmentId));
+      }
+      await writeImportedAttachments(admin, set);
+      return json(res, 200, { data: { count: set.size } });
+    }
+
+    return json(res, 400, { error: `Action inconnue : ${action || '(vide)'}. Utilise scan, search, fetch-attachment, imap-connect, ignored-list, ignore-sender, unignore-sender ou mark-imported.` });
   } catch (e) {
     console.error('gmail-oauth error:', e?.message || e);
     return json(res, 502, { error: e?.message || 'Erreur Gmail OAuth' });

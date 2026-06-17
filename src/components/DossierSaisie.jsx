@@ -7006,6 +7006,9 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
       pickedIdx: null,
       gmailFromEmail: gmailMeta?.[idx]?.fromEmail || '',
       gmailFromName: gmailMeta?.[idx]?.fromName || '',
+      gmailInboxEmail: gmailMeta?.[idx]?.inboxEmail || '',
+      gmailMessageId: gmailMeta?.[idx]?.messageId || '',
+      gmailAttachmentId: gmailMeta?.[idx]?.attachmentId || '',
     }));
     setFiles(prev => [...newItems, ...prev]);
     // Lance l'analyse en série (évite de saturer l'API IA si on drop 50 PDFs).
@@ -7095,11 +7098,15 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
               const file = new window.File([blob], fileName, { type: 'application/pdf' });
               filesToImport.push(file);
               // Aligne le meta sur l'index du fichier dans filesToImport pour
-              // que onFilesSelected sache d'où vient chaque PDF (→ bouton 🚫).
+              // que onFilesSelected sache d'où vient chaque PDF (→ bouton 🚫
+              // + tracking « déjà importé » pour ne pas le re-proposer).
               gmailMeta.push({
                 fromEmail: m.fromEmail || '',
                 fromName: m.from || '',
                 subject: m.subject || '',
+                inboxEmail: r.email,
+                messageId: m.messageId,
+                attachmentId: a.attachmentId,
               });
             } catch (e) {
               console.warn(`Import attachment échoué (${a.filename}):`, e?.message);
@@ -7315,6 +7322,27 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
       }));
 
       setFiles(prev => prev.map(x => x.id === item.id ? { ...x, status: 'confirmed', savedPath: fileId } : x));
+
+      // 📥 Marque l'attachment Gmail comme « déjà importé » côté serveur pour
+      //    que les prochains scans ne le re-proposent plus (fire & forget,
+      //    on n'attend pas — pas critique pour la confirmation).
+      if (item.gmailMessageId && item.gmailAttachmentId && item.gmailInboxEmail) {
+        (async () => {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const headers = { 'Content-Type': 'application/json' };
+            if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+            await fetch('/api/gmail-oauth?action=mark-imported', {
+              method: 'POST', headers,
+              body: JSON.stringify({
+                inboxEmail: item.gmailInboxEmail,
+                messageId: item.gmailMessageId,
+                attachmentId: item.gmailAttachmentId,
+              }),
+            });
+          } catch (e) { /* best-effort */ }
+        })();
+      }
       // Si la carte vient d'une mise de côté reprise → nettoyage : retire
       // l'entrée pending + supprime le PDF du bucket (plus utile, le PDF est
       // désormais en storage KV sur la ligne du prestataire).
