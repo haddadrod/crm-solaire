@@ -1148,9 +1148,14 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
 
   const montantTotal = parseFloat(d.montantTotal) || 0;
   const tauxTvaForm = parseFloat(d.tauxTvaVente) || 20;
-  const montantHt = (d.montantHtCustom !== '' && d.montantHtCustom !== undefined && d.montantHtCustom !== null)
-    ? (parseFloat(d.montantHtCustom) || 0)
-    : montantTotal / (1 + tauxTvaForm / 100);
+  // 🧮 Si le TTC est à 0, on force HT à 0 (et marge à 0 plus bas). Évite que
+  // d'anciens dossiers importés sans montant TTC affichent un HT/marge
+  // hérités de leur ligne import (= incohérent et trompeur dans les KPI).
+  const montantHt = montantTotal === 0
+    ? 0
+    : (d.montantHtCustom !== '' && d.montantHtCustom !== undefined && d.montantHtCustom !== null)
+      ? (parseFloat(d.montantHtCustom) || 0)
+      : montantTotal / (1 + tauxTvaForm / 100);
   const tvaVente = montantTotal - montantHt;
   const tauxTva = montantHt > 0 ? ((tvaVente / montantHt) * 100) : 0;
 
@@ -1207,8 +1212,9 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
   const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
   const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
 
-  const margeTtc = montantTotal - fournisseurTtc - regieTtc - poseurTtc;
-  const margeHt = montantHt - fournisseurHt - regieHt - poseurHt;
+  // Marge nulle si pas de vente (TTC=0). Sinon = vente − coûts.
+  const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc);
+  const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt);
   const tva = margeTtc - margeHt;
 
   return {
@@ -2917,7 +2923,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     const montantTotal = parseFloat(formData.montantTotal) || 0;
     const tauxTvaForm = parseFloat(formData.tauxTvaVente) || 20;
-    const montantHt = formData.montantHtCustom !== '' ? (parseFloat(formData.montantHtCustom) || 0) : montantTotal / (1 + tauxTvaForm / 100);
+    // 🧮 TTC=0 → HT=0 forcé (cohérent avec enrichDossier). Empêche les
+    // dossiers sans vente d'afficher un HT hérité du sheet d'import.
+    const montantHt = montantTotal === 0
+      ? 0
+      : (formData.montantHtCustom !== '' ? (parseFloat(formData.montantHtCustom) || 0) : montantTotal / (1 + tauxTvaForm / 100));
     const tvaVente = montantTotal - montantHt;
     const tauxTva = montantHt > 0 ? ((tvaVente / montantHt) * 100) : 0;
 
@@ -2955,8 +2965,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
     const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
 
-    const margeTtc = montantTotal - fournisseurTtc - regieTtc - poseurTtc;
-    const margeHt = montantHt - fournisseurHt - regieHt - poseurHt;
+    const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc);
+    const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt);
     const tva = margeTtc - margeHt;
 
     // useAutoTarif : indique si AU MOINS un produit a un tarif auto défini quelque part
@@ -7093,13 +7103,36 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
         });
         const payload = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
-        setFiles(prev => prev.map(x => x.id === it.id ? {
+
+        // 🧹 Auto-skip : si la 1re proposition est un match DIRECT (n° de
+        //    facture identique) ET que la ligne cible a déjà un PDF, c'est
+        //    forcément la même facture déjà attachée → on n'embête pas
+        //    l'utilisateur, on marque comme « déjà fait » et on ne l'affiche pas.
+        const props = (payload.matching && payload.matching.proposals) || [];
+        const top = props[0];
+        let autoSkipped = false;
+        if (top && payload.matching?.direct === true) {
+          const tDoss = dossiers.find(d => d.localId === top.localId);
+          const tLine = tDoss?.[top.type]?.[top.index];
+          if (tLine && (tLine.factureFile || tLine.facturePdfUrl || tLine.factureExternalUrl)) {
+            autoSkipped = true;
+          }
+        }
+
+        setFiles(prev => prev.map(x => x.id === it.id ? (autoSkipped ? {
+          ...x,
+          status: 'skipped',
+          skipReason: 'already_attached',
+          extracted: payload.data || {},
+          matching: payload.matching || { proposals: [], notes: '' },
+          pickedIdx: 0,
+        } : {
           ...x,
           status: 'ready',
           extracted: payload.data || {},
           matching: payload.matching || { proposals: [], notes: '' },
-          pickedIdx: (payload.matching?.proposals?.length || 0) > 0 ? 0 : null,
-        } : x));
+          pickedIdx: props.length > 0 ? 0 : null,
+        }) : x));
       } catch (e) {
         setFiles(prev => prev.map(x => x.id === it.id ? { ...x, status: 'error', error: e.message } : x));
       }
@@ -7489,14 +7522,34 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
         </div>
       )}
 
-      {/* Liste des cartes */}
-      {files.length === 0 ? (
+      {/* 🧹 Bannière : factures auto-ignorées parce que la ligne avait déjà
+          un PDF avec le même n° de facture (= même facture renvoyée). On
+          n'embête pas l'utilisateur avec ces cartes. */}
+      {(() => {
+        const autoSkipped = files.filter(f => f.status === 'skipped' && f.skipReason === 'already_attached');
+        if (autoSkipped.length === 0) return null;
+        return (
+          <div className="mb-3 p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-center justify-between gap-2">
+            <span>
+              ⏭️ <strong>{autoSkipped.length}</strong> facture{autoSkipped.length > 1 ? 's' : ''} déjà attachée{autoSkipped.length > 1 ? 's' : ''} sur leur dossier — ignorée{autoSkipped.length > 1 ? 's' : ''} automatiquement.
+            </span>
+            <button
+              onClick={() => setFiles(prev => prev.filter(f => !(f.status === 'skipped' && f.skipReason === 'already_attached')))}
+              className="px-2 py-1 bg-white border border-slate-300 rounded text-[10px] font-bold text-slate-700 hover:bg-slate-50"
+              title="Retire ces cartes de la liste"
+            >🗑 Nettoyer</button>
+          </div>
+        );
+      })()}
+
+      {/* Liste des cartes (les auto-skip avec PDF déjà attaché sont cachées) */}
+      {files.filter(f => !(f.status === 'skipped' && f.skipReason === 'already_attached')).length === 0 ? (
         <div className="text-center text-xs text-slate-400 py-6 italic">
           Aucune facture en cours de tri. Dépose des PDFs ci-dessus pour commencer.
         </div>
       ) : (
         <div className="space-y-3">
-          {files.map(item => (
+          {files.filter(f => !(f.status === 'skipped' && f.skipReason === 'already_attached')).map(item => (
             <TriFactureCard
               key={item.id}
               item={item}
