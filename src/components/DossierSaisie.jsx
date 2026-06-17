@@ -7225,6 +7225,9 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
           matching: payload.matching || { proposals: [], notes: '' },
           pickedIdx: props.length > 0 ? 0 : null,
         }) : x));
+        // 📥 Auto-skip → marque aussi côté serveur (la même carte ne reviendra
+        //    plus jamais dans un futur scan, même partagé équipe).
+        if (autoSkipped) markGmailImportedSilent(it);
       } catch (e) {
         setFiles(prev => prev.map(x => x.id === it.id ? { ...x, status: 'error', error: e.message } : x));
       }
@@ -7481,8 +7484,34 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
   // pour le PDF + métadonnées dans Supabase). La facture survit aux refresh et
   // l'utilisateur peut la reprendre plus tard (ex : après avoir créé le
   // dossier manquant), la consulter, ou la supprimer.
+  // 📥 Marque côté serveur un attachment Gmail comme « déjà traité » pour que
+  //    les prochains scans ne le re-proposent plus. Fire-and-forget : pas de
+  //    bloc await, on ne plante pas le flow si le réseau foire.
+  const markGmailImportedSilent = (item) => {
+    if (!item?.gmailMessageId || !item?.gmailAttachmentId || !item?.gmailInboxEmail) return;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers = { 'Content-Type': 'application/json' };
+        if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+        await fetch('/api/gmail-oauth?action=mark-imported', {
+          method: 'POST', headers,
+          body: JSON.stringify({
+            inboxEmail: item.gmailInboxEmail,
+            messageId: item.gmailMessageId,
+            attachmentId: item.gmailAttachmentId,
+          }),
+        });
+      } catch (e) { /* best-effort */ }
+    })();
+  };
+
   const handleSkip = async (item) => {
     if (!item) return;
+    // 📥 Marque l'attachment Gmail comme déjà traité — il ne reviendra plus
+    //    dans les futurs scans. Le PDF reste accessible dans la section
+    //    « Mises de côté » du tri factures, mais Gmail ne le proposera plus.
+    markGmailImportedSilent(item);
     // Si la carte vient déjà d'une mise de côté reprise, on la remet juste
     // dans pending : pas besoin de re-uploader (le PDF est déjà dans le bucket).
     if (item.fromPendingPath) {
@@ -7515,6 +7544,10 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
   };
 
   const handleRemove = (id) => {
+    // 📥 Idem skip : si tu retires une carte issue d'un scan Gmail, c'est que
+    //    tu ne veux pas la traiter → on l'écarte aussi des futurs scans.
+    const it = files.find(f => f.id === id);
+    if (it) markGmailImportedSilent(it);
     setFiles(prev => prev.filter(x => x.id !== id));
   };
 
