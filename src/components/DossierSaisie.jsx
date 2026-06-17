@@ -4904,6 +4904,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // avec au moins un autre dossier visible. Pratique après un import en
       // masse pour faire le ménage.
       if (filterStatut === 'doublons') return doublonsIndex.has(d.localId);
+      // 💰 Filtre PAYÉ : on exige AUSSI payeClient===true. Beaucoup de dossiers
+      // importés ont le statut W_DOSSIER_PAYER mais sans paiement banque
+      // réellement encaissé (le statut a été poussé manuellement / par l'import).
+      // Sans ce garde-fou, la pastille PAYÉ ressort des clients « à recevoir ».
+      if (filterStatut === 'W_DOSSIER_PAYER') {
+        return d.statut === 'W_DOSSIER_PAYER' && d.payeClient === true;
+      }
       return d.statut === filterStatut;
     })
     .filter(d => {
@@ -5485,7 +5492,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       const cur = STATUTS_ORDERED.find(s => s.id === filterStatut);
                       if (!cur) return null;
                       label = cur.label; emoji = cur.emoji; color = cur.color;
-                      count = dossiers.filter(d => d.statut === filterStatut).length;
+                      // PAYÉ : aligné sur le filtre (payeClient===true requis).
+                      count = filterStatut === 'W_DOSSIER_PAYER'
+                        ? dossiers.filter(d => d.statut === 'W_DOSSIER_PAYER' && d.payeClient === true).length
+                        : dossiers.filter(d => d.statut === filterStatut).length;
                     }
                     return (
                       <div className="flex items-center gap-2">
@@ -24190,7 +24200,11 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, currentUser, 
     id: s.id,
     emoji: s.emoji,
     label: s.label,
-    count: dossiers.filter(d => d.statut === s.id).length,
+    // PAYÉ : on exige aussi payeClient===true. Beaucoup de dossiers importés
+    // ont le statut sans paiement banque réel — on ne les compte pas.
+    count: s.id === 'W_DOSSIER_PAYER'
+      ? dossiers.filter(d => d.statut === 'W_DOSSIER_PAYER' && d.payeClient === true).length
+      : dossiers.filter(d => d.statut === s.id).length,
     bg: s.bg || 'bg-slate-50',
   }));
 
