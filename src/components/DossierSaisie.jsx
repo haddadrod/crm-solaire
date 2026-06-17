@@ -643,7 +643,7 @@ const computeTtcPresta = (ht, sansTva, legacyTauxTva) => {
 // ou clic. Stocke le fichier inline (window.storage `file:<id>`) et garde
 // l'ID du fichier dans la prop `fileId`. Onglet 👁️ pour prévisualiser dans
 // un nouvel onglet.
-function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false, pennylaneInfo = null, onPennylaneSuccess = null, label = 'facture', onOpenGmailSearch = null, gmailQuery = '', gmailContextLabel = '' }) {
+function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false, pennylaneInfo = null, onPennylaneSuccess = null, label = 'facture', onOpenGmailSearch = null, gmailQuery = '', gmailContextLabel = '', gmailClientHint = '' }) {
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [pushingPennylane, setPushingPennylane] = useState(false);
@@ -931,7 +931,8 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
                 onOpenGmailSearch(
                   gmailQuery,
                   gmailContextLabel || gmailQuery,
-                  async (file) => { await handleUpload(file); }
+                  async (file) => { await handleUpload(file); },
+                  gmailClientHint
                 );
               }}
               className="px-1 py-0.5 hover:bg-blue-100 text-blue-600 rounded"
@@ -993,7 +994,8 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
               onOpenGmailSearch(
                 gmailQuery,
                 gmailContextLabel || gmailQuery,
-                async (file) => { await handleUpload(file); }
+                async (file) => { await handleUpload(file); },
+                gmailClientHint
               );
             }}
             disabled={uploading || extracting}
@@ -1720,8 +1722,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [gmailSearchOpen, setGmailSearchOpen] = useState(null); // null | {query, contextLabel, onAttach?}
   const [pendingTriFacturesFiles, setPendingTriFacturesFiles] = useState([]); // Files à ingérer par TriFacturesPanel
   // Helper exposé aux enfants : ouvre la modale avec un onAttach custom.
-  const openGmailSearch = (query, contextLabel, onAttach) => {
-    setGmailSearchOpen({ query, contextLabel, onAttach });
+  const openGmailSearch = (query, contextLabel, onAttach, clientHint = '') => {
+    setGmailSearchOpen({ query, contextLabel, onAttach, clientHint });
   };
   const [showImport, setShowImport] = useState(false); // 📥 modal import dossiers
   const [showImportJson, setShowImportJson] = useState(false); // 📦 modal import dossiers JSON
@@ -5995,6 +5997,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           <GmailSearchModal
             initialQuery={gmailSearchOpen.query}
             contextLabel={gmailSearchOpen.contextLabel}
+            clientHint={gmailSearchOpen.clientHint || ''}
             onClose={() => setGmailSearchOpen(null)}
             onAttach={async (file) => {
               if (gmailSearchOpen.onAttach) {
@@ -15305,6 +15308,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             onOpenGmailSearch={onOpenGmailSearch}
                             gmailQuery={`${r.nom || ''} ${formData.nom || ''}`.trim()}
                             gmailContextLabel={`${r.nom || 'Régie'} chez ${formData.nom || ''} ${formData.prenom || ''}`.trim()}
+                            gmailClientHint={formData.nom || ''}
                           />
                         </div>
                       )}
@@ -15449,6 +15453,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           onOpenGmailSearch={onOpenGmailSearch}
                           gmailQuery={`${p.nom || ''} ${formData.nom || ''}`.trim()}
                           gmailContextLabel={`${p.nom || 'Poseur'} chez ${formData.nom || ''} ${formData.prenom || ''}`.trim()}
+                          gmailClientHint={formData.nom || ''}
                         />
                       </div>
                     )}
@@ -15588,6 +15593,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           onOpenGmailSearch={onOpenGmailSearch}
                           gmailQuery={`${f.nom || ''} ${formData.nom || ''}`.trim()}
                           gmailContextLabel={`${f.nom || 'Fournisseur'} chez ${formData.nom || ''} ${formData.prenom || ''}`.trim()}
+                          gmailClientHint={formData.nom || ''}
                         />
                       </div>
                     )}
@@ -21085,6 +21091,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               onOpenGmailSearch={onOpenGmailSearch}
                               gmailQuery={`${r.nom || ''} ${dossier.nom || ''}`.trim()}
                               gmailContextLabel={`${r.nom || 'Régie'} chez ${dossier.nom || ''} ${dossier.prenom || ''}`.trim()}
+                              gmailClientHint={dossier.nom || ''}
                             />
                           </>
                         )}
@@ -21455,6 +21462,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         onOpenGmailSearch={onOpenGmailSearch}
                         gmailQuery={`${p.nom || ''} ${dossier.nom || ''}`.trim()}
                         gmailContextLabel={`${p.nom || 'Poseur'} chez ${dossier.nom || ''} ${dossier.prenom || ''}`.trim()}
+                        gmailClientHint={dossier.nom || ''}
                       />
                     </>
                   )}
@@ -21595,6 +21603,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         onOpenGmailSearch={onOpenGmailSearch}
                         gmailQuery={`${f.nom || ''} ${dossier.nom || ''}`.trim()}
                         gmailContextLabel={`${f.nom || 'Fournisseur'} chez ${dossier.nom || ''} ${dossier.prenom || ''}`.trim()}
+                        gmailClientHint={dossier.nom || ''}
                       />
                       {/* 🧾 Avoirs (notes de crédit) — viennent en déduction du coût
                           fournisseur. Ex : matériel récupéré chez le poseur puis
@@ -22337,12 +22346,38 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
 // et appelle onAttach(file) — le parent décide où placer le fichier
 // (ligne poseur, ligne fournisseur, etc.).
 
-function GmailSearchModal({ initialQuery, contextLabel, onClose, onAttach }) {
+function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose, onAttach }) {
   const [query, setQuery] = useState(initialQuery || '');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null); // {results, errors}
   const [error, setError] = useState('');
   const [attaching, setAttaching] = useState(''); // key en cours d'attach
+  const [previewing, setPreviewing] = useState(''); // key en cours de preview
+  // 🪄 Analyse IA des PDFs trouvés : pour chaque pièce, on extrait le nom du
+  // client final via /api/extract-pdf. Si le clientHint match → on tag « ✓ ».
+  const [iaAnalyzing, setIaAnalyzing] = useState(false);
+  const [iaProgress, setIaProgress] = useState({ done: 0, total: 0 });
+  const [iaResults, setIaResults] = useState({}); // key -> { refChantier, factureNo, montantHt, matched, status }
+
+  const normalizeForMatch = (s) => String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, '');
+
+  const fetchAttachmentBase64 = async (inboxEmail, messageId, attachmentId) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = { 'Content-Type': 'application/json' };
+    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+    const resp = await fetch('/api/gmail-oauth?action=fetch-attachment', {
+      method: 'POST', headers,
+      body: JSON.stringify({ email: inboxEmail, messageId, attachmentId }),
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(payload.error || `Erreur ${resp.status}`);
+    const base64 = payload.data?.base64 || '';
+    if (!base64) throw new Error('PDF vide');
+    return { base64, headers };
+  };
 
   const runSearch = async (q) => {
     if (!q || q.trim().length < 2) return;
@@ -22372,17 +22407,7 @@ function GmailSearchModal({ initialQuery, contextLabel, onClose, onAttach }) {
     const key = `${inboxEmail}|${messageId}|${attachment.attachmentId}`;
     setAttaching(key);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const headers = { 'Content-Type': 'application/json' };
-      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const resp = await fetch('/api/gmail-oauth?action=fetch-attachment', {
-        method: 'POST', headers,
-        body: JSON.stringify({ email: inboxEmail, messageId, attachmentId: attachment.attachmentId }),
-      });
-      const payload = await resp.json().catch(() => ({}));
-      if (!resp.ok) throw new Error(payload.error || `Erreur ${resp.status}`);
-      const base64 = payload.data?.base64 || '';
-      if (!base64) throw new Error('PDF vide');
+      const { base64 } = await fetchAttachmentBase64(inboxEmail, messageId, attachment.attachmentId);
       const bin = atob(base64);
       const bytes = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
@@ -22396,6 +22421,101 @@ function GmailSearchModal({ initialQuery, contextLabel, onClose, onAttach }) {
     } finally {
       setAttaching('');
     }
+  };
+
+  // 👁️ Aperçu PDF dans un nouvel onglet (sans attacher). On doit appeler
+  // window.open SYNCHRONE dans le geste utilisateur, sinon Safari/iOS bloque.
+  const handlePreview = async (inboxEmail, messageId, attachment) => {
+    const key = `${inboxEmail}|${messageId}|${attachment.attachmentId}`;
+    const win = window.open('about:blank', '_blank');
+    if (win) {
+      try { win.document.write('<title>Chargement…</title><p style="font-family:sans-serif;color:#666;padding:24px">Chargement du PDF…</p>'); } catch (_) {}
+    }
+    setPreviewing(key);
+    try {
+      const { base64 } = await fetchAttachmentBase64(inboxEmail, messageId, attachment.attachmentId);
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      if (win && !win.closed) {
+        win.location.href = url;
+      } else {
+        // Popup bloqué → on déclenche un téléchargement de secours
+        const a = document.createElement('a');
+        a.href = url; a.download = attachment.filename || 'preview.pdf';
+        document.body.appendChild(a); a.click();
+        setTimeout(() => document.body.removeChild(a), 0);
+      }
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+    } catch (e) {
+      if (win) try { win.close(); } catch (_) {}
+      setError(`Aperçu impossible : ${e.message}`);
+    } finally {
+      setPreviewing('');
+    }
+  };
+
+  // 🪄 Filtre IA : pour chaque PDF, on extrait le nom du client final
+  // (referenceChantier). Si ça matche clientHint → tag ✓. Permet de trouver
+  // le bon PDF dans un email batch (ex : un fournisseur qui envoie 20
+  // factures dans le même mail).
+  const runIaFilter = async () => {
+    if (!clientHint || !results) return;
+    const hint = normalizeForMatch(clientHint);
+    if (hint.length < 3) {
+      setError('Nom du client trop court pour matcher fiablement.');
+      return;
+    }
+    const attachments = [];
+    for (const r of results.results || []) {
+      for (const m of r.messages || []) {
+        for (const a of m.attachments || []) {
+          attachments.push({ inbox: r.email, messageId: m.messageId, attachment: a });
+        }
+      }
+    }
+    if (attachments.length === 0) return;
+    setIaAnalyzing(true);
+    setError('');
+    setIaProgress({ done: 0, total: attachments.length });
+    const newIa = {};
+    // Batch parallèle de 4 — équilibre vitesse / surcharge serveur Vercel.
+    const BATCH = 4;
+    for (let i = 0; i < attachments.length; i += BATCH) {
+      const slice = attachments.slice(i, i + BATCH);
+      await Promise.all(slice.map(async ({ inbox, messageId, attachment }) => {
+        const key = `${inbox}|${messageId}|${attachment.attachmentId}`;
+        try {
+          const { base64, headers } = await fetchAttachmentBase64(inbox, messageId, attachment.attachmentId);
+          const er = await fetch('/api/extract-pdf', {
+            method: 'POST', headers,
+            body: JSON.stringify({ type: 'facture', imageBase64: base64, mediaType: 'application/pdf' }),
+          });
+          const ep = await er.json().catch(() => ({}));
+          if (!er.ok) throw new Error(ep.error || `Erreur ${er.status}`);
+          const data = ep.data || {};
+          const refClient = normalizeForMatch(data.referenceChantier);
+          const matched = refClient && hint && (refClient.includes(hint) || hint.includes(refClient));
+          newIa[key] = {
+            status: 'done',
+            refChantier: data.referenceChantier || '',
+            factureNo: data.factureNo || '',
+            montantHt: data.montantHt || 0,
+            fournisseur: data.fournisseur || '',
+            matched: !!matched,
+          };
+        } catch (e) {
+          newIa[key] = { status: 'error', error: e?.message || 'IA échouée' };
+        } finally {
+          setIaProgress(prev => ({ ...prev, done: prev.done + 1 }));
+          // Mise à jour incrémentale pour UI réactive
+          setIaResults(prev => ({ ...prev, ...newIa }));
+        }
+      }));
+    }
+    setIaAnalyzing(false);
   };
 
   const totalCount = (results?.results || []).reduce((s, r) => s + (r.messages || []).reduce((s2, m) => s2 + (m.attachments?.length || 0), 0), 0);
@@ -22415,23 +22535,39 @@ function GmailSearchModal({ initialQuery, contextLabel, onClose, onAttach }) {
           </button>
         </div>
 
-        <div className="p-4 border-b border-slate-100 bg-slate-50 flex gap-2">
-          <input
-            type="text"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') runSearch(query); }}
-            placeholder="Mot-clé (nom client, prestataire, n° facture…)"
-            className="flex-1 px-3 py-2 bg-white border-2 border-slate-200 focus:border-blue-400 rounded-lg text-sm"
-            autoFocus
-          />
-          <button
-            onClick={() => runSearch(query)}
-            disabled={loading || !query.trim()}
-            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold disabled:opacity-50"
-          >
-            {loading ? '🔄 …' : '🔍 Chercher'}
-          </button>
+        <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col gap-2">
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') runSearch(query); }}
+              placeholder="Mot-clé (nom client, prestataire, n° facture…)"
+              className="flex-1 px-3 py-2 bg-white border-2 border-slate-200 focus:border-blue-400 rounded-lg text-sm"
+              autoFocus
+            />
+            <button
+              onClick={() => runSearch(query)}
+              disabled={loading || !query.trim()}
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold disabled:opacity-50"
+            >
+              {loading ? '🔄 …' : '🔍 Chercher'}
+            </button>
+          </div>
+          {/* 🪄 Filtre IA : utile quand un email contient un batch de
+              factures (ex : un prestataire qui envoie 20 PDFs dans 1 mail) */}
+          {clientHint && results && totalCount >= 2 && (
+            <button
+              onClick={runIaFilter}
+              disabled={iaAnalyzing}
+              className="px-3 py-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 text-white rounded-lg text-sm font-bold disabled:opacity-50 flex items-center justify-center gap-2"
+              title={`Lit chaque PDF avec l'IA pour identifier ceux qui concernent ${clientHint}`}
+            >
+              {iaAnalyzing
+                ? `🪄 Analyse IA en cours… (${iaProgress.done}/${iaProgress.total})`
+                : `🪄 Trouver la facture de ${clientHint} (IA)`}
+            </button>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -22459,37 +22595,82 @@ function GmailSearchModal({ initialQuery, contextLabel, onClose, onAttach }) {
           )}
           {!loading && results && totalCount > 0 && (
             <div className="divide-y divide-slate-100">
-              {(results.results || []).map(r => (
-                <div key={r.email}>
-                  <div className="px-4 py-2 bg-slate-50 text-xs font-semibold text-slate-600">
-                    📥 {r.email} <span className="text-slate-400">— {r.count} message{r.count > 1 ? 's' : ''}</span>
-                  </div>
-                  {(r.messages || []).map(m => (
-                    <div key={m.messageId} className="px-4 py-3 border-t border-slate-100">
-                      <div className="text-xs text-slate-500 mb-1 truncate">📧 {m.subject} <span className="text-slate-400">· {m.from}</span></div>
-                      {(m.attachments || []).map(a => {
-                        const key = `${r.email}|${m.messageId}|${a.attachmentId}`;
-                        return (
-                          <div key={a.attachmentId} className="flex items-center gap-2 py-1.5">
-                            <span className="text-base">📎</span>
-                            <div className="flex-1 min-w-0">
-                              <div className="text-sm font-semibold text-slate-800 truncate">{a.filename}</div>
-                              <div className="text-[10px] text-slate-400">{a.sizeBytes ? `${Math.round(a.sizeBytes / 1024)} Ko` : ''}</div>
-                            </div>
-                            <button
-                              onClick={() => handleAttach(r.email, m.messageId, a)}
-                              disabled={!!attaching}
-                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold disabled:opacity-50"
-                            >
-                              {attaching === key ? '⬇️ …' : '📥 Attacher'}
-                            </button>
-                          </div>
-                        );
-                      })}
+              {(() => {
+                // Flatten + sort : matchs IA d'abord, puis les autres dans l'ordre.
+                // On ne trie que si runIaFilter a déjà tourné (au moins 1 entry).
+                const flat = [];
+                for (const r of results.results || []) {
+                  for (const m of r.messages || []) {
+                    for (const a of m.attachments || []) {
+                      const key = `${r.email}|${m.messageId}|${a.attachmentId}`;
+                      flat.push({ r, m, a, key, ia: iaResults[key] });
+                    }
+                  }
+                }
+                const hasAnyIa = Object.keys(iaResults).length > 0;
+                if (hasAnyIa) {
+                  flat.sort((x, y) => {
+                    const mx = x.ia?.matched ? 0 : x.ia?.status === 'done' ? 1 : 2;
+                    const my = y.ia?.matched ? 0 : y.ia?.status === 'done' ? 1 : 2;
+                    return mx - my;
+                  });
+                }
+                // Regroupe par message pour garder le header sujet+expéditeur visible.
+                const byMessage = {};
+                for (const entry of flat) {
+                  const mkey = `${entry.r.email}|${entry.m.messageId}`;
+                  if (!byMessage[mkey]) byMessage[mkey] = { r: entry.r, m: entry.m, entries: [] };
+                  byMessage[mkey].entries.push(entry);
+                }
+                return Object.values(byMessage).map(({ r, m, entries }) => (
+                  <div key={`${r.email}|${m.messageId}`} className="px-4 py-3">
+                    <div className="text-[11px] text-slate-500 mb-1 truncate">
+                      <span className="font-semibold text-slate-600">📧 {r.email}</span> · {m.subject} · <span className="text-slate-400">{m.from}</span>
                     </div>
-                  ))}
-                </div>
-              ))}
+                    {entries.map(({ a, key, ia }) => {
+                      const matched = ia?.matched;
+                      return (
+                        <div
+                          key={a.attachmentId}
+                          className={`flex items-center gap-2 py-1.5 px-1 rounded ${matched ? 'bg-emerald-50 border-l-4 border-emerald-400 pl-2' : ''}`}
+                        >
+                          <span className="text-base">{matched ? '✅' : '📎'}</span>
+                          <div className="flex-1 min-w-0">
+                            <div className="text-sm font-semibold text-slate-800 truncate">{a.filename}</div>
+                            <div className="text-[10px] text-slate-400 flex items-center gap-2 flex-wrap">
+                              {a.sizeBytes ? <span>{Math.round(a.sizeBytes / 1024)} Ko</span> : null}
+                              {ia?.status === 'done' && (
+                                <>
+                                  {ia.refChantier && <span className={matched ? 'text-emerald-700 font-bold' : ''}>👤 {ia.refChantier}</span>}
+                                  {ia.factureNo && <span>🧾 {ia.factureNo}</span>}
+                                  {ia.montantHt > 0 && <span>💰 {ia.montantHt} € HT</span>}
+                                  {ia.fournisseur && <span>🏢 {ia.fournisseur}</span>}
+                                </>
+                              )}
+                              {ia?.status === 'error' && <span className="text-rose-500">⚠️ IA : {ia.error}</span>}
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => handlePreview(r.email, m.messageId, a)}
+                            disabled={!!previewing || !!attaching}
+                            className="px-2 py-1.5 bg-white hover:bg-slate-100 text-slate-700 border border-slate-300 rounded-lg text-xs font-bold disabled:opacity-50"
+                            title="Aperçu du PDF dans un nouvel onglet"
+                          >
+                            {previewing === key ? '⏳' : '👁️'}
+                          </button>
+                          <button
+                            onClick={() => handleAttach(r.email, m.messageId, a)}
+                            disabled={!!attaching || !!previewing}
+                            className={`px-3 py-1.5 ${matched ? 'bg-emerald-700 hover:bg-emerald-800' : 'bg-emerald-600 hover:bg-emerald-700'} text-white rounded-lg text-xs font-bold disabled:opacity-50`}
+                          >
+                            {attaching === key ? '⬇️ …' : '📥 Attacher'}
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ));
+              })()}
             </div>
           )}
         </div>
