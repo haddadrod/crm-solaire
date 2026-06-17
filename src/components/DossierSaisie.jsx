@@ -7172,6 +7172,45 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
           }
         }
 
+        // 🧹 Auto-skip étendu : si l'IA a lu (fournisseur + factureNo + montantHt),
+        //    on cherche une ligne EXISTANTE avec PDF qui matche ces 3 signaux
+        //    combinés. Couvre le cas n° court (« 27 ») que le serveur refuse
+        //    de match-direct seul à cause des collisions potentielles.
+        if (!autoSkipped) {
+          const e = payload.data || {};
+          const norm = (s) => String(s || '')
+            .normalize('NFD').replace(/[̀-ͯ]/g, '')
+            .toUpperCase()
+            .replace(/[^A-Z0-9]/g, '');
+          const targetFourn = norm(e.fournisseur);
+          const targetNo = norm(e.factureNo);
+          const targetHt = Number(e.montantHt) || 0;
+          if (targetFourn) {
+            outer: for (const d of dossiers) {
+              const buckets = [
+                ['poseurs', d.poseurs || []],
+                ['regies', d.regies || []],
+                ['fournisseurs', d.fournisseurs || []],
+              ];
+              for (const [, arr] of buckets) {
+                for (const l of arr) {
+                  if (!l || (!l.factureFile && !l.facturePdfUrl && !l.factureExternalUrl)) continue;
+                  const lineFourn = norm(l.nom);
+                  if (!lineFourn) continue;
+                  const fournMatch = lineFourn === targetFourn || lineFourn.includes(targetFourn) || targetFourn.includes(lineFourn);
+                  if (!fournMatch) continue;
+                  const lineNo = norm(l.factureNo);
+                  const lineHt = Number(l.htCustom) || 0;
+                  const noMatch = lineNo && targetNo && lineNo === targetNo;
+                  const htMatch = targetHt > 0 && lineHt > 0 && Math.abs(lineHt - targetHt) / targetHt < 0.01;
+                  // Combo : émetteur OK + (même n° OU même montant) = doublon
+                  if (noMatch || htMatch) { autoSkipped = true; break outer; }
+                }
+              }
+            }
+          }
+        }
+
         setFiles(prev => prev.map(x => x.id === it.id ? (autoSkipped ? {
           ...x,
           status: 'skipped',
