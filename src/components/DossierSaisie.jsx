@@ -6817,7 +6817,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
       const resp = await fetch(url);
       if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
       const blob = await resp.blob();
-      const file = new File([blob], p.name || 'facture.pdf', { type: blob.type || 'application/pdf' });
+      const file = new window.File([blob], p.name || 'facture.pdf', { type: blob.type || 'application/pdf' });
       const newItem = {
         id: `tf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
         file,
@@ -7025,7 +7025,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
               for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
               const blob = new Blob([bytes], { type: 'application/pdf' });
               const fileName = a.filename || `gmail_${m.messageId}.pdf`;
-              const file = new File([blob], fileName, { type: 'application/pdf' });
+              const file = new window.File([blob], fileName, { type: 'application/pdf' });
               filesToImport.push(file);
             } catch (e) {
               console.warn(`Import attachment échoué (${a.filename}):`, e?.message);
@@ -14311,7 +14311,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
         const bytes = atob(compressed.base64);
         const arr = new Uint8Array(bytes.length);
         for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
-        fileToUpload = new File([arr], scannedBonName, { type: mediaType });
+        fileToUpload = new window.File([arr], scannedBonName, { type: mediaType });
       }
       // 1) Upload du fichier dans le bucket Supabase Storage (bypass la limite 4 Mo
       //    de body Vercel pour les Functions). On utilise un fileId qui servira
@@ -22419,7 +22419,7 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
       const blob = new Blob([bytes], { type: 'application/pdf' });
       const fileName = attachment.filename || `gmail_${messageId}.pdf`;
-      const file = new File([blob], fileName, { type: 'application/pdf' });
+      const file = new window.File([blob], fileName, { type: 'application/pdf' });
       await onAttach(file);
       onClose();
     } catch (e) {
