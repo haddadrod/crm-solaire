@@ -1011,17 +1011,21 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
 }
 
 // 🚗 Bloc « Déplacements » d'un poseur — liste éditable + bouton « + Ajouter ».
-// Chaque entrée = { id, date, montant, note }. Le total s'ajoute au coût HT
-// du poseur dans enrichDossier → marge HT se recalcule auto. Compact, pliable
-// si vide (pour ne pas encombrer la fiche).
-function DeplacementsPoseurBloc({ deplacements = [], onChange }) {
+// Chaque entrée = { id, date, montant, note, factureFile }. Le total s'ajoute
+// au coût HT du poseur dans enrichDossier → marge HT se recalcule auto.
+// Compact, pliable si vide (pour ne pas encombrer la fiche).
+//
+// 🔍 Chaque déplacement peut avoir SA PROPRE facture PDF (cas IONERGIK : pose
+// + déplacement facturés séparément). Le bouton 🔍 Gmail intégré cherche
+// directement par <poseur> <client>.
+function DeplacementsPoseurBloc({ deplacements = [], onChange, poseurNom = '', clientNom = '', clientPrenom = '', onOpenGmailSearch = null }) {
   const [open, setOpen] = useState(deplacements.length > 0);
   const total = deplacements.reduce((s, d) => s + (parseFloat(d?.montant) || 0), 0);
   const today = new Date().toISOString().slice(0, 10);
 
   const addDeplacement = () => {
     const id = `dep_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-    onChange([...deplacements, { id, date: today, montant: '', note: '' }]);
+    onChange([...deplacements, { id, date: today, montant: '', note: '', factureFile: '' }]);
     setOpen(true);
   };
   const updateOne = (idx, patch) => {
@@ -1030,6 +1034,9 @@ function DeplacementsPoseurBloc({ deplacements = [], onChange }) {
   const removeOne = (idx) => {
     onChange(deplacements.filter((_, i) => i !== idx));
   };
+
+  const gmailQueryFor = `${poseurNom || ''} ${clientNom || ''}`.trim();
+  const gmailContextLabel = `Déplacement ${poseurNom || 'poseur'} chez ${clientNom || ''} ${clientPrenom || ''}`.trim();
 
   // Si vide ET replié : un seul bouton discret « + Déplacement »
   if (deplacements.length === 0 && !open) {
@@ -1090,6 +1097,17 @@ function DeplacementsPoseurBloc({ deplacements = [], onChange }) {
             onChange={(e) => updateOne(idx, { note: e.target.value })}
             placeholder="Note (ex : client absent, refus sur place…)"
             className="w-full px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[10px]"
+          />
+          {/* 📎 Facture du déplacement — séparée de la facture de pose */}
+          <FactureFileInput
+            fileId={d.factureFile || ''}
+            onChange={(id) => updateOne(idx, { factureFile: id })}
+            color="amber"
+            label="facture déplacement"
+            onOpenGmailSearch={onOpenGmailSearch}
+            gmailQuery={gmailQueryFor}
+            gmailContextLabel={gmailContextLabel}
+            gmailClientHint={clientNom || ''}
           />
         </div>
       ))}
@@ -21423,6 +21441,10 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <DeplacementsPoseurBloc
                       deplacements={p.deplacements || []}
                       onChange={(next) => updatePoseur(i, { deplacements: next })}
+                      poseurNom={p.nom}
+                      clientNom={dossier.nom}
+                      clientPrenom={dossier.prenom}
+                      onOpenGmailSearch={onOpenGmailSearch}
                     />
                   )}
                   {canSeeBLFactures && (
