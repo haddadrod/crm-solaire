@@ -168,6 +168,57 @@ async function imapScan(inbox, maxMessages = 60) {
   return messages;
 }
 
+// Recherche IMAP par mot-clé (text = sujet+from+body) sur 180 derniers jours.
+// Sert aux boutons « 🔍 Gmail » sur une ligne dossier/prestataire : on ne
+// scanne pas tout, on cible un nom (client ou prestataire).
+async function imapSearch(inbox, query, maxMessages = 20) {
+  const client = makeImapClient(inbox);
+  await client.connect();
+  const messages = [];
+  try {
+    const lock = await client.getMailboxLock('INBOX');
+    try {
+      const since = new Date(Date.now() - 180 * 24 * 3600 * 1000);
+      // imapflow accepte { text: 'foo' } qui devient TEXT "foo" (subject+from+body)
+      const uids = await client.search({ since, text: query }, { uid: true });
+      const recent = (uids || []).slice(-maxMessages);
+      if (recent.length === 0) return [];
+      for await (const msg of client.fetch(recent, { uid: true, envelope: true, bodyStructure: true, internalDate: true }, { uid: true })) {
+        const attachments = [];
+        const walk = (node) => {
+          if (!node) return;
+          if (Array.isArray(node.childNodes)) node.childNodes.forEach(walk);
+          const fname = node.dispositionParameters?.filename || node.parameters?.name || '';
+          if (fname && /\.pdf$/i.test(fname)) {
+            attachments.push({
+              attachmentId: node.part || '1',
+              filename: fname,
+              sizeBytes: node.size || 0,
+            });
+          }
+        };
+        walk(msg.bodyStructure);
+        const subject = msg.envelope?.subject || '(sans sujet)';
+        const factureAtts = attachments.filter(a => isLikelyFacture(a.filename, subject));
+        if (factureAtts.length > 0) {
+          messages.push({
+            messageId: String(msg.uid),
+            subject,
+            from: (msg.envelope?.from || []).map(a => (a.name ? `${a.name} <${a.address}>` : a.address)).join(', '),
+            internalDate: msg.internalDate ? new Date(msg.internalDate).getTime().toString() : '',
+            attachments: factureAtts,
+          });
+        }
+      }
+    } finally {
+      lock.release();
+    }
+  } finally {
+    try { await client.logout(); } catch (e) {}
+  }
+  return messages;
+}
+
 // Télécharge une pièce jointe IMAP (par UID + numéro de part) → base64.
 async function imapFetchAttachment(inbox, uid, part) {
   const client = makeImapClient(inbox);
@@ -295,6 +346,19 @@ async function getMessageMeta(accessToken, messageId) {
     internalDate: data.internalDate || '',
     attachments: factureAtts,
   };
+}
+
+// 🔎 Recherche Gmail par mot-clé (180j max). Utilise la syntaxe de requête
+// Gmail directement → q='MIQUEL has:attachment filename:pdf newer_than:180d'.
+async function searchMessagesWithPdf(accessToken, query, maxResults = 20) {
+  const q = encodeURIComponent(`${query} has:attachment filename:pdf newer_than:180d`);
+  const r = await fetch(
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=${maxResults}`,
+    { headers: { Authorization: `Bearer ${accessToken}` } }
+  );
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.error?.message || 'Gmail search failed');
+  return data.messages || [];
 }
 
 // 📥 Télécharge le contenu d'une pièce jointe (Gmail renvoie en base64url
@@ -453,6 +517,58 @@ export default async function handler(req, res) {
       return json(res, 200, { data: { results, errors } });
     }
 
+    // 🔍 Recherche ciblée : un mot-clé (nom client ou prestataire) → PDFs matching
+    //    sur 180 jours, toutes boîtes confondues. Utilisé par les boutons
+    //    « 🔍 Gmail » sur les lignes Poseur/Régie/Fournisseur et Factures manquantes.
+    if (action === 'search') {
+      const query = (body.query || '').toString().trim();
+      if (query.length < 2) {
+        return json(res, 400, { error: 'Requête trop courte (2 caractères min).' });
+      }
+      const inboxes = await readInboxes(admin, userId);
+      if (inboxes.length === 0) {
+        return json(res, 200, { data: { results: [], errors: [], notes: 'Aucune boîte Gmail connectée.' } });
+      }
+      const results = [];
+      const errors = [];
+      for (const inbox of inboxes) {
+        const method = boxMethod(inbox);
+        if (method === 'imap') {
+          try {
+            const enriched = await imapSearch(inbox, query, 20);
+            results.push({ email: inbox.email, messages: enriched, count: enriched.length, method: 'imap' });
+          } catch (e) {
+            errors.push({ email: inbox.email, error: e?.message || 'Recherche IMAP échouée' });
+          }
+          continue;
+        }
+        if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
+          errors.push({ email: inbox.email, error: 'OAuth Google non configuré (variables Vercel).' });
+          continue;
+        }
+        const canScan = (inbox.scopes || []).some(s => s.includes('gmail.readonly'));
+        if (!canScan) {
+          errors.push({ email: inbox.email, error: 'Pas de scope lecture — reconnecte cette boîte.' });
+          continue;
+        }
+        try {
+          const accessToken = await ensureAccessToken(admin, userId, inbox, inboxes);
+          const messages = await searchMessagesWithPdf(accessToken, query, 20);
+          const enriched = [];
+          for (const m of messages) {
+            try {
+              const meta = await getMessageMeta(accessToken, m.id);
+              if (meta.attachments.length > 0) enriched.push(meta);
+            } catch (e) {}
+          }
+          results.push({ email: inbox.email, messages: enriched, count: enriched.length, method: 'oauth' });
+        } catch (e) {
+          errors.push({ email: inbox.email, error: e?.message || 'Recherche OAuth échouée' });
+        }
+      }
+      return json(res, 200, { data: { query, results, errors } });
+    }
+
     if (action === 'fetch-attachment') {
       const { email: inboxEmail, messageId, attachmentId } = body;
       if (!inboxEmail || !messageId || !attachmentId) {
@@ -476,7 +592,7 @@ export default async function handler(req, res) {
       return json(res, 200, { data: { base64, sizeBytes, mimeType: 'application/pdf' } });
     }
 
-    return json(res, 400, { error: `Action inconnue : ${action || '(vide)'}. Utilise scan, fetch-attachment ou imap-connect.` });
+    return json(res, 400, { error: `Action inconnue : ${action || '(vide)'}. Utilise scan, search, fetch-attachment ou imap-connect.` });
   } catch (e) {
     console.error('gmail-oauth error:', e?.message || e);
     return json(res, 502, { error: e?.message || 'Erreur Gmail OAuth' });
