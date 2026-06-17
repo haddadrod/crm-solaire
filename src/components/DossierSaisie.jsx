@@ -7182,6 +7182,37 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
     }));
   };
 
+  // ➕ Crée une nouvelle ligne prestataire (poseurs/regies/fournisseurs)
+  //    sur le dossier ciblé, puis la sélectionne comme cible de la facture.
+  //    Sert quand le dossier n'a pas encore le bon type de prestataire (ex :
+  //    facture régie reçue mais la régie n'a jamais été saisie sur le dossier).
+  const handleCreateAndPickLine = (fileItemId, dossierLocalId, type, nom) => {
+    // Le nouvel index = longueur actuelle du tableau (post-push).
+    let newIndex = 0;
+    setDossiers(prev => prev.map(d => {
+      if (d.localId !== dossierLocalId) return d;
+      const arr = Array.isArray(d[type]) ? [...d[type]] : [];
+      newIndex = arr.length;
+      arr.push({
+        nom: String(nom || '').trim(),
+        htCustom: '',
+        paye: false,
+        datePaye: '',
+        bl: '',
+        factureNo: '',
+        facturePdfUrl: '',
+      });
+      return { ...d, [type]: arr };
+    }));
+    handleManualPick(fileItemId, {
+      localId: dossierLocalId,
+      type,
+      index: newIndex,
+      confidence: 1,
+      reasoning: `Ligne créée manuellement : ${nom}`,
+    });
+  };
+
   const handleConfirm = async (item) => {
     if (item.pickedIdx == null) {
       alert('Choisis d\'abord une proposition.');
@@ -7589,6 +7620,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
               dossiers={dossiers}
               onPick={(idx) => setFiles(prev => prev.map(x => x.id === item.id ? { ...x, pickedIdx: idx } : x))}
               onManualPick={(prop) => handleManualPick(item.id, prop)}
+              onCreateAndPickLine={(dossierLocalId, type, nom) => handleCreateAndPickLine(item.id, dossierLocalId, type, nom)}
               onConfirm={() => handleConfirm(item)}
               onSkip={() => handleSkip(item)}
               onRetry={() => handleRetry(item.id)}
@@ -7604,7 +7636,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
 
 // Une carte = un PDF en cours de tri. États : queued → analyzing → ready → confirmed.
 // (saving = entre ready et confirmed, le temps de l'upload bucket.)
-function TriFactureCard({ item, dossiers, onPick, onManualPick, onConfirm, onSkip, onRetry, onRemove, onOpenDossier }) {
+function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickLine, onConfirm, onSkip, onRetry, onRemove, onOpenDossier }) {
   const e = item.extracted || {};
   const m = item.matching || { proposals: [], notes: '' };
   const proposals = m.proposals || [];
@@ -7827,9 +7859,10 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onConfirm, onSki
                         <button onClick={() => setManualDossier(null)} className="ml-2 text-violet-600 underline text-[10px]">changer</button>
                       </div>
                       <div className="text-[10px] text-slate-500">Choisis la ligne à laquelle rattacher la facture :</div>
-                      {manualLines.length === 0 ? (
-                        <div className="text-[10px] text-amber-700">Ce dossier n'a aucun prestataire renseigné — ajoute-le d'abord dans le dossier.</div>
-                      ) : manualLines.map(l => (
+                      {manualLines.length === 0 && (
+                        <div className="text-[10px] text-amber-700">Ce dossier n'a aucun prestataire renseigné. Crée la ligne ci-dessous avec le nom du fournisseur.</div>
+                      )}
+                      {manualLines.map(l => (
                         <button
                           key={`${l.type}:${l.index}`}
                           onClick={() => {
@@ -7842,6 +7875,38 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onConfirm, onSki
                           {l.has && <span className="text-[9px] font-bold text-amber-600">⚠️ a déjà une facture</span>}
                         </button>
                       ))}
+
+                      {/* ➕ Créer une nouvelle ligne : utile quand le dossier n'a
+                          pas encore le bon type de prestataire (ex : régie manquante).
+                          Le nom est pré-rempli avec le fournisseur extrait par l'IA. */}
+                      {onCreateAndPickLine && (() => {
+                        const fournisseurNom = (item.extracted?.fournisseur || '').toString().trim();
+                        if (!fournisseurNom) return null;
+                        const types = [
+                          { type: 'poseurs', emoji: '🔧', label: 'poseur' },
+                          { type: 'regies', emoji: '🤝', label: 'régie' },
+                          { type: 'fournisseurs', emoji: '📦', label: 'fournisseur' },
+                        ];
+                        return (
+                          <div className="pt-1 mt-1 border-t border-violet-200">
+                            <div className="text-[10px] text-violet-600 mb-1">Ou créer une nouvelle ligne avec « <span className="font-bold">{fournisseurNom}</span> » :</div>
+                            <div className="flex gap-1 flex-wrap">
+                              {types.map(t => (
+                                <button
+                                  key={t.type}
+                                  onClick={() => {
+                                    onCreateAndPickLine(manualDossier.localId, t.type, fournisseurNom);
+                                    setManualOpen(false); setManualDossier(null); setManualQuery('');
+                                  }}
+                                  className="px-2 py-1 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-[10px] font-bold"
+                                >
+                                  + {t.emoji} Créer {t.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })()}
                     </>
                   )}
                 </div>
