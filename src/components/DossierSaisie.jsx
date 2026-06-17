@@ -5941,6 +5941,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             emailConfig={emailConfig}
             currentUser={currentUser}
             onClose={() => setShowAssistantIa(false)}
+            onOpenDossier={(localId) => { setShowQuickViewId(localId); }}
             onSent={(localId, entry) => {
               const userTag = currentUser || '(anonyme)';
               setDossiers(prev => prev.map(d => d.localId === localId
@@ -21906,12 +21907,12 @@ function AiCopilotModal({ action, dossier, currentUser, gmailOAuth, emailConfig,
 // Tape un ordre en langage naturel ("Envoie un mail à Marage pour confirmer
 // la pose mardi"), Claude identifie le client + rédige le mail, tu valides
 // et tu envoies via Gmail OAuth ou SMTP.
-function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onClose, onSent }) {
-  const [phase, setPhase] = useState('input'); // 'input' | 'draft' | 'sending'
+function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onClose, onSent, onOpenDossier }) {
+  const [phase, setPhase] = useState('input'); // 'input' | 'draft' | 'answer' | 'sending'
   const [command, setCommand] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  // draft = { targetLocalId, ambiguous, candidateLocalIds, subject, body, reasoning }
+  // draft = { intent, targetLocalId, candidateLocalIds, subject, body, reasoning }
   const [draft, setDraft] = useState(null);
   const [editedSubject, setEditedSubject] = useState('');
   const [editedBody, setEditedBody] = useState('');
@@ -21950,6 +21951,17 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
       setEditedSubject(d.subject || '');
       setEditedBody(d.body || '');
       setChosenLocalId(d.targetLocalId || '');
+      // Dispatch selon l'intention détectée par l'IA
+      if (d.intent === 'open_dossier' && d.targetLocalId && onOpenDossier) {
+        onOpenDossier(d.targetLocalId);
+        onClose();
+        return;
+      }
+      if (d.intent === 'answer') {
+        setPhase('answer');
+        return;
+      }
+      // 'email' ou 'ambiguous' → phase draft
       setPhase('draft');
     } catch (e) {
       setError(e.message);
@@ -22066,7 +22078,7 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
               <Sparkles className="w-5 h-5 text-fuchsia-500" />
               Assistant IA — comme ta secrétaire
             </h2>
-            <p className="text-xs text-slate-600 mt-0.5">Donne un ordre, l'IA identifie le client et rédige le mail. Tu valides avant l'envoi.</p>
+            <p className="text-xs text-slate-600 mt-0.5">Donne un ordre : envoyer un mail, ouvrir un dossier, ou poser une question. L'IA choisit l'action.</p>
           </div>
           <button onClick={onClose} aria-label="Fermer" className="p-2 hover:bg-white/60 rounded-lg" title="Fermer"><X className="w-5 h-5 text-slate-600" /></button>
         </div>
@@ -22092,7 +22104,7 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
                 onChange={(e) => { setCommand(e.target.value); baseTranscriptRef.current = e.target.value; }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) askIa(); }}
                 rows={5}
-                placeholder={`Exemples :\n• Envoie un mail à Marage pour confirmer la pose mardi prochain\n• Réponds à Borbeau pour lui demander son RIB\n• Mail à HADDAD pour le remercier après la pose`}
+                placeholder={`Exemples :\n• Envoie un mail à Marage pour confirmer la pose mardi prochain\n• Ouvre le dossier de Borbeau\n• Combien de dossiers j'ai en cours ce mois ?\n• Quel est le statut de HADDAD ?`}
                 className={`w-full px-3 py-2 bg-white border-2 rounded-xl text-sm resize-none ${isListening ? 'border-rose-400 ring-2 ring-rose-100' : 'border-slate-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100'}`}
                 autoFocus
               />
@@ -22106,6 +22118,35 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
                 <button onClick={askIa} disabled={loading || !command.trim()} className="px-5 py-2 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 text-white rounded-lg text-sm font-bold disabled:opacity-50">
                   {loading ? '✨ Génération…' : '🤖 Demander à l\'IA'}
                 </button>
+              </div>
+            </>
+          )}
+
+          {phase === 'answer' && draft && (
+            <>
+              <div className="p-4 bg-gradient-to-br from-violet-50 to-fuchsia-50 border-2 border-violet-200 rounded-2xl">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">💬</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-violet-700 uppercase tracking-wide mb-1">Réponse de l'IA</div>
+                    <div className="text-sm text-slate-800 whitespace-pre-wrap leading-relaxed">{editedBody || draft.body}</div>
+                  </div>
+                </div>
+                {draft.reasoning && (
+                  <div className="text-[10px] text-violet-600 italic mt-3 pl-9">↳ {draft.reasoning}</div>
+                )}
+              </div>
+              {targetDossier && onOpenDossier && (
+                <button
+                  onClick={() => { onOpenDossier(targetDossier.localId); onClose(); }}
+                  className="w-full px-4 py-3 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-sm font-bold flex items-center justify-center gap-2"
+                >
+                  👁️ Ouvrir le dossier de {targetDossier.nom} {targetDossier.prenom}
+                </button>
+              )}
+              <div className="flex justify-between gap-2 pt-2">
+                <button onClick={() => { setPhase('input'); setDraft(null); }} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">← Nouvel ordre</button>
+                <button onClick={onClose} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold">Fermer</button>
               </div>
             </>
           )}
