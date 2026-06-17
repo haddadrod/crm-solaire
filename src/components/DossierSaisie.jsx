@@ -921,6 +921,25 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
             )
           )}
           <button onClick={handleView} className="px-1 py-0.5 hover:bg-white rounded" title="Voir la facture">👁️</button>
+          {onOpenGmailSearch && gmailQuery && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (!window.confirm('Remplacer la facture actuelle par une trouvée dans Gmail ?')) return;
+                onOpenGmailSearch(
+                  gmailQuery,
+                  gmailContextLabel || gmailQuery,
+                  async (file) => { await handleUpload(file); }
+                );
+              }}
+              className="px-1 py-0.5 hover:bg-blue-100 text-blue-600 rounded"
+              title={`Remplacer par une facture trouvée dans Gmail (${gmailQuery})`}
+            >
+              🔍
+            </button>
+          )}
           <button onClick={handleRemove} className="px-1 py-0.5 text-rose-500 hover:bg-rose-100 rounded" title="Retirer">🗑️</button>
         </div>
         {justSaved && (
