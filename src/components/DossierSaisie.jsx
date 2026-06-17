@@ -7644,21 +7644,31 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
             </div>
             {gmailScannableInboxes.length > 0 && (
               <div className="flex-shrink-0 flex items-center gap-2">
-                <label className="text-[10px] font-semibold text-blue-700 flex items-center gap-1">
-                  📅
-                  <select
-                    value={gmailScanDays}
-                    onChange={(e) => setGmailScanDays(Number(e.target.value))}
-                    disabled={gmailScanning || gmailImporting}
-                    className="px-2 py-1 bg-white border border-blue-300 rounded text-[11px] font-bold text-blue-700"
-                  >
-                    <option value={60}>60 derniers jours</option>
-                    <option value={180}>6 derniers mois</option>
-                    <option value={365}>1 an</option>
-                    <option value={730}>2 ans</option>
-                    <option value={1095}>3 ans (max)</option>
-                  </select>
-                </label>
+                {(() => {
+                  // 📅 Calcule le nombre de jours depuis le 01/01 de l'année
+                  // courante — option « début d'année » dynamique. Capped à 1095j.
+                  const now = new Date();
+                  const yearStart = new Date(now.getFullYear(), 0, 1);
+                  const sinceJan1 = Math.min(1095, Math.max(1, Math.round((now - yearStart) / (24 * 3600 * 1000))));
+                  return (
+                    <label className="text-[10px] font-semibold text-blue-700 flex items-center gap-1">
+                      📅
+                      <select
+                        value={gmailScanDays}
+                        onChange={(e) => setGmailScanDays(Number(e.target.value))}
+                        disabled={gmailScanning || gmailImporting}
+                        className="px-2 py-1 bg-white border border-blue-300 rounded text-[11px] font-bold text-blue-700"
+                      >
+                        <option value={60}>60 derniers jours</option>
+                        <option value={180}>6 derniers mois</option>
+                        <option value={sinceJan1}>Depuis le 01/01/{now.getFullYear()}</option>
+                        <option value={365}>1 an</option>
+                        <option value={730}>2 ans</option>
+                        <option value={1095}>3 ans (max)</option>
+                      </select>
+                    </label>
+                  );
+                })()}
                 <button
                   type="button"
                   onClick={handleGmailScan}
