@@ -75,6 +75,55 @@ async function readInboxes(admin, userId) {
   return [];
 }
 
+// 🌍 Boîtes PARTAGÉES (toute l'équipe) — clé globale unique, pas par-user.
+// Sert aux boîtes de RÉCUPÉRATION de factures (ex : comptabilite@…) : tu
+// connectes une fois, et tous les utilisateurs du CRM peuvent scanner /
+// chercher dedans. À distinguer des boîtes OAuth perso (envoi d'emails) qui
+// restent sous gmail-oauth:<userId>.
+const SHARED_INBOX_KEY = 'gmail-shared-inboxes';
+
+async function readSharedInboxes(admin) {
+  const { data: row } = await admin.from('storage')
+    .select('value')
+    .eq('key', SHARED_INBOX_KEY)
+    .maybeSingle();
+  if (!row?.value) return [];
+  try {
+    const parsed = JSON.parse(row.value);
+    if (Array.isArray(parsed)) return parsed.filter(b => b && boxMethod(b));
+    if (parsed && boxMethod(parsed)) return [parsed];
+  } catch (e) {}
+  return [];
+}
+
+async function writeSharedInboxes(admin, inboxes) {
+  if (!inboxes || inboxes.length === 0) {
+    await admin.from('storage').delete().eq('key', SHARED_INBOX_KEY);
+    return;
+  }
+  await admin.from('storage').upsert({
+    key: SHARED_INBOX_KEY,
+    value: JSON.stringify(inboxes),
+    updated_at: new Date().toISOString(),
+  });
+}
+
+// 📥 Liste combinée pour le SCAN/SEARCH/FETCH : boîtes partagées (équipe) +
+// boîtes perso de l'utilisateur courant. Dédupliquée par email (le partagé
+// gagne). C'est la liste où l'on cherche les factures.
+async function readAllReadableInboxes(admin, userId) {
+  const shared = await readSharedInboxes(admin);
+  const mine = await readInboxes(admin, userId);
+  const seen = new Set(shared.map(b => (b.email || '').toLowerCase()));
+  const merged = [...shared];
+  for (const b of mine) {
+    const e = (b.email || '').toLowerCase();
+    if (e && !seen.has(e)) { seen.add(e); merged.push(b); }
+  }
+  return merged;
+}
+
+
 // ─── IMAP (mot de passe d'application) ──────────────────────────────────────
 // Bien plus simple côté utilisateur : email + mot de passe d'application
 // (16 caractères généré par Google), pas de Google Cloud Console. On lit les
@@ -273,13 +322,21 @@ async function refreshAccessToken(refreshToken) {
 
 // S'assure qu'une inbox a un access token valide. Renouvelle si besoin et
 // renvoie le token utilisable. Persiste les nouveaux tokens en passant.
-async function ensureAccessToken(admin, userId, inbox, allInboxes) {
+// ⚠️ Les boîtes OAuth ne vivent QUE dans le store PERSO (gmail-oauth:userId).
+// On relit donc CE store, on met à jour la boîte par email, et on réécrit
+// seulement le perso — sans jamais y mélanger les boîtes partagées (IMAP).
+async function ensureAccessToken(admin, userId, inbox /*, allInboxes (ignoré) */) {
   const needRefresh = !inbox.accessToken || !inbox.expiresAt || inbox.expiresAt < Date.now() + 60000;
   if (!needRefresh) return inbox.accessToken;
   const { accessToken, expiresIn } = await refreshAccessToken(inbox.refreshToken);
   inbox.accessToken = accessToken;
   inbox.expiresAt = Date.now() + expiresIn * 1000;
-  await writeInboxes(admin, userId, allInboxes);
+  const mine = await readInboxes(admin, userId);
+  const idx = mine.findIndex(b => (b.email || '').toLowerCase() === (inbox.email || '').toLowerCase());
+  if (idx >= 0) {
+    mine[idx] = { ...mine[idx], accessToken: inbox.accessToken, expiresAt: inbox.expiresAt };
+    await writeInboxes(admin, userId, mine);
+  }
   return accessToken;
 }
 
@@ -387,20 +444,50 @@ export default async function handler(req, res) {
     const { userId, admin } = auth;
 
     // ───── GET : liste des boîtes connectées (sans tokens) ─────
+    // Combine les boîtes PARTAGÉES (équipe, récupération factures) + les
+    // boîtes perso (OAuth envoi). Chaque boîte est taguée `shared`.
     if (req.method === 'GET') {
-      const inboxes = await readInboxes(admin, userId);
+      // 🔁 Migration : toute boîte IMAP encore rangée dans le store perso de
+      // l'utilisateur (ancien comportement) est déplacée vers le partagé pour
+      // que toute l'équipe y ait accès. Idempotent.
+      try {
+        const mineRaw = await readInboxes(admin, userId);
+        const imapMine = mineRaw.filter(b => boxMethod(b) === 'imap');
+        if (imapMine.length > 0) {
+          const shared0 = await readSharedInboxes(admin);
+          const sharedEmails0 = new Set(shared0.map(b => (b.email || '').toLowerCase()));
+          let changed = false;
+          for (const b of imapMine) {
+            const e = (b.email || '').toLowerCase();
+            if (e && !sharedEmails0.has(e)) { shared0.push(b); sharedEmails0.add(e); changed = true; }
+          }
+          if (changed) await writeSharedInboxes(admin, shared0);
+          // Retire les boîtes IMAP du store perso (elles vivent désormais en partagé).
+          const onlyOauth = mineRaw.filter(b => boxMethod(b) !== 'imap');
+          if (onlyOauth.length !== mineRaw.length) await writeInboxes(admin, userId, onlyOauth);
+        }
+      } catch (e) { /* migration best-effort, on n'échoue pas le GET */ }
+
+      const shared = await readSharedInboxes(admin);
+      const mine = await readInboxes(admin, userId);
+      const sharedEmails = new Set(shared.map(b => (b.email || '').toLowerCase()));
+      const tagged = [
+        ...shared.map(b => ({ b, shared: true })),
+        ...mine.filter(b => !sharedEmails.has((b.email || '').toLowerCase())).map(b => ({ b, shared: false })),
+      ];
       return json(res, 200, {
         data: {
-          connected: inboxes.length > 0,
+          connected: tagged.length > 0,
           // Compat ascendante avec l'ancien shape { email, connectedAt }
-          email: inboxes[0]?.email || null,
-          connectedAt: inboxes[0]?.connectedAt || null,
-          inboxes: inboxes.map(b => {
+          email: tagged[0]?.b?.email || null,
+          connectedAt: tagged[0]?.b?.connectedAt || null,
+          inboxes: tagged.map(({ b, shared }) => {
             const method = boxMethod(b);
             return {
               email: b.email,
               connectedAt: b.connectedAt || null,
               method, // 'imap' (mot de passe d'application) ou 'oauth'
+              shared,  // true = partagée avec toute l'équipe
               // Scan dispo : toujours pour IMAP ; pour OAuth il faut le scope lecture.
               canScan: method === 'imap'
                 ? true
@@ -412,16 +499,24 @@ export default async function handler(req, res) {
     }
 
     // ───── DELETE : supprime UNE boîte (avec ?email=) ou toutes ─────
+    // Cherche dans les boîtes partagées ET perso (une boîte partagée peut
+    // être déconnectée par n'importe quel membre de l'équipe).
     if (req.method === 'DELETE') {
       const targetEmail = (req.query?.email || '').toString().trim().toLowerCase();
       if (!targetEmail) {
+        // Sans email : on ne vide QUE les boîtes perso de l'utilisateur (on ne
+        // débranche pas par accident toute l'équipe des boîtes partagées).
         await writeInboxes(admin, userId, []);
         return json(res, 200, { data: { disconnected: 'all' } });
       }
-      const inboxes = await readInboxes(admin, userId);
-      const next = inboxes.filter(b => (b.email || '').toLowerCase() !== targetEmail);
-      await writeInboxes(admin, userId, next);
-      return json(res, 200, { data: { disconnected: targetEmail, remaining: next.length } });
+      // Retire la boîte des deux stores si présente.
+      const shared = await readSharedInboxes(admin);
+      const sharedNext = shared.filter(b => (b.email || '').toLowerCase() !== targetEmail);
+      if (sharedNext.length !== shared.length) await writeSharedInboxes(admin, sharedNext);
+      const mine = await readInboxes(admin, userId);
+      const mineNext = mine.filter(b => (b.email || '').toLowerCase() !== targetEmail);
+      if (mineNext.length !== mine.length) await writeInboxes(admin, userId, mineNext);
+      return json(res, 200, { data: { disconnected: targetEmail, remaining: sharedNext.length + mineNext.length } });
     }
 
     // ───── POST : actions de scan / fetch / imap-connect ─────
@@ -447,22 +542,25 @@ export default async function handler(req, res) {
           error: `Connexion IMAP échouée : ${e?.message || 'vérifie l\'email + le mot de passe d\'application'}. (La validation en 2 étapes doit être activée sur ce compte Google.)`,
         });
       }
-      // Connexion OK → on stocke (en ajoutant ou remplaçant si l'email existe).
-      const inboxes = await readInboxes(admin, userId);
+      // Connexion OK → on stocke dans les boîtes PARTAGÉES (récupération de
+      // factures = ressource d'équipe). Tous les utilisateurs pourront
+      // scanner / chercher dedans. On ajoute ou remplace si l'email existe.
+      const inboxes = await readSharedInboxes(admin);
       const stored = {
         email,
         appPassword,
         method: 'imap',
         connectedAt: new Date().toISOString(),
+        connectedBy: userId, // info : qui a connecté la boîte
       };
       const idx = inboxes.findIndex(b => (b.email || '').toLowerCase() === email);
       if (idx >= 0) inboxes[idx] = stored; else inboxes.push(stored);
-      await writeInboxes(admin, userId, inboxes);
-      return json(res, 200, { data: { connected: true, email } });
+      await writeSharedInboxes(admin, inboxes);
+      return json(res, 200, { data: { connected: true, email, shared: true } });
     }
 
     if (action === 'scan') {
-      const inboxes = await readInboxes(admin, userId);
+      const inboxes = await readAllReadableInboxes(admin, userId);
       if (inboxes.length === 0) {
         return json(res, 200, { data: { results: [], errors: [], notes: 'Aucune boîte Gmail connectée.' } });
       }
@@ -492,7 +590,7 @@ export default async function handler(req, res) {
           continue;
         }
         try {
-          const accessToken = await ensureAccessToken(admin, userId, inbox, inboxes);
+          const accessToken = await ensureAccessToken(admin, userId, inbox);
           const messages = await listMessagesWithPdf(accessToken, 60);
           // Récupère les métadonnées de chaque message (sujet, attachments).
           const enriched = [];
@@ -525,7 +623,7 @@ export default async function handler(req, res) {
       if (query.length < 2) {
         return json(res, 400, { error: 'Requête trop courte (2 caractères min).' });
       }
-      const inboxes = await readInboxes(admin, userId);
+      const inboxes = await readAllReadableInboxes(admin, userId);
       if (inboxes.length === 0) {
         return json(res, 200, { data: { results: [], errors: [], notes: 'Aucune boîte Gmail connectée.' } });
       }
@@ -552,7 +650,7 @@ export default async function handler(req, res) {
           continue;
         }
         try {
-          const accessToken = await ensureAccessToken(admin, userId, inbox, inboxes);
+          const accessToken = await ensureAccessToken(admin, userId, inbox);
           const messages = await searchMessagesWithPdf(accessToken, query, 20);
           const enriched = [];
           for (const m of messages) {
@@ -574,7 +672,7 @@ export default async function handler(req, res) {
       if (!inboxEmail || !messageId || !attachmentId) {
         return json(res, 400, { error: 'email, messageId, attachmentId requis.' });
       }
-      const inboxes = await readInboxes(admin, userId);
+      const inboxes = await readAllReadableInboxes(admin, userId);
       const inbox = inboxes.find(b => (b.email || '').toLowerCase() === String(inboxEmail).toLowerCase());
       if (!inbox) return json(res, 404, { error: 'Boîte Gmail non trouvée.' });
       const method = boxMethod(inbox);
@@ -587,7 +685,7 @@ export default async function handler(req, res) {
       if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
         return json(res, 503, { error: 'OAuth Google non configuré.' });
       }
-      const accessToken = await ensureAccessToken(admin, userId, inbox, inboxes);
+      const accessToken = await ensureAccessToken(admin, userId, inbox);
       const { base64, sizeBytes } = await getAttachment(accessToken, messageId, attachmentId);
       return json(res, 200, { data: { base64, sizeBytes, mimeType: 'application/pdf' } });
     }
