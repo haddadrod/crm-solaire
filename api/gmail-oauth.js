@@ -261,14 +261,15 @@ function isLikelyFacture(filename, subject) {
 
 // Scan IMAP : liste les messages récents (60j) avec pièce jointe PDF
 // ressemblant à une facture/avoir (filtre côté serveur via isLikelyFacture).
-async function imapScan(inbox, maxMessages = 60, ignoredSenders = [], importedSet = new Set()) {
+async function imapScan(inbox, maxMessages = 60, ignoredSenders = [], importedSet = new Set(), sinceDays = 60) {
   const client = makeImapClient(inbox);
   await client.connect();
   const messages = [];
   try {
     const lock = await client.getMailboxLock('INBOX');
     try {
-      const since = new Date(Date.now() - 60 * 24 * 3600 * 1000);
+      const days = Math.max(1, Math.min(1095, Number(sinceDays) || 60)); // cap : 3 ans
+      const since = new Date(Date.now() - days * 24 * 3600 * 1000);
       const uids = await client.search({ since }, { uid: true });
       const recent = (uids || []).slice(-maxMessages);
       if (recent.length === 0) return [];
@@ -450,8 +451,9 @@ async function ensureAccessToken(admin, userId, inbox /*, allInboxes (ignoré) *
 // 🔍 Liste les messages Gmail récents avec pièces jointes PDF.
 // Critère : reçus dans les 60 derniers jours, has:attachment, filename:pdf
 // (filtre Gmail natif, plus efficace que parser tous les messages).
-async function listMessagesWithPdf(accessToken, maxResults = 50) {
-  const q = encodeURIComponent('newer_than:60d has:attachment filename:pdf');
+async function listMessagesWithPdf(accessToken, maxResults = 50, sinceDays = 60) {
+  const days = Math.max(1, Math.min(1095, Number(sinceDays) || 60));
+  const q = encodeURIComponent(`newer_than:${days}d has:attachment filename:pdf`);
   const r = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=${maxResults}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -682,6 +684,8 @@ export default async function handler(req, res) {
       if (inboxes.length === 0) {
         return json(res, 200, { data: { results: [], errors: [], notes: 'Aucune boîte Gmail connectée.' } });
       }
+      // 📅 Période de scan paramétrable depuis l'UI (60j par défaut, 1095j max).
+      const sinceDays = Math.max(1, Math.min(1095, Number(body.sinceDays) || 60));
       const ignoredSenders = await readIgnoredSenders(admin);
       const importedSet = await readImportedAttachments(admin);
       const results = [];
@@ -692,7 +696,10 @@ export default async function handler(req, res) {
         // ── Boîte IMAP (mot de passe d'application) ──
         if (method === 'imap') {
           try {
-            const enriched = await imapScan(inbox, 60, ignoredSenders, importedSet);
+            // maxMessages monte jusqu'à 200 sur les périodes étendues pour
+            // limiter le risque de manquer des factures anciennes.
+            const cap = Math.min(200, Math.max(60, Math.round(sinceDays * 1.5)));
+            const enriched = await imapScan(inbox, cap, ignoredSenders, importedSet, sinceDays);
             results.push({ email: inbox.email, messages: enriched, count: enriched.length, method: 'imap' });
           } catch (e) {
             errors.push({ email: inbox.email, error: e?.message || 'Scan IMAP échoué' });
@@ -711,7 +718,8 @@ export default async function handler(req, res) {
         }
         try {
           const accessToken = await ensureAccessToken(admin, userId, inbox);
-          const messages = await listMessagesWithPdf(accessToken, 60);
+          const cap = Math.min(200, Math.max(60, Math.round(sinceDays * 1.5)));
+          const messages = await listMessagesWithPdf(accessToken, cap, sinceDays);
           // Récupère les métadonnées de chaque message (sujet, attachments).
           const enriched = [];
           for (const m of messages) {

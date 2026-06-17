@@ -6820,6 +6820,9 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
   // pour pouvoir cocher/décocher avant l'import dans la queue d'analyse.
   const [gmailScanning, setGmailScanning] = useState(false);
   const [gmailScanResults, setGmailScanResults] = useState(null); // { results, errors } | null
+  // 📅 Fenêtre de scan (en jours). Modifiable via le sélecteur juste avant
+  //    le bouton « Scanner Gmail ». 60 par défaut, 1095 max (3 ans).
+  const [gmailScanDays, setGmailScanDays] = useState(60);
   const [gmailSelection, setGmailSelection] = useState(new Set()); // Set d'attachmentKey cochés
   const [gmailImporting, setGmailImporting] = useState(false);
   const gmailConnected = !!gmailOAuth?.connected;
@@ -7030,7 +7033,10 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
       const { data: { session } } = await supabase.auth.getSession();
       const headers = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const res = await fetch('/api/gmail-oauth?action=scan', { method: 'POST', headers });
+      const res = await fetch('/api/gmail-oauth?action=scan', {
+        method: 'POST', headers,
+        body: JSON.stringify({ sinceDays: gmailScanDays }),
+      });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
       const data = payload.data || { results: [], errors: [] };
@@ -7631,20 +7637,37 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
               </div>
               <div className="text-[11px] text-blue-700 mt-0.5">
                 {gmailScannableInboxes.length > 0
-                  ? <>{gmailScannableInboxes.length} boîte{gmailScannableInboxes.length > 1 ? 's' : ''} prête{gmailScannableInboxes.length > 1 ? 's' : ''} au scan — cherche les PDFs reçus dans les 60 derniers jours et les ajoute à la queue d'analyse.</>
+                  ? <>{gmailScannableInboxes.length} boîte{gmailScannableInboxes.length > 1 ? 's' : ''} prête{gmailScannableInboxes.length > 1 ? 's' : ''} au scan — cherche les PDFs reçus dans la période ci-contre et les ajoute à la queue d'analyse.</>
                   : <>⚠️ Aucune boîte n'a le scope lecture activé. Reconnecte tes Gmail dans Réglages → Email pour activer le scan (1 clic, autorisation Google).</>
                 }
               </div>
             </div>
             {gmailScannableInboxes.length > 0 && (
-              <button
-                type="button"
-                onClick={handleGmailScan}
-                disabled={gmailScanning || gmailImporting}
-                className="flex-shrink-0 px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-xs font-bold whitespace-nowrap"
-              >
-                {gmailScanning ? '⏳ Scan…' : '🔍 Scanner Gmail'}
-              </button>
+              <div className="flex-shrink-0 flex items-center gap-2">
+                <label className="text-[10px] font-semibold text-blue-700 flex items-center gap-1">
+                  📅
+                  <select
+                    value={gmailScanDays}
+                    onChange={(e) => setGmailScanDays(Number(e.target.value))}
+                    disabled={gmailScanning || gmailImporting}
+                    className="px-2 py-1 bg-white border border-blue-300 rounded text-[11px] font-bold text-blue-700"
+                  >
+                    <option value={60}>60 derniers jours</option>
+                    <option value={180}>6 derniers mois</option>
+                    <option value={365}>1 an</option>
+                    <option value={730}>2 ans</option>
+                    <option value={1095}>3 ans (max)</option>
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={handleGmailScan}
+                  disabled={gmailScanning || gmailImporting}
+                  className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white rounded-xl text-xs font-bold whitespace-nowrap"
+                >
+                  {gmailScanning ? '⏳ Scan…' : '🔍 Scanner Gmail'}
+                </button>
+              </div>
             )}
           </div>
           {/* Résultats du scan : liste interactive avec checkboxes */}
