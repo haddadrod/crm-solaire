@@ -1671,6 +1671,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [showAssistantIa, setShowAssistantIa] = useState(false); // 🤖 modale assistant IA email
   const [copilotCtx, setCopilotCtx] = useState(null); // 🤖 contexte Sol : { action, dossier }
   const [showAlertesType, setShowAlertesType] = useState(null); // 🔔 type d'alerte ouvert : null | 'financement' | 'consuel' | 'paiement' | 'stagnation'
+  // 🔍 Recherche Gmail ciblée — depuis Factures manquantes (alerte) on ouvre
+  //    une modale pré-remplie avec le nom du client. À l'attach d'un PDF, on
+  //    bascule sur l'onglet Tri factures et on pousse le fichier dans la queue.
+  const [gmailSearchOpen, setGmailSearchOpen] = useState(null); // null | {query, contextLabel}
+  const [pendingTriFacturesFiles, setPendingTriFacturesFiles] = useState([]); // Files à ingérer par TriFacturesPanel
   const [showImport, setShowImport] = useState(false); // 📥 modal import dossiers
   const [showImportJson, setShowImportJson] = useState(false); // 📦 modal import dossiers JSON
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
@@ -5664,6 +5669,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
             isAdmin={isAdmin}
             gmailOAuth={gmailOAuth}
             onOpenDossier={(localId) => { setShowQuickViewId(localId); setQuickViewScrollTo('fournisseurs'); }}
+            pendingExternalFiles={pendingTriFacturesFiles}
+            clearPendingExternalFiles={() => setPendingTriFacturesFiles([])}
           />
         )}
 
@@ -5933,6 +5940,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
           />
         )}
 
+        {/* 🔍 RECHERCHE GMAIL ciblée — depuis Factures manquantes */}
+        {gmailSearchOpen && (
+          <GmailSearchModal
+            initialQuery={gmailSearchOpen.query}
+            contextLabel={gmailSearchOpen.contextLabel}
+            onClose={() => setGmailSearchOpen(null)}
+            onAttach={async (file) => {
+              setPendingTriFacturesFiles(prev => [...prev, file]);
+              setActiveTab('tri-factures');
+              setShowAlertesType(null);
+            }}
+          />
+        )}
+
         {/* ASSISTANT IA — secrétaire qui rédige les mails clients */}
         {showAssistantIa && (
           <AssistantIaModal
@@ -6011,6 +6032,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 return { ...d, statutControleQualite: 'ok', dateControleQualite: d.dateControleQualite || todayIso };
               }));
               setShowAlertesType(null);
+            }}
+            onOpenGmailSearch={(query, contextLabel) => {
+              setGmailSearchOpen({ query, contextLabel });
             }}
             onClose={() => setShowAlertesType(null)}
             onSelect={(localId) => {
@@ -6668,7 +6692,7 @@ function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier
 // Pas d'écrasement auto : si une proposition pointe vers une ligne qui a déjà
 // une facture, on alerte et on demande confirmation explicite (mais en
 // pratique buildCandidates côté API exclut déjà ces lignes — donc rare).
-function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gmailOAuth, onOpenDossier }) {
+function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gmailOAuth, onOpenDossier, pendingExternalFiles, clearPendingExternalFiles }) {
   const [files, setFiles] = useState([]); // [{ id, file, name, status, extracted, matching, error, pickedIdx }]
   // 📧 Scan Gmail — état du scan en cours + résultats par boîte. On stocke
   // sous forme de Map<attachmentKey, { selected, mail, inbox, attachment }>
@@ -6690,6 +6714,16 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
   const [dragOver, setDragOver] = useState(false);
   const [repairing, setRepairing] = useState(null); // null | { done, total, fixed, failed }
   const inputRef = useRef(null);
+
+  // 🔌 File externe (depuis la modale Factures manquantes via recherche Gmail
+  //    ciblée). On consomme la queue à chaque changement puis on vide pour ne
+  //    pas re-ingérer en boucle.
+  useEffect(() => {
+    if (!pendingExternalFiles || pendingExternalFiles.length === 0) return;
+    onFilesSelected(pendingExternalFiles);
+    if (clearPendingExternalFiles) clearPendingExternalFiles();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingExternalFiles]);
 
   // Chargement initial des factures « mises de côté » depuis Supabase.
   useEffect(() => {
@@ -6833,6 +6867,9 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
   const onFilesSelected = (fileList) => {
     const arr = Array.from(fileList || []).filter(f => f.type === 'application/pdf' || /\.pdf$/i.test(f.name));
     if (arr.length === 0) return;
+    // 🔁 Si un fichier vient d'une recherche Gmail externe (alerte Factures
+    //    manquantes), il atterrit ici par cette même route. On ne distingue
+    //    pas la provenance — pipeline IA identique.
     const newItems = arr.map(f => ({
       id: `tf_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
       file: f,
@@ -22217,6 +22254,175 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
   );
 }
 
+// ===================== RECHERCHE FACTURE DANS GMAIL =====================
+// Modale ciblée : tu lui donnes un mot-clé (nom client ou prestataire),
+// elle interroge l'action 'search' du backend Gmail, liste les PDFs qui
+// matchent (180 jours, toutes boîtes connectées, filtrés par
+// isLikelyFacture). Sur clic « Attacher », elle télécharge le PDF base64
+// et appelle onAttach(file) — le parent décide où placer le fichier
+// (ligne poseur, ligne fournisseur, etc.).
+
+function GmailSearchModal({ initialQuery, contextLabel, onClose, onAttach }) {
+  const [query, setQuery] = useState(initialQuery || '');
+  const [loading, setLoading] = useState(false);
+  const [results, setResults] = useState(null); // {results, errors}
+  const [error, setError] = useState('');
+  const [attaching, setAttaching] = useState(''); // key en cours d'attach
+
+  const runSearch = async (q) => {
+    if (!q || q.trim().length < 2) return;
+    setLoading(true); setError(''); setResults(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/gmail-oauth?action=search', {
+        method: 'POST', headers,
+        body: JSON.stringify({ query: q.trim() }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      setResults(payload.data || { results: [], errors: [] });
+    } catch (e) {
+      setError(e?.message || 'Erreur recherche');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Auto-recherche dès l'ouverture si une query est fournie
+  useEffect(() => { if (initialQuery) runSearch(initialQuery); }, []);
+
+  const handleAttach = async (inboxEmail, messageId, attachment) => {
+    const key = `${inboxEmail}|${messageId}|${attachment.attachmentId}`;
+    setAttaching(key);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const resp = await fetch('/api/gmail-oauth?action=fetch-attachment', {
+        method: 'POST', headers,
+        body: JSON.stringify({ email: inboxEmail, messageId, attachmentId: attachment.attachmentId }),
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(payload.error || `Erreur ${resp.status}`);
+      const base64 = payload.data?.base64 || '';
+      if (!base64) throw new Error('PDF vide');
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const fileName = attachment.filename || `gmail_${messageId}.pdf`;
+      const file = new File([blob], fileName, { type: 'application/pdf' });
+      await onAttach(file);
+      onClose();
+    } catch (e) {
+      setError(e?.message || 'Erreur téléchargement');
+    } finally {
+      setAttaching('');
+    }
+  };
+
+  const totalCount = (results?.results || []).reduce((s, r) => s + (r.messages || []).reduce((s2, m) => s2 + (m.attachments?.length || 0), 0), 0);
+
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-start justify-center p-4 pt-16" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col border-2 border-blue-200" onClick={(e) => e.stopPropagation()}>
+        <div className="p-5 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-cyan-50 flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <h2 className="text-lg font-bold text-slate-800">🔍 Rechercher dans Gmail</h2>
+            <p className="text-xs text-slate-600 mt-1">
+              {contextLabel ? <>Cherche les factures liées à <span className="font-bold">{contextLabel}</span> sur les 6 derniers mois.</> : 'Cherche des factures dans toutes les boîtes connectées (180 jours).'}
+            </p>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/60 rounded-lg" title="Fermer">
+            <X className="w-5 h-5 text-slate-600" />
+          </button>
+        </div>
+
+        <div className="p-4 border-b border-slate-100 bg-slate-50 flex gap-2">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') runSearch(query); }}
+            placeholder="Mot-clé (nom client, prestataire, n° facture…)"
+            className="flex-1 px-3 py-2 bg-white border-2 border-slate-200 focus:border-blue-400 rounded-lg text-sm"
+            autoFocus
+          />
+          <button
+            onClick={() => runSearch(query)}
+            disabled={loading || !query.trim()}
+            className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold disabled:opacity-50"
+          >
+            {loading ? '🔄 …' : '🔍 Chercher'}
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto">
+          {error && <div className="m-4 p-3 bg-rose-50 border border-rose-300 rounded-xl text-sm text-rose-700">{error}</div>}
+          {loading && (
+            <div className="p-8 text-center text-sm text-slate-500">
+              <div className="text-4xl mb-2">🔄</div>
+              <div>Recherche en cours dans tes boîtes Gmail…</div>
+            </div>
+          )}
+          {!loading && results && totalCount === 0 && (
+            <div className="p-8 text-center text-sm text-slate-500">
+              <div className="text-4xl mb-2">🤷</div>
+              <div className="font-bold text-slate-700">Aucune facture trouvée</div>
+              <div className="text-xs mt-1">Essaie un autre mot-clé (autre nom, n° de chantier, etc.).</div>
+            </div>
+          )}
+          {!loading && results && (results.errors || []).length > 0 && (
+            <div className="m-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+              <div className="font-bold mb-1">⚠ Erreurs sur certaines boîtes :</div>
+              {(results.errors || []).map((er, idx) => (
+                <div key={idx}>• <span className="font-mono">{er.email}</span> : {er.error}</div>
+              ))}
+            </div>
+          )}
+          {!loading && results && totalCount > 0 && (
+            <div className="divide-y divide-slate-100">
+              {(results.results || []).map(r => (
+                <div key={r.email}>
+                  <div className="px-4 py-2 bg-slate-50 text-xs font-semibold text-slate-600">
+                    📥 {r.email} <span className="text-slate-400">— {r.count} message{r.count > 1 ? 's' : ''}</span>
+                  </div>
+                  {(r.messages || []).map(m => (
+                    <div key={m.messageId} className="px-4 py-3 border-t border-slate-100">
+                      <div className="text-xs text-slate-500 mb-1 truncate">📧 {m.subject} <span className="text-slate-400">· {m.from}</span></div>
+                      {(m.attachments || []).map(a => {
+                        const key = `${r.email}|${m.messageId}|${a.attachmentId}`;
+                        return (
+                          <div key={a.attachmentId} className="flex items-center gap-2 py-1.5">
+                            <span className="text-base">📎</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="text-sm font-semibold text-slate-800 truncate">{a.filename}</div>
+                              <div className="text-[10px] text-slate-400">{a.sizeBytes ? `${Math.round(a.sizeBytes / 1024)} Ko` : ''}</div>
+                            </div>
+                            <button
+                              onClick={() => handleAttach(r.email, m.messageId, a)}
+                              disabled={!!attaching}
+                              className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold disabled:opacity-50"
+                            >
+                              {attaching === key ? '⬇️ …' : '📥 Attacher'}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ===================== RECHERCHE GLOBALE Ctrl+K =====================
 
 function GlobalSearchModal({ dossiers, STATUTS, isAdmin, onClose, onSelect }) {
@@ -24095,7 +24301,7 @@ function DoublonsModal({ groupes, STATUTS, onClose, onSelect, onDelete, isAdmin 
   );
 }
 
-function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onLogAction, onMarkAllCQDone, onClose, onSelect }) {
+function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onLogAction, onMarkAllCQDone, onOpenGmailSearch, onClose, onSelect }) {
   const config = {
     controleQualite: {
       title: '📋 Contrôle qualité — dossiers à valider',
@@ -24505,6 +24711,23 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
                         {cfg.lineLabel(d, r)}
                       </div>
                     </div>
+                    {type === 'facturesManquantes' && onOpenGmailSearch && (
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          const q = (d.nom || '').trim() || (d.id || '').toString();
+                          if (!q) return;
+                          onOpenGmailSearch(q, `${d.nom || ''} ${d.prenom || ''}`.trim());
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); const q = (d.nom || '').trim(); if (q) onOpenGmailSearch(q, `${d.nom || ''} ${d.prenom || ''}`.trim()); } }}
+                        title={`Cherche les factures de ${d.nom || ''} ${d.prenom || ''} dans tes Gmail`}
+                        className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-[10px] font-bold cursor-pointer transition-colors"
+                      >
+                        🔍 Gmail
+                      </span>
+                    )}
                     <div className="flex-shrink-0 text-right">
                       <div className={`text-lg font-bold ${levelStyle}`}>{joursAffiches}j</div>
                       <div className="text-[9px] text-slate-400">{cfg.suffixLabel}</div>
