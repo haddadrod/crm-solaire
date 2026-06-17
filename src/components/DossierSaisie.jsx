@@ -7311,12 +7311,19 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
         const arrKey = prop.type; // 'fournisseurs' | 'regies' | 'poseurs'
         const arr = Array.isArray(d[arrKey]) ? [...d[arrKey]] : [];
         if (!arr[prop.index]) return d;
+        // 💰 Reporte le HT extrait par l'IA sur la ligne (utile sur les lignes
+        // créées manuellement où aucun tarif Réglages n'existe). On respecte
+        // les valeurs déjà saisies manuellement (|| existant).
+        const ht = htFromExtraction(e);
         arr[prop.index] = {
           ...arr[prop.index],
           factureFile: fileId,
           factureNo: arr[prop.index].factureNo || e.factureNo || '',
           bl: arr[prop.index].bl || e.bl || '',
+          htCustom: arr[prop.index].htCustom || (ht > 0 ? String(ht) : ''),
+          dateFacture: arr[prop.index].dateFacture || (e.dateFacture ? String(e.dateFacture) : ''),
           tauxTva: (typeof e.tauxTva === 'number') ? e.tauxTva : (arr[prop.index].tauxTva ?? undefined),
+          sansTva: (typeof e.tauxTva === 'number' && e.tauxTva === 0) ? true : (arr[prop.index].sansTva || false),
         };
         return { ...d, [arrKey]: arr, savedAt: now, modifiedAt: now, modifiedBy: '[tri-factures]' };
       }));
@@ -15556,7 +15563,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           <label className="block text-[10px] font-semibold text-slate-500 mb-1">Régie</label>
                           <select value={r.nom} onChange={(e) => upd({ nom: e.target.value })} className={inputCls}>
                             <option value="">— Choisir une régie —</option>
-                            {REGIES.map(re => <option key={re} value={re}>{re}</option>)}
+                            {r.nom && !REGIES.includes(r.nom) && <option key={r.nom} value={r.nom}>{r.nom} (créé manuellement)</option>}
+                          {REGIES.map(re => <option key={re} value={re}>{re}</option>)}
                           </select>
                         </div>
                         {isAdmin && (
@@ -15686,6 +15694,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <label className="block text-[10px] font-semibold text-slate-500 mb-1">Poseur</label>
                         <select value={p.nom} onChange={(e) => upd({ nom: e.target.value })} className={inputCls}>
                           <option value="">— Choisir un poseur —</option>
+                          {p.nom && !POSEURS.includes(p.nom) && <option key={p.nom} value={p.nom}>{p.nom} (créé manuellement)</option>}
                           {POSEURS.map(n => <option key={n} value={n}>{n}</option>)}
                         </select>
                       </div>
@@ -15822,6 +15831,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <label className="block text-[10px] font-semibold text-slate-500 mb-1">Fournisseur</label>
                         <select value={f.nom} onChange={(e) => upd({ nom: e.target.value })} className={inputCls}>
                           <option value="">— Choisir un fournisseur —</option>
+                          {f.nom && !FOURNISSEURS.includes(f.nom) && <option key={f.nom} value={f.nom}>{f.nom} (créé manuellement)</option>}
                           {FOURNISSEURS.map(n => <option key={n} value={n}>{n}</option>)}
                         </select>
                       </div>
@@ -21315,7 +21325,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <div className="flex items-center gap-1">
                       <select value={r.nom || ''} onChange={(e) => updateRegie(i, { nom: e.target.value })} className={inputCls + ' flex-1 font-bold text-purple-700'}>
                         <option value="">— Choisir une régie —</option>
-                        {REGIES.map(re => <option key={re} value={re}>{re}</option>)}
+                        {r.nom && !REGIES.includes(r.nom) && <option key={r.nom} value={r.nom}>{r.nom} (créé manuellement)</option>}
+                          {REGIES.map(re => <option key={re} value={re}>{re}</option>)}
                       </select>
                       <button onClick={() => rmRegie(i)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded">
                         <Trash2 className="w-3.5 h-3.5" />
@@ -21613,7 +21624,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   <div className="flex items-center gap-1.5">
                     <select value={p.nom || ''} onChange={(e) => updatePoseur(i, { nom: e.target.value })} className="flex-1 min-w-0 px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-bold text-amber-800">
                       <option value="">— Choisir —</option>
-                      {POSEURS.map(n => <option key={n} value={n}>{n}</option>)}
+                      {p.nom && !POSEURS.includes(p.nom) && <option key={p.nom} value={p.nom}>{p.nom} (créé manuellement)</option>}
+                          {POSEURS.map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
                     <button onClick={() => removePoseur(i)} className="p-1 text-rose-500 hover:bg-rose-100 rounded">
                       <Trash2 className="w-3 h-3" />
@@ -21835,7 +21847,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   <div className="flex items-center gap-1.5">
                     <select value={f.nom || ''} onChange={(e) => updateFournisseur(i, { nom: e.target.value })} className="flex-1 min-w-0 px-2 py-1 bg-white border border-orange-200 rounded-lg text-[11px] font-bold text-orange-800">
                       <option value="">— Choisir —</option>
-                      {FOURNISSEURS.map(n => <option key={n} value={n}>{n}</option>)}
+                      {f.nom && !FOURNISSEURS.includes(f.nom) && <option key={f.nom} value={f.nom}>{f.nom} (créé manuellement)</option>}
+                          {FOURNISSEURS.map(n => <option key={n} value={n}>{n}</option>)}
                     </select>
                     <button onClick={() => removeFournisseur(i)} className="p-1 text-rose-500 hover:bg-rose-100 rounded">
                       <Trash2 className="w-3 h-3" />
