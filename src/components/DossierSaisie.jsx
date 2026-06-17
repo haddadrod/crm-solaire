@@ -22365,7 +22365,13 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
     .replace(/[^A-Z0-9]/g, '');
 
   const fetchAttachmentBase64 = async (inboxEmail, messageId, attachmentId) => {
-    const { data: { session } } = await supabase.auth.getSession();
+    let sessionData;
+    try {
+      sessionData = await supabase.auth.getSession();
+    } catch (e) {
+      throw new Error(`Session auth indisponible : ${(e && e.message) || 'inconnu'}`);
+    }
+    const session = sessionData?.data?.session || null;
     const headers = { 'Content-Type': 'application/json' };
     if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
     const resp = await fetch('/api/gmail-oauth?action=fetch-attachment', {
@@ -22373,8 +22379,8 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
       body: JSON.stringify({ email: inboxEmail, messageId, attachmentId }),
     });
     const payload = await resp.json().catch(() => ({}));
-    if (!resp.ok) throw new Error(payload.error || `Erreur ${resp.status}`);
-    const base64 = payload.data?.base64 || '';
+    if (!resp.ok) throw new Error((payload && payload.error) || `Erreur ${resp.status}`);
+    const base64 = (payload && payload.data && payload.data.base64) || '';
     if (!base64) throw new Error('PDF vide');
     return { base64, headers };
   };
@@ -22480,42 +22486,57 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
     setIaAnalyzing(true);
     setError('');
     setIaProgress({ done: 0, total: attachments.length });
-    const newIa = {};
-    // Batch parallèle de 4 — équilibre vitesse / surcharge serveur Vercel.
-    const BATCH = 4;
-    for (let i = 0; i < attachments.length; i += BATCH) {
-      const slice = attachments.slice(i, i + BATCH);
-      await Promise.all(slice.map(async ({ inbox, messageId, attachment }) => {
-        const key = `${inbox}|${messageId}|${attachment.attachmentId}`;
-        try {
-          const { base64, headers } = await fetchAttachmentBase64(inbox, messageId, attachment.attachmentId);
-          const er = await fetch('/api/extract-pdf', {
-            method: 'POST', headers,
-            body: JSON.stringify({ type: 'facture', imageBase64: base64, mediaType: 'application/pdf' }),
-          });
-          const ep = await er.json().catch(() => ({}));
-          if (!er.ok) throw new Error(ep.error || `Erreur ${er.status}`);
-          const data = ep.data || {};
-          const refClient = normalizeForMatch(data.referenceChantier);
-          const matched = refClient && hint && (refClient.includes(hint) || hint.includes(refClient));
-          newIa[key] = {
-            status: 'done',
-            refChantier: data.referenceChantier || '',
-            factureNo: data.factureNo || '',
-            montantHt: data.montantHt || 0,
-            fournisseur: data.fournisseur || '',
-            matched: !!matched,
-          };
-        } catch (e) {
-          newIa[key] = { status: 'error', error: e?.message || 'IA échouée' };
-        } finally {
-          setIaProgress(prev => ({ ...prev, done: prev.done + 1 }));
-          // Mise à jour incrémentale pour UI réactive
-          setIaResults(prev => ({ ...prev, ...newIa }));
-        }
-      }));
+
+    // Setter par-clé : pas de mutation partagée, donc pas de race entre
+    // promesses parallèles. Chaque appel ne touche QUE sa propre entrée.
+    const setOne = (key, info) => {
+      setIaResults(prev => ({ ...prev, [key]: info }));
+    };
+    const bumpProgress = () => {
+      setIaProgress(prev => ({ ...prev, done: prev.done + 1 }));
+    };
+
+    try {
+      // Batch parallèle de 4 — équilibre vitesse / surcharge serveur Vercel.
+      const BATCH = 4;
+      for (let i = 0; i < attachments.length; i += BATCH) {
+        const slice = attachments.slice(i, i + BATCH);
+        // allSettled : on n'arrête PAS si un PDF foire, on garde les autres.
+        await Promise.allSettled(slice.map(async ({ inbox, messageId, attachment }) => {
+          const key = `${inbox}|${messageId}|${attachment.attachmentId}`;
+          try {
+            const { base64, headers } = await fetchAttachmentBase64(inbox, messageId, attachment.attachmentId);
+            const er = await fetch('/api/extract-pdf', {
+              method: 'POST', headers,
+              body: JSON.stringify({ type: 'facture', imageBase64: base64, mediaType: 'application/pdf' }),
+            });
+            const ep = await er.json().catch(() => ({}));
+            if (!er.ok) throw new Error(ep.error || `Erreur ${er.status}`);
+            const data = (ep && ep.data) || {};
+            const refClient = normalizeForMatch(data.referenceChantier);
+            const matched = !!(refClient && hint && (refClient.includes(hint) || hint.includes(refClient)));
+            setOne(key, {
+              status: 'done',
+              refChantier: String(data.referenceChantier || ''),
+              factureNo: String(data.factureNo || ''),
+              montantHt: Number(data.montantHt) || 0,
+              fournisseur: String(data.fournisseur || ''),
+              matched,
+            });
+          } catch (e) {
+            setOne(key, { status: 'error', error: (e && e.message) || 'IA échouée' });
+          } finally {
+            bumpProgress();
+          }
+        }));
+      }
+    } catch (e) {
+      // Filet de sécurité global : si quoi que ce soit casse hors des
+      // try/catch internes, on affiche l'erreur sans planter la modale.
+      setError(`Erreur IA : ${(e && e.message) || 'inconnu'}`);
+    } finally {
+      setIaAnalyzing(false);
     }
-    setIaAnalyzing(false);
   };
 
   const totalCount = (results?.results || []).reduce((s, r) => s + (r.messages || []).reduce((s2, m) => s2 + (m.attachments?.length || 0), 0), 0);
