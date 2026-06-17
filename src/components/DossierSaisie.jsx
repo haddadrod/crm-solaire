@@ -7714,8 +7714,31 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
       {/* En-tête : nom du fichier + statut + close */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-bold text-slate-800 truncate" title={item.name}>
-            📄 {item.name}
+          <div className="text-sm font-bold text-slate-800 truncate flex items-center gap-2" title={item.name}>
+            <span className="truncate">📄 {item.name}</span>
+            {item.file && (
+              <button
+                type="button"
+                onClick={() => {
+                  try {
+                    const url = URL.createObjectURL(item.file);
+                    const win = window.open(url, '_blank');
+                    if (!win) {
+                      // popup bloqué → fallback download
+                      const a = document.createElement('a');
+                      a.href = url; a.download = item.name || 'facture.pdf';
+                      document.body.appendChild(a); a.click();
+                      setTimeout(() => document.body.removeChild(a), 0);
+                    }
+                    setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+                  } catch (e) { alert('Aperçu impossible : ' + e.message); }
+                }}
+                className="shrink-0 px-2 py-0.5 rounded bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-[10px] font-bold"
+                title="Ouvrir le PDF dans un nouvel onglet"
+              >
+                👁️ Aperçu
+              </button>
+            )}
           </div>
           <div className="text-[10px] text-slate-500">{item.sizeKb} Ko</div>
         </div>
