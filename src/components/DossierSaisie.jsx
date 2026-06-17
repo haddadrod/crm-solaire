@@ -643,7 +643,7 @@ const computeTtcPresta = (ht, sansTva, legacyTauxTva) => {
 // ou clic. Stocke le fichier inline (window.storage `file:<id>`) et garde
 // l'ID du fichier dans la prop `fileId`. Onglet 👁️ pour prévisualiser dans
 // un nouvel onglet.
-function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false, pennylaneInfo = null, onPennylaneSuccess = null, label = 'facture' }) {
+function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false, pennylaneInfo = null, onPennylaneSuccess = null, label = 'facture', onOpenGmailSearch = null, gmailQuery = '', gmailContextLabel = '' }) {
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [pushingPennylane, setPushingPennylane] = useState(false);
@@ -954,16 +954,37 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
           >✕</button>
         </div>
       )}
-      <label
-        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f) handleUpload(f); }}
-        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-        className={`flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-dashed bg-white text-[10px] cursor-pointer ${palette} ${uploading || extracting ? 'opacity-60' : ''}`}
-      >
-        <span>
-          {uploading ? '⏳ Upload…' : extracting ? '✨ Lecture IA…' : (onExtract ? `📎 Glisser PDF — l'IA lira la ${label} ✨` : `📎 Glisser PDF ${label} ou cliquer`)}
-        </span>
-        <input type="file" accept="application/pdf,image/*" className="hidden" disabled={uploading || extracting} onChange={(e) => handleUpload(e.target.files?.[0])} />
-      </label>
+      <div className="flex items-stretch gap-1">
+        <label
+          onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f) handleUpload(f); }}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+          className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-dashed bg-white text-[10px] cursor-pointer ${palette} ${uploading || extracting ? 'opacity-60' : ''}`}
+        >
+          <span>
+            {uploading ? '⏳ Upload…' : extracting ? '✨ Lecture IA…' : (onExtract ? `📎 Glisser PDF — l'IA lira la ${label} ✨` : `📎 Glisser PDF ${label} ou cliquer`)}
+          </span>
+          <input type="file" accept="application/pdf,image/*" className="hidden" disabled={uploading || extracting} onChange={(e) => handleUpload(e.target.files?.[0])} />
+        </label>
+        {onOpenGmailSearch && gmailQuery && (
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              onOpenGmailSearch(
+                gmailQuery,
+                gmailContextLabel || gmailQuery,
+                async (file) => { await handleUpload(file); }
+              );
+            }}
+            disabled={uploading || extracting}
+            className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1.5 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold cursor-pointer disabled:opacity-50"
+            title={`Cherche cette facture dans Gmail (${gmailQuery})`}
+          >
+            🔍 Gmail
+          </button>
+        )}
+      </div>
     </>
   );
 }
@@ -1671,11 +1692,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [showAssistantIa, setShowAssistantIa] = useState(false); // 🤖 modale assistant IA email
   const [copilotCtx, setCopilotCtx] = useState(null); // 🤖 contexte Sol : { action, dossier }
   const [showAlertesType, setShowAlertesType] = useState(null); // 🔔 type d'alerte ouvert : null | 'financement' | 'consuel' | 'paiement' | 'stagnation'
-  // 🔍 Recherche Gmail ciblée — depuis Factures manquantes (alerte) on ouvre
-  //    une modale pré-remplie avec le nom du client. À l'attach d'un PDF, on
-  //    bascule sur l'onglet Tri factures et on pousse le fichier dans la queue.
-  const [gmailSearchOpen, setGmailSearchOpen] = useState(null); // null | {query, contextLabel}
+  // 🔍 Recherche Gmail ciblée. Deux flows :
+  //   1. Depuis Factures manquantes → onAttach laissé null → fallback :
+  //      bascule sur l'onglet Tri factures + queue le PDF pour analyse IA.
+  //   2. Depuis une ligne Poseur/Régie/Fournisseur d'un dossier → onAttach
+  //      fourni → bind direct du PDF sur ce prestataire précis (pas de
+  //      détour par Tri factures puisque la cible est déjà connue).
+  const [gmailSearchOpen, setGmailSearchOpen] = useState(null); // null | {query, contextLabel, onAttach?}
   const [pendingTriFacturesFiles, setPendingTriFacturesFiles] = useState([]); // Files à ingérer par TriFacturesPanel
+  // Helper exposé aux enfants : ouvre la modale avec un onAttach custom.
+  const openGmailSearch = (query, contextLabel, onAttach) => {
+    setGmailSearchOpen({ query, contextLabel, onAttach });
+  };
   const [showImport, setShowImport] = useState(false); // 📥 modal import dossiers
   const [showImportJson, setShowImportJson] = useState(false); // 📦 modal import dossiers JSON
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
@@ -5731,6 +5759,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             dossiers={dossiers}
             currentUser={currentUser}
             onClose={resetForm} onSubmit={handleSubmit} isAdmin={isAdmin}
+            onOpenGmailSearch={openGmailSearch}
           />
         )}
 
@@ -5884,6 +5913,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             gmailOAuth={gmailOAuth}
             societes={societes}
             messageTemplates={messageTemplates}
+            onOpenGmailSearch={openGmailSearch}
           />
         )}
 
@@ -5940,16 +5970,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
           />
         )}
 
-        {/* 🔍 RECHERCHE GMAIL ciblée — depuis Factures manquantes */}
+        {/* 🔍 RECHERCHE GMAIL ciblée — depuis Factures manquantes OU depuis
+            une ligne Poseur/Régie/Fournisseur d'un dossier. */}
         {gmailSearchOpen && (
           <GmailSearchModal
             initialQuery={gmailSearchOpen.query}
             contextLabel={gmailSearchOpen.contextLabel}
             onClose={() => setGmailSearchOpen(null)}
             onAttach={async (file) => {
-              setPendingTriFacturesFiles(prev => [...prev, file]);
-              setActiveTab('tri-factures');
-              setShowAlertesType(null);
+              if (gmailSearchOpen.onAttach) {
+                // Flow 2 : bind direct sur la ligne prestataire (callback fourni).
+                await gmailSearchOpen.onAttach(file);
+              } else {
+                // Flow 1 : depuis Factures manquantes → pipeline tri-factures.
+                setPendingTriFacturesFiles(prev => [...prev, file]);
+                setActiveTab('tri-factures');
+                setShowAlertesType(null);
+              }
             }}
           />
         )}
@@ -6034,7 +6071,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
               setShowAlertesType(null);
             }}
             onOpenGmailSearch={(query, contextLabel) => {
-              setGmailSearchOpen({ query, contextLabel });
+              // Flow 1 : pas d'onAttach → fallback Tri factures.
+              openGmailSearch(query, contextLabel, null);
             }}
             onClose={() => setShowAlertesType(null)}
             onSelect={(localId) => {
@@ -14109,7 +14147,7 @@ function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
   );
 }
 
-function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], projexioMoisCourant = { parSociete: {} }, projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, dossiers = [], currentUser, onClose, onSubmit, isAdmin }) {
+function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], projexioMoisCourant = { parSociete: {} }, projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, dossiers = [], currentUser, onClose, onSubmit, isAdmin, onOpenGmailSearch = null }) {
   // 🚨 Détection de doublons : scanne les dossiers existants à mesure que
   // l'utilisateur saisit nom/prenom/tel. Match strict sur :
   //   - téléphone normalisé E.164 (le plus fiable)
@@ -15245,6 +15283,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                               pushedId: r.pennylaneInvoiceId,
                             }}
                             onPennylaneSuccess={(id) => upd({ pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                            onOpenGmailSearch={onOpenGmailSearch}
+                            gmailQuery={`${r.nom || ''} ${formData.nom || ''}`.trim()}
+                            gmailContextLabel={`${r.nom || 'Régie'} chez ${formData.nom || ''} ${formData.prenom || ''}`.trim()}
                           />
                         </div>
                       )}
@@ -15386,6 +15427,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             pushedId: p.pennylaneInvoiceId,
                           }}
                           onPennylaneSuccess={(id) => upd({ pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                          onOpenGmailSearch={onOpenGmailSearch}
+                          gmailQuery={`${p.nom || ''} ${formData.nom || ''}`.trim()}
+                          gmailContextLabel={`${p.nom || 'Poseur'} chez ${formData.nom || ''} ${formData.prenom || ''}`.trim()}
                         />
                       </div>
                     )}
@@ -15522,6 +15566,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             pushedId: f.pennylaneInvoiceId,
                           }}
                           onPennylaneSuccess={(id) => upd({ pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                          onOpenGmailSearch={onOpenGmailSearch}
+                          gmailQuery={`${f.nom || ''} ${formData.nom || ''}`.trim()}
+                          gmailContextLabel={`${f.nom || 'Fournisseur'} chez ${formData.nom || ''} ${formData.prenom || ''}`.trim()}
                         />
                       </div>
                     )}
@@ -18395,7 +18442,7 @@ function BLMaterielBlock({ d, onUpdate }) {
   );
 }
 
-function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth, societes = [], messageTemplates = [], dossiers = [] }) {
+function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth, societes = [], messageTemplates = [], dossiers = [], onOpenGmailSearch = null }) {
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
   const canSeeMarges = isAdmin || permissions?.voirMarges === true;
@@ -21016,6 +21063,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 pushedId: r.pennylaneInvoiceId,
                               }}
                               onPennylaneSuccess={(id) => updateRegie(i, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                              onOpenGmailSearch={onOpenGmailSearch}
+                              gmailQuery={`${r.nom || ''} ${dossier.nom || ''}`.trim()}
+                              gmailContextLabel={`${r.nom || 'Régie'} chez ${dossier.nom || ''} ${dossier.prenom || ''}`.trim()}
                             />
                           </>
                         )}
@@ -21383,6 +21433,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           pushedId: p.pennylaneInvoiceId,
                         }}
                         onPennylaneSuccess={(id) => updatePoseur(i, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                        onOpenGmailSearch={onOpenGmailSearch}
+                        gmailQuery={`${p.nom || ''} ${dossier.nom || ''}`.trim()}
+                        gmailContextLabel={`${p.nom || 'Poseur'} chez ${dossier.nom || ''} ${dossier.prenom || ''}`.trim()}
                       />
                     </>
                   )}
@@ -21520,6 +21573,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           pushedId: f.pennylaneInvoiceId,
                         }}
                         onPennylaneSuccess={(id) => updateFournisseur(i, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                        onOpenGmailSearch={onOpenGmailSearch}
+                        gmailQuery={`${f.nom || ''} ${dossier.nom || ''}`.trim()}
+                        gmailContextLabel={`${f.nom || 'Fournisseur'} chez ${dossier.nom || ''} ${dossier.prenom || ''}`.trim()}
                       />
                       {/* 🧾 Avoirs (notes de crédit) — viennent en déduction du coût
                           fournisseur. Ex : matériel récupéré chez le poseur puis
