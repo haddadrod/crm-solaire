@@ -7846,6 +7846,55 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                               <div className="text-slate-600 truncate" title={m.subject}>✉️ {m.subject || '(sans sujet)'}</div>
                               <div className="text-slate-500 truncate" title={m.from}>De {m.from || '?'} {dateLabel ? `· ${dateLabel}` : ''}</div>
                             </div>
+                            {/* 👁️ Aperçu PDF — télécharge le base64 depuis Gmail puis ouvre
+                                dans un nouvel onglet. stopPropagation pour ne pas toggle
+                                la checkbox du label parent. */}
+                            <button
+                              type="button"
+                              onClick={async (ev) => {
+                                ev.preventDefault();
+                                ev.stopPropagation();
+                                // window.open SYNCHRONE dans le geste user, sinon Safari bloque
+                                const win = window.open('about:blank', '_blank');
+                                if (win) {
+                                  try { win.document.write('<title>Chargement…</title><p style="font-family:sans-serif;padding:24px;color:#666">Chargement du PDF…</p>'); } catch (_) {}
+                                }
+                                try {
+                                  const { data: { session } } = await supabase.auth.getSession();
+                                  const headers = { 'Content-Type': 'application/json' };
+                                  if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                                  const resp = await fetch('/api/gmail-oauth?action=fetch-attachment', {
+                                    method: 'POST', headers,
+                                    body: JSON.stringify({ email: r.email, messageId: m.messageId, attachmentId: a.attachmentId }),
+                                  });
+                                  const payload = await resp.json().catch(() => ({}));
+                                  if (!resp.ok) throw new Error(payload.error || `Erreur ${resp.status}`);
+                                  const base64 = payload.data?.base64 || '';
+                                  if (!base64) throw new Error('PDF vide');
+                                  const bin = atob(base64);
+                                  const bytes = new Uint8Array(bin.length);
+                                  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+                                  const blob = new Blob([bytes], { type: 'application/pdf' });
+                                  const url = URL.createObjectURL(blob);
+                                  if (win && !win.closed) {
+                                    win.location.href = url;
+                                  } else {
+                                    const aLink = document.createElement('a');
+                                    aLink.href = url; aLink.download = a.filename || 'preview.pdf';
+                                    document.body.appendChild(aLink); aLink.click();
+                                    setTimeout(() => document.body.removeChild(aLink), 0);
+                                  }
+                                  setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+                                } catch (err) {
+                                  if (win) try { win.close(); } catch (_) {}
+                                  alert(`Aperçu impossible : ${err?.message || 'inconnu'}`);
+                                }
+                              }}
+                              className="flex-shrink-0 self-center px-2 py-1 rounded bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[10px] font-bold"
+                              title="Aperçu du PDF dans un nouvel onglet (sans importer)"
+                            >
+                              👁️ Aperçu
+                            </button>
                           </label>
                         );
                       }))}
