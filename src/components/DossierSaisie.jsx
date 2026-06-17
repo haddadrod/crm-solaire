@@ -4017,6 +4017,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       return Math.max(0, Math.round((today - r) / 86400000));
     };
     const rappelsClient = dossiers
+      .filter(d => d.createdBy !== 'import_sheet') // 📥 importés du sheet : pas d'alerte
       .filter(d => !d.payeClient && d.dateInsta && d.montantTotal)
       .map(d => ({ ...d, joursAttente: joursEcoules(d.dateInsta) }))
       .filter(d => d.joursAttente >= 30)
@@ -4024,6 +4025,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     const rappelsPrestataires = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       // Prestataires externes (poseurs, fournisseurs, régie externe) : pose faite + client a payé
       if (d.dateInsta && d.payeClient) {
         const j = joursEcoules(d.dateInsta);
@@ -4090,6 +4092,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     const rappelsStagnation = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       const seuil = SEUILS_STATUT[d.statut];
       if (seuil == null) return; // statut final ou non listé
 
@@ -4126,6 +4129,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Rappels financement — envoyés sans retour depuis +2 jours
     const rappelsFinancement = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (!d.dateEnvoiFin) return; // pas envoyé
       if (d.dateRetourFin) return; // déjà reçu retour
       if (d.statutFin === 'accepté' || d.statutFin === 'refusé' || d.statutFin === 'manque_doc') return; // déjà répondu
@@ -4143,6 +4147,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // récupérer les docs côté client puis renvoyer à la banque).
     const rappelsManqueDoc = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (d.statutFin !== 'manque_doc') return;
       if (d.dateRenvoiDocs) return; // déjà renvoyés (l'user oubliera juste de repasser à 'envoyé')
       // Jours depuis le retour banque (ou envoi initial à défaut)
@@ -4162,6 +4167,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     //   critical : 15+ jours
     const rappelsLitige = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (!d.hasLitige) return;
       if (d.litigeTraite) return; // déjà clos
       if (!d.litigeDateCourrierRecommande) return; // pas de courrier → rien à mesurer
@@ -4180,6 +4186,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     //   critical : 10+ jours (intervention trop tardive)
     const rappelsSav = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (!d.hasSav) return;
       if (d.savTraite) return;
       const ref = d.savDateOuverture || d.savedAt || d.createdAt;
@@ -4199,6 +4206,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     //   - date dépassée de 3j+               → critical
     const rappelsClientRappel = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (!d.hasRappel) return;
       if (d.rappelFait) return;
       let jours = 0; // jours de retard sur la date planifiée
@@ -4216,6 +4224,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Rappels Paiement — contrôle livraison fait sans paiement reçu depuis +2 jours
     const rappelsPaiement = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (!d.dateControleLivraison) return; // pas de contrôle
       if (d.datePaiementBanque || d.payeClient) return; // déjà payé
       const jours = joursEcoules(d.dateControleLivraison);
@@ -4233,6 +4242,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Rappels Contrôle livraison — Consuel accepté + originaux reçus banque mais contrôle pas encore fait
     const rappelsControleLivraison = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       // Consuel accepté ?
       const consuelAccepte = d.statutConsuel === 'accepté' || (d.dateConsuel && d.statutConsuel !== 'visite');
       if (!consuelAccepte) return;
@@ -4253,6 +4263,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Rappels Contrôle qualité — dossiers à valider/refuser (pas encore décidé)
     const rappelsControleQualite = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (d.statutControleQualite === 'ok' || d.statutControleQualite === 'pas_ok') return; // déjà décidé
       if (finalStatuses.includes(d.statut)) return;
       const ref = d.createdAt || d.savedAt || d.dateInsta;
@@ -4268,6 +4279,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Rappels À envoyer en banque — CQ validé mais pas encore envoyé
     const rappelsAEnvoyerBanque = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (d.statutControleQualite !== 'ok') return; // pas validé OK
       if (d.dateEnvoiFin) return; // déjà envoyé
       if (finalStatuses.includes(d.statut)) return;
@@ -4288,6 +4300,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // s'il n'a pas de poseur, bascule dans « Poseur à assigner ».
     const rappelsAEnvoyerPose = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (d.statutFin !== 'accepté') return; // pas accordé par banque
       if (d.dateEnvoiPose) return; // déjà envoyé en pose → on bascule sur l'autre bucket
       if (finalStatuses.includes(d.statut)) return;
@@ -4309,6 +4322,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // dossier payé, etc.) — l'utilisateur a déjà clôturé.
     const rappelsPoseurNonAssigne = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (finalStatuses.includes(d.statut)) return;
       // Ne concerne que les dossiers dont le financement est bouclé (accord
       // banque, ou comptant). Avant ça, "poseur à assigner" n'a aucun sens,
@@ -4347,6 +4361,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // de cocher "posé". Ou la pose a été décalée sans mise à jour.
     const rappelsPoseNonFinie = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (!d.dateEnvoiPose) return; // pas de date de pose planifiée
       if (d.dateInsta) return; // déjà marquée posée
       if (d.statutPose === 'visite_ok') return; // déjà OK
@@ -4365,6 +4380,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Rappels Mairie — dossier créé mais déclaration mairie pas envoyée (ou refusée et non renvoyée)
     const rappelsAEnvoyerMairie = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (d.statutMairie === 'accepté' || d.dateAccordMairie) return; // déjà accepté
       if (finalStatuses.includes(d.statut)) return;
       if (d.dateEnvoiMairie && d.statutMairie !== 'refusé') return; // envoyé, en attente de réponse (pas une alerte)
@@ -4382,6 +4398,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Rappels À envoyer Consuel — pose terminée mais Consuel pas encore envoyé
     const rappelsAEnvoyerConsuel = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       // Pose terminée ? (statut visite_ok OU date de pose remplie)
       // Pose réellement terminée = bouton « ✓ Posé » cliqué (statutPose = visite_ok).
       // ⚠️ NE PAS se baser sur dateInsta qui est la date prévue (pré-remplie).
@@ -4403,6 +4420,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // raccordement Enedis pas encore envoyée. Même logique que le Consuel.
     const rappelsAEnvoyerRaccordement = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       // Pose réellement terminée = bouton « ✓ Posé » cliqué (statutPose = visite_ok).
       // ⚠️ NE PAS se baser sur dateInsta qui est la date prévue (pré-remplie).
       const poseFinie = d.statutPose === 'visite_ok';
@@ -4421,6 +4439,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Rappels Originaux — pose terminée mais originaux pas reçus banque
     const rappelsOriginaux = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (d.pasOriginauxRequis) return; // pas concerné
       // Pose terminée ?
       // Pose réellement terminée = bouton « ✓ Posé » cliqué (statutPose = visite_ok).
@@ -4446,6 +4465,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // 💰 Récupération TVA — délai 6 mois (180 jours) à partir du paiement banque
     const rappelsRecupTva = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       // Seulement si client payé et démarche pas encore terminée
       if (!d.payeClient) return;
       if (d.tvaStatus === 'recuperee' || d.tvaStatus === 'non_concerne') return;
@@ -4481,6 +4501,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // uploadée. Plus la pose est ancienne, plus c'est urgent.
     const rappelsFacturesManquantes = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       // Pose réellement terminée — voir commentaire au-dessus des autres rappels.
       const posee = d.statutPose === 'visite_ok';
       if (!posee) return;
@@ -4522,6 +4543,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // (elles relèvent de "factures manquantes" ci-dessus).
     const rappelsPennylaneAEnvoyer = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       // Condition métier : on ne pousse à Pennylane qu'une fois encaissé.
       const paye = !!(d.payeClient || d.datePaiementBanque);
       if (!paye) return;
@@ -4548,6 +4570,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // ne l'a pas rendu, ça reste dans cette liste pour qu'on ne l'oublie pas.
     const rappelsMaterielNonRendu = [];
     dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (!d.blMaterielPoseur) return; // pas de BL matériel → rien à tracer
       if (d.materielRendu) return; // déjà rendu → OK
       // On déclenche l'alerte uniquement quand la pose ne se fera pas (ou n'a
