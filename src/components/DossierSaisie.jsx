@@ -7425,6 +7425,31 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
               {(gmailScanResults.results || []).length === 0 && (gmailScanResults.errors || []).length === 0 && (
                 <div className="text-[11px] italic text-blue-700">Aucun PDF trouvé dans les boîtes connectées.</div>
               )}
+              {/* ☑ Tout cocher / décocher — pratique quand on a 50+ PDFs et
+                  qu'on ne veut en garder qu'une poignée (ou l'inverse). */}
+              {(() => {
+                const allKeys = [];
+                for (const r of gmailScanResults.results || []) {
+                  for (const m of r.messages || []) {
+                    for (const a of m.attachments || []) {
+                      allKeys.push(gmailAttachmentKey(r.email, m.messageId, a.attachmentId));
+                    }
+                  }
+                }
+                if (allKeys.length === 0) return null;
+                const allChecked = allKeys.length > 0 && allKeys.every(k => gmailSelection.has(k));
+                return (
+                  <div className="flex items-center gap-2 px-1">
+                    <button
+                      onClick={() => setGmailSelection(allChecked ? new Set() : new Set(allKeys))}
+                      className="px-2 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-[10px] font-bold"
+                    >
+                      {allChecked ? '☐ Tout décocher' : '☑ Tout cocher'} ({allKeys.length})
+                    </button>
+                    <span className="text-[10px] text-blue-600">{gmailSelection.size} sélectionné{gmailSelection.size > 1 ? 's' : ''}</span>
+                  </div>
+                );
+              })()}
               {(gmailScanResults.results || []).map(r => {
                 const totalAttachments = (r.messages || []).reduce((s, m) => s + (m.attachments || []).length, 0);
                 if (totalAttachments === 0) return null;
