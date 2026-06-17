@@ -7280,6 +7280,80 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
     }
   };
 
+  // 🧾 Crée (ou retrouve) un fournisseur sur le dossier, puis lui attache
+  //    le PDF courant comme AVOIR (note de crédit). Différent du flow
+  //    « confirmer un rattachement » qui met factureFile : ici on push
+  //    dans avoirs[] avec le file sur l'avoir, et le montant déduit le coût.
+  const handleCreateAndAttachAvoir = async (fileItemId, dossierLocalId, fournisseurNom) => {
+    const item = files.find(x => x.id === fileItemId);
+    if (!item) return;
+    if (item.file && item.file.size > MAX_FILE_SIZE_KV) {
+      setFiles(prev => prev.map(x => x.id === fileItemId ? { ...x, status: 'ready', error: `Fichier trop lourd (${(item.file.size / 1024 / 1024).toFixed(1)} Mo, max ${(MAX_FILE_SIZE_KV / 1024 / 1024).toFixed(1)} Mo).` } : x));
+      return;
+    }
+    setFiles(prev => prev.map(x => x.id === fileItemId ? { ...x, status: 'saving' } : x));
+    try {
+      // 1️⃣ Stocke le PDF en KV (même format que factureFile).
+      const dataUrl = await readFileAsDataURL(item.file);
+      const fileId = `avoir_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const ok = await window.storage.set(`file:${fileId}`, JSON.stringify({ dataUrl, name: item.file.name, type: item.file.type || 'application/pdf' }));
+      if (!ok) throw new Error('Échec du stockage du fichier (storage KV).');
+
+      // 2️⃣ Met à jour le dossier : retrouve le fournisseur (fuzzy) ou en crée
+      //    un, puis push un nouvel avoir avec le file et les métadonnées IA.
+      const e = item.extracted || {};
+      const targetName = String(fournisseurNom || '').trim();
+      const normalize = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+      const targetN = normalize(targetName);
+      const now = new Date().toISOString();
+      let targetIdx = -1;
+
+      setDossiers(prev => prev.map(d => {
+        if (d.localId !== dossierLocalId) return d;
+        const fournisseurs = Array.isArray(d.fournisseurs) ? [...d.fournisseurs] : [];
+        // Fuzzy : match par nom normalisé (au cas où l'IA a une typo type INOVA/INNOVA)
+        targetIdx = fournisseurs.findIndex(f => normalize(f.nom) === targetN || normalize(f.nom).includes(targetN) || (targetN && targetN.includes(normalize(f.nom))));
+        if (targetIdx < 0) {
+          fournisseurs.push({ nom: targetName, htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '', avoirs: [] });
+          targetIdx = fournisseurs.length - 1;
+        }
+        const f = { ...fournisseurs[targetIdx] };
+        const avoirs = Array.isArray(f.avoirs) ? [...f.avoirs] : [];
+        // L'IA renvoie un HT négatif sur un avoir (-500€) — la donnée stockée
+        // est la valeur absolue (la déduction est l'opération de soustraction).
+        const montantAbs = Math.abs(Number(e.montantHt) || 0);
+        avoirs.push({
+          montantHt: montantAbs > 0 ? String(montantAbs) : '',
+          avoirNo: String(e.factureNo || ''),
+          date: String(e.dateFacture || now.slice(0, 10)),
+          file: fileId,
+        });
+        f.avoirs = avoirs;
+        fournisseurs[targetIdx] = f;
+        return { ...d, fournisseurs, savedAt: now, modifiedAt: now, modifiedBy: '[tri-factures avoir]' };
+      }));
+
+      setFiles(prev => prev.map(x => x.id === fileItemId ? { ...x, status: 'confirmed', savedPath: fileId } : x));
+
+      // 📥 Marque l'attachment Gmail comme déjà importé (idem qu'une facture).
+      if (item.gmailMessageId && item.gmailAttachmentId && item.gmailInboxEmail) {
+        (async () => {
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            const headers = { 'Content-Type': 'application/json' };
+            if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+            await fetch('/api/gmail-oauth?action=mark-imported', {
+              method: 'POST', headers,
+              body: JSON.stringify({ inboxEmail: item.gmailInboxEmail, messageId: item.gmailMessageId, attachmentId: item.gmailAttachmentId }),
+            });
+          } catch (e) { /* best-effort */ }
+        })();
+      }
+    } catch (err) {
+      setFiles(prev => prev.map(x => x.id === fileItemId ? { ...x, status: 'ready', error: err.message } : x));
+    }
+  };
+
   // ➕ Crée une nouvelle ligne prestataire (poseurs/regies/fournisseurs)
   //    sur le dossier ciblé, puis la sélectionne comme cible de la facture.
   //    Sert quand le dossier n'a pas encore le bon type de prestataire (ex :
@@ -7772,6 +7846,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
               onPick={(idx) => setFiles(prev => prev.map(x => x.id === item.id ? { ...x, pickedIdx: idx } : x))}
               onManualPick={(prop) => handleManualPick(item.id, prop)}
               onCreateAndPickLine={(dossierLocalId, type, nom) => handleCreateAndPickLine(item.id, dossierLocalId, type, nom)}
+              onCreateAndAttachAvoir={(dossierLocalId, nom) => handleCreateAndAttachAvoir(item.id, dossierLocalId, nom)}
               onIgnoreSender={() => handleIgnoreSender(item)}
               onConfirm={() => handleConfirm(item)}
               onSkip={() => handleSkip(item)}
@@ -7788,7 +7863,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
 
 // Une carte = un PDF en cours de tri. États : queued → analyzing → ready → confirmed.
 // (saving = entre ready et confirmed, le temps de l'upload bucket.)
-function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickLine, onIgnoreSender, onConfirm, onSkip, onRetry, onRemove, onOpenDossier }) {
+function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickLine, onCreateAndAttachAvoir, onIgnoreSender, onConfirm, onSkip, onRetry, onRemove, onOpenDossier }) {
   const e = item.extracted || {};
   const m = item.matching || { proposals: [], notes: '' };
   const proposals = m.proposals || [];
@@ -8062,6 +8137,11 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
                           { type: 'regies', emoji: '🤝', label: 'régie' },
                           { type: 'fournisseurs', emoji: '📦', label: 'fournisseur' },
                         ];
+                        // 🧾 Détection avoir : HT négatif OU remarques IA mentionnent "avoir"
+                        const e = item.extracted || {};
+                        const isAvoir = (Number(e.montantHt) || 0) < 0
+                          || /avoir|cr[eé]dit/i.test(String(e.remarques || ''))
+                          || /avoir|credit/i.test(item.name || '');
                         return (
                           <div className="pt-1 mt-1 border-t border-violet-200">
                             <div className="text-[10px] text-violet-600 mb-1">Ou créer une nouvelle ligne avec « <span className="font-bold">{fournisseurNom}</span> » :</div>
@@ -8078,6 +8158,21 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
                                   + {t.emoji} Créer {t.label}
                                 </button>
                               ))}
+                              {/* 🧾 Avoir / note de crédit : s'attache à un fournisseur
+                                  (existant ou créé). Différencie de « Créer fournisseur »
+                                  car ça push dans avoirs[], pas factureFile. */}
+                              {isAvoir && onCreateAndAttachAvoir && (
+                                <button
+                                  onClick={() => {
+                                    onCreateAndAttachAvoir(manualDossier.localId, fournisseurNom);
+                                    setManualOpen(false); setManualDossier(null); setManualQuery('');
+                                  }}
+                                  className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold"
+                                  title="Crée une note de crédit (avoir) sur le fournisseur — déduit le montant du coût"
+                                >
+                                  + 🧾 Créer avoir
+                                </button>
+                              )}
                             </div>
                           </div>
                         );
