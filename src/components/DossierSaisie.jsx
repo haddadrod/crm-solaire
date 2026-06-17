@@ -5977,6 +5977,17 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 : d
               ));
             }}
+            onMarkAllCQDone={(localIds) => {
+              const ids = new Set(localIds || []);
+              if (ids.size === 0) return;
+              const todayIso = new Date().toISOString().split('T')[0];
+              setDossiers(prev => prev.map(d => {
+                if (!ids.has(d.localId)) return d;
+                if (d.statutControleQualite === 'ok' || d.statutControleQualite === 'pas_ok') return d;
+                return { ...d, statutControleQualite: 'ok', dateControleQualite: d.dateControleQualite || todayIso };
+              }));
+              setShowAlertesType(null);
+            }}
             onClose={() => setShowAlertesType(null)}
             onSelect={(localId) => {
               // Mappe le type d'alerte vers la section à scroller / déplier
@@ -24020,7 +24031,7 @@ function DoublonsModal({ groupes, STATUTS, onClose, onSelect, onDelete, isAdmin 
   );
 }
 
-function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onLogAction, onClose, onSelect }) {
+function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onLogAction, onMarkAllCQDone, onClose, onSelect }) {
   const config = {
     controleQualite: {
       title: '📋 Contrôle qualité — dossiers à valider',
@@ -24359,6 +24370,19 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
             <p className="text-xs text-slate-600 mt-1">{cfg.subtitle}</p>
           </div>
           <div className="flex items-center gap-2">
+            {type === 'controleQualite' && sortedItems.length > 0 && onMarkAllCQDone && (
+              <button
+                onClick={() => {
+                  const msg = `Marquer le contrôle qualité comme VALIDÉ sur les ${sortedItems.length} dossier${sortedItems.length > 1 ? 's' : ''} affiché${sortedItems.length > 1 ? 's' : ''} ?\n\nIls disparaîtront de cette liste.`;
+                  if (!window.confirm(msg)) return;
+                  onMarkAllCQDone(sortedItems.map(r => r.dossier.localId));
+                }}
+                className="px-3 py-1.5 rounded-lg text-xs font-bold bg-emerald-600 hover:bg-emerald-700 text-white shadow-sm whitespace-nowrap"
+                title="Passe statutControleQualite='ok' sur tous les dossiers affichés ici, avec dateControleQualite = aujourd'hui."
+              >
+                ✓ Tout marquer fait
+              </button>
+            )}
             <span className={`text-sm font-bold px-3 py-1 rounded-full bg-gradient-to-r ${cfg.gradient} text-white shadow-sm`}>
               {cfg.headerCount != null ? cfg.headerCount : sortedItems.length}
             </span>
