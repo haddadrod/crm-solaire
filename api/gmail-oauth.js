@@ -101,7 +101,23 @@ async function imapTestConnection(inbox) {
   await client.logout();
 }
 
-// Scan IMAP : liste les messages récents (60j) avec pièce jointe PDF.
+// Heuristique : ce PDF ressemble-t-il à une facture/avoir, ou à autre chose
+// (relevé de compte, relance, contrat, BL, devis…) ? Combine nom de fichier
+// + sujet du mail. On préfère un faux négatif (rater une facture exotique)
+// à un faux positif (importer un relevé de compte dans le tri factures).
+function isLikelyFacture(filename, subject) {
+  const text = `${filename || ''} ${subject || ''}`.toLowerCase();
+  // Exclusions fortes : si l'un de ces mots apparaît, c'est PAS une facture.
+  if (/relev[eé]|statement|relance|reminder|retard|contrat\b|attestation|certificat|certificate|devis|quote|bon[\s_-]de[\s_-]commande|bon[\s_-]de[\s_-]livraison|delivery[\s_-]note|bulletin[\s_-]de[\s_-]paie|fiche[\s_-]de[\s_-]paie|newsletter/.test(text)) return false;
+  // Positifs explicites : facture, invoice, avoir, credit note…
+  if (/facture|invoice|avoir\b|credit[\s_-]note|note[\s_-]de[\s_-]cr[eé]dit|proforma/.test(text)) return true;
+  // Préfixes numériques classiques : FAC00001, INV-2024-001, AV2024-001
+  if (/(^|[\s_-])(fac\d|inv\d|av\d|avoir|fact[_-])/i.test(filename || '')) return true;
+  return false;
+}
+
+// Scan IMAP : liste les messages récents (60j) avec pièce jointe PDF
+// ressemblant à une facture/avoir (filtre côté serveur via isLikelyFacture).
 async function imapScan(inbox, maxMessages = 60) {
   const client = makeImapClient(inbox);
   await client.connect();
@@ -128,13 +144,18 @@ async function imapScan(inbox, maxMessages = 60) {
           }
         };
         walk(msg.bodyStructure);
-        if (attachments.length > 0) {
+        const subject = msg.envelope?.subject || '(sans sujet)';
+        // 🧹 Filtre serveur : on ne garde que les pièces qui ressemblent à
+        //    une facture/avoir. Les relevés, relances, contrats, BL, etc.
+        //    sont éliminés avant même d'arriver au front.
+        const factureAtts = attachments.filter(a => isLikelyFacture(a.filename, subject));
+        if (factureAtts.length > 0) {
           messages.push({
             messageId: String(msg.uid), // côté IMAP = UID
-            subject: msg.envelope?.subject || '(sans sujet)',
+            subject,
             from: (msg.envelope?.from || []).map(a => (a.name ? `${a.name} <${a.address}>` : a.address)).join(', '),
             internalDate: msg.internalDate ? new Date(msg.internalDate).getTime().toString() : '',
-            attachments,
+            attachments: factureAtts,
           });
         }
       }
@@ -262,13 +283,17 @@ async function getMessageMeta(accessToken, messageId) {
       mimeType: data.payload.mimeType || 'application/pdf',
     });
   }
+  const subject = headers['subject'] || '(sans sujet)';
+  // 🧹 Filtre : on garde uniquement les pièces qui ressemblent à une facture
+  //    ou un avoir. Les relevés, relances, contrats, BL sont éliminés.
+  const factureAtts = attachments.filter(a => isLikelyFacture(a.filename, subject));
   return {
     messageId,
-    subject: headers['subject'] || '(sans sujet)',
+    subject,
     from: headers['from'] || '',
     date: headers['date'] || '',
     internalDate: data.internalDate || '',
-    attachments,
+    attachments: factureAtts,
   };
 }
 
