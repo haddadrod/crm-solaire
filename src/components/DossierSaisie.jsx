@@ -11615,13 +11615,17 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
           <div className="text-xs font-bold text-slate-700 mb-1">📥 Récupérer les factures reçues par email (Yolico, Elsun…)</div>
           <div className="text-[11px] text-slate-500 mb-2">
             Connecte chaque boîte mail avec son <strong>mot de passe d'application</strong> (16 caractères généré par Google). Aucune config Google Cloud. Ensuite : onglet <strong>Tri factures → 🔍 Scanner Gmail</strong>.
+            <br /><span className="text-emerald-700 font-semibold">🌍 Ces boîtes sont partagées avec toute l'équipe</span> — tu connectes une fois, tout le monde peut chercher les factures dedans.
           </div>
 
           {/* Boîtes IMAP déjà connectées */}
           {(gmailOAuth?.inboxes || []).filter(b => b.method === 'imap').map(b => (
             <div key={b.email} className="mb-2 p-2 bg-emerald-50 border border-emerald-300 rounded-lg flex items-center justify-between gap-2">
               <div className="min-w-0 flex-1">
-                <div className="text-xs font-bold text-emerald-800 truncate">📧 {b.email}</div>
+                <div className="text-xs font-bold text-emerald-800 truncate flex items-center gap-1.5">
+                  📧 {b.email}
+                  {b.shared && <span className="px-1 py-0.5 bg-emerald-200 text-emerald-800 rounded text-[9px] font-bold">🌍 Équipe</span>}
+                </div>
                 <div className="text-[10px] text-emerald-600">🔑 Mot de passe d'application · 📥 scan factures actif</div>
               </div>
               <button
