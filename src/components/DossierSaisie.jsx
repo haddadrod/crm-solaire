@@ -5188,6 +5188,27 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   ✓ CQ fait sur importés
                 </button>
               )}
+              {isAdmin && dossiers.some(d => d.statut === 'W_DOSSIER_PAYER' && !d.payeClient) && (
+                <button
+                  onClick={() => {
+                    const candidats = dossiers.filter(d => d.statut === 'W_DOSSIER_PAYER' && !d.payeClient);
+                    if (candidats.length === 0) { alert('Aucun dossier au statut PAYÉ sans paiement client.'); return; }
+                    const msg = `Marquer le paiement client comme reçu sur ${candidats.length} dossier${candidats.length > 1 ? 's' : ''} au statut « ✅ PAYÉ » ?\n\nIls disparaîtront de l'alerte « 💰 Client à recevoir » et apparaîtront dans la pastille PAYÉ filtrée correctement.\n\n(payeClient passe à true, payeClientDate = aujourd'hui si pas déjà renseignée.)`;
+                    if (!window.confirm(msg)) return;
+                    const todayIso = new Date().toISOString().split('T')[0];
+                    setDossiers(prev => prev.map(d => {
+                      if (d.statut !== 'W_DOSSIER_PAYER') return d;
+                      if (d.payeClient) return d;
+                      return { ...d, payeClient: true, payeClientDate: d.payeClientDate || todayIso };
+                    }));
+                    alert(`✅ ${candidats.length} dossier${candidats.length > 1 ? 's' : ''} marqué${candidats.length > 1 ? 's' : ''} comme « paiement reçu ».`);
+                  }}
+                  className="bg-white hover:bg-blue-50 text-blue-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-blue-200 whitespace-nowrap flex-shrink-0"
+                  title="Pour chaque dossier au statut « ✅ PAYÉ » mais sans payeClient, force payeClient=true (paiement reçu). Évite la double saisie statut + paiement."
+                >
+                  💰 Statut PAYÉ → paiement reçu
+                </button>
+              )}
               {/* Groupe utilisateur poussé tout à droite (ml-auto) — séparé visuellement
                   des boutons d'action. Plus propre. */}
               <div className="flex gap-2 items-center ml-auto">
