@@ -4028,6 +4028,49 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     const statsRegies = Object.values(regieMap).sort((a, b) => b.count - a.count).map(r => ({ ...r, kind: 'regie' }));
 
+    // 📦 Stats fournisseurs — symétrique à regies. Permet de tracker les coûts
+    //    matériel, ce qu'on doit / a déjà payé, et la marge nette par fournisseur.
+    const fournisseurMap = {};
+    dossiersDash.forEach(d => {
+      const fournArr = d.fournisseursDetail || [];
+      const dj = dureeJours(d);
+      const isPaid = !!d.payeClient;
+      const isAnnule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
+      const isPose = d.statutPose === 'visite_ok';
+      const soc = d.societe || '';
+      const bumpAdvancedF = (m) => {
+        if (isPaid) m.nbPayes += 1;
+        if (d.statutFin === 'refusé') m.nbRefusBanque += 1;
+        if (isAnnule) m.nbAnnules += 1;
+        if (isPose) m.nbPoses += 1;
+        if (dj !== null) { m.dureeTotale += dj; m.dureeCount += 1; }
+      };
+      const makeEntryF = (nom) => ({ nom, societe: soc, count: 0, totalDu: 0, dejaPaye: 0, caSigne: 0, caPaye: 0, margeTotale: 0, margeTotaleHt: 0, dossierIds: [], nbPayes: 0, nbRefusBanque: 0, nbAnnules: 0, nbPoses: 0, dureeTotale: 0, dureeCount: 0 });
+      const partDossier = (fournArr.length > 0) ? 1 / fournArr.length : 1;
+      const caShare = (d.montantTotal || 0) * partDossier;
+      const margeShare = (d.margeTtc || 0) * partDossier;
+      const margeShareHt = (d.margeHt || 0) * partDossier;
+      const compteCouts = !isAnnule && d.statutFin !== 'refusé';
+      if (fournArr.length === 0) return; // pas de stat sans fournisseur (≠ régies où "Sans régie" a du sens)
+      fournArr.forEach(four => {
+        const nom = four.nom || 'Inconnu';
+        const key = `${nom}::${soc}`;
+        if (!fournisseurMap[key]) fournisseurMap[key] = makeEntryF(nom);
+        fournisseurMap[key].count += 1;
+        fournisseurMap[key].dossierIds.push(d.localId);
+        if (compteCouts) {
+          fournisseurMap[key].totalDu += four.ttc || 0;
+          if (four.paye) fournisseurMap[key].dejaPaye += four.ttc || 0;
+          fournisseurMap[key].caSigne += caShare;
+          if (isPaid) fournisseurMap[key].caPaye += caShare;
+          fournisseurMap[key].margeTotale += margeShare;
+          fournisseurMap[key].margeTotaleHt += margeShareHt;
+        }
+        bumpAdvancedF(fournisseurMap[key]);
+      });
+    });
+    const statsFournisseurs = Object.values(fournisseurMap).sort((a, b) => b.count - a.count).map(f => ({ ...f, kind: 'fournisseur' }));
+
     // 💼 Stats commerciaux — basées sur le champ d.commercial (équipe interne).
     // Sans coût direct (pas de TTC commercial dans le modèle), donc on
     // affiche surtout count / CA / taux de transformation / durée moyenne.
@@ -4719,7 +4762,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Tri du plus récent au plus ancien (mois actuel en premier).
     const activiteMois = Object.values(activiteMoisMap).sort((a, b) => b.mois.localeCompare(a.mois));
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsCommerciaux, statsBanques, activiteMois, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsFournisseurs, statsCommerciaux, statsBanques, activiteMois, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -10807,6 +10850,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
 
       <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
       <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
+      <PerfList titre="📦 Performance des fournisseurs" data={dashboard.statsFournisseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="📦" border="border-orange-100" header="from-orange-50 to-amber-50" iconColor="text-orange-500" />
       {(dashboard.statsCommerciaux || []).length > 0 && (
         <PerfList titre="💼 Performance des commerciaux" data={dashboard.statsCommerciaux} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="💼" border="border-blue-100" header="from-blue-50 to-cyan-50" iconColor="text-blue-500" />
       )}
