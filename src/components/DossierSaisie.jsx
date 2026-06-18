@@ -5125,99 +5125,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <Upload className="w-4 h-4" />Importer
                 </button>
               )}
-              {isAdmin && (
-                <button onClick={() => setShowImportJson(true)} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200 whitespace-nowrap flex-shrink-0" title="Importer un fichier JSON de dossiers (migration depuis Google Sheets)">
-                  📦 Import JSON
-                </button>
-              )}
-              {isAdmin && (
-                <button
-                  onClick={() => {
-                    // 💾 Backup : télécharge l'état actuel des dossiers en JSON
-                    try {
-                      const json = JSON.stringify(dossiers, null, 2);
-                      const blob = new Blob([json], { type: 'application/json' });
-                      const url = URL.createObjectURL(blob);
-                      const a = document.createElement('a');
-                      const pad = (n) => String(n).padStart(2, '0');
-                      const d = new Date();
-                      const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
-                      a.href = url;
-                      a.download = `crm-solaire-backup-${stamp}.json`;
-                      document.body.appendChild(a);
-                      a.click();
-                      setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch (_) {} }, 100);
-                    } catch (e) { alert('Sauvegarde impossible : ' + e.message); }
-                  }}
-                  className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200 whitespace-nowrap flex-shrink-0"
-                  title="Télécharge un fichier JSON de TOUS tes dossiers actuels. À garder au chaud avant un gros import — si quelque chose tourne mal, tu pourras le réimporter via « 📦 Import JSON »."
-                >
-                  💾 Sauvegarde JSON
-                </button>
-              )}
-              {isAdmin && dossiers.some(d => d.createdBy === 'import_sheet') && (
-                <button
-                  onClick={() => {
-                    const importes = dossiers.filter(d => d.createdBy === 'import_sheet');
-                    const restants = dossiers.filter(d => d.createdBy !== 'import_sheet');
-                    if (importes.length === 0) { alert('Aucun dossier importé à supprimer.'); return; }
-                    const msg = `Supprimer les ${importes.length} dossier${importes.length > 1 ? 's' : ''} importé${importes.length > 1 ? 's' : ''} (ceux marqués createdBy = "import_sheet") ?\n\nLes ${restants.length} autres dossiers ne seront PAS touchés.\n\nIRRÉVERSIBLE (sauf via une sauvegarde JSON faite avant).`;
-                    if (!window.confirm(msg)) return;
-                    setDossiers(restants);
-                    alert(`✅ ${importes.length} dossier${importes.length > 1 ? 's' : ''} importé${importes.length > 1 ? 's' : ''} supprimé${importes.length > 1 ? 's' : ''}.`);
-                  }}
-                  className="bg-white hover:bg-rose-50 text-rose-600 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-rose-200 whitespace-nowrap flex-shrink-0"
-                  title="Supprime tous les dossiers ayant été ajoutés via « 📦 Import JSON » (identifiés par createdBy = import_sheet). Tes dossiers d'origine NE sont PAS touchés."
-                >
-                  🗑 Annuler l'import
-                </button>
-              )}
-              {isAdmin && dossiers.some(d => d.createdBy === 'import_sheet' && d.statutControleQualite !== 'ok' && d.statutControleQualite !== 'pas_ok') && (
-                <button
-                  onClick={() => {
-                    const candidats = dossiers.filter(d => d.createdBy === 'import_sheet' && d.statutControleQualite !== 'ok' && d.statutControleQualite !== 'pas_ok');
-                    if (candidats.length === 0) { alert('Aucun dossier importé sans décision CQ.'); return; }
-                    const msg = `Marquer le contrôle qualité comme VALIDÉ sur ${candidats.length} dossier${candidats.length > 1 ? 's' : ''} importé${candidats.length > 1 ? 's' : ''} ?\n\nIls disparaîtront de l'alerte « 📋 Contrôle qualité ».\n\n(Seuls les dossiers importés via le sheet sans décision CQ sont concernés.)`;
-                    if (!window.confirm(msg)) return;
-                    const todayIso = new Date().toISOString().split('T')[0];
-                    setDossiers(prev => prev.map(d => {
-                      if (d.createdBy !== 'import_sheet') return d;
-                      if (d.statutControleQualite === 'ok' || d.statutControleQualite === 'pas_ok') return d;
-                      const refDate = d.dateInsta
-                        || (typeof d.createdAt === 'string' ? d.createdAt.split('T')[0] : '')
-                        || (typeof d.savedAt === 'string' ? d.savedAt.split('T')[0] : '')
-                        || todayIso;
-                      return { ...d, statutControleQualite: 'ok', dateControleQualite: d.dateControleQualite || refDate };
-                    }));
-                    alert(`✅ CQ marqué validé sur ${candidats.length} dossier${candidats.length > 1 ? 's' : ''}.`);
-                  }}
-                  className="bg-white hover:bg-emerald-50 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-emerald-200 whitespace-nowrap flex-shrink-0"
-                  title="Marque le contrôle qualité comme validé (statut OK) sur tous les dossiers importés depuis le sheet qui n'ont pas encore de décision CQ. Les retire de l'alerte « 📋 Contrôle qualité »."
-                >
-                  ✓ CQ fait sur importés
-                </button>
-              )}
-              {isAdmin && dossiers.some(d => d.statut === 'W_DOSSIER_PAYER' && !d.payeClient) && (
-                <button
-                  onClick={() => {
-                    const candidats = dossiers.filter(d => d.statut === 'W_DOSSIER_PAYER' && !d.payeClient);
-                    if (candidats.length === 0) { alert('Aucun dossier au statut PAYÉ sans paiement client.'); return; }
-                    const msg = `Marquer le paiement client comme reçu sur ${candidats.length} dossier${candidats.length > 1 ? 's' : ''} au statut « ✅ PAYÉ » ?\n\nIls disparaîtront de l'alerte « 💰 Client à recevoir » et apparaîtront dans la pastille PAYÉ filtrée correctement.\n\n(payeClient passe à true, payeClientDate = aujourd'hui si pas déjà renseignée.)`;
-                    if (!window.confirm(msg)) return;
-                    const todayIso = new Date().toISOString().split('T')[0];
-                    setDossiers(prev => prev.map(d => {
-                      if (d.statut !== 'W_DOSSIER_PAYER') return d;
-                      if (d.payeClient) return d;
-                      return { ...d, payeClient: true, payeClientDate: d.payeClientDate || todayIso };
-                    }));
-                    alert(`✅ ${candidats.length} dossier${candidats.length > 1 ? 's' : ''} marqué${candidats.length > 1 ? 's' : ''} comme « paiement reçu ».`);
-                  }}
-                  className="bg-white hover:bg-blue-50 text-blue-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-blue-200 whitespace-nowrap flex-shrink-0"
-                  title="Pour chaque dossier au statut « ✅ PAYÉ » mais sans payeClient, force payeClient=true (paiement reçu). Évite la double saisie statut + paiement."
-                >
-                  💰 Statut PAYÉ → paiement reçu
-                </button>
-              )}
+              {/* Outils experts (Import JSON, Sauvegarde JSON, Annuler import,
+                  CQ fait sur importés, Statut PAYÉ → paiement reçu) déplacés
+                  dans Réglages → 🛠 Outils experts pour désencombrer la barre. */}
               {/* Groupe utilisateur poussé tout à droite (ml-auto) — séparé visuellement
                   des boutons d'action. Plus propre. */}
               <div className="flex gap-2 items-center ml-auto">
@@ -5886,6 +5796,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {activeTab === 'reglages' && (
           <ReglagesView
             statutsOrder={statutsOrder} setStatutsOrder={setStatutsOrder} STATUTS_ORDERED={STATUTS_ORDERED} dossiers={dossiers}
+            setDossiers={setDossiers} setShowImportJson={setShowImportJson}
             tarifsPoseurs={tarifsPoseurs} setTarifsPoseurs={setTarifsPoseurs}
             tarifsRegies={tarifsRegies} setTarifsRegies={setTarifsRegies}
             tarifsInternes={tarifsInternes} setTarifsInternes={setTarifsInternes}
@@ -11791,7 +11702,7 @@ function BanquePerfList({ data, dossiers = [], societes = [], onShowQuick }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, setDossiers, setShowImportJson, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
   // Init depuis le hash URL pour qu'un refresh garde la sous-section.
   // Format : #reglages/utilisateurs → section = 'utilisateurs'
   const sectionFromHash = (typeof window !== 'undefined' && window.location.hash)
@@ -11821,6 +11732,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
     { id: 'email',        label: 'Email d\'envoi', emoji: '📧', color: 'from-blue-500 to-indigo-500' },
     { id: 'messages',     label: 'Modèles messages', emoji: '💬', color: 'from-cyan-500 to-blue-500' },
     { id: 'onoff',        label: 'ONOFF (CQ)',   emoji: '📞', color: 'from-purple-500 to-violet-500' },
+    { id: 'expert',       label: 'Outils experts', emoji: '🛠', color: 'from-slate-600 to-slate-800' },
   ];
 
   return (
@@ -11947,6 +11859,135 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'onoff' && <OnoffConfigManager />}
+
+      {section === 'expert' && (
+        <ExpertToolsPanel dossiers={dossiers} setDossiers={setDossiers} setShowImportJson={setShowImportJson} />
+      )}
+    </div>
+  );
+}
+
+// 🛠 Outils experts : opérations en masse (import/sauvegarde JSON,
+// suppression d'import sheet, validation CQ massive, sync paiement client).
+// Volontairement regroupés ici (hors barre principale) pour éviter qu'un
+// utilisateur ne déclenche par erreur une action irréversible.
+function ExpertToolsPanel({ dossiers, setDossiers, setShowImportJson }) {
+  const handleBackup = () => {
+    try {
+      const json = JSON.stringify(dossiers, null, 2);
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const pad = (n) => String(n).padStart(2, '0');
+      const d = new Date();
+      const stamp = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}`;
+      a.href = url;
+      a.download = `crm-solaire-backup-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { try { document.body.removeChild(a); URL.revokeObjectURL(url); } catch (_) {} }, 100);
+    } catch (e) { alert('Sauvegarde impossible : ' + e.message); }
+  };
+
+  const handleAnnulerImport = () => {
+    const importes = dossiers.filter(d => d.createdBy === 'import_sheet');
+    const restants = dossiers.filter(d => d.createdBy !== 'import_sheet');
+    if (importes.length === 0) { alert('Aucun dossier importé à supprimer.'); return; }
+    const msg = `Supprimer les ${importes.length} dossier${importes.length > 1 ? 's' : ''} importé${importes.length > 1 ? 's' : ''} (ceux marqués createdBy = "import_sheet") ?\n\nLes ${restants.length} autres dossiers ne seront PAS touchés.\n\nIRRÉVERSIBLE (sauf via une sauvegarde JSON faite avant).`;
+    if (!window.confirm(msg)) return;
+    setDossiers(restants);
+    alert(`✅ ${importes.length} dossier${importes.length > 1 ? 's' : ''} importé${importes.length > 1 ? 's' : ''} supprimé${importes.length > 1 ? 's' : ''}.`);
+  };
+
+  const handleCqImportes = () => {
+    const candidats = dossiers.filter(d => d.createdBy === 'import_sheet' && d.statutControleQualite !== 'ok' && d.statutControleQualite !== 'pas_ok');
+    if (candidats.length === 0) { alert('Aucun dossier importé sans décision CQ.'); return; }
+    const msg = `Marquer le contrôle qualité comme VALIDÉ sur ${candidats.length} dossier${candidats.length > 1 ? 's' : ''} importé${candidats.length > 1 ? 's' : ''} ?\n\nIls disparaîtront de l'alerte « 📋 Contrôle qualité ».`;
+    if (!window.confirm(msg)) return;
+    const todayIso = new Date().toISOString().split('T')[0];
+    setDossiers(prev => prev.map(d => {
+      if (d.createdBy !== 'import_sheet') return d;
+      if (d.statutControleQualite === 'ok' || d.statutControleQualite === 'pas_ok') return d;
+      const refDate = d.dateInsta
+        || (typeof d.createdAt === 'string' ? d.createdAt.split('T')[0] : '')
+        || (typeof d.savedAt === 'string' ? d.savedAt.split('T')[0] : '')
+        || todayIso;
+      return { ...d, statutControleQualite: 'ok', dateControleQualite: d.dateControleQualite || refDate };
+    }));
+    alert(`✅ CQ marqué validé sur ${candidats.length} dossier${candidats.length > 1 ? 's' : ''}.`);
+  };
+
+  const handleSyncStatutPaye = () => {
+    const candidats = dossiers.filter(d => d.statut === 'W_DOSSIER_PAYER' && !d.payeClient);
+    if (candidats.length === 0) { alert('Aucun dossier au statut PAYÉ sans paiement client. La sync auto fait son travail !'); return; }
+    const msg = `Marquer le paiement client comme reçu sur ${candidats.length} dossier${candidats.length > 1 ? 's' : ''} au statut « ✅ PAYÉ » ?`;
+    if (!window.confirm(msg)) return;
+    const todayIso = new Date().toISOString().split('T')[0];
+    setDossiers(prev => prev.map(d => {
+      if (d.statut !== 'W_DOSSIER_PAYER') return d;
+      if (d.payeClient) return d;
+      return { ...d, payeClient: true, payeClientDate: d.payeClientDate || todayIso };
+    }));
+    alert(`✅ ${candidats.length} dossier${candidats.length > 1 ? 's' : ''} marqué${candidats.length > 1 ? 's' : ''} comme « paiement reçu ».`);
+  };
+
+  const nbImported = dossiers.filter(d => d.createdBy === 'import_sheet').length;
+  const nbCqImported = dossiers.filter(d => d.createdBy === 'import_sheet' && d.statutControleQualite !== 'ok' && d.statutControleQualite !== 'pas_ok').length;
+  const nbPayeSync = dossiers.filter(d => d.statut === 'W_DOSSIER_PAYER' && !d.payeClient).length;
+
+  return (
+    <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
+      <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-slate-100 to-slate-50">
+        <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">🛠 Outils experts</h2>
+        <p className="text-xs text-slate-500 mt-1">Opérations en masse — à utiliser avec attention. Pense à faire une sauvegarde avant.</p>
+      </div>
+      <div className="p-5 space-y-3">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <button
+            onClick={handleBackup}
+            className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-xl font-semibold border border-slate-200 text-left"
+            title="Télécharge un fichier JSON de TOUS tes dossiers actuels."
+          >
+            <div className="flex items-center gap-2 font-bold">💾 Sauvegarde JSON</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">Backup local de tous les dossiers (à faire avant toute opération expert).</div>
+          </button>
+          <button
+            onClick={() => setShowImportJson(true)}
+            className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-xl font-semibold border border-slate-200 text-left"
+            title="Importer un fichier JSON de dossiers (migration ou restauration)."
+          >
+            <div className="flex items-center gap-2 font-bold">📦 Import JSON</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">Importe un fichier JSON de dossiers (migration sheet ou restauration backup).</div>
+          </button>
+          <button
+            onClick={handleAnnulerImport}
+            disabled={nbImported === 0}
+            className="bg-white hover:bg-rose-50 disabled:bg-slate-50 disabled:text-slate-400 text-rose-700 px-4 py-3 rounded-xl font-semibold border border-rose-200 disabled:border-slate-200 text-left disabled:cursor-not-allowed"
+            title="Supprime tous les dossiers ajoutés via « Import JSON » (createdBy=import_sheet). Tes dossiers d'origine ne sont PAS touchés."
+          >
+            <div className="flex items-center gap-2 font-bold">🗑 Annuler l'import {nbImported > 0 && <span className="text-[10px] bg-rose-200 text-rose-800 px-1.5 py-0.5 rounded-full">{nbImported}</span>}</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">{nbImported > 0 ? `Supprime les ${nbImported} dossiers importés via JSON.` : 'Aucun dossier importé.'}</div>
+          </button>
+          <button
+            onClick={handleCqImportes}
+            disabled={nbCqImported === 0}
+            className="bg-white hover:bg-emerald-50 disabled:bg-slate-50 disabled:text-slate-400 text-emerald-700 px-4 py-3 rounded-xl font-semibold border border-emerald-200 disabled:border-slate-200 text-left disabled:cursor-not-allowed"
+            title="Marque le contrôle qualité comme validé sur tous les dossiers importés sans décision CQ."
+          >
+            <div className="flex items-center gap-2 font-bold">✓ CQ fait sur importés {nbCqImported > 0 && <span className="text-[10px] bg-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded-full">{nbCqImported}</span>}</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">{nbCqImported > 0 ? `Valide le CQ sur ${nbCqImported} dossiers importés.` : 'Tous les imports ont déjà leur décision CQ.'}</div>
+          </button>
+          <button
+            onClick={handleSyncStatutPaye}
+            disabled={nbPayeSync === 0}
+            className="bg-white hover:bg-blue-50 disabled:bg-slate-50 disabled:text-slate-400 text-blue-700 px-4 py-3 rounded-xl font-semibold border border-blue-200 disabled:border-slate-200 text-left disabled:cursor-not-allowed md:col-span-2"
+            title="Pour chaque dossier au statut PAYÉ sans payeClient, force payeClient=true."
+          >
+            <div className="flex items-center gap-2 font-bold">💰 Sync statut PAYÉ → paiement reçu {nbPayeSync > 0 && <span className="text-[10px] bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded-full">{nbPayeSync}</span>}</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">{nbPayeSync > 0 ? `Marque payeClient=true sur ${nbPayeSync} dossiers déjà au statut PAYÉ.` : 'Statut et paiement sont déjà cohérents (sync auto active à chaque chargement).'}</div>
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
