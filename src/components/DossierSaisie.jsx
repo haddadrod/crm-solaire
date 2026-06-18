@@ -222,7 +222,16 @@ function normalizeDossierDates(d) {
 // notre état déjà nettoyé.
 function normalizeDossiers(list) {
   if (!Array.isArray(list)) return list;
-  return list.map(normalizeDossierDates);
+  return list.map(d => {
+    let n = normalizeDossierDates(d);
+    // 💰 Sync legacy : statut PAYÉ implique payeClient=true. Beaucoup de
+    //   dossiers ont été mis au statut W_DOSSIER_PAYER sans payeClient
+    //   (import sheet ou manipulation). On force la cohérence au chargement.
+    if (n && n.statut === 'W_DOSSIER_PAYER' && !n.payeClient) {
+      n = { ...n, payeClient: true, payeClientDate: n.payeClientDate || (typeof n.savedAt === 'string' ? n.savedAt.split('T')[0] : '') || (typeof n.dateInsta === 'string' ? n.dateInsta : '') };
+    }
+    return n;
+  });
 }
 
 // Date métier rattachée à un changement de statut workflow, pour l'afficher
@@ -5983,6 +5992,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   if (d.archived && ['D_SAV', 'C_LITIGE', 'M_NRP_CQ_LIVRAISON', 'F1_CONTROLE_LIV_BANQUE', 'CONFORMITE_CONTRAT'].includes(updates.statut)) {
                     merged.archived = false;
                     merged.reprisDuArchive = now;
+                  }
+                  // 💰 Sync : passer en statut PAYÉ → payeClient=true auto.
+                  //   Évite la double saisie (statut workflow + paiement réel).
+                  //   Si l'utilisateur veut explicitement marquer payeClient=false,
+                  //   il le fait dans le même update (updates.payeClient !== undefined).
+                  if (updates.statut === 'W_DOSSIER_PAYER' && updates.payeClient === undefined && !merged.payeClient) {
+                    merged.payeClient = true;
+                    merged.payeClientDate = merged.payeClientDate || now.split('T')[0];
                   }
                 }
                 // Auto-statut : recalcule le statut depuis l'état du dossier
