@@ -10850,7 +10850,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
 
       <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
       <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
-      <PerfList titre="📦 Performance des fournisseurs" data={dashboard.statsFournisseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="📦" border="border-orange-100" header="from-orange-50 to-amber-50" iconColor="text-orange-500" />
+      <PerfList titre="📦 Performance des fournisseurs" data={dashboard.statsFournisseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="📦" border="border-orange-100" header="from-orange-50 to-amber-50" iconColor="text-orange-500" simpleCashflow={true} />
       {(dashboard.statsCommerciaux || []).length > 0 && (
         <PerfList titre="💼 Performance des commerciaux" data={dashboard.statsCommerciaux} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} medal="💼" border="border-blue-100" header="from-blue-50 to-cyan-50" iconColor="text-blue-500" />
       )}
@@ -11158,7 +11158,7 @@ function ActiviteMensuellePanel({ data = [] }) {
   );
 }
 
-function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTogglePresta, onMarkPrestaPaye, medal, border, header, iconColor }) {
+function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTogglePresta, onMarkPrestaPaye, medal, border, header, iconColor, simpleCashflow = false }) {
   const [expandedNom, setExpandedNom] = useState(null);
   // 📑 Pliage de toute la fiche (header + liste) — utile quand on a plusieurs
   // sections sur la page : on plie celle qu'on ne consulte pas pour scroller
@@ -11255,8 +11255,10 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                           return <span className="font-bold text-violet-600" title={`${p.count} sur ${total} dossiers ${p.nom} tous sociétés confondues`}>· {pct}% de {p.nom}</span>;
                         })()}
                       </div>
-                      {/* Stats avancées : transfo, refus banque, annulés, posés, durée moy */}
-                      {(p.count > 0) && (() => {
+                      {/* Stats avancées : transfo, refus banque, annulés, posés, durée moy.
+                          Cachées en mode simpleCashflow (fournisseurs) : un fournisseur ne génère
+                          pas de CA → ces taux ne sont pas pertinents. */}
+                      {!simpleCashflow && (p.count > 0) && (() => {
                         const tauxTransfo = Math.round((p.nbPayes / p.count) * 100);
                         const tauxRefus = Math.round((p.nbRefusBanque / p.count) * 100);
                         const tauxAnnules = Math.round(((p.nbAnnules || 0) / p.count) * 100);
@@ -11285,24 +11287,33 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                     // ce qu'il reste à payer, marge totale nette, marge moyenne
                     // par dossier. CA/marge divisés si plusieurs régies sur le
                     // même dossier (pas de double-comptage).
+                    // 📦 simpleCashflow (fournisseurs) : on n'affiche QUE
+                    //    Total dû / Déjà payé / Reste à payer — pas de
+                    //    CA/marge (un fournisseur ne génère pas le CA).
                     // Colonnes à largeur fixe (w-28) pour aligner verticalement
                     // les chiffres d'une ligne à l'autre.
-                    <div className="flex gap-2 text-xs items-start" title="CA = montant total dossiers apportés · Déjà/Reste = ce qu'on doit à cette régie · Marge = bénéfice net après tous les coûts · Marge moy = par dossier">
-                      <SmallStat label="CA apporté" value={formatEuro(p.caSigne || 0)} color="text-blue-600" />
+                    <div className="flex gap-2 text-xs items-start" title={simpleCashflow
+                      ? "Total dû = TTC des lignes facturées · Déjà = payé · Reste = à payer"
+                      : "CA = montant total dossiers apportés · Déjà/Reste = ce qu'on doit à cette régie · Marge = bénéfice net après tous les coûts · Marge moy = par dossier"}>
+                      {simpleCashflow ? (
+                        <SmallStat label="Total dû" value={formatEuro(p.totalDu)} color="text-blue-600" />
+                      ) : (
+                        <SmallStat label="CA apporté" value={formatEuro(p.caSigne || 0)} color="text-blue-600" />
+                      )}
                       <SmallStat label="Déjà payé" value={formatEuro(p.dejaPaye)} color="text-emerald-600" />
                       <SmallStat
                         label="Reste à payer"
                         value={formatEuro(Math.max(0, p.totalDu - p.dejaPaye))}
                         color={(p.totalDu - p.dejaPaye) > 0 ? 'text-rose-600' : 'text-slate-500'}
                       />
-                      {p.margeTotaleHt !== undefined && (
+                      {!simpleCashflow && p.margeTotaleHt !== undefined && (
                         <SmallStat
                           label="Marge HT"
                           value={formatEuro(p.margeTotaleHt)}
                           color={p.margeTotaleHt >= 0 ? 'text-violet-600' : 'text-rose-600'}
                         />
                       )}
-                      {p.margeTotaleHt !== undefined && p.count > 0 && (
+                      {!simpleCashflow && p.margeTotaleHt !== undefined && p.count > 0 && (
                         <SmallStat
                           label="Marge moy/dossier"
                           value={formatEuro(p.margeTotaleHt / p.count)}
