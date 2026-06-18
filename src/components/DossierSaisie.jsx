@@ -6578,7 +6578,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
               <div className="bg-amber-50 rounded-lg p-1.5 border border-amber-200">
                 <div className="text-[10px] font-bold text-amber-700 uppercase mb-1 flex items-center justify-between gap-1">
                   <span>🔧 Poseurs ({d.poseursDetail.length})</span>
-                  <span className="font-bold text-amber-800">{formatEuro(d.poseurTtc)}</span>
+                  <span className="font-bold text-amber-800" title={"TTC : " + formatEuro(d.poseurTtc)}>{formatEuro(d.poseurHt)} HT</span>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {d.poseursDetail.map((p, i) => (
@@ -6586,7 +6586,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                       {p.paye && <span className="text-emerald-600 font-bold">✓</span>}
                       <span className="font-bold">{p.nom}</span>
                       <span className={p.paye ? 'text-emerald-500' : 'text-amber-500'}>·</span>
-                      <span>{formatEuro(p.ttc)}</span>
+                      <span title={"TTC : " + formatEuro(p.ttc)}>{formatEuro(p.ht)}</span>
                       {p.factureNo && <><span className={p.paye ? 'text-emerald-400' : 'text-amber-400'}>·</span><span className={p.paye ? 'text-emerald-600' : 'text-amber-600'}>🧾 {p.factureNo}</span></>}
                       {p.facturePdfUrl && (
                         <a href={p.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
@@ -6604,7 +6604,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
               <div className="bg-purple-50 rounded-lg p-1.5 border border-purple-200">
                 <div className="text-[10px] font-bold text-purple-700 uppercase mb-1 flex items-center justify-between gap-1">
                   <span>🤝 Régies ({d.regiesDetail.length})</span>
-                  <span className="font-bold text-purple-800">{formatEuro(d.regieTtc)}</span>
+                  <span className="font-bold text-purple-800" title={"TTC : " + formatEuro(d.regieTtc)}>{formatEuro(d.regieHt)} HT</span>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {d.regiesDetail.map((r, i) => (
@@ -6612,7 +6612,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                       {r.paye && <span className="text-emerald-600 font-bold">✓</span>}
                       <span className="font-bold">{r.nom}</span>
                       <span className={r.paye ? 'text-emerald-500' : 'text-purple-500'}>·</span>
-                      <span>{formatEuro(r.ttc)}</span>
+                      <span title={"TTC : " + formatEuro(r.ttc)}>{formatEuro(r.ht)}</span>
                       {r.factureNo && <><span className={r.paye ? 'text-emerald-400' : 'text-purple-400'}>·</span><span className={r.paye ? 'text-emerald-600' : 'text-purple-600'}>🧾 {r.factureNo}</span></>}
                       {r.facturePdfUrl && (
                         <a href={r.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
@@ -6630,7 +6630,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
               <div className="bg-orange-50 rounded-lg p-1.5 border border-orange-200">
                 <div className="text-[10px] font-bold text-orange-700 uppercase mb-1 flex items-center justify-between gap-1">
                   <span>📦 Fournisseurs ({d.fournisseursDetail.length})</span>
-                  <span className="font-bold text-orange-800">{formatEuro(d.fournisseurTtc)}</span>
+                  <span className="font-bold text-orange-800" title={"TTC : " + formatEuro(d.fournisseurTtc)}>{formatEuro(d.fournisseurHt)} HT</span>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {d.fournisseursDetail.map((f, i) => (
@@ -6638,7 +6638,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                       {f.paye && <span className="text-emerald-600 font-bold">✓</span>}
                       <span className="font-bold">{f.nom}</span>
                       <span className={f.paye ? 'text-emerald-500' : 'text-orange-500'}>·</span>
-                      <span>{formatEuro(f.ttc)}</span>
+                      <span title={"TTC : " + formatEuro(f.ttc)}>{formatEuro(f.ht)}</span>
                       {f.factureNo && <><span className={f.paye ? 'text-emerald-400' : 'text-orange-400'}>·</span><span className={f.paye ? 'text-emerald-600' : 'text-orange-600'}>🧾 {f.factureNo}</span></>}
                       {f.facturePdfUrl && (
                         <a href={f.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
