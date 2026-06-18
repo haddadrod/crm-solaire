@@ -632,8 +632,15 @@ const compressImageForUpload = (file, maxEdge = 2200, quality = 0.82) => new Pro
 // - Par défaut : TVA 20 % (TTC = HT × 1,2)
 // - Si `sansTva` est true (auto-entrepreneur, société étrangère, etc.) :
 //   pas de TVA, donc TTC = HT.
+// - Si `ttcCustom` est défini (≠'' && ≠undefined) → on l'utilise tel quel,
+//   utile pour les factures à TVA mixte (autoliquidation + 20% sur la
+//   même facture, ex : ERP fourniture+pose).
 // Compat : si l'ancien champ `tauxTva` vaut 0, on traite comme sansTva.
-const computeTtcPresta = (ht, sansTva, legacyTauxTva) => {
+const computeTtcPresta = (ht, sansTva, legacyTauxTva, ttcCustom) => {
+  const ttcOverride = parseFloat(ttcCustom);
+  if (!isNaN(ttcOverride) && ttcCustom !== '' && ttcCustom !== null && ttcCustom !== undefined) {
+    return ttcOverride;
+  }
   if (sansTva) return ht;
   if (legacyTauxTva === 0 || legacyTauxTva === '0') return ht;
   return ht * 1.2;
@@ -1167,7 +1174,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
     // Avoirs (notes de crédit) → déduction du coût HT du fournisseur.
     const avoirsHt = (f.avoirs || []).reduce((s, a) => s + (parseFloat(a.montantHt) || 0), 0);
     const ht = baseHt - avoirsHt;
-    return { nom: f.nom, ht, baseHt, avoirsHt, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '', factureExternalUrl: f.factureExternalUrl || '' };
+    return { nom: f.nom, ht, baseHt, avoirsHt, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva, f.ttcCustom), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '', factureExternalUrl: f.factureExternalUrl || '' };
   });
   const fournisseurHt = fournisseursDetail.reduce((s, f) => s + f.ht, 0);
   const fournisseurTtc = fournisseursDetail.reduce((s, f) => s + f.ttc, 0);
@@ -1190,7 +1197,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
   const regiesDetail = regiesList.map(r => {
     const autoHt = computeAutoTarif((tarifsRegies || {})[r.nom]);
     const ht = (r.htCustom !== '' && r.htCustom !== undefined && r.htCustom !== null) ? (parseFloat(r.htCustom) || 0) : autoHt;
-    return { nom: r.nom, ht, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '' };
+    return { nom: r.nom, ht, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva, r.ttcCustom), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '' };
   });
   const regieHt = regiesDetail.reduce((s, r) => s + r.ht, 0);
   const regieTtc = regiesDetail.reduce((s, r) => s + r.ttc, 0);
@@ -2937,7 +2944,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const baseHt = (f.htCustom !== '' && f.htCustom !== undefined && f.htCustom !== null) ? (parseFloat(f.htCustom) || 0) : autoHt;
       const avoirsHt = (f.avoirs || []).reduce((s, a) => s + (parseFloat(a.montantHt) || 0), 0);
       const ht = baseHt - avoirsHt;
-      return { nom: f.nom, ht, baseHt, avoirsHt, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '', factureExternalUrl: f.factureExternalUrl || '' };
+      return { nom: f.nom, ht, baseHt, avoirsHt, ttc: computeTtcPresta(ht, !!f.sansTva, f.tauxTva, f.ttcCustom), sansTva: !!f.sansTva, paye: !!f.paye, datePaye: f.datePaye || '', autoHt, tarifWc, bl: f.bl || '', factureNo: f.factureNo || '', facturePdfUrl: f.facturePdfUrl || '', factureExternalUrl: f.factureExternalUrl || '' };
     });
     const fournisseurHt = fournisseursDetail.reduce((s, f) => s + f.ht, 0);
     const fournisseurTtc = fournisseursDetail.reduce((s, f) => s + f.ttc, 0);
@@ -2945,7 +2952,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const regiesDetail = (formData.regies || []).map(r => {
       const autoHt = computeAutoTarif(tarifsRegies[r.nom]);
       const ht = r.htCustom !== '' ? (parseFloat(r.htCustom) || 0) : autoHt;
-      return { nom: r.nom, ht, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '' };
+      return { nom: r.nom, ht, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva, r.ttcCustom), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '' };
     });
     const regieHt = regiesDetail.reduce((s, r) => s + r.ht, 0);
     const regieTtc = regiesDetail.reduce((s, r) => s + r.ttc, 0);
@@ -21707,8 +21714,20 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                       <input type="number" step="0.01" value={r.htCustom || ''} onChange={(e) => updateRegie(i, { htCustom: e.target.value })} placeholder={autoHt > 0 ? `Vide → auto ${autoHt} €` : 'Saisir'} className="w-full px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
                                     </div>
                                     <div>
-                                      <label className="block text-[9px] font-semibold text-purple-600 uppercase mb-0.5">TTC (TVA 20 %)</label>
-                                      <div className="px-2 py-1 bg-purple-50 border border-purple-200 rounded text-[10px] font-bold text-purple-800 min-w-[80px] text-right">{formatEuro(ttcRegie)}</div>
+                                      <label className="block text-[9px] font-semibold text-purple-600 uppercase mb-0.5 flex items-center justify-between gap-1">
+                                        <span>TTC{r.ttcCustom ? '' : ' (TVA 20 %)'}</span>
+                                        {r.ttcCustom && (
+                                          <button type="button" onClick={() => updateRegie(i, { ttcCustom: '' })} className="text-[9px] font-bold text-purple-600 bg-purple-100 hover:bg-purple-200 rounded px-1" title="Revenir au calcul auto HT × TVA">↺ auto</button>
+                                        )}
+                                      </label>
+                                      <input
+                                        type="number" step="0.01"
+                                        value={r.ttcCustom !== undefined && r.ttcCustom !== null && r.ttcCustom !== '' ? r.ttcCustom : ''}
+                                        onChange={(e) => updateRegie(i, { ttcCustom: e.target.value })}
+                                        placeholder={formatEuro(ttcRegie)}
+                                        title="Override TTC — utile pour les factures à TVA mixte"
+                                        className={`w-full px-2 py-1 border rounded text-[10px] font-bold text-purple-800 text-right ${r.ttcCustom ? 'bg-white border-purple-400' : 'bg-purple-50 border-purple-200'}`}
+                                      />
                                     </div>
                                   </div>
                                   {autoHt === 0 && (
@@ -22228,8 +22247,20 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             <input type="number" step="0.01" value={f.htCustom || ''} onChange={(e) => updateFournisseur(i, { htCustom: e.target.value })} placeholder={autoHt > 0 ? `Vide → auto ${autoHt.toFixed(2)} €` : 'Coût HT'} className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
                           </div>
                           <div>
-                            <label className="block text-[9px] font-semibold text-orange-600 uppercase mb-0.5">TTC (TVA 20 %)</label>
-                            <div className="px-2 py-1 bg-orange-50 border border-orange-200 rounded text-[10px] font-bold text-orange-800 min-w-[80px] text-right">{formatEuro(ttcF)}</div>
+                            <label className="block text-[9px] font-semibold text-orange-600 uppercase mb-0.5 flex items-center justify-between gap-1">
+                              <span>TTC{f.ttcCustom ? '' : ' (TVA 20 %)'}</span>
+                              {f.ttcCustom && (
+                                <button type="button" onClick={() => updateFournisseur(i, { ttcCustom: '' })} className="text-[9px] font-bold text-orange-600 bg-orange-100 hover:bg-orange-200 rounded px-1" title="Revenir au calcul auto HT × TVA">↺ auto</button>
+                              )}
+                            </label>
+                            <input
+                              type="number" step="0.01"
+                              value={f.ttcCustom !== undefined && f.ttcCustom !== null && f.ttcCustom !== '' ? f.ttcCustom : ''}
+                              onChange={(e) => updateFournisseur(i, { ttcCustom: e.target.value })}
+                              placeholder={formatEuro(ttcF)}
+                              title="Override TTC — utile pour les factures à TVA mixte (autoliquidation + 20%)"
+                              className={`w-full px-2 py-1 border rounded text-[10px] font-bold text-orange-800 text-right ${f.ttcCustom ? 'bg-white border-orange-400' : 'bg-orange-50 border-orange-200'}`}
+                            />
                           </div>
                         </div>
                         {autoHt === 0 && f.nom && (
