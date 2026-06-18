@@ -6590,11 +6590,12 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {d.poseursDetail.map((p, i) => (
-                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-white text-amber-700 border border-amber-200">
+                    <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${p.paye ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-amber-700 border-amber-200'}`} title={p.paye && p.datePaye ? `Payé le ${new Date(p.datePaye).toLocaleDateString('fr-FR')}` : (p.paye ? 'Payé' : 'Non payé')}>
+                      {p.paye && <span className="text-emerald-600 font-bold">✓</span>}
                       <span className="font-bold">{p.nom}</span>
-                      <span className="text-amber-500">·</span>
+                      <span className={p.paye ? 'text-emerald-500' : 'text-amber-500'}>·</span>
                       <span>{formatEuro(p.ttc)}</span>
-                      {p.factureNo && <><span className="text-amber-400">·</span><span className="text-amber-600">🧾 {p.factureNo}</span></>}
+                      {p.factureNo && <><span className={p.paye ? 'text-emerald-400' : 'text-amber-400'}>·</span><span className={p.paye ? 'text-emerald-600' : 'text-amber-600'}>🧾 {p.factureNo}</span></>}
                       {p.facturePdfUrl && (
                         <a href={p.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
                       )}
@@ -6615,11 +6616,12 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {d.regiesDetail.map((r, i) => (
-                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-white text-purple-700 border border-purple-200">
+                    <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${r.paye ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-purple-700 border-purple-200'}`} title={r.paye && r.datePaye ? `Payée le ${new Date(r.datePaye).toLocaleDateString('fr-FR')}` : (r.paye ? 'Payée' : 'Non payée')}>
+                      {r.paye && <span className="text-emerald-600 font-bold">✓</span>}
                       <span className="font-bold">{r.nom}</span>
-                      <span className="text-purple-500">·</span>
+                      <span className={r.paye ? 'text-emerald-500' : 'text-purple-500'}>·</span>
                       <span>{formatEuro(r.ttc)}</span>
-                      {r.factureNo && <><span className="text-purple-400">·</span><span className="text-purple-600">🧾 {r.factureNo}</span></>}
+                      {r.factureNo && <><span className={r.paye ? 'text-emerald-400' : 'text-purple-400'}>·</span><span className={r.paye ? 'text-emerald-600' : 'text-purple-600'}>🧾 {r.factureNo}</span></>}
                       {r.facturePdfUrl && (
                         <a href={r.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
                       )}
@@ -6640,11 +6642,12 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {d.fournisseursDetail.map((f, i) => (
-                    <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-white text-orange-700 border border-orange-200">
+                    <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${f.paye ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-orange-700 border-orange-200'}`} title={f.paye && f.datePaye ? `Payé le ${new Date(f.datePaye).toLocaleDateString('fr-FR')}` : (f.paye ? 'Payé' : 'Non payé')}>
+                      {f.paye && <span className="text-emerald-600 font-bold">✓</span>}
                       <span className="font-bold">{f.nom}</span>
-                      <span className="text-orange-500">·</span>
+                      <span className={f.paye ? 'text-emerald-500' : 'text-orange-500'}>·</span>
                       <span>{formatEuro(f.ttc)}</span>
-                      {f.factureNo && <><span className="text-orange-400">·</span><span className="text-orange-600">🧾 {f.factureNo}</span></>}
+                      {f.factureNo && <><span className={f.paye ? 'text-emerald-400' : 'text-orange-400'}>·</span><span className={f.paye ? 'text-emerald-600' : 'text-orange-600'}>🧾 {f.factureNo}</span></>}
                       {f.facturePdfUrl && (
                         <a href={f.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
                       )}
