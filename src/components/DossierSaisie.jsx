@@ -7202,10 +7202,18 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
         const top = props[0];
         let autoSkipped = false;
         if (top && payload.matching?.direct === true) {
-          const tDoss = dossiers.find(d => d.localId === top.localId);
-          const tLine = tDoss?.[top.type]?.[top.index];
-          if (tLine && (tLine.factureFile || tLine.facturePdfUrl || tLine.factureExternalUrl)) {
+          // 1️⃣ On fait CONFIANCE au flag serveur (la source de vérité Supabase
+          //    peut être plus fraîche que le state client sur multi-postes).
+          if (top.alreadyAttached === true) {
             autoSkipped = true;
+          } else {
+            // 2️⃣ Fallback legacy : check côté client si le flag est absent
+            //    (anciens déploys du serveur sans alreadyAttached).
+            const tDoss = dossiers.find(d => d.localId === top.localId);
+            const tLine = tDoss?.[top.type]?.[top.index];
+            if (tLine && (tLine.factureFile || tLine.facturePdfUrl || tLine.factureExternalUrl)) {
+              autoSkipped = true;
+            }
           }
         }
 

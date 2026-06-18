@@ -297,12 +297,14 @@ function findByLineField(dossiers, value, field, labelFr) {
       (arr || []).forEach((p, index) => {
         if (!p || !p.nom || !p[field]) return;
         if (normalizeFactureNo(p[field]) !== target) return;
+        const already = hasFactureLine(p);
         out.push({
           localId: String(d.localId || ''),
           type,
           index,
           confidence: 0.99,
-          reasoning: `${labelFr} identique (${p[field]} — ${p.nom})${hasFactureLine(p) ? ' ⚠️ un PDF est déjà attaché à cette ligne' : ''}`,
+          alreadyAttached: already, // 🔁 Flag explicite pour le client (auto-skip robuste)
+          reasoning: `${labelFr} identique (${p[field]} — ${p.nom})${already ? ' ⚠️ un PDF est déjà attaché à cette ligne' : ''}`,
         });
       });
     };
