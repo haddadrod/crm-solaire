@@ -1686,6 +1686,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [editingId, setEditingId] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatut, setFilterStatut] = useState('all');
+  // 📅 Filtres avancés : date de pose Du/Au + prestataire spécifique.
+  //   Cumulatifs avec filterStatut. '' = pas de filtre.
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterPoseur, setFilterPoseur] = useState('');
+  const [filterRegie, setFilterRegie] = useState('');
+  const [filterFournisseur, setFilterFournisseur] = useState('');
   const [showStatutFilter, setShowStatutFilter] = useState(false); // 🔻 replier/déplier le filtre par statut
   const [copiedId, setCopiedId] = useState(null);
   const [celebrating, setCelebrating] = useState(false);
@@ -4972,6 +4979,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
       }
       return d.statut === filterStatut;
     })
+    // 📅 Filtres avancés cumulatifs : date de pose Du/Au + prestataire spécifique.
+    //    Stoppent au 1er échec — pas d'allocation inutile sur les dossiers exclus.
+    .filter(d => {
+      if (filterDateFrom && (!d.dateInsta || d.dateInsta < filterDateFrom)) return false;
+      if (filterDateTo && (!d.dateInsta || d.dateInsta > filterDateTo)) return false;
+      if (filterPoseur && !(d.poseurs || []).some(p => p?.nom === filterPoseur)) return false;
+      if (filterRegie && !(d.regies || []).some(r => r?.nom === filterRegie)) return false;
+      if (filterFournisseur && !(d.fournisseurs || []).some(f => f?.nom === filterFournisseur)) return false;
+      return true;
+    })
     .filter(d => {
       if (!searchTerm) return true;
       const s = searchTerm.toLowerCase();
@@ -5602,6 +5619,41 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   </div>
                   );
                 })()}
+              </div>
+            )}
+
+            {/* 📅 Filtres avancés : date Du/Au + poseur/régie/fournisseur */}
+            {dossiers.length > 0 && (
+              <div className="bg-white rounded-2xl p-3 shadow-md border border-violet-100 mb-4">
+                <div className="flex items-center gap-2 flex-wrap text-xs">
+                  <span className="font-bold text-slate-600 uppercase mr-1">📅 Du</span>
+                  <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
+                  <span className="font-bold text-slate-600 uppercase mx-1">au</span>
+                  <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
+                  <span className="text-[10px] text-slate-400 italic mr-2">(date de pose)</span>
+
+                  <select value={filterPoseur} onChange={(e) => setFilterPoseur(e.target.value)} className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                    <option value="">🔧 Tous poseurs</option>
+                    {POSEURS.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <select value={filterRegie} onChange={(e) => setFilterRegie(e.target.value)} className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                    <option value="">🤝 Toutes régies</option>
+                    {REGIES.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                  <select value={filterFournisseur} onChange={(e) => setFilterFournisseur(e.target.value)} className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs">
+                    <option value="">📦 Tous fournisseurs</option>
+                    {FOURNISSEURS.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+
+                  {(filterDateFrom || filterDateTo || filterPoseur || filterRegie || filterFournisseur) && (
+                    <button
+                      onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); setFilterPoseur(''); setFilterRegie(''); setFilterFournisseur(''); }}
+                      className="ml-auto px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[11px] font-bold"
+                    >
+                      ✕ Effacer les filtres
+                    </button>
+                  )}
+                </div>
               </div>
             )}
 
