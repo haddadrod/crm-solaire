@@ -2323,13 +2323,56 @@ export default function DossierSaisie({ authUser, onLogout }) {
           setStatutsOrder([...valid, ...missing]);
         }
       } catch (e) {}
+      // 🛟 Auto-restauration depuis backup quotidien si une clé critique est
+      // vide/manquante au démarrage. Protège contre un écrasement accidentel
+      // (cf. BACKED_UP_SETTINGS). Cherche le backup non-vide le plus récent
+      // et restaure silencieusement.
+      const isEmptyVal = (val) => {
+        if (val === null || val === undefined) return true;
+        if (Array.isArray(val)) return val.length === 0;
+        if (typeof val === 'object') return Object.keys(val).length === 0;
+        return false;
+      };
+      const restoreFromBackup = async (key) => {
+        try {
+          const list = await window.storage.list(`${key}-bk-`);
+          const backups = (list?.keys || []).sort().reverse();
+          for (const bkKey of backups) {
+            try {
+              const row = await window.storage.get(bkKey);
+              if (!row?.value) continue;
+              const parsed = JSON.parse(row.value);
+              if (!isEmptyVal(parsed)) {
+                console.warn(`[auto-restore] ${key} était vide → restauré depuis ${bkKey} (${Object.keys(parsed).length} entrées)`);
+                await window.storage.set(key, row.value);
+                return parsed;
+              }
+            } catch (e) {}
+          }
+        } catch (e) {}
+        return null;
+      };
       try {
         const r = bgData['tarifs-poseurs'];
-        if (r?.value) setTarifsPoseurs(JSON.parse(r.value));
+        let parsed = null;
+        try { parsed = r?.value ? JSON.parse(r.value) : null; } catch (e) {}
+        if (isEmptyVal(parsed)) {
+          const restored = await restoreFromBackup('tarifs-poseurs');
+          if (restored) setTarifsPoseurs(restored);
+        } else {
+          setTarifsPoseurs(parsed);
+        }
       } catch (e) {}
       try {
         const r = bgData['tarifs-regies'];
-        if (r?.value) setTarifsRegies(JSON.parse(r.value));
+        let parsed = null;
+        try { parsed = r?.value ? JSON.parse(r.value) : null; } catch (e) {}
+        if (isEmptyVal(parsed)) {
+          const restored = await restoreFromBackup('tarifs-regies');
+          if (restored) setTarifsRegies(restored);
+        } else {
+          setTarifsRegies(parsed);
+        }
       } catch (e) {}
       try {
         const r = bgData['poseurs-contacts'];
@@ -2358,28 +2401,57 @@ export default function DossierSaisie({ authUser, onLogout }) {
       } catch (e) {}
       try {
         const r = bgData['tarifs-internes'];
-        if (r?.value) setTarifsInternes({ ...TARIFS_INTERNES_DEFAULT, ...JSON.parse(r.value) });
+        let parsed = null;
+        try { parsed = r?.value ? JSON.parse(r.value) : null; } catch (e) {}
+        if (isEmptyVal(parsed)) {
+          const restored = await restoreFromBackup('tarifs-internes');
+          if (restored) setTarifsInternes({ ...TARIFS_INTERNES_DEFAULT, ...restored });
+        } else {
+          setTarifsInternes({ ...TARIFS_INTERNES_DEFAULT, ...parsed });
+        }
       } catch (e) {}
       try {
         const r = bgData['noms-internes'];
-        if (r?.value) setNomsInternes({ ...NOMS_INTERNES_DEFAULT, ...JSON.parse(r.value) });
+        let parsed = null;
+        try { parsed = r?.value ? JSON.parse(r.value) : null; } catch (e) {}
+        if (isEmptyVal(parsed)) {
+          const restored = await restoreFromBackup('noms-internes');
+          if (restored) setNomsInternes({ ...NOMS_INTERNES_DEFAULT, ...restored });
+        } else {
+          setNomsInternes({ ...NOMS_INTERNES_DEFAULT, ...parsed });
+        }
       } catch (e) {}
       try {
         const r = bgData['liste-fournisseurs'];
-        if (r?.value) setListeFournisseurs(JSON.parse(r.value));
+        let parsed = null;
+        try { parsed = r?.value ? JSON.parse(r.value) : null; } catch (e) {}
+        if (isEmptyVal(parsed)) {
+          const restored = await restoreFromBackup('liste-fournisseurs');
+          if (restored) setListeFournisseurs(restored);
+        } else {
+          setListeFournisseurs(parsed);
+        }
       } catch (e) {}
       try {
         const r = bgData['tarifs-fournisseurs'];
-        if (r?.value) {
-          const obj = JSON.parse(r.value);
-          if (obj && typeof obj === 'object') setTarifsFournisseurs(obj);
+        let parsed = null;
+        try { parsed = r?.value ? JSON.parse(r.value) : null; } catch (e) {}
+        if (isEmptyVal(parsed)) {
+          const restored = await restoreFromBackup('tarifs-fournisseurs');
+          if (restored && typeof restored === 'object') setTarifsFournisseurs(restored);
+        } else if (parsed && typeof parsed === 'object') {
+          setTarifsFournisseurs(parsed);
         }
       } catch (e) {}
       try {
         const r = bgData['produits'];
-        if (r?.value) {
-          const arr = JSON.parse(r.value);
-          if (Array.isArray(arr) && arr.length > 0) setProduits(arr);
+        let parsed = null;
+        try { parsed = r?.value ? JSON.parse(r.value) : null; } catch (e) {}
+        if (isEmptyVal(parsed)) {
+          const restored = await restoreFromBackup('produits');
+          if (Array.isArray(restored) && restored.length > 0) setProduits(restored);
+        } else if (Array.isArray(parsed) && parsed.length > 0) {
+          setProduits(parsed);
         }
       } catch (e) {}
       // 🛡️ Initialise lastWrittenSettings avec les valeurs chargées pour que
