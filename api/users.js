@@ -43,6 +43,24 @@ async function getCallerUser(req, admin) {
   return data.user;
 }
 
+// 🛡️ Journal d'audit append-only des actions sensibles sur les comptes
+// (création, modification, suppression, reset mot de passe). Stocké dans la
+// table storage sous la clé `users-audit-log` (JSON array, max 500 entrées
+// gardées — les plus anciennes sont tronquées pour ne pas grossir sans fin).
+async function appendAuditLog(admin, event) {
+  try {
+    const { data } = await admin.from('storage').select('value').eq('key', 'users-audit-log').maybeSingle();
+    let arr = [];
+    if (data?.value) { try { arr = JSON.parse(data.value); if (!Array.isArray(arr)) arr = []; } catch { arr = []; } }
+    arr.push({ at: new Date().toISOString(), ...event });
+    if (arr.length > 500) arr = arr.slice(-500);
+    await admin.from('storage').upsert({ key: 'users-audit-log', value: JSON.stringify(arr), updated_at: new Date().toISOString() });
+  } catch (e) {
+    // On ne fait pas échouer l'action si le log foire — c'est secondaire.
+    console.error('audit-log append failed:', e);
+  }
+}
+
 export default async function handler(req, res) {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
     return json(res, 500, {
@@ -58,21 +76,32 @@ export default async function handler(req, res) {
   try {
     const admin = makeAdmin();
 
-    // Détection du mode bootstrap : on considère qu'il n'y a pas encore d'admin
-    // *effectif* tant qu'aucun user avec role=admin ne s'est connecté au moins
-    // une fois. Cela couvre le cas d'un admin créé par erreur dans Supabase
-    // (orphelin, jamais utilisé) qui empêcherait un user légitime de revendiquer
-    // le rôle. Dès qu'un admin s'est connecté ne serait-ce qu'une fois, le mode
-    // bootstrap se ferme et toutes les routes redeviennent protégées.
+    // 🛡️ Mode bootstrap : EXCLUSIVEMENT tant qu'aucun user avec role=admin
+    // n'existe en base (peu importe qu'il se soit connecté ou non). Dès qu'un
+    // admin existe → mode bootstrap définitivement fermé. Sinon, un admin créé
+    // depuis le Supabase Dashboard et qui ne s'est jamais connecté laissait la
+    // porte ouverte à des créations de comptes sans aucune authentification —
+    // vecteur potentiel d'apparition d'un compte non sollicité.
     const { data: listAll, error: listErr } = await admin.auth.admin.listUsers({ page: 1, perPage: 200 });
     if (listErr) return json(res, 500, { error: listErr.message });
     const allUsers = listAll?.users || [];
-    const activeAdmins = allUsers.filter(u => u.user_metadata?.role === 'admin' && u.last_sign_in_at);
-    const isBootstrap = activeAdmins.length === 0;
+    const anyAdmin = allUsers.some(u => u.user_metadata?.role === 'admin');
+    const isBootstrap = !anyAdmin;
 
     // Caller (peut être null si pas connecté ou pas de JWT)
     const caller = await getCallerUser(req, admin);
     const isAdmin = !!(caller && caller.user_metadata?.role === 'admin');
+
+    // IP de l'appelant pour l'audit (Vercel met l'IP dans x-forwarded-for)
+    const callerIp = (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+      || req.headers['x-real-ip']
+      || req.socket?.remoteAddress
+      || '';
+    const actorInfo = {
+      actor_email: caller?.email || (isBootstrap ? '(bootstrap)' : '(anonymous)'),
+      actor_id: caller?.id || null,
+      actor_ip: callerIp,
+    };
 
     // 👥 Roster d'équipe — liste LIGHT accessible à TOUT utilisateur connecté
     // (pas seulement les admins). Sert au chat équipe pour afficher la liste
@@ -99,6 +128,13 @@ export default async function handler(req, res) {
     }
 
     if (req.method === 'GET') {
+      // 📜 Audit log — admin only. Renvoyé sur demande pour ne pas alourdir le GET normal.
+      if (req.query?.scope === 'audit') {
+        const { data } = await admin.from('storage').select('value').eq('key', 'users-audit-log').maybeSingle();
+        let log = [];
+        if (data?.value) { try { log = JSON.parse(data.value) || []; } catch {} }
+        return json(res, 200, { log: Array.isArray(log) ? log.slice().reverse() : [] });
+      }
       // En bootstrap, on renvoie aussi la liste (utile pour que l'UI affiche
       // l'état "aucun admin yet" et propose le bouton de promotion).
       return json(res, 200, { users: allUsers, bootstrap: isBootstrap });
@@ -123,6 +159,12 @@ export default async function handler(req, res) {
           user_metadata: newMeta,
         });
         if (upErr) throw upErr;
+        await appendAuditLog(admin, {
+          type: 'bootstrap_self_admin',
+          target_user_id: caller.id,
+          target_email: caller.email,
+          ...actorInfo,
+        });
         return json(res, 200, { user: updated.user, bootstrapped_self: true });
       }
 
@@ -152,6 +194,12 @@ export default async function handler(req, res) {
         userMeta.prenom = String(prenom).trim();
       }
 
+      // 🛡️ Audit : qui a créé ce user et quand. Empêche les créations « anonymes ».
+      userMeta.created_by_email = actorInfo.actor_email;
+      userMeta.created_by_id = actorInfo.actor_id || null;
+      userMeta.created_by_ip = actorInfo.actor_ip || '';
+      userMeta.created_at_iso = new Date().toISOString();
+
       const { data, error } = await admin.auth.admin.createUser({
         email: String(email).trim(),
         password: String(password),
@@ -159,6 +207,14 @@ export default async function handler(req, res) {
         user_metadata: userMeta,
       });
       if (error) throw error;
+      await appendAuditLog(admin, {
+        type: 'user_created',
+        target_user_id: data.user?.id,
+        target_email: data.user?.email,
+        target_role: finalRole,
+        bootstrap: isBootstrap,
+        ...actorInfo,
+      });
       return json(res, 200, { user: data.user, bootstrapped: isBootstrap });
     }
 
@@ -167,30 +223,64 @@ export default async function handler(req, res) {
       const { user_id, password, user_metadata, email } = body;
       if (!user_id) return json(res, 400, { error: 'user_id requis' });
       const updates = {};
+      const changes = [];
       if (password) {
         if (String(password).length < 6) return json(res, 400, { error: 'mot de passe min 6 caractères' });
         updates.password = String(password);
+        changes.push('password');
       }
       if (user_metadata && typeof user_metadata === 'object') {
-        updates.user_metadata = user_metadata;
+        // 🛡️ On fusionne sur l'existant pour préserver created_by_* et autre audit
+        // déjà posé. Puis on stamp last_modified_*.
+        const existing = allUsers.find(u => u.id === user_id);
+        const existingMeta = existing?.user_metadata || {};
+        const merged = {
+          ...existingMeta,
+          ...user_metadata,
+          last_modified_by_email: actorInfo.actor_email,
+          last_modified_by_id: actorInfo.actor_id || null,
+          last_modified_at_iso: new Date().toISOString(),
+        };
+        updates.user_metadata = merged;
+        // Détecte les champs modifiés pour le log
+        Object.keys(user_metadata).forEach(k => {
+          if (JSON.stringify(existingMeta[k]) !== JSON.stringify(user_metadata[k])) changes.push(`meta.${k}`);
+        });
       }
       if (email && typeof email === 'string' && email.trim()) {
         const e = email.trim();
         if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) return json(res, 400, { error: 'email invalide' });
         updates.email = e;
         updates.email_confirm = true; // pas de mail de confirmation, on fait confiance à l'admin
+        changes.push('email');
       }
       if (Object.keys(updates).length === 0) return json(res, 400, { error: 'rien à mettre à jour' });
       const { data, error } = await admin.auth.admin.updateUserById(user_id, updates);
       if (error) throw error;
+      const target = allUsers.find(u => u.id === user_id);
+      await appendAuditLog(admin, {
+        type: changes.includes('password') ? 'user_password_reset' : 'user_modified',
+        target_user_id: user_id,
+        target_email: target?.email || data.user?.email || '',
+        changes,
+        ...actorInfo,
+      });
       return json(res, 200, { user: data.user });
     }
 
     if (req.method === 'DELETE') {
       const user_id = req.query?.user_id || (req.body && req.body.user_id);
       if (!user_id) return json(res, 400, { error: 'user_id requis' });
+      const target = allUsers.find(u => u.id === user_id);
       const { error } = await admin.auth.admin.deleteUser(user_id);
       if (error) throw error;
+      await appendAuditLog(admin, {
+        type: 'user_deleted',
+        target_user_id: user_id,
+        target_email: target?.email || '',
+        target_role: target?.user_metadata?.role || '',
+        ...actorInfo,
+      });
       return json(res, 200, { ok: true });
     }
 

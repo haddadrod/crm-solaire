@@ -13968,6 +13968,10 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
   const [supabaseError, setSupabaseError] = useState('');
   const [supabaseSuccess, setSupabaseSuccess] = useState('');
   const [bootstrapMode, setBootstrapMode] = useState(false);
+  // 📜 Journal d'audit (sécurité) — historique des actions sensibles sur les comptes
+  const [auditLog, setAuditLog] = useState([]);
+  const [showAuditLog, setShowAuditLog] = useState(false);
+  const [loadingAudit, setLoadingAudit] = useState(false);
 
   // Picker emoji — large sélection groupée. On peut aussi taper/coller
   // n'importe quel emoji dans le champ (Win + . sur Windows, Ctrl+Cmd+Espace sur Mac).
@@ -14080,6 +14084,19 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
   useEffect(() => {
     fetchSupabaseUsers();
   }, []);
+
+  // 📜 Récupère le journal d'audit des actions sensibles (admin only côté serveur).
+  const fetchAuditLog = async () => {
+    setLoadingAudit(true);
+    try {
+      const data = await callUsersApi('GET', { query: { scope: 'audit' } });
+      setAuditLog(Array.isArray(data.log) ? data.log : []);
+    } catch (e) {
+      console.error('audit fetch:', e);
+      setAuditLog([]);
+    }
+    setLoadingAudit(false);
+  };
 
   // Crée un nouveau compte Supabase
   const createSupabaseUser = async () => {
@@ -14293,17 +14310,76 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                 </div>
               )}
 
-              {/* Bouton Ajouter */}
+              {/* Bouton Ajouter + Audit */}
               <div className="mb-4 flex items-center justify-between flex-wrap gap-2">
                 <div className="text-sm font-semibold text-slate-600">
                   📋 {supabaseUsers.length} compte{supabaseUsers.length > 1 ? 's' : ''} de connexion
                 </div>
-                {!showAdd && (
-                  <button onClick={() => setShowAdd(true)} className="text-xs font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 px-3 py-2 rounded-lg flex items-center gap-1.5 shadow-md">
-                    <Plus className="w-3 h-3" />Ajouter un membre
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => { const next = !showAuditLog; setShowAuditLog(next); if (next) fetchAuditLog(); }}
+                    className="text-xs font-semibold text-violet-700 bg-violet-50 hover:bg-violet-100 border border-violet-200 px-3 py-2 rounded-lg flex items-center gap-1.5"
+                    title="Voir l'historique des créations, modifications et suppressions de comptes"
+                  >
+                    📜 {showAuditLog ? 'Cacher' : 'Audit sécurité'}
                   </button>
-                )}
+                  {!showAdd && (
+                    <button onClick={() => setShowAdd(true)} className="text-xs font-semibold text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 px-3 py-2 rounded-lg flex items-center gap-1.5 shadow-md">
+                      <Plus className="w-3 h-3" />Ajouter un membre
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {/* 📜 Panneau Audit sécurité — historique des actions sensibles */}
+              {showAuditLog && (
+                <div className="mb-4 p-4 bg-gradient-to-br from-violet-50 to-fuchsia-50 border-2 border-violet-300 rounded-2xl">
+                  <div className="flex items-center justify-between mb-3">
+                    <h3 className="text-sm font-bold text-violet-800">🛡️ Journal d'audit — actions sensibles</h3>
+                    <button onClick={fetchAuditLog} disabled={loadingAudit} className="text-[11px] font-semibold text-violet-700 bg-white border border-violet-200 hover:bg-violet-100 px-2.5 py-1 rounded-lg disabled:opacity-50">
+                      {loadingAudit ? '⏳' : '🔄 Rafraîchir'}
+                    </button>
+                  </div>
+                  {loadingAudit ? (
+                    <div className="text-xs text-slate-500 text-center py-4">Chargement…</div>
+                  ) : auditLog.length === 0 ? (
+                    <div className="text-xs text-slate-500 text-center py-4 italic">Aucune action enregistrée pour l'instant. Les futures créations / modifs / suppressions s'afficheront ici.</div>
+                  ) : (
+                    <div className="space-y-1.5 max-h-96 overflow-y-auto">
+                      {auditLog.map((ev, i) => {
+                        const fmt = (iso) => { try { return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'medium' }); } catch { return iso; } };
+                        const meta = {
+                          user_created: { emoji: '➕', label: 'Création', color: 'bg-emerald-50 border-emerald-200 text-emerald-800' },
+                          user_modified: { emoji: '✏️', label: 'Modif', color: 'bg-blue-50 border-blue-200 text-blue-800' },
+                          user_password_reset: { emoji: '🔑', label: 'Reset MDP', color: 'bg-amber-50 border-amber-200 text-amber-800' },
+                          user_deleted: { emoji: '🗑️', label: 'Suppression', color: 'bg-rose-50 border-rose-200 text-rose-800' },
+                          bootstrap_self_admin: { emoji: '👑', label: 'Bootstrap admin', color: 'bg-violet-50 border-violet-200 text-violet-800' },
+                        }[ev.type] || { emoji: '•', label: ev.type, color: 'bg-slate-50 border-slate-200 text-slate-700' };
+                        const suspect = ev.actor_email === '(anonymous)' || ev.actor_email === '(bootstrap)';
+                        return (
+                          <div key={i} className={`flex items-start gap-2 p-2 rounded-lg border text-[11px] ${meta.color} ${suspect ? 'ring-2 ring-rose-400' : ''}`}>
+                            <span className="text-base flex-shrink-0">{meta.emoji}</span>
+                            <div className="flex-1 min-w-0">
+                              <div className="font-bold">
+                                {meta.label} : <span className="font-mono">{ev.target_email || '—'}</span>
+                                {ev.target_role && <span className="ml-1 px-1.5 py-0.5 bg-white/70 rounded text-[10px]">{ev.target_role}</span>}
+                              </div>
+                              <div className="opacity-80 mt-0.5">
+                                par <strong className={suspect ? 'text-rose-700' : ''}>{ev.actor_email}</strong>
+                                {ev.actor_ip && <span className="opacity-70 ml-1">({ev.actor_ip})</span>}
+                                <span className="ml-2 opacity-60">{fmt(ev.at)}</span>
+                              </div>
+                              {Array.isArray(ev.changes) && ev.changes.length > 0 && (
+                                <div className="opacity-70 mt-0.5">Champs : {ev.changes.join(', ')}</div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Formulaire d'ajout */}
               {showAdd && (
@@ -14563,6 +14639,27 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                             </div>
                           )}
                         </div>
+                        {/* 🛡️ Bloc audit : qui a créé / modifié ce compte */}
+                        {(() => {
+                          const m = u.user_metadata || {};
+                          const fmtDt = (iso) => { try { return new Date(iso).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }); } catch { return iso; } };
+                          const createdByEmail = m.created_by_email || '';
+                          const createdAtIso = m.created_at_iso || u.created_at || '';
+                          const modifBy = m.last_modified_by_email || '';
+                          const modifAt = m.last_modified_at_iso || '';
+                          const suspectCreator = !createdByEmail || createdByEmail === '(anonymous)' || createdByEmail === '(bootstrap)';
+                          return (
+                            <div className={`mb-2 px-3 py-2 rounded-lg text-[11px] border ${suspectCreator ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                              <div className="font-bold mb-0.5">🛡️ Traçabilité</div>
+                              <div>
+                                {suspectCreator
+                                  ? <span>⚠️ <strong>Créateur inconnu</strong> {createdAtIso && <>— créé le {fmtDt(createdAtIso)}</>} {(createdByEmail === '(bootstrap)' || createdByEmail === '(anonymous)') && <span className="ml-1">({createdByEmail})</span>}</span>
+                                  : <span>📝 Créé par <strong>{createdByEmail}</strong>{createdAtIso && <> le {fmtDt(createdAtIso)}</>}</span>}
+                              </div>
+                              {modifBy && <div className="mt-0.5">✏️ Dernière modif par <strong>{modifBy}</strong>{modifAt && <> le {fmtDt(modifAt)}</>}</div>}
+                            </div>
+                          );
+                        })()}
                         <div className="flex items-center justify-between pt-2 border-t border-violet-200">
                           <div className="text-[11px] text-slate-500">{u.last_sign_in_at ? `🕐 Dernière connexion : ${new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}` : '🆕 Jamais connecté'}</div>
                           <div className="flex gap-2">
