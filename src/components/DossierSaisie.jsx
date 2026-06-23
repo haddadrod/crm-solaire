@@ -123,6 +123,13 @@ const DEAD_STATUTS = ['W2_ANNULER', 'ANNULER', 'W1_DEPOSER', 'B3_REFUS_FINANCEME
 // Retourne null si aucun statut auto ne s'applique (pose faite mais banque
 // pas encore servie en originaux → l'utilisateur garde la main).
 function computeWorkflowStatut(d) {
+  // 💰 PAYÉ — statut terminal absolu : dès que l'argent est rentré (client OU
+  // financeur), le dossier est PAYÉ, peu importe que la pose ait été marquée
+  // « visite_ok » ou que les étapes intermédiaires (originaux, contrôle livr.)
+  // soient cochées. Sinon : un commercial qui marque « Client a payé » mais
+  // qui n'a pas tagué la pose → statut bloqué en EN FINANCEMENT alors que
+  // l'argent est sur le compte. Pas logique côté business.
+  if (d.payeClient || d.datePaiementBanque) return 'W_DOSSIER_PAYER';
   // ── Verdicts banque négatifs ── priment sur tout le reste, même sur une
   // date de pose saisie : tant que la banque n'a pas validé, le financement
   // n'est PAS sécurisé, le dossier est bloqué et doit le rester visuellement.
@@ -142,8 +149,6 @@ function computeWorkflowStatut(d) {
   // aujourd'hui sur tout nouveau dossier, il ne prouve pas que la pose a eu
   // lieu. → phase financière post-pose, auto-progressée jusqu'au paiement.
   if (d.statutPose === 'visite_ok') {
-    // Paiement reçu → PAYÉ (statut terminal du cycle).
-    if (d.payeClient || d.datePaiementBanque) return 'W_DOSSIER_PAYER';
     // Contrôle livraison fait → ATTENTE DÉBLOCAGE (la banque vérifie et débloque).
     if (d.dateControleLivraison) return 'F_ATTENTE_DEBLOCAGE';
     // Accord définitif obtenu (banque a reçu les originaux, ou dossier sans
