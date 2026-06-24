@@ -10119,6 +10119,45 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                     </div>
                   </summary>
                   <div className="bg-slate-50 px-4 py-3 space-y-1.5">
+                    {/* 💰 Barre virement groupé — STICKY EN HAUT pour voir le total
+                        sans avoir à scroller jusqu'en bas de la liste des dossiers. */}
+                    {kind && onMarkPrestaPaye && selSet.size > 0 && (() => {
+                      let totalSel = 0;
+                      const toMark = [];
+                      lignesFiltrees.forEach(l => {
+                        if (l.paye) return;
+                        if (!selSet.has(l.dossierLocalId)) return;
+                        totalSel += l.ttc || 0;
+                        toMark.push(l.dossierLocalId);
+                      });
+                      if (toMark.length === 0) return null;
+                      return (
+                        <div className="sticky top-0 -mx-4 -mt-3 mb-2 px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-600 text-white shadow-lg flex items-center justify-between gap-3 flex-wrap z-20">
+                          <div className="flex items-center gap-3">
+                            <span className="text-2xl font-extrabold">{formatEuro(totalSel)}</span>
+                            <span className="text-xs opacity-90">à virer · {toMark.length} dossier{toMark.length > 1 ? 's' : ''} coché{toMark.length > 1 ? 's' : ''}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); clearSelection(prestaKey); }}
+                              className="text-[11px] font-bold text-white/90 bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg"
+                            >Tout désélectionner</button>
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                const msg = `Valider le virement de ${formatEuro(totalSel)} à ${p.nom} ?\nCela va pointer ${toMark.length} dossier${toMark.length > 1 ? 's' : ''} comme « payés » avec la date du jour.`;
+                                if (!window.confirm(msg)) return;
+                                onMarkPrestaPaye(toMark, p.nom, kind);
+                                clearSelection(prestaKey);
+                              }}
+                              className="text-xs font-bold bg-white text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg shadow-md"
+                            >✓ Valider le virement</button>
+                          </div>
+                        </div>
+                      );
+                    })()}
                     {lignesFiltrees.map((l, i) => {
                       const etat = l.paye ? (l.payeAvance ? 'paye_avance' : 'paye') : l.financeurPaye ? 'a_payer' : 'bloque';
                       const styles = {
@@ -10169,44 +10208,6 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                         </div>
                       );
                     })}
-                    {/* 💰 Barre virement groupé — visible quand au moins une case cochée pour ce prestataire */}
-                    {kind && onMarkPrestaPaye && selSet.size > 0 && (() => {
-                      let totalSel = 0;
-                      const toMark = [];
-                      lignesFiltrees.forEach(l => {
-                        if (l.paye) return;
-                        if (!selSet.has(l.dossierLocalId)) return;
-                        totalSel += l.ttc || 0;
-                        toMark.push(l.dossierLocalId);
-                      });
-                      if (toMark.length === 0) return null;
-                      return (
-                        <div className="sticky bottom-0 mt-2 -mx-4 px-4 py-3 bg-gradient-to-r from-blue-500 to-violet-600 text-white shadow-lg flex items-center justify-between gap-3 flex-wrap z-10">
-                          <div className="flex items-center gap-3">
-                            <span className="text-2xl font-extrabold">{formatEuro(totalSel)}</span>
-                            <span className="text-xs opacity-90">à virer · {toMark.length} dossier{toMark.length > 1 ? 's' : ''} coché{toMark.length > 1 ? 's' : ''}</span>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); clearSelection(prestaKey); }}
-                              className="text-[11px] font-bold text-white/90 bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg"
-                            >Tout désélectionner</button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const msg = `Valider le virement de ${formatEuro(totalSel)} à ${p.nom} ?\nCela va pointer ${toMark.length} dossier${toMark.length > 1 ? 's' : ''} comme « payés » avec la date du jour.`;
-                                if (!window.confirm(msg)) return;
-                                onMarkPrestaPaye(toMark, p.nom, kind);
-                                clearSelection(prestaKey);
-                              }}
-                              className="text-xs font-bold bg-white text-blue-700 hover:bg-blue-50 px-3 py-1.5 rounded-lg shadow-md"
-                            >✓ Valider le virement</button>
-                          </div>
-                        </div>
-                      );
-                    })()}
                   </div>
                 </details>
               );
