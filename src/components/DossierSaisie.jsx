@@ -12495,6 +12495,10 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
   const [paySelected, setPaySelected] = useState(new Set());
   // 🏢 Filtres société — MULTI-SÉLECTION (OR). Vide = toutes.
   const [societeSelected, setSocieteSelected] = useState(new Set());
+  // 🔧🤝📦 Filtres par prestataire précis (1 dropdown chacun) — vide = tous.
+  const [poseurFilter, setPoseurFilter] = useState('');
+  const [regieFilter, setRegieFilter] = useState('');
+  const [fournisseurFilter, setFournisseurFilter] = useState('');
 
   const toggleSet = (setter) => (id) => setter(prev => {
     const next = new Set(prev);
@@ -12671,6 +12675,10 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
         (r.nom + ' ' + r.prenom + ' ' + r.id + ' ' + r.fournisseur1 + ' ' + r.regie1 + ' ' + r.poseur1 + ' ' + r.factureNo + ' ' + r.bl).toLowerCase().includes(f)
       );
     }
+    // Filtres prestataire précis (le dossier doit avoir au moins une ligne avec ce nom).
+    if (poseurFilter) filtered = filtered.filter(r => r.poseurs.some(p => p.nom === poseurFilter));
+    if (regieFilter) filtered = filtered.filter(r => r.regies.some(rg => rg.nom === regieFilter));
+    if (fournisseurFilter) filtered = filtered.filter(r => r.fournisseurs.some(f => f.nom === fournisseurFilter));
     // Filtres paiement (AND) — chaque chip est un critère à respecter.
     const checkPay = {
       client_paye: r => r.payeClient,
@@ -12692,7 +12700,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
       return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
     });
     return filtered;
-  }, [dossiers, sortKey, sortDir, filter, paySelected, societeSelected]);
+  }, [dossiers, sortKey, sortDir, filter, paySelected, societeSelected, poseurFilter, regieFilter, fournisseurFilter]);
 
   const toggleSort = (k) => {
     if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -12894,6 +12902,22 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
             {societeSelected.size === 0 && <span className="text-[10px] text-slate-400 italic">(aucune sélectionnée = toutes)</span>}
           </div>
         )}
+        {/* 🔧🤝📦 Filtres par prestataire précis (dropdown). Empty = tous. */}
+        <div className="flex flex-wrap items-center gap-2 mt-2">
+          <span className="text-[10px] font-bold text-cyan-900 uppercase mr-1">👷 Prestataire :</span>
+          <select value={poseurFilter} onChange={(e) => setPoseurFilter(e.target.value)} className={`text-[10px] font-semibold border rounded px-2 py-1 ${poseurFilter ? 'bg-amber-100 border-amber-400 text-amber-800' : 'bg-white border-slate-300 text-slate-600'}`}>
+            <option value="">🔧 Tous poseurs</option>
+            {POSEURS.map(n => <option key={n} value={n}>🔧 {n}</option>)}
+          </select>
+          <select value={regieFilter} onChange={(e) => setRegieFilter(e.target.value)} className={`text-[10px] font-semibold border rounded px-2 py-1 ${regieFilter ? 'bg-purple-100 border-purple-400 text-purple-800' : 'bg-white border-slate-300 text-slate-600'}`}>
+            <option value="">🤝 Toutes régies</option>
+            {REGIES.map(n => <option key={n} value={n}>🤝 {n}</option>)}
+          </select>
+          <select value={fournisseurFilter} onChange={(e) => setFournisseurFilter(e.target.value)} className={`text-[10px] font-semibold border rounded px-2 py-1 ${fournisseurFilter ? 'bg-orange-100 border-orange-400 text-orange-800' : 'bg-white border-slate-300 text-slate-600'}`}>
+            <option value="">📦 Tous fournisseurs</option>
+            {FOURNISSEURS.map(n => <option key={n} value={n}>📦 {n}</option>)}
+          </select>
+        </div>
         <div className="flex flex-wrap items-center gap-1.5 mt-2">
           <span className="text-[10px] font-bold text-cyan-900 uppercase mr-1">💰 Paiement :</span>
           {PAY_FILTERS.filter(pf => pf.id !== 'all').map(pf => {
@@ -12908,13 +12932,13 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
               </button>
             );
           })}
-          {(paySelected.size > 0 || societeSelected.size > 0) && (
+          {(paySelected.size > 0 || societeSelected.size > 0 || poseurFilter || regieFilter || fournisseurFilter) && (
             <button
-              onClick={() => { setPaySelected(new Set()); setSocieteSelected(new Set()); }}
+              onClick={() => { setPaySelected(new Set()); setSocieteSelected(new Set()); setPoseurFilter(''); setRegieFilter(''); setFournisseurFilter(''); }}
               className="ml-auto px-2 py-1 rounded-full text-[10px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-700 border border-rose-300"
               title="Effacer tous les filtres"
             >
-              ✕ Réinitialiser ({paySelected.size + societeSelected.size})
+              ✕ Réinitialiser ({paySelected.size + societeSelected.size + (poseurFilter ? 1 : 0) + (regieFilter ? 1 : 0) + (fournisseurFilter ? 1 : 0)})
             </button>
           )}
         </div>
@@ -12927,7 +12951,6 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
               <Th k="id">id</Th>
               <Th k="dateInsta">Date insta</Th>
               <Th k="statut">Rapport</Th>
-              <Th k="comptant">Compt.</Th>
               <Th k="nom">Nom</Th>
               <Th k="prenom">Prénom</Th>
               <Th k="societe">Soc.</Th>
@@ -12966,7 +12989,6 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                   <td className={`border border-slate-200 px-1.5 py-1 ${statutCls} whitespace-nowrap`} title={s?.label || r.statut}>
                     {s?.emoji} {s?.label || r.statut}
                   </td>
-                  <td className="border border-slate-200 px-1.5 py-1 text-center font-bold text-amber-700">{r.comptant}</td>
                   <td className="border border-slate-200 px-1.5 py-1 font-semibold uppercase" style={{ minWidth: '160px' }}>
                     <EditCell value={r.nom} onCommit={(v) => updateDossier(lid, { nom: v })} />
                   </td>
