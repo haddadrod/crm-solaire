@@ -12578,6 +12578,9 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
         payeClient: !!d.payeClient,
         puissance: d.puissance || 0,
         poseurs, regies, fournisseurs,
+        poseursHtTotal: poseurs.reduce((s, p) => s + (p.ht || 0), 0),
+        regiesHtTotal: regies.reduce((s, r) => s + (r.ht || 0), 0),
+        fournisseursHtTotal: fournisseurs.reduce((s, f) => s + (f.ht || 0), 0),
         poseursPasPayes, regiesPasPayees, fournPasPayes,
         margeHt,
         factureNo, bl,
@@ -12648,8 +12651,9 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
     );
   };
 
-  // Cellule prestataire : chips cliquables avec montant HT.
-  // Visuel : ✓ payé (vert + barré) / ⏳ à payer (couleur métier) + montant.
+  // Cellule prestataire : chips cliquables (nom seul). Le montant HT vit dans
+  // une colonne dédiée (Poseur HT / Régie HT / Fournisseur HT) pour ne pas
+  // surcharger les chips.
   const PrestataireCell = ({ items, kind, lid, color }) => {
     if (items.length === 0) return <span className="text-slate-300 italic text-[10px]">—</span>;
     return (
@@ -12664,10 +12668,30 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
             className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border transition ${it.paye ? 'bg-emerald-100 border-emerald-300 text-emerald-700 hover:bg-emerald-200' : `bg-${color}-50 border-${color}-300 text-${color}-700 hover:bg-${color}-100`}`}
           >
             <span>{it.paye ? '✓' : '⏳'}</span>
-            <span className="truncate max-w-[120px]">{it.nom}</span>
-            <span className={`font-mono font-bold ${it.paye ? 'line-through opacity-70' : ''}`}>{fmtEuroShort(it.ht)}</span>
+            <span className="truncate max-w-[140px]">{it.nom}</span>
           </button>
         ))}
+      </div>
+    );
+  };
+  // Cellule montant HT pour une catégorie de prestataires (poseurs/régies/fourn).
+  // Affiche le total HT, et un mini détail si plusieurs lignes.
+  const MontantCell = ({ items, color }) => {
+    const visible = items.filter(it => it.nom);
+    if (visible.length === 0) return <span className="text-slate-300 italic text-[10px]">—</span>;
+    const total = visible.reduce((s, it) => s + (it.ht || 0), 0);
+    return (
+      <div className="text-right">
+        <div className={`font-bold font-mono text-${color}-700`}>{fmtEuroShort(total)}</div>
+        {visible.length > 1 && (
+          <div className="text-[9px] text-slate-500 leading-tight">
+            {visible.map((it, i) => (
+              <span key={i} className={it.paye ? 'line-through opacity-60' : ''}>
+                {fmtEuroShort(it.ht)}{i < visible.length - 1 ? ' + ' : ''}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -12775,8 +12799,11 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
               <Th k="payeClient">Client payé</Th>
               <Th k="puissance" className="text-right">Puiss.</Th>
               <Th k="poseur1">🔧 Poseur(s)</Th>
+              <Th k="poseursHtTotal" className="text-right">Mt Poseur HT</Th>
               <Th k="regie1">🤝 Régie(s)</Th>
+              <Th k="regiesHtTotal" className="text-right">Mt Régie HT</Th>
               <Th k="fournisseur1">📦 Fournisseur(s)</Th>
+              <Th k="fournisseursHtTotal" className="text-right">Mt Fourn. HT</Th>
               <Th k="factureNo">N° Fac</Th>
               <Th k="margeHt" className="text-right">💎 Marge HT</Th>
             </tr>
@@ -12821,8 +12848,11 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
                   </td>
                   <td className="border border-slate-200 px-1.5 py-1 text-right font-semibold">{r.puissance || ''}</td>
                   <td className="border border-slate-200 px-1.5 py-1"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" /></td>
+                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap"><MontantCell items={r.poseurs} color="amber" /></td>
                   <td className="border border-slate-200 px-1.5 py-1"><PrestataireCell items={r.regies} kind="regie" lid={lid} color="purple" /></td>
+                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap"><MontantCell items={r.regies} color="purple" /></td>
                   <td className="border border-slate-200 px-1.5 py-1"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" /></td>
+                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap"><MontantCell items={r.fournisseurs} color="orange" /></td>
                   <td className="border border-slate-200 px-1.5 py-1 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
                   <td className={`border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap font-bold ${r.margeHt > 0 ? 'text-emerald-700 bg-emerald-50' : r.margeHt < 0 ? 'text-rose-700 bg-rose-50' : 'text-slate-500'}`}>{fmtEuro(r.margeHt)}</td>
                 </tr>
