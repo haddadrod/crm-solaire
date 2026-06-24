@@ -21993,7 +21993,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         <div>
                           <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">💸 Montant à rembourser</label>
                           <div className="relative">
-                            <input type="number" step="0.01" value={d.litigeMontantRembourse || ''} onChange={(e) => onUpdate({ litigeMontantRembourse: e.target.value })} placeholder="0,00" className={inputCls + ' pr-6 font-bold text-rose-700'} />
+                          <DebouncedInput type="number" step="0.01" value={d.litigeMontantRembourse || ''} onCommit={(v) => onUpdate({ litigeMontantRembourse: v })} placeholder="0,00" className={inputCls + ' pr-6 font-bold text-rose-700'} />
                             <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">€</span>
                           </div>
                         </div>
@@ -22015,11 +22015,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             <input type="date" min="2000-01-01" max="2100-12-31" value={d.litigeDateRembourse || ''} onChange={(e) => onUpdate({ litigeDateRembourse: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
                             <button type="button" onClick={() => onUpdate({ litigeDateRembourse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
                           </div>
-                          <input type="text" value={d.litigeFactureNo || ''} onChange={(e) => onUpdate({ litigeFactureNo: e.target.value })} placeholder="N° facture régie" className={inputCls} />
+                          <DebouncedInput type="text" value={d.litigeFactureNo || ''} onCommit={(v) => onUpdate({ litigeFactureNo: v })} placeholder="N° facture régie" className={inputCls} />
                         </div>
                       )}
                       {/* Note */}
-                      <textarea value={d.litigeNote || ''} onChange={(e) => onUpdate({ litigeNote: e.target.value })} rows={2} placeholder="Note (motif, contexte)…" className={inputCls + ' resize-none text-xs'} />
+                      <DebouncedTextarea value={d.litigeNote || ''} onCommit={(v) => onUpdate({ litigeNote: v })} rows={2} placeholder="Note (motif, contexte)…" className={inputCls + ' resize-none text-xs'} />
                     </div>
                   )}
                 </div>
@@ -22087,9 +22087,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           </span>
                         </label>
                       </div>
-                      <textarea value={d.savMotif || ''} onChange={(e) => onUpdate({ savMotif: e.target.value })} rows={2} placeholder="📝 Motif / problème signalé" className={inputCls + ' resize-none text-xs'} />
+                      <DebouncedTextarea value={d.savMotif || ''} onCommit={(v) => onUpdate({ savMotif: v })} rows={2} placeholder="📝 Motif / problème signalé" className={inputCls + ' resize-none text-xs'} />
                       <div className="grid grid-cols-3 gap-2">
-                        <input type="text" value={d.savIntervenant || ''} onChange={(e) => onUpdate({ savIntervenant: e.target.value })} placeholder="👤 Intervenant" className={inputCls} />
+                        <DebouncedInput type="text" value={d.savIntervenant || ''} onCommit={(v) => onUpdate({ savIntervenant: v })} placeholder="👤 Intervenant" className={inputCls} />
                         <div className="flex gap-1">
                           <input type="date" min="2000-01-01" max="2100-12-31" value={d.savDateInterventionPrevue || ''} onChange={(e) => onUpdate({ savDateInterventionPrevue: e.target.value })} title="Intervention prévue" className={inputCls + ' flex-1 min-w-0'} />
                           <button type="button" onClick={() => onUpdate({ savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
@@ -22099,7 +22099,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           <button type="button" onClick={() => onUpdate({ savDateInterventionFaite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
                         </div>
                       </div>
-                      <textarea value={d.savNote || ''} onChange={(e) => onUpdate({ savNote: e.target.value })} rows={2} placeholder="📝 Note (détails techniques, échanges)…" className={inputCls + ' resize-none text-xs'} />
+                      <DebouncedTextarea value={d.savNote || ''} onCommit={(v) => onUpdate({ savNote: v })} rows={2} placeholder="📝 Note (détails techniques, échanges)…" className={inputCls + ' resize-none text-xs'} />
                     </div>
                   )}
                 </div>
@@ -22274,7 +22274,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               <div className="bg-gradient-to-br from-violet-50 to-pink-50 border border-violet-200 rounded-xl p-2.5 space-y-1.5">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] font-semibold text-slate-600 uppercase w-12 flex-shrink-0">TTC</span>
-                  <input type="number" step="0.01" value={d.montantTotal || ''} onChange={(e) => onUpdate({ montantTotal: parseFloat(e.target.value) || 0 })} placeholder="0,00" className={inputCls + ' font-bold text-violet-700'} />
+                  <DebouncedInput type="number" step="0.01" value={d.montantTotal || ''} onCommit={(v) => onUpdate({ montantTotal: parseFloat(v) || 0 })} placeholder="0,00" className={inputCls + ' font-bold text-violet-700'} />
                   <span className="text-xs text-slate-500">€</span>
                 </div>
                 {d.margeHt !== undefined && (((d.fournisseurTtc || 0) + (d.regieTtc || 0) + (d.poseurTtc || 0)) > 0) && (
@@ -23118,7 +23118,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         </span>
                       </label>
                     </div>
-                    <textarea value={d.rappelMotif || ''} onChange={(e) => onUpdate({ rappelMotif: e.target.value })} rows={2} placeholder="📝 Motif du rappel (ex : confirmer date de pose, donner une info…)" className={inputCls + ' resize-none text-xs'} />
+                    <DebouncedTextarea value={d.rappelMotif || ''} onCommit={(v) => onUpdate({ rappelMotif: v })} rows={2} placeholder="📝 Motif du rappel (ex : confirmer date de pose, donner une info…)" className={inputCls + ' resize-none text-xs'} />
                   </div>
                 )}
               </div>
