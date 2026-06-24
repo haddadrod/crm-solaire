@@ -2160,6 +2160,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     litigeNote: '', // notes libres (motif du litige, contexte)
     // 🛠️ SAV : flag INDÉPENDANT du statut workflow — un dossier peut être en
     // pose ou en post-pose et avoir un SAV ouvert en parallèle.
+    // 📝 Rétractation : droit de rétractation légal du client (B2C, 14j). Flag
+    // indépendant du statut workflow — peut être posé à tout moment du cycle.
+    hasRetractation: false, // 🚩 drapeau : le client s'est-il rétracté ?
+    retractationDate: '', // 📅 date à laquelle le client s'est rétracté
     hasSav: false, // 🚩 drapeau : un SAV est-il ouvert sur ce dossier ?
     savDateOuverture: '', // 📅 date d'ouverture du SAV (1er signalement client)
     savMotif: '', // 📝 description du problème / défaut signalé
@@ -19941,6 +19945,22 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <span className="text-base">🛠️</span>
                 <span className="flex-1 text-left">{d.hasSav ? 'SAV déjà ouvert' : 'Ouvrir un SAV'}</span>
               </button>
+              {/* 📝 RÉTRACTATION — droit de rétractation client (délai légal 14j). Drapeau + date. */}
+              <button
+                onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  onUpdate({
+                    hasRetractation: true,
+                    retractationDate: d.retractationDate || today,
+                  });
+                  setShowCreerAction(false);
+                }}
+                disabled={!!d.hasRetractation}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.hasRetractation ? 'bg-orange-200 text-orange-500 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white border-2 border-orange-600'}`}
+              >
+                <span className="text-base">📝</span>
+                <span className="flex-1 text-left">{d.hasRetractation ? `Rétractation ${d.retractationDate ? `(${new Date(d.retractationDate).toLocaleDateString('fr-FR')})` : ''}` : 'Client rétracté'}</span>
+              </button>
               {/* ⚖️ LITIGE — drapeau indépendant, ne touche PAS au statut workflow */}
               <button
                 onClick={() => {
@@ -24967,6 +24987,7 @@ function KanbanCard({ d, societes = [], onShowQuick, isAdmin }) {
             {dateInfo.label} {formatDateForSheet(dateInfo.date)}
           </span>
         )}
+        {d.hasRetractation && <span title={d.retractationDate ? `Rétracté le ${new Date(d.retractationDate).toLocaleDateString('fr-FR')}` : 'Client rétracté'} className="text-[9px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">📝 Rétracté</span>}
         {d.hasLitige && <span className="text-[9px] font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">⚠️ Litige</span>}
         {d.hasSav && <span className="text-[9px] font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">🛠️ SAV</span>}
         {d.hasRappel && <span className="text-[9px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">📞 Rappel</span>}
