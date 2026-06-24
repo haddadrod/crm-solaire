@@ -7023,6 +7023,10 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
   // pour pouvoir cocher/décocher avant l'import dans la queue d'analyse.
   const [gmailScanning, setGmailScanning] = useState(false);
   const [gmailScanResults, setGmailScanResults] = useState(null); // { results, errors } | null
+  // 👁️ Masque par défaut les PDFs déjà rattachés à un dossier CRM — l'utilisateur
+  // n'a pas besoin de les revoir à chaque scan. Toggle dans la barre du scan
+  // pour les ré-afficher si besoin (debug, vérif, etc.).
+  const [showAlreadyInCrm, setShowAlreadyInCrm] = useState(false);
   // 📅 Fenêtre de scan (en jours). Modifiable via le sélecteur juste avant
   //    le bouton « Scanner Gmail ». 60 par défaut, 1095 max (3 ans).
   const [gmailScanDays, setGmailScanDays] = useState(60);
@@ -7936,18 +7940,30 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
               {/* ☑ Tout cocher / décocher — pratique quand on a 50+ PDFs et
                   qu'on ne veut en garder qu'une poignée (ou l'inverse). */}
               {(() => {
-                const entries = []; // tuples Gmail pour mark-imported batch
+                const entries = []; // tuples Gmail pour mark-imported batch (TOUS, y compris les cachés)
                 const allKeys = [];
+                // 👁️ Clés VISIBLES (= non cachées par le filtre showAlreadyInCrm).
+                // « Tout cocher » et « Tout ignorer » se basent sur cette liste pour
+                // ne pas re-sélectionner des PDFs hors écran.
+                const visibleKeys = [];
+                const visibleEntries = [];
                 for (const r of gmailScanResults.results || []) {
                   for (const m of r.messages || []) {
                     for (const a of m.attachments || []) {
-                      allKeys.push(gmailAttachmentKey(r.email, m.messageId, a.attachmentId));
+                      const k = gmailAttachmentKey(r.email, m.messageId, a.attachmentId);
+                      allKeys.push(k);
                       entries.push({ inboxEmail: r.email, messageId: m.messageId, attachmentId: a.attachmentId });
+                      const hidden = gmailKnownInCrm.has(k) && !showAlreadyInCrm;
+                      if (!hidden) {
+                        visibleKeys.push(k);
+                        visibleEntries.push({ inboxEmail: r.email, messageId: m.messageId, attachmentId: a.attachmentId });
+                      }
                     }
                   }
                 }
                 if (allKeys.length === 0) return null;
-                const allChecked = allKeys.length > 0 && allKeys.every(k => gmailSelection.has(k));
+                const allChecked = visibleKeys.length > 0 && visibleKeys.every(k => gmailSelection.has(k));
+                const hiddenCount = allKeys.length - visibleKeys.length;
 
                 const handleIgnoreAll = async () => {
                   if (!window.confirm(`Marquer les ${allKeys.length} PDFs ci-dessous comme « déjà traités » ?\n\nIls ne reviendront plus dans les futurs scans (pour toute l'équipe).\n\nLeurs PDFs ne sont pas attachés à un dossier — c'est juste un nettoyage de la queue.`)) return;
@@ -7972,12 +7988,21 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                 return (
                   <div className="flex items-center gap-2 px-1 flex-wrap">
                     <button
-                      onClick={() => setGmailSelection(allChecked ? new Set() : new Set(allKeys))}
+                      onClick={() => setGmailSelection(allChecked ? new Set() : new Set(visibleKeys))}
                       className="px-2 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-[10px] font-bold"
                     >
-                      {allChecked ? '☐ Tout décocher' : '☑ Tout cocher'} ({allKeys.length})
+                      {allChecked ? '☐ Tout décocher' : '☑ Tout cocher'} ({visibleKeys.length})
                     </button>
                     <span className="text-[10px] text-blue-600">{gmailSelection.size} sélectionné{gmailSelection.size > 1 ? 's' : ''}</span>
+                    {hiddenCount > 0 && (
+                      <button
+                        onClick={() => setShowAlreadyInCrm(v => !v)}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-bold ${showAlreadyInCrm ? 'bg-emerald-200 text-emerald-800 hover:bg-emerald-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                        title={showAlreadyInCrm ? 'Cacher les PDFs déjà rattachés à un dossier' : 'Afficher quand même les PDFs déjà rattachés'}
+                      >
+                        {showAlreadyInCrm ? `👁️ Cacher ${hiddenCount} déjà-en-CRM` : `👁️‍🗨️ Afficher ${hiddenCount} déjà-en-CRM`}
+                      </button>
+                    )}
                     {/* 🔍 Bilan pré-filtre + bouton pour marquer définitivement les
                         détectés « déjà en CRM » → ne reviennent plus aux scans suivants. */}
                     {gmailKnownInCrm.size > 0 && (
@@ -8034,6 +8059,8 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                           ? new Date(parseInt(m.internalDate, 10)).toLocaleDateString('fr-FR')
                           : (m.date ? new Date(m.date).toLocaleDateString('fr-FR') : '');
                         const alreadyInCrm = gmailKnownInCrm.has(key);
+                        // 👁️ Cache les « déjà en CRM » sauf si l'utilisateur a coché le toggle.
+                        if (alreadyInCrm && !showAlreadyInCrm) return null;
                         return (
                           <label
                             key={key}
