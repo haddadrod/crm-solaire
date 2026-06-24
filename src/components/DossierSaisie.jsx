@@ -12446,15 +12446,9 @@ function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setS
             <div className="flex items-center gap-2 font-bold">📦 Import JSON</div>
             <div className="text-[11px] text-slate-500 mt-0.5">Importe un fichier JSON de dossiers (migration sheet ou restauration backup).</div>
           </button>
-          <button
-            onClick={handleAnnulerImport}
-            disabled={nbImported === 0}
-            className="bg-white hover:bg-rose-50 disabled:bg-slate-50 disabled:text-slate-400 text-rose-700 px-4 py-3 rounded-xl font-semibold border border-rose-200 disabled:border-slate-200 text-left disabled:cursor-not-allowed"
-            title="Supprime tous les dossiers ajoutés via « Import JSON » (createdBy=import_sheet). Tes dossiers d'origine ne sont PAS touchés."
-          >
-            <div className="flex items-center gap-2 font-bold">🗑 Annuler l'import {nbImported > 0 && <span className="text-[10px] bg-rose-200 text-rose-800 px-1.5 py-0.5 rounded-full">{nbImported}</span>}</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">{nbImported > 0 ? `Supprime les ${nbImported} dossiers importés via JSON.` : 'Aucun dossier importé.'}</div>
-          </button>
+          {/* 🚫 Ancien bouton « Annuler l'import » retiré : trop dangereux —
+              un clic = suppression définitive de tous les dossiers importés.
+              Si besoin de purger un import, passer par un script ponctuel. */}
           <button
             onClick={handleCqImportes}
             disabled={nbCqImported === 0}
