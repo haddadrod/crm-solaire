@@ -12781,23 +12781,22 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
     );
   };
 
-  // Cellule prestataire — chip style Linear (dot + nom + ✓×).
-  // Chip cliquable pour basculer payé, select pour changer nom, × pour supprimer.
+  // Cellule prestataire — chip style Linear (dot + nom + ✓×). Compact.
   const PrestataireCell = ({ items, kind, lid, color, options = [] }) => {
     const dotCls = (paye) => paye ? 'bg-emerald-500' : 'bg-slate-300';
     return (
-      <div className="space-y-1.5 min-w-[180px]">
+      <div className="space-y-1 min-w-[150px]">
         {items.map((it) => {
           const baseChip = it.paye
             ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
             : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100';
           return (
-            <div key={`${kind}-${it.idx}`} className={`group inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border transition w-full ${baseChip}`}>
-              <span className={`flex-shrink-0 w-2 h-2 rounded-full ${dotCls(it.paye)}`}></span>
+            <div key={`${kind}-${it.idx}`} className={`group inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition w-full ${baseChip}`}>
+              <span className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${dotCls(it.paye)}`}></span>
               <select
                 value={it.nom}
                 onChange={(e) => renamePrestataire(lid, kind, it.idx, e.target.value)}
-                className="flex-1 min-w-0 text-[11px] font-semibold bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-violet-400 rounded px-1 py-0.5 cursor-pointer"
+                className="flex-1 min-w-0 text-[10px] font-semibold bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-violet-400 rounded px-0.5 py-0.5 cursor-pointer truncate"
                 title={it.nom ? `${it.nom} — clic pour changer` : 'Choisir un prestataire'}
               >
                 <option value="">— choisir —</option>
@@ -12807,14 +12806,14 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
               <button
                 onClick={() => togglePrestataire(lid, kind, it.idx)}
                 title={it.paye ? 'Marquer non payé' : 'Marquer payé'}
-                className={`flex-shrink-0 w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center transition ${it.paye ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-300 text-slate-400 hover:border-emerald-400 hover:text-emerald-600'}`}
+                className={`flex-shrink-0 w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center transition ${it.paye ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-300 text-slate-400 hover:border-emerald-400 hover:text-emerald-600'}`}
               >
                 {it.paye ? '✓' : '⏳'}
               </button>
               <button
                 onClick={() => removePrestataire(lid, kind, it.idx)}
                 title="Supprimer"
-                className="flex-shrink-0 w-4 h-5 text-[14px] leading-none text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition"
+                className="flex-shrink-0 w-3 h-4 text-[12px] leading-none text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition"
               >
                 ×
               </button>
@@ -12823,7 +12822,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
         })}
         <button
           onClick={() => addPrestataire(lid, kind)}
-          className="w-full text-[10px] font-medium py-1 rounded-lg border border-dashed border-slate-200 text-slate-400 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-600 transition"
+          className="w-full text-[9px] font-medium py-0.5 rounded-md border border-dashed border-slate-200 text-slate-400 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-600 transition"
           title={`Ajouter un ${kind}`}
         >
           + Ajouter
@@ -12831,18 +12830,25 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
       </div>
     );
   };
-  // Cellule montant HT ÉDITABLE : 1 input par prestataire (aligné sur la cellule
-  // PrestataireCell), avec total en bas.
+  // Cleanup d'un montant float pour l'input : arrondi 2 déc, retire zéros traînants.
+  // Ex : 3300.0000000001 → "3300", 27416.667 → "27416.67"
+  const cleanHt = (v) => {
+    if (v === null || v === undefined || v === '') return '';
+    const n = parseFloat(v);
+    if (isNaN(n)) return '';
+    return String(Math.round(n * 100) / 100);
+  };
+  // Cellule montant HT ÉDITABLE : 1 input par prestataire.
   const MontantCell = ({ items, kind, lid, color }) => {
     const total = items.reduce((s, it) => s + (it.ht || 0), 0);
     return (
-      <div className="space-y-1 min-w-[100px]">
+      <div className="space-y-1 min-w-[80px]">
         {items.map((it) => (
-          <div key={`${kind}-mt-${it.idx}`} style={{ height: '24px' }} className="flex items-center">
+          <div key={`${kind}-mt-${it.idx}`} style={{ height: '22px' }} className="flex items-center">
             <input
               type="number"
               step="0.01"
-              defaultValue={it.ht || ''}
+              defaultValue={cleanHt(it.ht)}
               onBlur={(e) => {
                 const v = e.target.value;
                 const curNum = parseFloat(v) || 0;
@@ -12850,12 +12856,12 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
               }}
               onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
               placeholder="0"
-              className={`w-full text-right text-[10px] font-mono font-bold bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded ${it.paye ? 'text-emerald-700 line-through' : `text-${color}-700`}`}
+              className={`w-full text-right text-[10px] font-mono font-semibold bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-1 focus:ring-yellow-400 px-1 py-0.5 rounded ${it.paye ? 'text-emerald-700 line-through' : `text-${color}-700`}`}
             />
           </div>
         ))}
         {items.length > 1 && (
-          <div style={{ height: '20px' }} className={`flex items-center justify-end text-[10px] font-bold border-t border-${color}-200 text-${color}-800`}>
+          <div style={{ height: '18px' }} className={`flex items-center justify-end text-[10px] font-bold border-t border-${color}-200 text-${color}-800`}>
             = {fmtEuroShort(total)}
           </div>
         )}
