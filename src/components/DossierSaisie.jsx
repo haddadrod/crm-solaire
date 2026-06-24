@@ -4789,31 +4789,33 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsRecupTva.sort((a, b) => a.joursRestants - b.joursRestants); // les plus urgents en premier
 
-    // 🧾 Factures manquantes — pour la compta : dossiers posés où au moins
-    // un prestataire (poseur/régie/fournisseur) a un nom mais pas de facture
-    // uploadée. Plus la pose est ancienne, plus c'est urgent.
+    // 🧾 Factures manquantes — pour la compta : prestataire PAYÉ mais sa
+    // facture (PDF / lien) n'est pas encore dans le CRM. C'est l'urgence
+    // comptable : on a sorti l'argent, il faut le justificatif.
+    // (Avant : dossier posé + facture manquante, même si pas encore payé →
+    // beaucoup de bruit sur des prestataires qu'on n'a pas encore réglés.)
     const rappelsFacturesManquantes = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
-      // Pose réellement terminée — voir commentaire au-dessus des autres rappels.
-      const posee = d.statutPose === 'visite_ok';
-      if (!posee) return;
-      if (finalStatuses.includes(d.statut)) {
-        // Sauf annulé : si déjà payé, on garde l'alerte tant que les factures
-        // manquent (la compta peut avoir besoin de les récupérer même après).
-        if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') return;
-      }
+      if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') return;
       // 🧾 "Facture présente" = soit un PDF uploadé dans le CRM (factureFile),
       // soit un lien externe (facturePdfUrl, factureExternalUrl → ex : Drive).
-      // Avant on ne checkait que factureFile, donc les liens Drive collés à
-      // la main restaient comptés comme "manquants" — bug.
       const hasFacture = (p) => !!(p?.factureFile || p?.facturePdfUrl || p?.factureExternalUrl);
-      const poseursManquants = (d.poseurs || []).filter(p => p.nom && !hasFacture(p)).map(p => p.nom);
-      const regiesManquantes = (d.regies || []).filter(r => r.nom && !hasFacture(r)).map(r => r.nom);
-      const fournisseursManquants = (d.fournisseurs || []).filter(f => f.nom && !hasFacture(f)).map(f => f.nom);
+      // Critère : payé (paye===true) ET pas de facture.
+      const poseursManquants = (d.poseurs || []).filter(p => p.nom && p.paye && !hasFacture(p)).map(p => p.nom);
+      const regiesManquantes = (d.regies || []).filter(r => r.nom && r.paye && !hasFacture(r)).map(r => r.nom);
+      const fournisseursManquants = (d.fournisseurs || []).filter(f => f.nom && f.paye && !hasFacture(f)).map(f => f.nom);
       const total = poseursManquants.length + regiesManquantes.length + fournisseursManquants.length;
       if (total === 0) return;
-      const ref = d.dateInsta || d.savedAt;
+      // Urgence : on regarde la date de paiement la plus ancienne parmi les
+      // prestataires payés sans facture (sinon fallback dateInsta).
+      const datesPayes = []
+        .concat((d.poseurs || []).filter(p => p.nom && p.paye && !hasFacture(p)).map(p => p.datePaye))
+        .concat((d.regies || []).filter(r => r.nom && r.paye && !hasFacture(r)).map(r => r.datePaye))
+        .concat((d.fournisseurs || []).filter(f => f.nom && f.paye && !hasFacture(f)).map(f => f.datePaye))
+        .filter(Boolean)
+        .sort();
+      const ref = datesPayes[0] || d.dateInsta || d.savedAt;
       const jours = ref ? joursEcoules(ref) : 0;
       let level = 'warn';
       if (jours >= 30) level = 'critical';
@@ -26206,7 +26208,7 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
     },
     facturesManquantes: {
       title: '🧾 Factures manquantes (compta)',
-      subtitle: 'Chaque ligne = un dossier posé ; les pastilles sont les factures poseur / régie / fournisseur pas encore reçues. Clic 📲 = relance WhatsApp directe.',
+      subtitle: 'Chaque ligne = un dossier où un prestataire a été PAYÉ mais sa facture n\'est pas encore dans le CRM. Clic 📲 = relance WhatsApp directe. Le compteur de jours = depuis le paiement.',
       items: dashboard.rappelsFacturesManquantes || [],
       // Le badge d'en-tête compte les FACTURES (somme des pastilles), pas les
       // dossiers — cohérent avec le chip d'alertes et le compteur de l'onglet
@@ -26264,7 +26266,7 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
         ];
         return <div className="flex items-center gap-1 flex-wrap">{chips}</div>;
       },
-      suffixLabel: 'depuis pose',
+      suffixLabel: 'depuis paiement',
     },
     pennylaneAEnvoyer: {
       title: '📤 À envoyer à Pennylane (compta)',
