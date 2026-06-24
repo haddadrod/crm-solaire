@@ -39,6 +39,34 @@ function pickApiKey(societe) {
   return { key: null, source: null };
 }
 
+// 🔐 Tente de lire la clé Pennylane stockée DANS Supabase (configurable depuis
+// le CRM par un admin via /api/pennylane-keys). Si trouvée → on l'utilise.
+// Sinon → fallback sur pickApiKey() (variables d'env Vercel).
+//
+// Préfixe `secret-` : exclu de la lecture authenticated par la nouvelle
+// politique RLS (SUPABASE_SECRETS_RLS.sql), donc seul le serveur (service_role)
+// peut lire ces valeurs.
+async function resolveApiKey(societe) {
+  if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+    const norm = String(societe || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (norm) {
+      try {
+        const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        });
+        const { data } = await admin.from('storage').select('value').eq('key', `secret-pennylane-${norm}`).maybeSingle();
+        const v = data?.value;
+        if (v && String(v).trim()) {
+          return { key: String(v).trim(), source: `CRM (secret-pennylane-${norm})` };
+        }
+      } catch (e) {
+        console.error('resolveApiKey from Supabase failed:', e?.message);
+      }
+    }
+  }
+  return pickApiKey(societe);
+}
+
 function json(res, status, body) {
   res.status(status).setHeader('Content-Type', 'application/json');
   res.send(JSON.stringify(body));
@@ -164,13 +192,14 @@ export default async function handler(req, res) {
     storagePath,
   } = body;
 
-  // Sélection de la clé selon la société émettrice
-  const { key: apiKey, source: keySource } = pickApiKey(societe);
+  // Sélection de la clé selon la société émettrice — d'abord Supabase (CRM),
+  // sinon variables d'env Vercel (legacy).
+  const { key: apiKey, source: keySource } = await resolveApiKey(societe);
   if (!apiKey) {
     return json(res, 503, {
       error: societe
-        ? `Pennylane non configuré pour la société "${societe}" : ajoute PENNYLANE_API_KEY_${String(societe).toUpperCase()} dans Vercel (ou PENNYLANE_API_KEY générique).`
-        : 'Pennylane non configuré : ajoute PENNYLANE_API_KEY dans Vercel.',
+        ? `Pennylane non configuré pour la société "${societe}". Va dans Réglages → 🔐 Clés Pennylane pour la renseigner.`
+        : 'Pennylane non configuré. Va dans Réglages → 🔐 Clés Pennylane.',
     });
   }
 
