@@ -12781,22 +12781,28 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
     );
   };
 
-  // Cellule prestataire — chip style Linear (dot + nom + ✓×). Compact.
+  // Cellule prestataire — chip style Linear (dot + nom + ✓×).
+  // Auto-adapte à la largeur du texte (pas de min-width forcé).
   const PrestataireCell = ({ items, kind, lid, color, options = [] }) => {
     const dotCls = (paye) => paye ? 'bg-emerald-500' : 'bg-slate-300';
     return (
-      <div className="space-y-1 min-w-[150px]">
+      <div className="flex flex-col items-start gap-1">
         {items.map((it) => {
           const baseChip = it.paye
             ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
             : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100';
+          // Largeur du select calée sur la longueur du texte (~6.5px par caractère)
+          // — minimum 70px pour rester cliquable.
+          const labelLen = (it.nom || '— choisir —').length;
+          const selectWidth = Math.max(70, Math.min(180, labelLen * 7 + 12));
           return (
-            <div key={`${kind}-${it.idx}`} className={`group inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition w-full ${baseChip}`}>
+            <div key={`${kind}-${it.idx}`} className={`group inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition ${baseChip}`}>
               <span className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${dotCls(it.paye)}`}></span>
               <select
                 value={it.nom}
                 onChange={(e) => renamePrestataire(lid, kind, it.idx, e.target.value)}
-                className="flex-1 min-w-0 text-[10px] font-semibold bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-violet-400 rounded px-0.5 py-0.5 cursor-pointer truncate"
+                style={{ width: `${selectWidth}px` }}
+                className="text-[10px] font-semibold bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-violet-400 rounded px-0.5 py-0.5 cursor-pointer truncate"
                 title={it.nom ? `${it.nom} — clic pour changer` : 'Choisir un prestataire'}
               >
                 <option value="">— choisir —</option>
@@ -12822,7 +12828,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
         })}
         <button
           onClick={() => addPrestataire(lid, kind)}
-          className="w-full text-[9px] font-medium py-0.5 rounded-md border border-dashed border-slate-200 text-slate-400 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-600 transition"
+          className="text-[9px] font-medium py-0.5 px-2 rounded-md border border-dashed border-slate-200 text-slate-400 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-600 transition"
           title={`Ajouter un ${kind}`}
         >
           + Ajouter
