@@ -12483,10 +12483,20 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
   const [sortKey, setSortKey] = useState('dateInsta');
   const [sortDir, setSortDir] = useState('desc');
   const [filter, setFilter] = useState('');
-  // 🔎 Filtre de paiement — chip-style. 'all' = pas de filtre.
-  const [payFilter, setPayFilter] = useState('all');
-  // 🏢 Filtre société (Yolico / Elsun / ...). '' = toutes sociétés.
-  const [societeFilter, setSocieteFilter] = useState('');
+  // 🔎 Filtres de paiement — MULTI-SÉLECTION (AND). Vide = pas de filtre.
+  // Permet de croiser : « Yolico » + « Poseur à payer » + « Régie à payer »
+  // → vue ultra-ciblée des urgences compta.
+  const [paySelected, setPaySelected] = useState(new Set());
+  // 🏢 Filtres société — MULTI-SÉLECTION (OR). Vide = toutes.
+  const [societeSelected, setSocieteSelected] = useState(new Set());
+
+  const toggleSet = (setter) => (id) => setter(prev => {
+    const next = new Set(prev);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
+  const togglePay = toggleSet(setPaySelected);
+  const toggleSociete = toggleSet(setSocieteSelected);
 
   const statutMap = useMemo(() => {
     const m = {};
@@ -12522,14 +12532,36 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
         || (d.poseurs || []).find(p => p?.bl)?.bl
         || (d.regies || []).find(r => r?.bl)?.bl
         || '';
-      // Listes prestataires : nom + paye + idx (pour toggle direct).
-      const poseurs = (d.poseurs || []).map((p, idx) => ({ nom: p?.nom || '', paye: !!p?.paye, idx }));
-      const regies = (d.regies || []).map((r, idx) => ({ nom: r?.nom || '', paye: !!r?.paye, idx }));
-      const fournisseurs = (d.fournisseurs || []).map((f, idx) => ({ nom: f?.nom || '', paye: !!f?.paye, idx }));
-      // Synthèse paiement : a-t-on des prestataires non payés ?
+      // Listes prestataires : nom + paye + montant HT + idx (pour toggle direct).
+      // Le montant HT vient des `*Detail` enrichis si présent, sinon fallback
+      // sur htCustom saisi → 0. Permet d'afficher « ✓ NOM 2 100 € » à côté.
+      const poseurs = (d.poseurs || []).map((p, idx) => {
+        const det = (d.poseursDetail || [])[idx];
+        const ht = det?.ht ?? det?.autoHt ?? (parseFloat(p?.htCustom) || 0);
+        return { nom: p?.nom || '', paye: !!p?.paye, ht: ht || 0, idx };
+      });
+      const regies = (d.regies || []).map((r, idx) => {
+        const det = (d.regiesDetail || [])[idx];
+        const ht = det?.ht ?? det?.autoHt ?? (parseFloat(r?.htCustom) || 0);
+        return { nom: r?.nom || '', paye: !!r?.paye, ht: ht || 0, idx };
+      });
+      const fournisseurs = (d.fournisseurs || []).map((f, idx) => {
+        const det = (d.fournisseursDetail || [])[idx];
+        const ht = det?.ht ?? det?.autoHt ?? (parseFloat(f?.htCustom) || 0);
+        return { nom: f?.nom || '', paye: !!f?.paye, ht: ht || 0, idx };
+      });
       const poseursPasPayes = poseurs.filter(p => p.nom && !p.paye).length;
       const regiesPasPayees = regies.filter(r => r.nom && !r.paye).length;
       const fournPasPayes = fournisseurs.filter(f => f.nom && !f.paye).length;
+      // Marge HT = vente HT - coûts HT (poseurs + régies + fournisseurs).
+      // On utilise les valeurs déjà calculées dans enrichDossier si dispo,
+      // sinon recalcule de base.
+      const margeHt = (d.margeHt !== undefined && d.margeHt !== null)
+        ? parseFloat(d.margeHt)
+        : ((parseFloat(d.montantHt) || 0)
+            - poseurs.reduce((s, p) => s + (p.ht || 0), 0)
+            - regies.reduce((s, r) => s + (r.ht || 0), 0)
+            - fournisseurs.reduce((s, f) => s + (f.ht || 0), 0));
       return {
         d,
         id: d.id || '',
@@ -12547,6 +12579,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
         puissance: d.puissance || 0,
         poseurs, regies, fournisseurs,
         poseursPasPayes, regiesPasPayees, fournPasPayes,
+        margeHt,
         factureNo, bl,
         // Pour tri sur sous-listes : 1er nom
         poseur1: poseurs[0]?.nom || '',
@@ -12555,8 +12588,8 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
       };
     });
     let filtered = list;
-    // 🏢 Filtre société d'abord (vue par société = base du raisonnement métier)
-    if (societeFilter) filtered = filtered.filter(r => r.societe === societeFilter);
+    // 🏢 Filtre société (OR) : si vide → toutes ; sinon row.societe doit être dans le set.
+    if (societeSelected.size > 0) filtered = filtered.filter(r => societeSelected.has(r.societe));
     // Filtre texte
     const f = filter.trim().toLowerCase();
     if (f) {
@@ -12564,13 +12597,19 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
         (r.nom + ' ' + r.prenom + ' ' + r.id + ' ' + r.fournisseur1 + ' ' + r.regie1 + ' ' + r.poseur1 + ' ' + r.factureNo + ' ' + r.bl).toLowerCase().includes(f)
       );
     }
-    // Filtre paiement (chips)
-    if (payFilter === 'client_paye') filtered = filtered.filter(r => r.payeClient);
-    else if (payFilter === 'client_non_paye') filtered = filtered.filter(r => !r.payeClient);
-    else if (payFilter === 'poseur_du') filtered = filtered.filter(r => r.poseursPasPayes > 0);
-    else if (payFilter === 'regie_du') filtered = filtered.filter(r => r.regiesPasPayees > 0);
-    else if (payFilter === 'fourn_du') filtered = filtered.filter(r => r.fournPasPayes > 0);
-    else if (payFilter === 'tout_paye') filtered = filtered.filter(r => r.payeClient && r.poseursPasPayes === 0 && r.regiesPasPayees === 0 && r.fournPasPayes === 0);
+    // Filtres paiement (AND) — chaque chip est un critère à respecter.
+    const checkPay = {
+      client_paye: r => r.payeClient,
+      client_non_paye: r => !r.payeClient,
+      poseur_du: r => r.poseursPasPayes > 0,
+      regie_du: r => r.regiesPasPayees > 0,
+      fourn_du: r => r.fournPasPayes > 0,
+      tout_paye: r => r.payeClient && r.poseursPasPayes === 0 && r.regiesPasPayees === 0 && r.fournPasPayes === 0,
+    };
+    paySelected.forEach(id => {
+      const test = checkPay[id];
+      if (test) filtered = filtered.filter(test);
+    });
     // Tri
     filtered = [...filtered].sort((a, b) => {
       let av = a[sortKey]; let bv = b[sortKey];
@@ -12579,7 +12618,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
       return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
     });
     return filtered;
-  }, [dossiers, sortKey, sortDir, filter, payFilter, societeFilter]);
+  }, [dossiers, sortKey, sortDir, filter, paySelected, societeSelected]);
 
   const toggleSort = (k) => {
     if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
@@ -12609,7 +12648,8 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
     );
   };
 
-  // Cellule prestataire : chips cliquables (✓ payé / ⏳ à payer).
+  // Cellule prestataire : chips cliquables avec montant HT.
+  // Visuel : ✓ payé (vert + barré) / ⏳ à payer (couleur métier) + montant.
   const PrestataireCell = ({ items, kind, lid, color }) => {
     if (items.length === 0) return <span className="text-slate-300 italic text-[10px]">—</span>;
     return (
@@ -12618,11 +12658,14 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
           <button
             key={`${kind}-${it.idx}`}
             onClick={() => togglePrestataire(lid, kind, it.idx)}
-            title={it.paye ? `${it.nom} — payé · clic pour annuler` : `${it.nom} — à payer · clic pour marquer payé`}
+            title={it.paye
+              ? `${it.nom} — ${fmtEuroShort(it.ht)} HT payé · clic pour annuler`
+              : `${it.nom} — ${fmtEuroShort(it.ht)} HT à payer · clic pour marquer payé`}
             className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border transition ${it.paye ? 'bg-emerald-100 border-emerald-300 text-emerald-700 hover:bg-emerald-200' : `bg-${color}-50 border-${color}-300 text-${color}-700 hover:bg-${color}-100`}`}
           >
             <span>{it.paye ? '✓' : '⏳'}</span>
-            <span className="truncate max-w-[140px]">{it.nom}</span>
+            <span className="truncate max-w-[120px]">{it.nom}</span>
+            <span className={`font-mono font-bold ${it.paye ? 'line-through opacity-70' : ''}`}>{fmtEuroShort(it.ht)}</span>
           </button>
         ))}
       </div>
@@ -12637,6 +12680,12 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
     } catch (_) { return ''; }
   };
   const fmtEuro = (v) => v ? `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : '- €';
+  // Format compact pour les chips (sans décimales si entier rond, pas de devise dupliquée).
+  const fmtEuroShort = (v) => {
+    if (!v && v !== 0) return '0 €';
+    const n = Math.round(v);
+    return `${n.toLocaleString('fr-FR')} €`;
+  };
 
   const PAY_FILTERS = [
     { id: 'all', label: 'Tout', color: 'bg-slate-100 text-slate-700 border-slate-300' },
@@ -12661,39 +12710,50 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
             className="px-2 py-1 text-xs border border-cyan-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[280px]"
           />
         </div>
-        {/* 🏢 Sélecteur société — premier niveau de filtre (vue par marque). */}
+        {/* 🏢 Sélecteur société — MULTI-SÉLECTION (vide = toutes, sélection = OR) */}
         {societes.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 mt-2">
             <span className="text-[10px] font-bold text-cyan-900 uppercase mr-1">🏢 Société :</span>
-            <button
-              onClick={() => setSocieteFilter('')}
-              className={`px-2 py-1 rounded-full text-[10px] font-bold border transition ${societeFilter === '' ? 'bg-slate-700 text-white border-slate-800 ring-2 ring-offset-1 ring-slate-500' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-            >
-              Toutes
-            </button>
-            {societes.filter(s => s?.id).map(s => (
-              <button
-                key={s.id}
-                onClick={() => setSocieteFilter(s.id)}
-                className={`px-2 py-1 rounded-full text-[10px] font-bold border transition flex items-center gap-1 ${societeFilter === s.id ? 'bg-cyan-600 text-white border-cyan-700 ring-2 ring-offset-1 ring-cyan-500' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-              >
-                {s.emoji ? <span>{s.emoji}</span> : null}
-                <span>{s.label || s.id}</span>
-              </button>
-            ))}
+            {societes.filter(s => s?.id).map(s => {
+              const on = societeSelected.has(s.id);
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => toggleSociete(s.id)}
+                  className={`px-2 py-1 rounded-full text-[10px] font-bold border transition flex items-center gap-1 ${on ? 'bg-cyan-600 text-white border-cyan-700 ring-2 ring-offset-1 ring-cyan-500' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                >
+                  {s.emoji ? <span>{s.emoji}</span> : null}
+                  <span>{s.label || s.id}</span>
+                  {on && <span>✓</span>}
+                </button>
+              );
+            })}
+            {societeSelected.size === 0 && <span className="text-[10px] text-slate-400 italic">(aucune sélectionnée = toutes)</span>}
           </div>
         )}
         <div className="flex flex-wrap items-center gap-1.5 mt-2">
           <span className="text-[10px] font-bold text-cyan-900 uppercase mr-1">💰 Paiement :</span>
-          {PAY_FILTERS.map(pf => (
+          {PAY_FILTERS.filter(pf => pf.id !== 'all').map(pf => {
+            const on = paySelected.has(pf.id);
+            return (
+              <button
+                key={pf.id}
+                onClick={() => togglePay(pf.id)}
+                className={`px-2 py-1 rounded-full text-[10px] font-bold border transition ${on ? `${pf.color} ring-2 ring-offset-1 ring-cyan-500` : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              >
+                {pf.label}{on && ' ✓'}
+              </button>
+            );
+          })}
+          {(paySelected.size > 0 || societeSelected.size > 0) && (
             <button
-              key={pf.id}
-              onClick={() => setPayFilter(pf.id)}
-              className={`px-2 py-1 rounded-full text-[10px] font-bold border transition ${payFilter === pf.id ? `${pf.color} ring-2 ring-offset-1 ring-cyan-500` : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+              onClick={() => { setPaySelected(new Set()); setSocieteSelected(new Set()); }}
+              className="ml-auto px-2 py-1 rounded-full text-[10px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-700 border border-rose-300"
+              title="Effacer tous les filtres"
             >
-              {pf.label}
+              ✕ Réinitialiser ({paySelected.size + societeSelected.size})
             </button>
-          ))}
+          )}
         </div>
       </div>
       <div className="overflow-auto" style={{ maxHeight: '75vh' }}>
@@ -12717,8 +12777,8 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
               <Th k="poseur1">🔧 Poseur(s)</Th>
               <Th k="regie1">🤝 Régie(s)</Th>
               <Th k="fournisseur1">📦 Fournisseur(s)</Th>
-              <Th k="bl">BL</Th>
               <Th k="factureNo">N° Fac</Th>
+              <Th k="margeHt" className="text-right">💎 Marge HT</Th>
             </tr>
           </thead>
           <tbody>
@@ -12763,13 +12823,13 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
                   <td className="border border-slate-200 px-1.5 py-1"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" /></td>
                   <td className="border border-slate-200 px-1.5 py-1"><PrestataireCell items={r.regies} kind="regie" lid={lid} color="purple" /></td>
                   <td className="border border-slate-200 px-1.5 py-1"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" /></td>
-                  <td className="border border-slate-200 px-1.5 py-1 font-mono text-slate-700">{r.bl}</td>
                   <td className="border border-slate-200 px-1.5 py-1 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
+                  <td className={`border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap font-bold ${r.margeHt > 0 ? 'text-emerald-700 bg-emerald-50' : r.margeHt < 0 ? 'text-rose-700 bg-rose-50' : 'text-slate-500'}`}>{fmtEuro(r.margeHt)}</td>
                 </tr>
               );
             })}
             {rows.length === 0 && (
-              <tr><td colSpan={19} className="text-center text-slate-400 italic py-6">Aucun dossier {filter || payFilter !== 'all' ? 'correspondant au filtre' : ''}.</td></tr>
+              <tr><td colSpan={19} className="text-center text-slate-400 italic py-6">Aucun dossier {filter || paySelected.size > 0 || societeSelected.size > 0 ? 'correspondant aux filtres' : ''}.</td></tr>
             )}
           </tbody>
         </table>
