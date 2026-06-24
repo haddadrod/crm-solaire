@@ -13033,21 +13033,30 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
           {/* 📊 LIGNE SOUS-TOTAL — agrégats sur les lignes affichées (= filtrées). */}
           {rows.length > 0 && (() => {
             const sum = (key) => rows.reduce((s, r) => s + (r[key] || 0), 0);
-            const sumPaid = (key) => rows.reduce((s, r) => {
-              return s + (r[key === 'poseursHtTotal' ? 'poseurs' : key === 'regiesHtTotal' ? 'regies' : 'fournisseurs'] || [])
-                .filter(it => it.paye)
-                .reduce((ss, it) => ss + (it.ht || 0), 0);
+            // 🎯 Si un filtre de prestataire précis est actif (ex: poseurFilter='IONERGIK'),
+            // les totaux Mt Poseur/Régie/Fournisseur ne comptent que ce prestataire-là sur
+            // chaque dossier, pas les autres lignes (IONERGIK 2, autres poseurs, etc.).
+            // Sinon : somme de toutes les lignes prestataire de la catégorie.
+            const sumPrestataire = (rowKey, filterName) => rows.reduce((s, r) => {
+              const items = r[rowKey] || [];
+              const matching = filterName ? items.filter(it => it.nom === filterName) : items;
+              return s + matching.reduce((ss, it) => ss + (it.ht || 0), 0);
+            }, 0);
+            const sumPaidPrestataire = (rowKey, filterName) => rows.reduce((s, r) => {
+              const items = r[rowKey] || [];
+              const matching = filterName ? items.filter(it => it.nom === filterName) : items;
+              return s + matching.filter(it => it.paye).reduce((ss, it) => ss + (it.ht || 0), 0);
             }, 0);
             const totals = {
               montantTotal: sum('montantTotal'),
               montantHt: sum('montantHt'),
               puissance: sum('puissance'),
-              poseursHtTotal: sum('poseursHtTotal'),
-              poseursPaye: sumPaid('poseursHtTotal'),
-              regiesHtTotal: sum('regiesHtTotal'),
-              regiesPaye: sumPaid('regiesHtTotal'),
-              fournisseursHtTotal: sum('fournisseursHtTotal'),
-              fournPaye: sumPaid('fournisseursHtTotal'),
+              poseursHtTotal: sumPrestataire('poseurs', poseurFilter),
+              poseursPaye: sumPaidPrestataire('poseurs', poseurFilter),
+              regiesHtTotal: sumPrestataire('regies', regieFilter),
+              regiesPaye: sumPaidPrestataire('regies', regieFilter),
+              fournisseursHtTotal: sumPrestataire('fournisseurs', fournisseurFilter),
+              fournPaye: sumPaidPrestataire('fournisseurs', fournisseurFilter),
               margeHt: sum('margeHt'),
               nbClientPayes: rows.filter(r => r.payeClient).length,
             };
