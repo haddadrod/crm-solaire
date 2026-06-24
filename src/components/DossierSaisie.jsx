@@ -6034,8 +6034,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {/* RÉGLAGES */}
         {activeTab === 'reglages' && (
           <ReglagesView
-            statutsOrder={statutsOrder} setStatutsOrder={setStatutsOrder} STATUTS_ORDERED={STATUTS_ORDERED} dossiers={dossiers}
-            setDossiers={setDossiers} setShowImportJson={setShowImportJson}
+            statutsOrder={statutsOrder} setStatutsOrder={setStatutsOrder} STATUTS_ORDERED={STATUTS_ORDERED} STATUTS={STATUTS} dossiers={dossiers} dossiersEnriched={dossiersEnriched}
+            setDossiers={setDossiers} setShowImportJson={setShowImportJson} setShowQuickViewId={setShowQuickViewId}
             tarifsPoseurs={tarifsPoseurs} setTarifsPoseurs={setTarifsPoseurs}
             tarifsRegies={tarifsRegies} setTarifsRegies={setTarifsRegies}
             tarifsInternes={tarifsInternes} setTarifsInternes={setTarifsInternes}
@@ -12002,7 +12002,7 @@ function BanquePerfList({ data, dossiers = [], societes = [], onShowQuick }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers, setDossiers, setShowImportJson, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS = [], dossiers, dossiersEnriched = null, setDossiers, setShowImportJson, setShowQuickViewId = null, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
   // Init depuis le hash URL pour qu'un refresh garde la sous-section.
   // Format : #reglages/utilisateurs → section = 'utilisateurs'
   const sectionFromHash = (typeof window !== 'undefined' && window.location.hash)
@@ -12166,7 +12166,15 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'expert' && (
-        <ExpertToolsPanel dossiers={dossiers} dossiersEnriched={dossiersEnriched} setDossiers={setDossiers} setShowImportJson={setShowImportJson} STATUTS={STATUTS} societes={societes} onShowQuick={(id) => setShowQuickViewId(id)} />
+        <ExpertToolsPanel
+          dossiers={dossiers}
+          dossiersEnriched={dossiersEnriched}
+          setDossiers={setDossiers}
+          setShowImportJson={setShowImportJson}
+          STATUTS={STATUTS}
+          societes={societes}
+          onShowQuick={setShowQuickViewId ? (id) => setShowQuickViewId(id) : null}
+        />
       )}
     </div>
   );
