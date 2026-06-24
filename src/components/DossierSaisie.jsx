@@ -23938,9 +23938,12 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
 
   const totalCount = (results?.results || []).reduce((s, r) => s + (r.messages || []).reduce((s2, m) => s2 + (m.attachments?.length || 0), 0), 0);
 
+  // 👁️ Overlay TRANSPARENT — pas de bg-black/blur pour qu'on voie derrière
+  // le contexte (poseur/régie/fournisseur en cours d'édition). Clic en
+  // dehors du panneau ferme quand même la modale.
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-start justify-center p-4 pt-16" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col border-2 border-blue-200" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[70] flex items-start justify-center p-4 pt-16" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col border-2 border-blue-300 ring-4 ring-blue-200/30" onClick={(e) => e.stopPropagation()}>
         <div className="p-5 border-b border-blue-100 bg-gradient-to-r from-blue-50 to-cyan-50 flex items-start justify-between gap-3">
           <div className="flex-1">
             <h2 className="text-lg font-bold text-slate-800">🔍 Rechercher dans Gmail</h2>
