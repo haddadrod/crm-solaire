@@ -12470,7 +12470,7 @@ function ExpertToolsPanel({ dossiers, setDossiers, setShowImportJson, STATUTS = 
             <div className="text-[11px] text-slate-500 mt-0.5">Tous les dossiers en grille triable, façon Google Sheet — pratique pour exporter ou comparer.</div>
           </button>
         </div>
-        {showSheet && <SheetView dossiers={dossiers} STATUTS={STATUTS} onShowQuick={onShowQuick} />}
+        {showSheet && <SheetView dossiers={dossiers} setDossiers={setDossiers} STATUTS={STATUTS} onShowQuick={onShowQuick} />}
       </div>
     </div>
   );
@@ -12479,7 +12479,7 @@ function ExpertToolsPanel({ dossiers, setDossiers, setShowImportJson, STATUTS = 
 // 📊 Vue Sheet : affichage tabulaire (façon Google Sheet) de tous les dossiers
 // avec leurs infos clés. Triable par colonne, filtrage simple par recherche.
 // Scroll horizontal pour ne couper aucune colonne.
-function SheetView({ dossiers, STATUTS = [], onShowQuick }) {
+function SheetView({ dossiers, setDossiers, STATUTS = [], onShowQuick }) {
   const [sortKey, setSortKey] = useState('dateInsta');
   const [sortDir, setSortDir] = useState('desc');
   const [filter, setFilter] = useState('');
@@ -12490,6 +12490,13 @@ function SheetView({ dossiers, STATUTS = [], onShowQuick }) {
     return m;
   }, [STATUTS]);
 
+  // 🛠️ Patch un dossier — fonctional setDossiers pour éviter les races
+  // si plusieurs cellules sont éditées rapidement à la suite.
+  const updateDossier = (localId, patch) => {
+    const now = new Date().toISOString();
+    setDossiers(prev => prev.map(d => d.localId === localId ? { ...d, ...patch, savedAt: now, modifiedAt: now } : d));
+  };
+
   const rows = useMemo(() => {
     const list = (dossiers || []).map(d => {
       const fournisseur1 = (d.fournisseurs || [])[0]?.nom || '';
@@ -12497,7 +12504,10 @@ function SheetView({ dossiers, STATUTS = [], onShowQuick }) {
         || (d.poseurs || []).find(p => p?.factureNo)?.factureNo
         || (d.regies || []).find(r => r?.factureNo)?.factureNo
         || '';
-      // Retard en jours depuis paiement bancaire / date pose
+      const bl = (d.fournisseurs || []).find(f => f?.bl)?.bl
+        || (d.poseurs || []).find(p => p?.bl)?.bl
+        || (d.regies || []).find(r => r?.bl)?.bl
+        || '';
       const refRetard = d.datePaiementBanque || d.dateInsta || d.savedAt;
       let retardJours = '';
       if (refRetard) {
@@ -12512,25 +12522,33 @@ function SheetView({ dossiers, STATUTS = [], onShowQuick }) {
         consuel: !!d.consuel,
         statut: d.statut || '',
         dateStatutChange: d.dateStatutChange || d.savedAt || '',
-        comptant: d.financement === 'COMPTANT' || d.financement === 'comptant' ? 'COMPTANT' : '',
+        comptant: (d.financement || '').toUpperCase() === 'COMPTANT' ? 'COMPTANT' : '',
         nom: d.nom || '',
         prenom: d.prenom || '',
+        telephone: d.telephone || '',
+        email: d.email || '',
+        ville: d.ville || '',
+        societe: d.societe || '',
         financement: d.financement || '',
         montantTotal: parseFloat(d.montantTotal) || 0,
         montantHt: parseFloat(d.montantHt) || 0,
+        montantFinance: parseFloat(d.montantFinance ?? d.montantTotal) || 0,
         datePaiementBanque: d.datePaiementBanque || '',
         retardJours,
         delaisDePayer: d.payeClient ? '' : 'PAS PAYER',
         payeClient: !!d.payeClient,
         puissance: d.puissance || 0,
         fournisseur1,
+        regie1: (d.regies || [])[0]?.nom || '',
+        poseur1: (d.poseurs || [])[0]?.nom || '',
         factureNo,
+        bl,
       };
     });
     const f = filter.trim().toLowerCase();
     const filtered = f
       ? list.filter(r =>
-          (r.nom + ' ' + r.prenom + ' ' + r.id + ' ' + r.fournisseur1 + ' ' + r.factureNo).toLowerCase().includes(f)
+          (r.nom + ' ' + r.prenom + ' ' + r.id + ' ' + r.fournisseur1 + ' ' + r.regie1 + ' ' + r.poseur1 + ' ' + r.factureNo + ' ' + r.ville + ' ' + r.telephone).toLowerCase().includes(f)
         )
       : list;
     filtered.sort((a, b) => {
@@ -12554,6 +12572,23 @@ function SheetView({ dossiers, STATUTS = [], onShowQuick }) {
       {children}{sortKey === k && <span className="ml-0.5">{sortDir === 'asc' ? '↑' : '↓'}</span>}
     </th>
   );
+
+  // ✏️ Cellule éditable text/number. Commit au blur (= sortie de cellule).
+  // Visuel : fond jaune en focus pour bien voir qu'on édite.
+  const EditCell = ({ value, type = 'text', onCommit, className = '' }) => {
+    const [v, setV] = useState(value ?? '');
+    useEffect(() => { setV(value ?? ''); }, [value]);
+    return (
+      <input
+        type={type}
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onBlur={() => { if ((v ?? '') !== (value ?? '')) onCommit(v); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+        className={`w-full bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded ${className}`}
+      />
+    );
+  };
 
   const fmtDate = (iso) => {
     if (!iso) return '';
@@ -12579,17 +12614,17 @@ function SheetView({ dossiers, STATUTS = [], onShowQuick }) {
   return (
     <div className="mt-4 bg-white border border-slate-300 rounded-2xl overflow-hidden">
       <div className="px-3 py-2 bg-cyan-50 border-b border-cyan-200 flex items-center justify-between gap-3 flex-wrap">
-        <div className="text-xs font-bold text-cyan-900">📊 Vue Sheet — {rows.length} dossier{rows.length > 1 ? 's' : ''}</div>
+        <div className="text-xs font-bold text-cyan-900">📊 Vue Sheet — {rows.length} dossier{rows.length > 1 ? 's' : ''} <span className="font-normal text-cyan-700">· champs éditables : nom, prénom, tél, email, ville, dates, montants, BL/facture, ☑ paiements</span></div>
         <input
           type="text"
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
-          placeholder="🔍 Filtre (nom, id, fournisseur, n° facture)…"
+          placeholder="🔍 Filtre (nom, id, fournisseur, n° facture, ville, tél)…"
           className="px-2 py-1 text-xs border border-cyan-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[280px]"
         />
       </div>
-      <div className="overflow-auto" style={{ maxHeight: '70vh' }}>
-        <table className="w-full text-[11px] border-collapse">
+      <div className="overflow-auto" style={{ maxHeight: '75vh' }}>
+        <table className="text-[11px] border-collapse" style={{ minWidth: '2400px' }}>
           <thead className="sticky top-0 z-10">
             <tr>
               <Th>Lien</Th>
@@ -12602,7 +12637,12 @@ function SheetView({ dossiers, STATUTS = [], onShowQuick }) {
               <Th k="comptant">Compt.</Th>
               <Th k="nom">Nom</Th>
               <Th k="prenom">Prénom</Th>
+              <Th k="telephone">Téléphone</Th>
+              <Th k="email">Email</Th>
+              <Th k="ville">Ville</Th>
+              <Th k="societe">Société</Th>
               <Th k="financement">Financement</Th>
+              <Th k="montantFinance" className="text-right">Mt financé</Th>
               <Th k="montantTotal" className="text-right">Mt total</Th>
               <Th k="montantHt" className="text-right">Mt total HT</Th>
               <Th k="datePaiementBanque">Date paiement</Th>
@@ -12610,8 +12650,11 @@ function SheetView({ dossiers, STATUTS = [], onShowQuick }) {
               <Th k="delaisDePayer">Délai</Th>
               <Th k="payeClient">Payé</Th>
               <Th k="puissance" className="text-right">Puiss.</Th>
+              <Th k="poseur1">Poseur</Th>
+              <Th k="regie1">Régie</Th>
               <Th k="fournisseur1">Fourn. 1</Th>
-              <Th k="factureNo">BL / Fac</Th>
+              <Th k="bl">BL</Th>
+              <Th k="factureNo">N° Fac</Th>
             </tr>
           </thead>
           <tbody>
@@ -12620,37 +12663,68 @@ function SheetView({ dossiers, STATUTS = [], onShowQuick }) {
               const statutCls = s
                 ? `${s.bg || 'bg-slate-100'} ${s.text || 'text-slate-700'} font-bold`
                 : 'bg-slate-100 text-slate-500';
+              const lid = r.d.localId;
               return (
-                <tr key={r.d.localId || i} className={`hover:bg-cyan-50 ${i % 2 ? 'bg-white' : 'bg-slate-50/40'}`}>
+                <tr key={lid || i} className={`hover:bg-cyan-50 ${i % 2 ? 'bg-white' : 'bg-slate-50/40'}`}>
                   <td className="border border-slate-200 px-1.5 py-1 text-center">
-                    <button onClick={() => onShowQuick && onShowQuick(r.d.localId)} className="text-blue-600 hover:text-blue-800 hover:underline font-bold">Voir</button>
+                    <button onClick={() => onShowQuick && onShowQuick(lid)} className="text-blue-600 hover:text-blue-800 hover:underline font-bold">Voir</button>
                   </td>
-                  <td className="border border-slate-200 px-1.5 py-1 font-mono text-slate-700">{r.id}</td>
-                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap">{fmtDateShort(r.dateInsta)}</td>
-                  <td className="border border-slate-200 px-1.5 py-1 text-center">{r.accordDef ? '✓' : ''}</td>
-                  <td className="border border-slate-200 px-1.5 py-1 text-center">{r.consuel ? '✓' : ''}</td>
-                  <td className={`border border-slate-200 px-1.5 py-1 ${statutCls}`} title={s?.label || r.statut}>
+                  <td className="border border-slate-200 px-1.5 py-1 font-mono text-slate-700 whitespace-nowrap">{r.id}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap">
+                    <input type="date" value={r.dateInsta} onChange={(e) => updateDossier(lid, { dateInsta: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
+                  </td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-center">
+                    <input type="checkbox" checked={r.accordDef} onChange={(e) => updateDossier(lid, { accordDef: e.target.checked })} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" />
+                  </td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-center">
+                    <input type="checkbox" checked={r.consuel} onChange={(e) => updateDossier(lid, { consuel: e.target.checked })} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" />
+                  </td>
+                  <td className={`border border-slate-200 px-1.5 py-1 ${statutCls} whitespace-nowrap`} title={s?.label || r.statut}>
                     {s?.emoji} {s?.label || r.statut}
                   </td>
                   <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap text-slate-600">{fmtDate(r.dateStatutChange)}</td>
                   <td className="border border-slate-200 px-1.5 py-1 text-center font-bold text-amber-700">{r.comptant}</td>
-                  <td className="border border-slate-200 px-1.5 py-1 font-semibold uppercase">{r.nom}</td>
-                  <td className="border border-slate-200 px-1.5 py-1">{r.prenom}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 font-semibold uppercase">
+                    <EditCell value={r.nom} onCommit={(v) => updateDossier(lid, { nom: v })} />
+                  </td>
+                  <td className="border border-slate-200 px-1.5 py-1">
+                    <EditCell value={r.prenom} onCommit={(v) => updateDossier(lid, { prenom: v })} />
+                  </td>
+                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap">
+                    <EditCell value={r.telephone} onCommit={(v) => updateDossier(lid, { telephone: v })} />
+                  </td>
+                  <td className="border border-slate-200 px-1.5 py-1">
+                    <EditCell value={r.email} type="email" onCommit={(v) => updateDossier(lid, { email: v })} />
+                  </td>
+                  <td className="border border-slate-200 px-1.5 py-1">
+                    <EditCell value={r.ville} onCommit={(v) => updateDossier(lid, { ville: v })} />
+                  </td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-center text-[10px] font-bold uppercase">{r.societe}</td>
                   <td className="border border-slate-200 px-1.5 py-1">{r.financement}</td>
-                  <td className="border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap">{fmtEuro(r.montantTotal)}</td>
-                  <td className="border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap">{fmtEuro(r.montantHt)}</td>
-                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap">{fmtDateShort(r.datePaiementBanque)}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap">{fmtEuro(r.montantFinance)}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap">
+                    <EditCell value={r.montantTotal || ''} type="number" onCommit={(v) => updateDossier(lid, { montantTotal: parseFloat(v) || 0 })} className="text-right" />
+                  </td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap text-slate-600">{fmtEuro(r.montantHt)}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap">
+                    <input type="date" value={r.datePaiementBanque} onChange={(e) => updateDossier(lid, { datePaiementBanque: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
+                  </td>
                   <td className="border border-slate-200 px-1.5 py-1 text-right font-bold text-rose-600">{r.retardJours}</td>
                   <td className="border border-slate-200 px-1.5 py-1 text-center font-bold text-rose-700">{r.delaisDePayer}</td>
-                  <td className="border border-slate-200 px-1.5 py-1 text-center">{r.payeClient ? '☑' : '☐'}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-center">
+                    <input type="checkbox" checked={r.payeClient} onChange={(e) => updateDossier(lid, { payeClient: e.target.checked, payeClientDate: e.target.checked ? (r.d.payeClientDate || new Date().toISOString().split('T')[0]) : '' })} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" />
+                  </td>
                   <td className="border border-slate-200 px-1.5 py-1 text-right font-semibold">{r.puissance || ''}</td>
+                  <td className="border border-slate-200 px-1.5 py-1">{r.poseur1}</td>
+                  <td className="border border-slate-200 px-1.5 py-1">{r.regie1}</td>
                   <td className="border border-slate-200 px-1.5 py-1 bg-yellow-50">{r.fournisseur1}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 font-mono text-slate-700">{r.bl}</td>
                   <td className="border border-slate-200 px-1.5 py-1 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
                 </tr>
               );
             })}
             {rows.length === 0 && (
-              <tr><td colSpan={20} className="text-center text-slate-400 italic py-6">Aucun dossier {filter ? 'correspondant au filtre' : ''}.</td></tr>
+              <tr><td colSpan={28} className="text-center text-slate-400 italic py-6">Aucun dossier {filter ? 'correspondant au filtre' : ''}.</td></tr>
             )}
           </tbody>
         </table>
