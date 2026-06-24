@@ -12887,7 +12887,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
         <table className="text-[11px] border-collapse" style={{ minWidth: '1900px' }}>
           <thead className="sticky top-0 z-10">
             <tr>
-              <Th>Lien</Th>
+              <Th className="sticky left-0 z-30">Lien</Th>
               <Th k="id">id</Th>
               <Th k="dateInsta">Date insta</Th>
               <Th k="statut">Rapport</Th>
@@ -12920,7 +12920,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
               const lid = r.d.localId;
               return (
                 <tr key={lid || i} className={`hover:bg-cyan-50 ${i % 2 ? 'bg-white' : 'bg-slate-50/40'}`}>
-                  <td className="border border-slate-200 px-1.5 py-1 text-center">
+                  <td className={`border border-slate-200 px-1.5 py-1 text-center sticky left-0 z-10 ${i % 2 ? 'bg-white' : 'bg-slate-50'}`}>
                     <button onClick={() => onShowQuick && onShowQuick(lid)} className="text-blue-600 hover:text-blue-800 hover:underline font-bold">Voir</button>
                   </td>
                   <td className="border border-slate-200 px-1.5 py-1 font-mono text-slate-700 whitespace-nowrap">{r.id}</td>
