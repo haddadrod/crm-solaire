@@ -23833,6 +23833,20 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
   // Auto-recherche dès l'ouverture si une query est fournie
   useEffect(() => { if (initialQuery) runSearch(initialQuery); }, []);
 
+  // 🪄 Auto-tag IA : dès que des résultats arrivent ET qu'on a un clientHint
+  // (= contexte du dossier ouvert), on lance automatiquement l'analyse IA pour
+  // indiquer à l'utilisateur quels PDFs concernent ce client. Sans ça, avec 1
+  // seul résultat il devait deviner si c'était bien le bon.
+  useEffect(() => {
+    if (!results || !clientHint) return;
+    const hint = normalizeForMatch(clientHint);
+    if (hint.length < 3) return;
+    // Évite de relancer si on a déjà des verdicts.
+    if (Object.keys(iaResults).length > 0) return;
+    runIaFilter();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [results, clientHint]);
+
   const handleAttach = async (inboxEmail, messageId, attachment) => {
     const key = `${inboxEmail}|${messageId}|${attachment.attachmentId}`;
     setAttaching(key);
@@ -24002,9 +24016,9 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
               {loading ? '🔄 …' : '🔍 Chercher'}
             </button>
           </div>
-          {/* 🪄 Filtre IA : utile quand un email contient un batch de
-              factures (ex : un prestataire qui envoie 20 PDFs dans 1 mail) */}
-          {clientHint && results && totalCount >= 2 && (
+          {/* 🪄 Filtre IA : auto-lancé dès qu'il y a au moins 1 résultat avec
+              clientHint (useEffect ci-dessus). Bouton manuel = re-run au besoin. */}
+          {clientHint && results && totalCount >= 1 && (
             <button
               onClick={runIaFilter}
               disabled={iaAnalyzing}
@@ -24013,7 +24027,7 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
             >
               {iaAnalyzing
                 ? `🪄 Analyse IA en cours… (${iaProgress.done}/${iaProgress.total})`
-                : `🪄 Trouver la facture de ${clientHint} (IA)`}
+                : `🪄 Re-vérifier avec l'IA (${clientHint})`}
             </button>
           )}
         </div>
