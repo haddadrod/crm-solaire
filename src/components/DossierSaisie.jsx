@@ -3967,16 +3967,24 @@ export default function DossierSaisie({ authUser, onLogout }) {
         const soc = d.societe || '';
         const key = `${regie}::${soc}`;
         if (!penaliteMap[key]) penaliteMap[key] = { nom: regie, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
-        penaliteMap[key].totalDu += t.penalite || 0;
-        if (t.regleAt) penaliteMap[key].totalPaye += t.penalite || 0;
-        else penaliteMap[key].totalRestant += t.penalite || 0;
+        // 🛡️ Backfill : anciennes tentatives sans `penalite` stockée → on
+        // applique 500 € par défaut (la valeur usuelle proposée dans le form).
+        // Comme ça les totaux dus apparaissent sur tous les groupes même pour
+        // les vieilles données importées avant l'introduction du champ.
+        // ?? au lieu de || pour ne pas écraser un 0 intentionnel.
+        const pen = (t.penalite ?? null) !== null && !isNaN(parseFloat(t.penalite))
+          ? parseFloat(t.penalite)
+          : 500;
+        penaliteMap[key].totalDu += pen;
+        if (t.regleAt) penaliteMap[key].totalPaye += pen;
+        else penaliteMap[key].totalRestant += pen;
         penaliteMap[key].lignes.push({
           dossierLocalId: d.localId,
           dossierId: d.id || '—',
           client: `${d.nom} ${d.prenom || ''}`.trim(),
           date: t.date,
           motif: t.motif,
-          penalite: t.penalite || 0,
+          penalite: pen,
           regleAt: t.regleAt || null,
           definitif: !!t.definitif,
           tentativeIdx: idx,
@@ -10271,9 +10279,12 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                   <span className="font-bold text-slate-800 flex items-center flex-wrap">🤝 {p.nom}{renderSocieteBadge(p.societe)}</span>
                   <span className="text-xs text-slate-500">{p.lignes.length} pose{p.lignes.length > 1 ? 's' : ''} ratée{p.lignes.length > 1 ? 's' : ''}</span>
                   <span className="ml-auto flex items-center gap-2">
-                    {p.totalRestant > 0 && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-orange-100 text-orange-700">{formatEuro(p.totalRestant)} dû</span>
-                    )}
+                    {/* Badge total dû — TOUJOURS visible quand il y a un reste à recevoir.
+                        + Badge total reçu si déjà encaissé.
+                        + Badge total cumulé si tout est à 0 (transparence). */}
+                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-orange-100 text-orange-700" title={`${p.lignes.length} pénalité${p.lignes.length > 1 ? 's' : ''} cumulée${p.lignes.length > 1 ? 's' : ''} : ${formatEuro(p.totalDu)}`}>
+                      {formatEuro(p.totalRestant)} dû
+                    </span>
                     {p.totalPaye > 0 && (
                       <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700">{formatEuro(p.totalPaye)} reçu</span>
                     )}
