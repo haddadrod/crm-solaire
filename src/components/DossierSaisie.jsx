@@ -660,6 +660,70 @@ const computeTtcPresta = (ht, sansTva, legacyTauxTva, ttcCustom) => {
   return ht * 1.2;
 };
 
+// 🛡️ Champs « débounce-safe » — pour textarea/input rapides reliés à un état
+// global. Sans local state, taper « abc » vite enchaîne 3 setDossiers asynchrones :
+// React re-render entre chaque keystroke avec `value=props` qui n'a pas eu le
+// temps de remonter (Supabase Realtime echo lent) → la frappe se fait écraser
+// par sa propre valeur précédente. Avec ces composants : on garde une copie
+// locale (instantanée pour l'UI) et on flushe vers le parent après 350 ms de
+// pause OU au blur.
+function DebouncedTextarea({ value, onCommit, delay = 350, ...rest }) {
+  const [local, setLocal] = useState(value ?? '');
+  const lastExternalRef = useRef(value ?? '');
+  const timerRef = useRef(null);
+  // Sync depuis l'extérieur UNIQUEMENT si la prop a changé sans qu'on vienne
+  // d'écrire dessus (i.e. modif via un autre device / une autre source).
+  useEffect(() => {
+    if ((value ?? '') !== lastExternalRef.current) {
+      lastExternalRef.current = value ?? '';
+      setLocal(value ?? '');
+    }
+  }, [value]);
+  const flush = (v) => {
+    lastExternalRef.current = v;
+    onCommit(v);
+  };
+  const handleChange = (e) => {
+    const v = e.target.value;
+    setLocal(v);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => flush(v), delay);
+  };
+  const handleBlur = (e) => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    flush(e.target.value);
+  };
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  return <textarea {...rest} value={local} onChange={handleChange} onBlur={handleBlur} />;
+}
+function DebouncedInput({ value, onCommit, delay = 350, ...rest }) {
+  const [local, setLocal] = useState(value ?? '');
+  const lastExternalRef = useRef(value ?? '');
+  const timerRef = useRef(null);
+  useEffect(() => {
+    if ((value ?? '') !== lastExternalRef.current) {
+      lastExternalRef.current = value ?? '';
+      setLocal(value ?? '');
+    }
+  }, [value]);
+  const flush = (v) => {
+    lastExternalRef.current = v;
+    onCommit(v);
+  };
+  const handleChange = (e) => {
+    const v = e.target.value;
+    setLocal(v);
+    if (timerRef.current) clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => flush(v), delay);
+  };
+  const handleBlur = (e) => {
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
+    flush(e.target.value);
+  };
+  useEffect(() => () => { if (timerRef.current) clearTimeout(timerRef.current); }, []);
+  return <input {...rest} value={local} onChange={handleChange} onBlur={handleBlur} />;
+}
+
 // Composant réutilisable : input pour attacher un PDF de facture en glisser/déposer
 // ou clic. Stocke le fichier inline (window.storage `file:<id>`) et garde
 // l'ID du fichier dans la prop `fileId`. Onglet 👁️ pour prévisualiser dans
@@ -20390,18 +20454,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     >
                       {CREDIT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
-                    <input
+                    <DebouncedInput
                       type="number"
                       min="0"
                       step="0.01"
                       inputMode="decimal"
                       placeholder="€"
                       value={c.montant || ''}
-                      onChange={(e) => {
-                        const next = [...(d.creditsClientCQ || [])];
-                        next[idx] = { ...next[idx], montant: e.target.value };
-                        onUpdate({ creditsClientCQ: next });
-                      }}
+                      onCommit={(v) => onUpdate((dCurrent) => {
+                        const next = [...(dCurrent.creditsClientCQ || [])];
+                        next[idx] = { ...next[idx], montant: v };
+                        return { creditsClientCQ: next };
+                      })}
                       className="flex-shrink-0 w-24 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-[10px]"
                     />
                     <button
@@ -23064,7 +23128,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           {/* OBSERVATIONS — éditable */}
           <div>
             <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">📝 Observations</h3>
-            <textarea value={d.observations || ''} onChange={(e) => onUpdate({ observations: e.target.value })} placeholder="Notes, remarques..." rows={3} className="w-full px-2 py-1.5 bg-yellow-50 border border-yellow-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400" />
+            <DebouncedTextarea value={d.observations || ''} onCommit={(v) => onUpdate({ observations: v })} placeholder="Notes, remarques..." rows={3} className="w-full px-2 py-1.5 bg-yellow-50 border border-yellow-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400" />
           </div>
 
           {/* ACTIVITÉ */}
