@@ -3962,6 +3962,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // anciennes tentatives restaient figées sur des régies obsolètes.
       // Fallback : t.regie (figée à la visite ratée) puis « (non spécifiée) ».
       const regieDossier = (d.regies || []).filter(r => r.nom).map(r => r.nom).join(', ');
+      // 🪄 Auto-règle : si AU MOINS UNE régie du dossier a un HT négatif ET est
+      // marquée payée, on considère que la pénalité a été remboursée (l'argent
+      // est rentré via une note de crédit régie). L'utilisateur n'a plus besoin
+      // de cliquer manuellement sur « ✓ Payée » dans la vue pénalités.
+      // L'auto-règle prend la date de paiement de la régie négative.
+      const regieRembourse = (d.regies || []).find(r => r.nom && r.paye && (parseFloat(r.htCustom) || 0) < 0);
+      const autoRegleDate = regieRembourse?.datePaye || regieRembourse?.savedAt || null;
       (d.tentativesPose || []).forEach((t, idx) => {
         const regie = regieDossier || t.regie || '(régie non spécifiée)';
         const soc = d.societe || '';
@@ -3969,14 +3976,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (!penaliteMap[key]) penaliteMap[key] = { nom: regie, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
         // 🛡️ Backfill : anciennes tentatives sans `penalite` stockée → on
         // applique 500 € par défaut (la valeur usuelle proposée dans le form).
-        // Comme ça les totaux dus apparaissent sur tous les groupes même pour
-        // les vieilles données importées avant l'introduction du champ.
-        // ?? au lieu de || pour ne pas écraser un 0 intentionnel.
         const pen = (t.penalite ?? null) !== null && !isNaN(parseFloat(t.penalite))
           ? parseFloat(t.penalite)
           : 500;
+        // regleAt manuel OU auto (régie remboursée via HT négatif payé).
+        const regleAt = t.regleAt || autoRegleDate;
         penaliteMap[key].totalDu += pen;
-        if (t.regleAt) penaliteMap[key].totalPaye += pen;
+        if (regleAt) penaliteMap[key].totalPaye += pen;
         else penaliteMap[key].totalRestant += pen;
         penaliteMap[key].lignes.push({
           dossierLocalId: d.localId,
@@ -3985,7 +3991,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
           date: t.date,
           motif: t.motif,
           penalite: pen,
-          regleAt: t.regleAt || null,
+          regleAt,
+          autoReglee: !t.regleAt && !!autoRegleDate, // 🪄 flag pour affichage
           definitif: !!t.definitif,
           tentativeIdx: idx,
           societe: soc,
