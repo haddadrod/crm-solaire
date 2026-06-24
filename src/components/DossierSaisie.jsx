@@ -4891,19 +4891,21 @@ export default function DossierSaisie({ authUser, onLogout }) {
     rappelsPennylaneAEnvoyer.sort((a, b) => b.jours - a.jours);
 
     // 📦 Matériel non rendu — quand on a donné un BL avec récup matériel au
-    // poseur et que la pose a été annulée/refusée (W2_ANNULER ou tentative
-    // ratée), il se retrouve avec du matériel à nous rapporter. Tant qu'il
-    // ne l'a pas rendu, ça reste dans cette liste pour qu'on ne l'oublie pas.
+    // poseur et que la pose ne va pas / n'a pas eu lieu, il se retrouve avec
+    // du matériel à nous rapporter. Tant qu'il ne l'a pas rendu, ça reste
+    // dans cette liste pour qu'on ne l'oublie pas.
+    // Cas couverts : dossier annulé, tentative pose ratée, statut DÉPLACEMENT
+    // (déplacement sec sans pose), client rétracté.
     const rappelsMaterielNonRendu = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (!d.blMaterielPoseur) return; // pas de BL matériel → rien à tracer
       if (d.materielRendu) return; // déjà rendu → OK
-      // On déclenche l'alerte uniquement quand la pose ne se fera pas (ou n'a
-      // pas eu lieu) : dossier annulé OU au moins 1 tentative ratée.
       const annule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
       const tentativeRatee = Array.isArray(d.tentativesPose) && d.tentativesPose.length > 0;
-      if (!annule && !tentativeRatee) return;
+      const deplacement = d.statut === 'Z_DEPLACEMENT';
+      const retracte = !!d.hasRetractation;
+      if (!annule && !tentativeRatee && !deplacement && !retracte) return;
       // Combien de jours depuis l'évènement déclencheur (= date du BL à défaut).
       const ref = (annule ? (d.archivedAt || d.blMaterielDate) : (d.tentativesPose[d.tentativesPose.length - 1]?.date)) || d.blMaterielDate || d.savedAt;
       const jours = ref ? joursEcoules(ref) : 0;
@@ -19813,9 +19815,10 @@ function BLMaterielBlock({ d, onUpdate }) {
             </div>
           </div>
 
-          {/* BL RETOUR + toggle « rendu ». Visible si dossier annulé/refusé OU
-              tentative pose ratée OU si déjà coché (pour pouvoir décocher). */}
-          {(d.statut === 'W2_ANNULER' || d.statut === 'ANNULER' || (d.tentativesPose || []).length > 0 || d.materielRendu) && (
+          {/* BL RETOUR + toggle « rendu ». Visible dès qu'un BL aller est coché
+              (tout dossier où on a remis du matériel doit pouvoir tracker le
+              retour, même s'il n'est pas encore annulé/refusé). */}
+          {!!d.blMaterielPoseur && (
             <div className={`p-1.5 rounded border-2 ${d.materielRendu ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
               <label className="flex items-center gap-1.5 text-[10px] font-bold cursor-pointer">
                 <input
