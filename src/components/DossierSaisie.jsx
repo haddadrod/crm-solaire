@@ -11869,6 +11869,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
     { id: 'email',        label: 'Email d\'envoi', emoji: '📧', color: 'from-blue-500 to-indigo-500' },
     { id: 'messages',     label: 'Modèles messages', emoji: '💬', color: 'from-cyan-500 to-blue-500' },
     { id: 'onoff',        label: 'ONOFF (CQ)',   emoji: '📞', color: 'from-purple-500 to-violet-500' },
+    { id: 'pennylane',    label: 'Clés Pennylane', emoji: '🔐', color: 'from-emerald-600 to-teal-700' },
     { id: 'expert',       label: 'Outils experts', emoji: '🛠', color: 'from-slate-600 to-slate-800' },
   ];
 
@@ -11997,12 +11998,185 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
 
       {section === 'onoff' && <OnoffConfigManager />}
 
+      {section === 'pennylane' && (
+        <PennylaneKeysPanel societes={societes} />
+      )}
+
       {section === 'expert' && (
         <ExpertToolsPanel dossiers={dossiers} setDossiers={setDossiers} setShowImportJson={setShowImportJson} />
       )}
     </div>
   );
 }
+
+// 🔐 Gestion des clés API Pennylane par société, directement depuis le CRM.
+// L'admin saisit la clé, elle est envoyée à /api/pennylane-keys puis stockée
+// côté Supabase avec un préfixe `secret-` (exclu de la lecture authenticated
+// par la nouvelle politique RLS — cf. SUPABASE_SECRETS_RLS.sql).
+// La valeur n'est JAMAIS renvoyée au navigateur — uniquement les 4 derniers
+// caractères pour permettre de vérifier qu'on a bien posé la bonne clé.
+function PennylaneKeysPanel({ societes = [] }) {
+  const [keys, setKeys] = useState({}); // { [societeId]: { configured, last4 } }
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [editing, setEditing] = useState({}); // { [societeId]: { value, saving } }
+  const targets = (societes || []).filter(s => s?.id);
+
+  const callApi = async (method, { body, query } = {}) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = { 'Content-Type': 'application/json' };
+    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+    const qs = query ? `?${new URLSearchParams(query).toString()}` : '';
+    const res = await fetch(`/api/pennylane-keys${qs}`, {
+      method, headers, body: body ? JSON.stringify(body) : undefined,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+    return data;
+  };
+
+  const fetchKeys = async () => {
+    if (targets.length === 0) return;
+    setLoading(true); setError('');
+    try {
+      const data = await callApi('GET', { query: { societes: targets.map(s => s.id).join(',') } });
+      setKeys(data.keys || {});
+    } catch (e) { setError(e.message); }
+    setLoading(false);
+  };
+  useEffect(() => { fetchKeys(); }, [targets.map(s => s.id).join(',')]);
+
+  const startEdit = (id) => setEditing(prev => ({ ...prev, [id]: { value: '', saving: false } }));
+  const cancelEdit = (id) => setEditing(prev => { const np = { ...prev }; delete np[id]; return np; });
+  const changeValue = (id, v) => setEditing(prev => ({ ...prev, [id]: { ...(prev[id] || {}), value: v } }));
+
+  const saveKey = async (id) => {
+    const v = (editing[id]?.value || '').trim();
+    if (!v) { setError('Clé vide'); return; }
+    setEditing(prev => ({ ...prev, [id]: { ...prev[id], saving: true } }));
+    setError(''); setSuccess('');
+    try {
+      const data = await callApi('POST', { body: { societe: id, apiKey: v } });
+      setSuccess(`✅ Clé Pennylane enregistrée pour ${id} (••••${data.last4})`);
+      cancelEdit(id);
+      await fetchKeys();
+    } catch (e) {
+      setError(`Erreur : ${e.message}`);
+      setEditing(prev => ({ ...prev, [id]: { ...prev[id], saving: false } }));
+    }
+  };
+
+  const deleteKey = async (id) => {
+    if (!window.confirm(`Supprimer la clé Pennylane de ${id} ? Les prochains push échoueront tant qu'aucune nouvelle clé n'est posée (ou que l'env var Vercel n'est pas redéployée).`)) return;
+    setError(''); setSuccess('');
+    try {
+      await callApi('DELETE', { query: { societe: id } });
+      setSuccess(`✅ Clé Pennylane supprimée pour ${id}`);
+      await fetchKeys();
+    } catch (e) { setError(`Erreur : ${e.message}`); }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-teal-50">
+          <h2 className="text-lg font-bold text-slate-800">🔐 Clés API Pennylane</h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Une clé par société. La clé est stockée côté serveur (chiffrée en transit, jamais renvoyée au navigateur).
+            Seul un admin peut la voir/modifier. Toute action est tracée dans le journal d'audit.
+          </p>
+        </div>
+        <div className="p-4 space-y-3">
+          {!SUPABASE_SECRETS_RLS_OK_HINT && (
+            <div className="p-3 bg-amber-50 border border-amber-300 rounded-xl text-xs text-amber-800">
+              <div className="font-bold mb-1">⚠️ Avant la 1ère utilisation : exécute le script SQL</div>
+              <p>
+                Va dans <strong>Supabase → SQL Editor</strong>, crée une nouvelle query,
+                colle le contenu du fichier <code className="bg-amber-100 px-1 rounded">SUPABASE_SECRETS_RLS.sql</code> (à la racine du repo) et clique « Run ».
+                Sans ça, les clés stockées ici resteraient lisibles par tous les utilisateurs connectés.
+              </p>
+            </div>
+          )}
+          {error && <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-sm text-rose-700">{error}</div>}
+          {success && (
+            <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl text-sm text-emerald-700 flex items-center justify-between">
+              <span>{success}</span>
+              <button onClick={() => setSuccess('')} className="text-xs underline">Fermer</button>
+            </div>
+          )}
+          {loading && <div className="text-sm text-slate-500 text-center py-4">⏳ Chargement…</div>}
+          {!loading && targets.length === 0 && (
+            <div className="text-sm text-slate-500 italic text-center py-6">
+              Aucune société configurée. Va dans <strong>Réglages → Sociétés</strong> pour en créer.
+            </div>
+          )}
+          {!loading && targets.map(s => {
+            const id = s.id;
+            const info = keys[id] || { configured: false, last4: '' };
+            const ed = editing[id];
+            return (
+              <div key={id} className="p-3 border border-slate-200 rounded-xl bg-slate-50/30">
+                <div className="flex items-center gap-3 flex-wrap">
+                  <div className="flex items-center gap-2 flex-1 min-w-0">
+                    <span className="text-2xl">{s.emoji || '🏢'}</span>
+                    <div>
+                      <div className="font-bold text-slate-800">{s.label || id}</div>
+                      {info.configured ? (
+                        <div className="text-[11px] text-emerald-700 font-semibold">
+                          ✓ Clé configurée — <code className="bg-emerald-100 px-1 rounded">••••{info.last4}</code>
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-slate-500">Aucune clé enregistrée dans le CRM (fallback Vercel actif).</div>
+                      )}
+                    </div>
+                  </div>
+                  {!ed && (
+                    <div className="flex gap-2">
+                      <button onClick={() => startEdit(id)} className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold">
+                        {info.configured ? '✏️ Modifier' : '➕ Configurer'}
+                      </button>
+                      {info.configured && (
+                        <button onClick={() => deleteKey(id)} className="px-3 py-1.5 bg-rose-100 hover:bg-rose-500 hover:text-white text-rose-700 rounded-lg text-xs font-semibold">
+                          🗑️ Supprimer
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+                {ed && (
+                  <div className="mt-3 pt-3 border-t border-slate-200 space-y-2">
+                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Nouvelle clé API Pennylane (récupérée sur app.pennylane.com → Mon compte → API)</label>
+                    <input
+                      type="password"
+                      value={ed.value}
+                      onChange={(e) => changeValue(id, e.target.value)}
+                      placeholder="pl_live_xxxxxxxxxxxxxxxx"
+                      autoFocus
+                      disabled={ed.saving}
+                      className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-mono"
+                    />
+                    <div className="flex gap-2">
+                      <button onClick={() => cancelEdit(id)} disabled={ed.saving} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold disabled:opacity-50">
+                        Annuler
+                      </button>
+                      <button onClick={() => saveKey(id)} disabled={ed.saving || !ed.value.trim()} className="flex-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold disabled:opacity-50">
+                        {ed.saving ? '⏳ Enregistrement…' : '💾 Enregistrer'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+// Flag « hint » constant : on l'utilise juste pour afficher l'avertissement RLS
+// quoi qu'il arrive (impossible de détecter côté front sans tester la RLS).
+const SUPABASE_SECRETS_RLS_OK_HINT = false;
 
 // 🛠 Outils experts : opérations en masse (import/sauvegarde JSON,
 // suppression d'import sheet, validation CQ massive, sync paiement client).
