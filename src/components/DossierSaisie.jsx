@@ -12733,10 +12733,13 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
       <th
         onClick={k ? () => toggleSort(k) : undefined}
         style={colWidth ? { width: `${colWidth}px`, minWidth: `${colWidth}px`, maxWidth: `${colWidth}px` } : undefined}
-        className={`relative px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-900 bg-cyan-200 border border-cyan-400 ${k ? 'cursor-pointer hover:bg-cyan-300' : ''} ${className}`}
+        className={`relative px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600 bg-gradient-to-b from-slate-50 to-slate-100 border-b-2 border-slate-300 ${k ? 'cursor-pointer hover:from-slate-100 hover:to-slate-200 transition' : ''} ${className}`}
       >
-        {children}{sortKey === k && <span className="ml-0.5">{sortDir === 'asc' ? '↑' : '↓'}</span>}
-        {/* 📏 Poignée de redimensionnement — drag pour ajuster la largeur. */}
+        <div className="flex items-center justify-between gap-1">
+          <span>{children}</span>
+          {sortKey === k && <span className="text-violet-500 text-xs">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+        </div>
+        {/* 📏 Poignée de redimensionnement */}
         <span
           onMouseDown={(e) => {
             const rect = e.currentTarget.parentElement.getBoundingClientRect();
@@ -12744,7 +12747,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
           }}
           onClick={(e) => e.stopPropagation()}
           title="Tirer pour redimensionner"
-          className="absolute top-0 right-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-600 active:bg-cyan-700 select-none"
+          className="absolute top-1 right-0 bottom-1 w-1 cursor-col-resize hover:bg-violet-400 active:bg-violet-600 rounded select-none"
           style={{ touchAction: 'none' }}
         />
       </th>
@@ -12766,18 +12769,17 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
     );
   };
 
-  // Cellule prestataire ÉDITABLE : 1 ligne par prestataire, avec sélection de
+  // Cellule prestataire ÉDITABLE : 1 ligne par prestataire, avec sélection
   // nom + toggle ✓/⏳ + suppression. Bouton ➕ Ajouter en dessous.
-  // Les lignes sont alignées avec la cellule Mt (même hauteur).
   const PrestataireCell = ({ items, kind, lid, color, options = [] }) => {
     return (
-      <div className="space-y-1 min-w-[170px]">
+      <div className="space-y-1 min-w-[180px]">
         {items.map((it) => (
-          <div key={`${kind}-${it.idx}`} className="flex items-center gap-1" style={{ height: '24px' }}>
+          <div key={`${kind}-${it.idx}`} className="flex items-center gap-1 group" style={{ height: '26px' }}>
             <select
               value={it.nom}
               onChange={(e) => renamePrestataire(lid, kind, it.idx, e.target.value)}
-              className={`flex-1 min-w-0 text-[10px] font-semibold border rounded px-1 py-0.5 ${it.paye ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : `bg-${color}-50 border-${color}-200 text-${color}-700`}`}
+              className={`flex-1 min-w-0 text-[11px] font-medium rounded-md px-2 py-0.5 border transition ${it.paye ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : `bg-${color}-50/70 border-${color}-200 text-${color}-800 hover:bg-${color}-100`}`}
               title={it.nom ? `${it.nom} — clic pour changer` : 'Choisir un prestataire'}
             >
               <option value="">— choisir —</option>
@@ -12787,14 +12789,14 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
             <button
               onClick={() => togglePrestataire(lid, kind, it.idx)}
               title={it.paye ? 'Marquer non payé' : 'Marquer payé'}
-              className={`flex-shrink-0 w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center border ${it.paye ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-white border-slate-300 text-slate-400 hover:border-emerald-400'}`}
+              className={`flex-shrink-0 w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center transition ${it.paye ? 'bg-emerald-500 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-400 hover:border-emerald-400 hover:text-emerald-600'}`}
             >
               {it.paye ? '✓' : '⏳'}
             </button>
             <button
               onClick={() => removePrestataire(lid, kind, it.idx)}
               title="Supprimer cette ligne"
-              className="flex-shrink-0 w-5 h-5 rounded text-[10px] text-rose-500 hover:bg-rose-50 hover:text-rose-700 flex items-center justify-center"
+              className="flex-shrink-0 w-4 h-5 rounded text-[12px] text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition"
             >
               ×
             </button>
@@ -12802,10 +12804,10 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
         ))}
         <button
           onClick={() => addPrestataire(lid, kind)}
-          className={`w-full text-[10px] font-bold py-0.5 rounded border border-dashed ${`border-${color}-300 text-${color}-700 hover:bg-${color}-50`}`}
+          className={`w-full text-[10px] font-semibold py-1 rounded-md border border-dashed border-${color}-200 text-${color}-600 hover:bg-${color}-50 hover:border-${color}-400 transition`}
           title={`Ajouter un ${kind}`}
         >
-          ➕ Ajouter
+          + Ajouter
         </button>
       </div>
     );
@@ -12869,64 +12871,69 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
   ];
 
   return (
-    <div className="mt-4 bg-white border border-slate-300 rounded-2xl overflow-hidden">
-      <div className="px-3 py-2 bg-cyan-50 border-b border-cyan-200">
+    <div className="mt-4 bg-white border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
+      <div className="px-4 py-3 bg-gradient-to-br from-slate-50 to-white border-b border-slate-200">
         <div className="flex items-center justify-between gap-3 flex-wrap">
-          <div className="text-xs font-bold text-cyan-900">📊 Vue Sheet — {rows.length} dossier{rows.length > 1 ? 's' : ''} <span className="font-normal text-cyan-700">· clic sur un prestataire pour basculer ✓ payé / ⏳ à payer</span></div>
+          <div className="text-sm font-bold text-slate-800 flex items-center gap-2">
+            <span className="text-lg">📊</span>
+            <span>Vue Sheet</span>
+            <span className="px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 text-xs">{rows.length} dossier{rows.length > 1 ? 's' : ''}</span>
+            <span className="text-[11px] font-normal text-slate-500 hidden md:inline">· clic sur ✓/⏳ pour basculer payé</span>
+          </div>
           <input
             type="text"
             value={filter}
             onChange={(e) => setFilter(e.target.value)}
-            placeholder="🔍 Filtre (nom, id, prestataire, n° facture, BL)…"
-            className="px-2 py-1 text-xs border border-cyan-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[280px]"
+            placeholder="🔍 Rechercher (nom, id, prestataire, n° facture)…"
+            className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg bg-slate-50 focus:bg-white focus:outline-none focus:ring-2 focus:ring-violet-400 focus:border-violet-400 min-w-[300px] transition"
           />
         </div>
         {/* 🏢 Sélecteur société — MULTI-SÉLECTION (vide = toutes, sélection = OR) */}
         {societes.length > 0 && (
-          <div className="flex flex-wrap items-center gap-1.5 mt-2">
-            <span className="text-[10px] font-bold text-cyan-900 uppercase mr-1">🏢 Société :</span>
+          <div className="flex flex-wrap items-center gap-1.5 mt-3">
+            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mr-2">Société</span>
             {societes.filter(s => s?.id).map(s => {
               const on = societeSelected.has(s.id);
               return (
                 <button
                   key={s.id}
                   onClick={() => toggleSociete(s.id)}
-                  className={`px-2 py-1 rounded-full text-[10px] font-bold border transition flex items-center gap-1 ${on ? 'bg-cyan-600 text-white border-cyan-700 ring-2 ring-offset-1 ring-cyan-500' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                  className={`px-3 py-1 rounded-full text-[11px] font-semibold border transition flex items-center gap-1.5 ${on ? 'bg-violet-600 text-white border-violet-600 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}`}
                 >
                   {s.emoji ? <span>{s.emoji}</span> : null}
                   <span>{s.label || s.id}</span>
-                  {on && <span>✓</span>}
+                  {on && <span className="text-[10px]">✓</span>}
                 </button>
               );
             })}
-            {societeSelected.size === 0 && <span className="text-[10px] text-slate-400 italic">(aucune sélectionnée = toutes)</span>}
+            {societeSelected.size === 0 && <span className="text-[10px] text-slate-400 italic">toutes sélectionnées</span>}
           </div>
         )}
         {/* 🔧🤝📦 Filtres par prestataire précis (dropdown). Empty = tous. */}
-        <div className="flex flex-wrap items-center gap-2 mt-2">
-          <span className="text-[10px] font-bold text-cyan-900 uppercase mr-1">👷 Prestataire :</span>
-          <select value={poseurFilter} onChange={(e) => setPoseurFilter(e.target.value)} className={`text-[10px] font-semibold border rounded px-2 py-1 ${poseurFilter ? 'bg-amber-100 border-amber-400 text-amber-800' : 'bg-white border-slate-300 text-slate-600'}`}>
+        <div className="flex flex-wrap items-center gap-2 mt-3">
+          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mr-1">Prestataire</span>
+          <select value={poseurFilter} onChange={(e) => setPoseurFilter(e.target.value)} className={`text-[11px] font-medium border rounded-lg px-2.5 py-1 transition ${poseurFilter ? 'bg-amber-50 border-amber-300 text-amber-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
             <option value="">🔧 Tous poseurs</option>
             {POSEURS.map(n => <option key={n} value={n}>🔧 {n}</option>)}
           </select>
-          <select value={regieFilter} onChange={(e) => setRegieFilter(e.target.value)} className={`text-[10px] font-semibold border rounded px-2 py-1 ${regieFilter ? 'bg-purple-100 border-purple-400 text-purple-800' : 'bg-white border-slate-300 text-slate-600'}`}>
+          <select value={regieFilter} onChange={(e) => setRegieFilter(e.target.value)} className={`text-[11px] font-medium border rounded-lg px-2.5 py-1 transition ${regieFilter ? 'bg-purple-50 border-purple-300 text-purple-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
             <option value="">🤝 Toutes régies</option>
             {REGIES.map(n => <option key={n} value={n}>🤝 {n}</option>)}
           </select>
-          <select value={fournisseurFilter} onChange={(e) => setFournisseurFilter(e.target.value)} className={`text-[10px] font-semibold border rounded px-2 py-1 ${fournisseurFilter ? 'bg-orange-100 border-orange-400 text-orange-800' : 'bg-white border-slate-300 text-slate-600'}`}>
+          <select value={fournisseurFilter} onChange={(e) => setFournisseurFilter(e.target.value)} className={`text-[11px] font-medium border rounded-lg px-2.5 py-1 transition ${fournisseurFilter ? 'bg-orange-50 border-orange-300 text-orange-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
             <option value="">📦 Tous fournisseurs</option>
             {FOURNISSEURS.map(n => <option key={n} value={n}>📦 {n}</option>)}
           </select>
         </div>
-        <div className="flex flex-wrap items-center gap-1.5 mt-2">
-          <span className="text-[10px] font-bold text-cyan-900 uppercase mr-1">💰 Paiement :</span>
+        <div className="flex flex-wrap items-center gap-1.5 mt-3">
+          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mr-1">Paiement</span>
           {PAY_FILTERS.filter(pf => pf.id !== 'all').map(pf => {
             const on = paySelected.has(pf.id);
             return (
               <button
                 key={pf.id}
                 onClick={() => togglePay(pf.id)}
-                className={`px-2 py-1 rounded-full text-[10px] font-bold border transition ${on ? `${pf.color} ring-2 ring-offset-1 ring-cyan-500` : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                className={`px-3 py-1 rounded-full text-[11px] font-semibold border transition ${on ? `${pf.color} shadow-sm` : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}`}
               >
                 {pf.label}{on && ' ✓'}
               </button>
@@ -12935,7 +12942,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
           {(paySelected.size > 0 || societeSelected.size > 0 || poseurFilter || regieFilter || fournisseurFilter) && (
             <button
               onClick={() => { setPaySelected(new Set()); setSocieteSelected(new Set()); setPoseurFilter(''); setRegieFilter(''); setFournisseurFilter(''); }}
-              className="ml-auto px-2 py-1 rounded-full text-[10px] font-bold bg-rose-100 hover:bg-rose-200 text-rose-700 border border-rose-300"
+              className="ml-auto px-3 py-1 rounded-full text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition"
               title="Effacer tous les filtres"
             >
               ✕ Réinitialiser ({paySelected.size + societeSelected.size + (poseurFilter ? 1 : 0) + (regieFilter ? 1 : 0) + (fournisseurFilter ? 1 : 0)})
@@ -12978,44 +12985,44 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                 : 'bg-slate-100 text-slate-500';
               const lid = r.d.localId;
               return (
-                <tr key={lid || i} className={`hover:bg-cyan-50 ${i % 2 ? 'bg-white' : 'bg-slate-50/40'}`}>
-                  <td className={`border border-slate-200 px-1.5 py-1 text-center sticky left-0 z-10 ${i % 2 ? 'bg-white' : 'bg-slate-50'}`}>
-                    <button onClick={() => onShowQuick && onShowQuick(lid)} className="text-blue-600 hover:text-blue-800 hover:underline font-bold">Voir</button>
+                <tr key={lid || i} className={`hover:bg-violet-50/40 transition ${i % 2 ? 'bg-white' : 'bg-slate-50/30'}`}>
+                  <td className={`border-b border-slate-100 px-2 py-1.5 text-center sticky left-0 z-10 ${i % 2 ? 'bg-white' : 'bg-slate-50'}`}>
+                    <button onClick={() => onShowQuick && onShowQuick(lid)} className="text-violet-600 hover:text-white hover:bg-violet-600 px-2 py-0.5 rounded-md text-[11px] font-semibold transition">Voir</button>
                   </td>
-                  <td className="border border-slate-200 px-1.5 py-1 font-mono text-slate-700 whitespace-nowrap">{r.id}</td>
-                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap">
+                  <td className="border-b border-slate-100 px-2 py-1.5 font-mono text-slate-700 whitespace-nowrap">{r.id}</td>
+                  <td className="border-b border-slate-100 px-2 py-1.5 whitespace-nowrap">
                     <input type="date" value={r.dateInsta} onChange={(e) => updateDossier(lid, { dateInsta: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
                   </td>
-                  <td className={`border border-slate-200 px-1.5 py-1 ${statutCls} whitespace-nowrap`} title={s?.label || r.statut}>
+                  <td className={`border-b border-slate-100 px-2 py-1.5 ${statutCls} whitespace-nowrap`} title={s?.label || r.statut}>
                     {s?.emoji} {s?.label || r.statut}
                   </td>
-                  <td className="border border-slate-200 px-1.5 py-1 font-semibold uppercase" style={{ minWidth: '160px' }}>
+                  <td className="border-b border-slate-100 px-2 py-1.5 font-semibold uppercase" style={{ minWidth: '160px' }}>
                     <EditCell value={r.nom} onCommit={(v) => updateDossier(lid, { nom: v })} />
                   </td>
-                  <td className="border border-slate-200 px-1.5 py-1" style={{ minWidth: '140px' }}>
+                  <td className="border-b border-slate-100 px-2 py-1.5" style={{ minWidth: '140px' }}>
                     <EditCell value={r.prenom} onCommit={(v) => updateDossier(lid, { prenom: v })} />
                   </td>
-                  <td className="border border-slate-200 px-1.5 py-1 text-center text-[10px] font-bold uppercase">{r.societe}</td>
-                  <td className="border border-slate-200 px-1.5 py-1">{r.financement}</td>
-                  <td className="border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap">
+                  <td className="border-b border-slate-100 px-2 py-1.5 text-center text-[10px] font-bold uppercase">{r.societe}</td>
+                  <td className="border-b border-slate-100 px-2 py-1.5">{r.financement}</td>
+                  <td className="border-b border-slate-100 px-2 py-1.5 text-right whitespace-nowrap">
                     <EditCell value={r.montantTotal || ''} type="number" onCommit={(v) => updateDossier(lid, { montantTotal: parseFloat(v) || 0 })} className="text-right" />
                   </td>
-                  <td className="border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap text-slate-600">{fmtEuro(r.montantHt)}</td>
-                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap">
+                  <td className="border-b border-slate-100 px-2 py-1.5 text-right whitespace-nowrap text-slate-600">{fmtEuro(r.montantHt)}</td>
+                  <td className="border-b border-slate-100 px-2 py-1.5 whitespace-nowrap">
                     <input type="date" value={r.datePaiementBanque} onChange={(e) => updateDossier(lid, { datePaiementBanque: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
                   </td>
-                  <td className="border border-slate-200 px-1.5 py-1 text-center">
+                  <td className="border-b border-slate-100 px-2 py-1.5 text-center">
                     <input type="checkbox" checked={r.payeClient} onChange={(e) => updateDossier(lid, { payeClient: e.target.checked, payeClientDate: e.target.checked ? (r.d.payeClientDate || new Date().toISOString().split('T')[0]) : '' })} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" />
                   </td>
-                  <td className="border border-slate-200 px-1.5 py-1 text-right font-semibold">{r.puissance || ''}</td>
-                  <td className="border border-slate-200 px-1 py-1 align-top"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" options={POSEURS} /></td>
+                  <td className="border-b border-slate-100 px-2 py-1.5 text-right font-semibold">{r.puissance || ''}</td>
+                  <td className="border-b border-slate-100 px-2 py-1.5 align-top"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" options={POSEURS} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.poseurs} kind="poseur" lid={lid} color="amber" /></td>
-                  <td className="border border-slate-200 px-1 py-1 align-top"><PrestataireCell items={r.regies} kind="regie" lid={lid} color="purple" options={REGIES} /></td>
+                  <td className="border-b border-slate-100 px-2 py-1.5 align-top"><PrestataireCell items={r.regies} kind="regie" lid={lid} color="purple" options={REGIES} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.regies} kind="regie" lid={lid} color="purple" /></td>
-                  <td className="border border-slate-200 px-1 py-1 align-top"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" options={FOURNISSEURS} /></td>
+                  <td className="border-b border-slate-100 px-2 py-1.5 align-top"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" options={FOURNISSEURS} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" /></td>
-                  <td className="border border-slate-200 px-1.5 py-1 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
-                  <td className={`border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap font-bold ${r.margeHt > 0 ? 'text-emerald-700 bg-emerald-50' : r.margeHt < 0 ? 'text-rose-700 bg-rose-50' : 'text-slate-500'}`}>{fmtEuro(r.margeHt)}</td>
+                  <td className="border-b border-slate-100 px-2 py-1.5 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
+                  <td className={`border-b border-slate-100 px-2 py-1.5 text-right whitespace-nowrap font-bold ${r.margeHt > 0 ? 'text-emerald-700 bg-emerald-50' : r.margeHt < 0 ? 'text-rose-700 bg-rose-50' : 'text-slate-500'}`}>{fmtEuro(r.margeHt)}</td>
                 </tr>
               );
             })}
@@ -13045,13 +13052,13 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
               nbClientPayes: rows.filter(r => r.payeClient).length,
             };
             const Cell = ({ children, className = '', title = '' }) => (
-              <td className={`border-2 border-cyan-500 px-1.5 py-1.5 bg-cyan-100 font-bold text-cyan-900 ${className}`} title={title}>{children}</td>
+              <td className={`px-2 py-2 bg-gradient-to-b from-slate-50 to-slate-100 border-t-2 border-violet-400 font-semibold text-slate-800 ${className}`} title={title}>{children}</td>
             );
             return (
               <tfoot className="sticky bottom-0 z-20">
                 <tr>
                   {/* Cells alignés sur les colonnes : Lien, id, Date insta, Rapport, Nom, Prénom, Soc, Financement, Mt total, Mt HT, Date paiement, Client payé, Puiss, Poseur, Mt Poseur, Régie, Mt Régie, Fourn, Mt Fourn, N° Fac, Marge (21 colonnes au total) */}
-                  <Cell className="text-center sticky left-0 bg-cyan-200 z-30">Σ TOTAL</Cell>{/* 1 Lien */}
+                  <Cell className="text-center sticky left-0 bg-violet-100 z-30 text-violet-800 font-bold border-t-2 border-violet-400">Σ TOTAL</Cell>{/* 1 Lien */}
                   <Cell>{rows.length} d.</Cell>{/* 2 id */}
                   <Cell></Cell>{/* 3 Date insta */}
                   <Cell></Cell>{/* 4 Rapport */}
