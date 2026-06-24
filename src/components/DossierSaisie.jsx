@@ -9702,6 +9702,9 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
   // maintenant (client a payé). Toggle pour voir aussi les "bloqués"
   // (en attente d'encaissement client) et les déjà payés.
   const [showOnlyAPayer, setShowOnlyAPayer] = useState(true);
+  // 💸 Pénalités déjà payées : masquées par défaut (pas d'action à faire).
+  // Toggle pour les ré-afficher en cas de vérif / historique.
+  const [showPaidPenalites, setShowPaidPenalites] = useState(false);
   // 📑 Pliage des groupes de la liste « Détail par prestataire » (Fournisseurs,
   // Régies, Poseurs, Équipe interne) — set des labels pliés. Utile quand un
   // groupe est très long et qu'on veut consulter les autres sans scroller.
@@ -10317,7 +10320,23 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                   </span>
                 </summary>
                 <div className="px-4 py-3 space-y-1.5 bg-white">
-                  {p.lignes.map((l, idx) => {
+                  {(() => {
+                    const nbPayees = p.lignes.filter(l => !!l.regleAt).length;
+                    const nbDues = p.lignes.length - nbPayees;
+                    if (nbPayees === 0) return null;
+                    return (
+                      <div className="flex items-center justify-between gap-2 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded-lg text-[10px] text-emerald-800">
+                        <span>✓ {nbPayees} pénalité{nbPayees > 1 ? 's' : ''} déjà payée{nbPayees > 1 ? 's' : ''} — {nbDues} restante{nbDues > 1 ? 's' : ''}</span>
+                        <button
+                          onClick={() => setShowPaidPenalites(v => !v)}
+                          className="font-bold underline hover:text-emerald-900"
+                        >
+                          {showPaidPenalites ? '🙈 Masquer les payées' : '👁️ Afficher les payées'}
+                        </button>
+                      </div>
+                    );
+                  })()}
+                  {p.lignes.filter(l => showPaidPenalites || !l.regleAt).map((l, idx) => {
                     const fmtD = (iso) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '?';
                     const motifLabel = l.motif === 'client_absent' ? 'Client absent' : l.motif === 'client_refuse' ? 'Client refuse' : 'Autre';
                     const paye = !!l.regleAt;
