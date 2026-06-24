@@ -4803,26 +4803,30 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsRecupTva.sort((a, b) => a.joursRestants - b.joursRestants); // les plus urgents en premier
 
-    // 🧾 Factures manquantes — pour la compta : prestataire PAYÉ mais sa
-    // facture (PDF / lien) n'est pas encore dans le CRM. C'est l'urgence
-    // comptable : on a sorti l'argent, il faut le justificatif.
-    // (Avant : dossier posé + facture manquante, même si pas encore payé →
-    // beaucoup de bruit sur des prestataires qu'on n'a pas encore réglés.)
+    // 🧾 Factures manquantes — 2 niveaux d'urgence :
+    //   • 🔥 URGENT  : prestataire PAYÉ sans facture (justificatif manquant)
+    //   • ⏳ ANTICIPER : prestataire assigné (avec tarif), pas encore payé,
+    //                    facture pas encore reçue (= à demander avant de payer)
+    // Le dossier doit être posé pour figurer dans "à anticiper" (sinon bruit).
     const rappelsFacturesManquantes = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') return;
-      // 🧾 "Facture présente" = soit un PDF uploadé dans le CRM (factureFile),
-      // soit un lien externe (facturePdfUrl, factureExternalUrl → ex : Drive).
       const hasFacture = (p) => !!(p?.factureFile || p?.facturePdfUrl || p?.factureExternalUrl);
-      // Critère : payé (paye===true) ET pas de facture.
-      const poseursManquants = (d.poseurs || []).filter(p => p.nom && p.paye && !hasFacture(p)).map(p => p.nom);
-      const regiesManquantes = (d.regies || []).filter(r => r.nom && r.paye && !hasFacture(r)).map(r => r.nom);
-      const fournisseursManquants = (d.fournisseurs || []).filter(f => f.nom && f.paye && !hasFacture(f)).map(f => f.nom);
-      const total = poseursManquants.length + regiesManquantes.length + fournisseursManquants.length;
+      const posee = d.statutPose === 'visite_ok';
+      // URGENT : payé sans facture
+      const poseursPayes = (d.poseurs || []).filter(p => p.nom && p.paye && !hasFacture(p)).map(p => p.nom);
+      const regiesPayees = (d.regies || []).filter(r => r.nom && r.paye && !hasFacture(r)).map(r => r.nom);
+      const fournPayes = (d.fournisseurs || []).filter(f => f.nom && f.paye && !hasFacture(f)).map(f => f.nom);
+      // À ANTICIPER : assigné, pas payé, pas de facture (uniquement si dossier posé)
+      const poseursAnticiper = posee ? (d.poseurs || []).filter(p => p.nom && !p.paye && !hasFacture(p)).map(p => p.nom) : [];
+      const regiesAnticiper = posee ? (d.regies || []).filter(r => r.nom && !r.paye && !hasFacture(r)).map(r => r.nom) : [];
+      const fournAnticiper = posee ? (d.fournisseurs || []).filter(f => f.nom && !f.paye && !hasFacture(f)).map(f => f.nom) : [];
+      const totalUrgent = poseursPayes.length + regiesPayees.length + fournPayes.length;
+      const totalAnticiper = poseursAnticiper.length + regiesAnticiper.length + fournAnticiper.length;
+      const total = totalUrgent + totalAnticiper;
       if (total === 0) return;
-      // Urgence : on regarde la date de paiement la plus ancienne parmi les
-      // prestataires payés sans facture (sinon fallback dateInsta).
+      // Référence d'urgence : date du paiement le + ancien si urgent, sinon date de pose
       const datesPayes = []
         .concat((d.poseurs || []).filter(p => p.nom && p.paye && !hasFacture(p)).map(p => p.datePaye))
         .concat((d.regies || []).filter(r => r.nom && r.paye && !hasFacture(r)).map(r => r.datePaye))
@@ -4831,18 +4835,31 @@ export default function DossierSaisie({ authUser, onLogout }) {
         .sort();
       const ref = datesPayes[0] || d.dateInsta || d.savedAt;
       const jours = ref ? joursEcoules(ref) : 0;
-      let level = 'warn';
-      if (jours >= 30) level = 'critical';
-      else if (jours >= 14) level = 'high';
+      // Le niveau d'alerte prime sur la nature : si payé non justifié → toujours critique en haut
+      let level;
+      if (totalUrgent > 0) {
+        level = jours >= 30 ? 'critical' : (jours >= 14 ? 'high' : 'warn');
+      } else {
+        level = 'low'; // À anticiper, pas critique
+      }
       rappelsFacturesManquantes.push({
-        dossier: d, jours, level,
-        poseurs: poseursManquants,
-        regies: regiesManquantes,
-        fournisseurs: fournisseursManquants,
+        dossier: d, jours, level, kind: totalUrgent > 0 ? 'urgent' : 'anticiper',
+        // Concat les 2 cas par catégorie pour l'affichage (compat existant).
+        poseurs: [...poseursPayes, ...poseursAnticiper],
+        regies: [...regiesPayees, ...regiesAnticiper],
+        fournisseurs: [...fournPayes, ...fournAnticiper],
+        // Détail séparé pour distinguer payé / à anticiper dans l'UI
+        poseursPayes, regiesPayees, fournPayes,
+        poseursAnticiper, regiesAnticiper, fournAnticiper,
+        totalUrgent, totalAnticiper,
         total,
       });
     });
-    rappelsFacturesManquantes.sort((a, b) => b.jours - a.jours);
+    rappelsFacturesManquantes.sort((a, b) => {
+      // Urgents d'abord, puis par ancienneté.
+      if (a.kind !== b.kind) return a.kind === 'urgent' ? -1 : 1;
+      return b.jours - a.jours;
+    });
 
     // 📤 À envoyer à Pennylane — pour la compta : dossiers PAYÉS par le
     // financeur (payeClient) où au moins une facture prestataire est déjà
@@ -4874,19 +4891,21 @@ export default function DossierSaisie({ authUser, onLogout }) {
     rappelsPennylaneAEnvoyer.sort((a, b) => b.jours - a.jours);
 
     // 📦 Matériel non rendu — quand on a donné un BL avec récup matériel au
-    // poseur et que la pose a été annulée/refusée (W2_ANNULER ou tentative
-    // ratée), il se retrouve avec du matériel à nous rapporter. Tant qu'il
-    // ne l'a pas rendu, ça reste dans cette liste pour qu'on ne l'oublie pas.
+    // poseur et que la pose ne va pas / n'a pas eu lieu, il se retrouve avec
+    // du matériel à nous rapporter. Tant qu'il ne l'a pas rendu, ça reste
+    // dans cette liste pour qu'on ne l'oublie pas.
+    // Cas couverts : dossier annulé, tentative pose ratée, statut DÉPLACEMENT
+    // (déplacement sec sans pose), client rétracté.
     const rappelsMaterielNonRendu = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (!d.blMaterielPoseur) return; // pas de BL matériel → rien à tracer
       if (d.materielRendu) return; // déjà rendu → OK
-      // On déclenche l'alerte uniquement quand la pose ne se fera pas (ou n'a
-      // pas eu lieu) : dossier annulé OU au moins 1 tentative ratée.
       const annule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
       const tentativeRatee = Array.isArray(d.tentativesPose) && d.tentativesPose.length > 0;
-      if (!annule && !tentativeRatee) return;
+      const deplacement = d.statut === 'Z_DEPLACEMENT';
+      const retracte = !!d.hasRetractation;
+      if (!annule && !tentativeRatee && !deplacement && !retracte) return;
       // Combien de jours depuis l'évènement déclencheur (= date du BL à défaut).
       const ref = (annule ? (d.archivedAt || d.blMaterielDate) : (d.tentativesPose[d.tentativesPose.length - 1]?.date)) || d.blMaterielDate || d.savedAt;
       const jours = ref ? joursEcoules(ref) : 0;
@@ -19796,9 +19815,10 @@ function BLMaterielBlock({ d, onUpdate }) {
             </div>
           </div>
 
-          {/* BL RETOUR + toggle « rendu ». Visible si dossier annulé/refusé OU
-              tentative pose ratée OU si déjà coché (pour pouvoir décocher). */}
-          {(d.statut === 'W2_ANNULER' || d.statut === 'ANNULER' || (d.tentativesPose || []).length > 0 || d.materielRendu) && (
+          {/* BL RETOUR + toggle « rendu ». Visible dès qu'un BL aller est coché
+              (tout dossier où on a remis du matériel doit pouvoir tracker le
+              retour, même s'il n'est pas encore annulé/refusé). */}
+          {!!d.blMaterielPoseur && (
             <div className={`p-1.5 rounded border-2 ${d.materielRendu ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
               <label className="flex items-center gap-1.5 text-[10px] font-bold cursor-pointer">
                 <input
