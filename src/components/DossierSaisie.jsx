@@ -3956,13 +3956,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Pénalités régies (poses ratées) — agrégées par régie × société
     const penaliteMap = {};
     dossiersFiltres.forEach(d => {
-      // 🛡️ Fallback : si la tentative n'a pas de régie figée (vieux dossiers,
-      // ou régie assignée après coup au dossier), on prend les régies actuelles
-      // du dossier. Sinon on retombait dans « (régie non spécifiée) » à vie même
-      // après avoir rempli la régie côté dossier. Même logique que pour les litiges.
+      // 🛡️ Priorité à la régie ACTUELLE du dossier (la plus à jour). Si le
+      // commercial a changé la régie du dossier (ex : OREN renommé en FLEX, ou
+      // assigné après la tentative), on veut que la pénalité suive — sinon les
+      // anciennes tentatives restaient figées sur des régies obsolètes.
+      // Fallback : t.regie (figée à la visite ratée) puis « (non spécifiée) ».
       const regieDossier = (d.regies || []).filter(r => r.nom).map(r => r.nom).join(', ');
       (d.tentativesPose || []).forEach((t, idx) => {
-        const regie = t.regie || regieDossier || '(régie non spécifiée)';
+        const regie = regieDossier || t.regie || '(régie non spécifiée)';
         const soc = d.societe || '';
         const key = `${regie}::${soc}`;
         if (!penaliteMap[key]) penaliteMap[key] = { nom: regie, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
