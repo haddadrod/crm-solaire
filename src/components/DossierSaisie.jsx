@@ -12166,7 +12166,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'expert' && (
-        <ExpertToolsPanel dossiers={dossiers} setDossiers={setDossiers} setShowImportJson={setShowImportJson} STATUTS={STATUTS} societes={societes} onShowQuick={(id) => setShowQuickViewId(id)} />
+        <ExpertToolsPanel dossiers={dossiers} dossiersEnriched={dossiersEnriched} setDossiers={setDossiers} setShowImportJson={setShowImportJson} STATUTS={STATUTS} societes={societes} onShowQuick={(id) => setShowQuickViewId(id)} />
       )}
     </div>
   );
@@ -12345,7 +12345,7 @@ const SUPABASE_SECRETS_RLS_OK_HINT = false;
 // suppression d'import sheet, validation CQ massive, sync paiement client).
 // Volontairement regroupés ici (hors barre principale) pour éviter qu'un
 // utilisateur ne déclenche par erreur une action irréversible.
-function ExpertToolsPanel({ dossiers, setDossiers, setShowImportJson, STATUTS = [], societes = [], onShowQuick }) {
+function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setShowImportJson, STATUTS = [], societes = [], onShowQuick }) {
   const [showSheet, setShowSheet] = useState(false);
   const handleBackup = () => {
     try {
@@ -12470,7 +12470,7 @@ function ExpertToolsPanel({ dossiers, setDossiers, setShowImportJson, STATUTS = 
             <div className="text-[11px] text-slate-500 mt-0.5">Tous les dossiers en grille triable, façon Google Sheet — pratique pour exporter ou comparer.</div>
           </button>
         </div>
-        {showSheet && <SheetView dossiers={dossiers} setDossiers={setDossiers} STATUTS={STATUTS} societes={societes} onShowQuick={onShowQuick} />}
+        {showSheet && <SheetView dossiers={dossiersEnriched || dossiers} setDossiers={setDossiers} STATUTS={STATUTS} societes={societes} onShowQuick={onShowQuick} />}
       </div>
     </div>
   );
@@ -12554,11 +12554,22 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
       const regiesPasPayees = regies.filter(r => r.nom && !r.paye).length;
       const fournPasPayes = fournisseurs.filter(f => f.nom && !f.paye).length;
       // Marge HT = vente HT - coûts HT (poseurs + régies + fournisseurs).
-      // On utilise les valeurs déjà calculées dans enrichDossier si dispo,
-      // sinon recalcule de base.
-      const margeHt = (d.margeHt !== undefined && d.margeHt !== null)
+      // On utilise d.margeHt si calculé en amont, sinon on recalcule avec le
+      // HT correct (qui peut venir de montantHtCustom ou du calcul TTC/TVA).
+      const venteHt = (() => {
+        const stored = parseFloat(d.montantHt);
+        if (!isNaN(stored) && stored > 0) return stored;
+        const ttc = parseFloat(d.montantTotal) || 0;
+        if (ttc === 0) return 0;
+        const custom = parseFloat(d.montantHtCustom);
+        if (!isNaN(custom) && custom > 0) return custom;
+        const tva = parseFloat(d.tauxTvaVente);
+        const t = !isNaN(tva) && tva > 0 ? tva : 20;
+        return ttc / (1 + t / 100);
+      })();
+      const margeHt = (d.margeHt !== undefined && d.margeHt !== null && !isNaN(parseFloat(d.margeHt)))
         ? parseFloat(d.margeHt)
-        : ((parseFloat(d.montantHt) || 0)
+        : (venteHt
             - poseurs.reduce((s, p) => s + (p.ht || 0), 0)
             - regies.reduce((s, r) => s + (r.ht || 0), 0)
             - fournisseurs.reduce((s, f) => s + (f.ht || 0), 0));
@@ -12573,7 +12584,20 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
         societe: d.societe || '',
         financement: d.financement || '',
         montantTotal: parseFloat(d.montantTotal) || 0,
-        montantHt: parseFloat(d.montantHt) || 0,
+        // Mt HT : on prend d.montantHt si calculé (enrichDossier), sinon
+        // fallback recalcul (montantHtCustom OU TTC / (1 + tauxTva/100)).
+        // Les anciens dossiers sans champ montantHt persisté affichaient « - € ».
+        montantHt: (() => {
+          const stored = parseFloat(d.montantHt);
+          if (!isNaN(stored) && stored > 0) return stored;
+          const ttc = parseFloat(d.montantTotal) || 0;
+          if (ttc === 0) return 0;
+          const custom = parseFloat(d.montantHtCustom);
+          if (!isNaN(custom) && custom > 0) return custom;
+          const tva = parseFloat(d.tauxTvaVente);
+          const t = !isNaN(tva) && tva > 0 ? tva : 20;
+          return ttc / (1 + t / 100);
+        })(),
         datePaiementBanque: d.datePaiementBanque || '',
         payeClient: !!d.payeClient,
         puissance: d.puissance || 0,
