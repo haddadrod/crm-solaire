@@ -13023,6 +13023,70 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
               <tr><td colSpan={19} className="text-center text-slate-400 italic py-6">Aucun dossier {filter || paySelected.size > 0 || societeSelected.size > 0 ? 'correspondant aux filtres' : ''}.</td></tr>
             )}
           </tbody>
+          {/* 📊 LIGNE SOUS-TOTAL — agrégats sur les lignes affichées (= filtrées). */}
+          {rows.length > 0 && (() => {
+            const sum = (key) => rows.reduce((s, r) => s + (r[key] || 0), 0);
+            const sumPaid = (key) => rows.reduce((s, r) => {
+              return s + (r[key === 'poseursHtTotal' ? 'poseurs' : key === 'regiesHtTotal' ? 'regies' : 'fournisseurs'] || [])
+                .filter(it => it.paye)
+                .reduce((ss, it) => ss + (it.ht || 0), 0);
+            }, 0);
+            const totals = {
+              montantTotal: sum('montantTotal'),
+              montantHt: sum('montantHt'),
+              puissance: sum('puissance'),
+              poseursHtTotal: sum('poseursHtTotal'),
+              poseursPaye: sumPaid('poseursHtTotal'),
+              regiesHtTotal: sum('regiesHtTotal'),
+              regiesPaye: sumPaid('regiesHtTotal'),
+              fournisseursHtTotal: sum('fournisseursHtTotal'),
+              fournPaye: sumPaid('fournisseursHtTotal'),
+              margeHt: sum('margeHt'),
+              nbClientPayes: rows.filter(r => r.payeClient).length,
+            };
+            const Cell = ({ children, className = '', title = '' }) => (
+              <td className={`border-2 border-cyan-500 px-1.5 py-1.5 bg-cyan-100 font-bold text-cyan-900 ${className}`} title={title}>{children}</td>
+            );
+            return (
+              <tfoot className="sticky bottom-0 z-20">
+                <tr>
+                  {/* Cells alignés sur les colonnes : Lien, id, Date insta, Rapport, Nom, Prénom, Soc, Financement, Mt total, Mt HT, Date paiement, Client payé, Puiss, Poseur, Mt Poseur, Régie, Mt Régie, Fourn, Mt Fourn, N° Fac, Marge (21 colonnes au total) */}
+                  <Cell className="text-center sticky left-0 bg-cyan-200 z-30">Σ TOTAL</Cell>{/* 1 Lien */}
+                  <Cell>{rows.length} d.</Cell>{/* 2 id */}
+                  <Cell></Cell>{/* 3 Date insta */}
+                  <Cell></Cell>{/* 4 Rapport */}
+                  <Cell></Cell>{/* 5 Nom */}
+                  <Cell></Cell>{/* 6 Prénom */}
+                  <Cell></Cell>{/* 7 Soc */}
+                  <Cell></Cell>{/* 8 Financement */}
+                  <Cell className="text-right whitespace-nowrap">{fmtEuro(totals.montantTotal)}</Cell>{/* 9 Mt total */}
+                  <Cell className="text-right whitespace-nowrap">{fmtEuro(totals.montantHt)}</Cell>{/* 10 Mt HT */}
+                  <Cell></Cell>{/* 11 Date paiement */}
+                  <Cell className="text-center" title={`${totals.nbClientPayes} clients payés sur ${rows.length}`}>{totals.nbClientPayes}/{rows.length}</Cell>{/* 12 Client payé */}
+                  <Cell className="text-right">{totals.puissance.toLocaleString('fr-FR')}</Cell>{/* 13 Puiss */}
+                  <Cell></Cell>{/* 14 Poseur */}
+                  <Cell className="text-right whitespace-nowrap" title={`Total ${fmtEuro(totals.poseursHtTotal)} — payé ${fmtEuro(totals.poseursPaye)}`}>{/* 15 Mt Poseur */}
+                    <div className="font-mono text-amber-700">{fmtEuroShort(totals.poseursHtTotal)}</div>
+                    <div className="text-[9px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.poseursPaye)}</div>
+                  </Cell>
+                  <Cell></Cell>{/* 16 Régie */}
+                  <Cell className="text-right whitespace-nowrap" title={`Total ${fmtEuro(totals.regiesHtTotal)} — payé ${fmtEuro(totals.regiesPaye)}`}>{/* 17 Mt Régie */}
+                    <div className="font-mono text-purple-700">{fmtEuroShort(totals.regiesHtTotal)}</div>
+                    <div className="text-[9px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.regiesPaye)}</div>
+                  </Cell>
+                  <Cell></Cell>{/* 18 Fourn */}
+                  <Cell className="text-right whitespace-nowrap" title={`Total ${fmtEuro(totals.fournisseursHtTotal)} — payé ${fmtEuro(totals.fournPaye)}`}>{/* 19 Mt Fourn */}
+                    <div className="font-mono text-orange-700">{fmtEuroShort(totals.fournisseursHtTotal)}</div>
+                    <div className="text-[9px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.fournPaye)}</div>
+                  </Cell>
+                  <Cell></Cell>{/* 20 N° Fac */}
+                  <Cell className={`text-right whitespace-nowrap font-extrabold ${totals.margeHt >= 0 ? 'text-emerald-800 bg-emerald-100' : 'text-rose-800 bg-rose-100'}`}>{/* 21 Marge */}
+                    {fmtEuro(totals.margeHt)}
+                  </Cell>
+                </tr>
+              </tfoot>
+            );
+          })()}
         </table>
       </div>
     </div>
