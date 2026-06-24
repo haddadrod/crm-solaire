@@ -12698,14 +12698,50 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
     if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
     else { setSortKey(k); setSortDir('asc'); }
   };
-  const Th = ({ k, children, className = '' }) => (
-    <th
-      onClick={k ? () => toggleSort(k) : undefined}
-      className={`px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-900 bg-cyan-200 border border-cyan-400 ${k ? 'cursor-pointer hover:bg-cyan-300' : ''} ${className}`}
-    >
-      {children}{sortKey === k && <span className="ml-0.5">{sortDir === 'asc' ? '↑' : '↓'}</span>}
-    </th>
-  );
+  // 📏 Largeur des colonnes — redimensionnable au drag du bord droit.
+  // { [headerKey ou label]: largeurPx }
+  const [colWidths, setColWidths] = useState({});
+  const startResize = (key, startX, startW) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const onMove = (ev) => {
+      const dx = ev.clientX - startX;
+      const next = Math.max(50, startW + dx);
+      setColWidths(prev => ({ ...prev, [key]: next }));
+    };
+    const onUp = () => {
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      document.body.style.cursor = '';
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+    document.body.style.cursor = 'col-resize';
+  };
+  const Th = ({ k, children, className = '' }) => {
+    const headerKey = k || (typeof children === 'string' ? children : 'col');
+    const colWidth = colWidths[headerKey];
+    return (
+      <th
+        onClick={k ? () => toggleSort(k) : undefined}
+        style={colWidth ? { width: `${colWidth}px`, minWidth: `${colWidth}px`, maxWidth: `${colWidth}px` } : undefined}
+        className={`relative px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-900 bg-cyan-200 border border-cyan-400 ${k ? 'cursor-pointer hover:bg-cyan-300' : ''} ${className}`}
+      >
+        {children}{sortKey === k && <span className="ml-0.5">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+        {/* 📏 Poignée de redimensionnement — drag pour ajuster la largeur. */}
+        <span
+          onMouseDown={(e) => {
+            const rect = e.currentTarget.parentElement.getBoundingClientRect();
+            startResize(headerKey, e.clientX, rect.width)(e);
+          }}
+          onClick={(e) => e.stopPropagation()}
+          title="Tirer pour redimensionner"
+          className="absolute top-0 right-0 bottom-0 w-1.5 cursor-col-resize hover:bg-cyan-600 active:bg-cyan-700 select-none"
+          style={{ touchAction: 'none' }}
+        />
+      </th>
+    );
+  };
 
   const EditCell = ({ value, type = 'text', onCommit, className = '' }) => {
     const [v, setV] = useState(value ?? '');
