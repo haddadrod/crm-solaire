@@ -12931,10 +12931,10 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                     {s?.emoji} {s?.label || r.statut}
                   </td>
                   <td className="border border-slate-200 px-1.5 py-1 text-center font-bold text-amber-700">{r.comptant}</td>
-                  <td className="border border-slate-200 px-1.5 py-1 font-semibold uppercase">
+                  <td className="border border-slate-200 px-1.5 py-1 font-semibold uppercase" style={{ minWidth: '160px' }}>
                     <EditCell value={r.nom} onCommit={(v) => updateDossier(lid, { nom: v })} />
                   </td>
-                  <td className="border border-slate-200 px-1.5 py-1">
+                  <td className="border border-slate-200 px-1.5 py-1" style={{ minWidth: '140px' }}>
                     <EditCell value={r.prenom} onCommit={(v) => updateDossier(lid, { prenom: v })} />
                   </td>
                   <td className="border border-slate-200 px-1.5 py-1 text-center text-[10px] font-bold uppercase">{r.societe}</td>
