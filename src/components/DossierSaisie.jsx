@@ -6543,8 +6543,11 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                   : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="hover:text-violet-600 hover:underline transition-colors text-left" title="Voir l'aperçu rapide">{d.nom} {d.prenom && <span className="font-normal text-slate-600">{d.prenom}</span>}</button>}
               </h3>
               {!readOnly && (
-                <span className="ml-auto inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
-                  💰 {formatEuro(d.montantTotal)}
+                <span className="ml-auto inline-flex items-center gap-1.5">
+                  {societeMeta && <SocieteBadge societe={societeMeta} variant="inline" />}
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-bold bg-gradient-to-r from-blue-500 to-cyan-500 text-white">
+                    💰 {formatEuro(d.montantTotal)}
+                  </span>
                 </span>
               )}
             </div>
