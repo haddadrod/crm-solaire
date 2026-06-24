@@ -12166,7 +12166,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'expert' && (
-        <ExpertToolsPanel dossiers={dossiers} setDossiers={setDossiers} setShowImportJson={setShowImportJson} STATUTS={STATUTS} societes={societes} onShowQuick={(id) => setShowQuickViewId(id)} />
+        <ExpertToolsPanel dossiers={dossiers} dossiersEnriched={dossiersEnriched} setDossiers={setDossiers} setShowImportJson={setShowImportJson} STATUTS={STATUTS} societes={societes} onShowQuick={(id) => setShowQuickViewId(id)} />
       )}
     </div>
   );
@@ -12345,7 +12345,7 @@ const SUPABASE_SECRETS_RLS_OK_HINT = false;
 // suppression d'import sheet, validation CQ massive, sync paiement client).
 // Volontairement regroupés ici (hors barre principale) pour éviter qu'un
 // utilisateur ne déclenche par erreur une action irréversible.
-function ExpertToolsPanel({ dossiers, setDossiers, setShowImportJson, STATUTS = [], societes = [], onShowQuick }) {
+function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setShowImportJson, STATUTS = [], societes = [], onShowQuick }) {
   const [showSheet, setShowSheet] = useState(false);
   const handleBackup = () => {
     try {
@@ -12470,7 +12470,7 @@ function ExpertToolsPanel({ dossiers, setDossiers, setShowImportJson, STATUTS = 
             <div className="text-[11px] text-slate-500 mt-0.5">Tous les dossiers en grille triable, façon Google Sheet — pratique pour exporter ou comparer.</div>
           </button>
         </div>
-        {showSheet && <SheetView dossiers={dossiers} setDossiers={setDossiers} STATUTS={STATUTS} societes={societes} onShowQuick={onShowQuick} />}
+        {showSheet && <SheetView dossiers={dossiersEnriched || dossiers} setDossiers={setDossiers} STATUTS={STATUTS} societes={societes} onShowQuick={onShowQuick} />}
       </div>
     </div>
   );
