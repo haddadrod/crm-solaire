@@ -5954,6 +5954,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             STATUTS_ORDERED={STATUTS_ORDERED} POSEURS={POSEURS} REGIES={REGIES} FOURNISSEURS={FOURNISSEURS}
             tarifsPoseurs={tarifsPoseurs} tarifsRegies={tarifsRegies} tarifsInternes={tarifsInternes}
             nomsInternes={nomsInternes} setNomsInternes={setNomsInternes}
+            poseursContacts={poseursContacts} regiesContacts={regiesContacts}
             produits={produits}
             societes={societes}
             projexioMoisCourant={dashboard.projexioMoisCourant}
@@ -12911,7 +12912,7 @@ function ProductPrestaCard({ product, type, lignesActives, nomsDispo, getLocal, 
 // (déjà saisis + bouton « + Ajouter un produit »), boutons Enregistrer /
 // Annuler / Supprimer. Évite le scroll horizontal et regroupe tout au même
 // endroit pour ce prestataire.
-function PrestataireCard({ nom, type, used, societes, societesDefinies = [], societesGroupe = [], setSocietesDefinies, data, getLocal, editLocal, savePending, cancelPending, hasPending, pending, getTel, getEmail, contactsObjectShape, rename, del, otherProducts, labelSociete = (x) => x }) {
+function PrestataireCard({ nom, type, used, societes, societesDefinies = [], societesGroupe = [], setSocietesDefinies, data, getLocal, editLocal, savePending, cancelPending, hasPending, pending, getTel, getEmail, getNomOfficiel = () => '', contactsObjectShape, rename, del, otherProducts, labelSociete = (x) => x }) {
   const [open, setOpen] = useState(false);
   const dirty = hasPending(nom);
   const tarifs = data[nom] || {};
@@ -12956,18 +12957,35 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
       </button>
       {open && (
         <div className="px-3 pb-3 pt-1 space-y-3 border-t border-slate-200 bg-white">
-          {/* Nom + tél + email */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+          {/* Nom (surnom CRM) + Nom officiel (Pennylane) + tél + email */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase mb-0.5 block">Nom</label>
+              <label className="text-[10px] font-bold text-slate-500 uppercase mb-0.5 block">Surnom (CRM)</label>
               <input
                 type="text"
                 defaultValue={nom}
                 onBlur={(e) => rename(nom, e.target.value)}
                 onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                title="Nom court utilisé dans le CRM (listes, dropdowns)"
                 className="w-full px-2 py-1 bg-slate-50 border border-slate-200 hover:border-slate-300 focus:border-violet-400 focus:bg-white focus:outline-none rounded text-xs font-semibold"
               />
             </div>
+            {contactsObjectShape && (
+              <div>
+                <label className="text-[10px] font-bold text-slate-500 uppercase mb-0.5 block">🏢 Nom officiel (Pennylane)</label>
+                <input
+                  type="text"
+                  value={pending[nom] && '__nomOfficiel' in pending[nom] ? pending[nom].__nomOfficiel : getNomOfficiel(nom)}
+                  onChange={(e) => editLocal(nom, '__nomOfficiel', e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') savePending(nom); }}
+                  placeholder={`ex: ${nom} SARL — vide = utilise le surnom`}
+                  title="Raison sociale exacte qui apparaît sur les factures (envoyée à Pennylane). Vide → utilise le surnom CRM."
+                  className={`w-full px-2 py-1 ${pending[nom] && '__nomOfficiel' in pending[nom] ? 'bg-amber-50 border-amber-300' : 'bg-slate-50 border-slate-200'} border rounded text-xs`}
+                />
+              </div>
+            )}
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <div>
               <label className="text-[10px] font-bold text-slate-500 uppercase mb-0.5 block">📞 Téléphone</label>
               <input
@@ -13133,6 +13151,15 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     if (c == null || typeof c === 'string') return '';
     return c.email || '';
   };
+  // 🏢 Nom officiel (raison sociale) — utilisé pour Pennylane et docs officiels.
+  // Vide → fallback sur le surnom (= clé du contact, ce que l'utilisateur tape
+  // dans le CRM au quotidien). Pas de migration nécessaire : ancien CRM →
+  // champ vide → comportement actuel préservé.
+  const getNomOfficiel = (nom) => {
+    const c = (contacts || {})[nom];
+    if (c == null || typeof c === 'string') return '';
+    return c.nomOfficiel || '';
+  };
   const [showAdd, setShowAdd] = useState(false);
   const [newName, setNewName] = useState('');
   const allNoms = Object.keys(data);
@@ -13233,21 +13260,23 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     }
   };
 
-  // Sauvegarde tél + email d'un prestataire en UN SEUL setContacts.
-  // Utiliser 2 setContacts back-to-back fait perdre la 1ère valeur (closure stale).
+  // Sauvegarde tél + email + nom officiel d'un prestataire en UN SEUL setContacts.
+  // Utiliser plusieurs setContacts back-to-back fait perdre des valeurs (closure stale).
   // Utilise functional setState pour être safe sur React 18 batching.
-  const saveContact = (nom, tel, email) => {
+  const saveContact = (nom, tel, email, nomOfficiel = null) => {
     if (!setContacts) return;
     const tVal = (tel || '').trim();
     const eVal = (email || '').trim();
     setContacts(prev => {
       const nc = { ...(prev || {}) };
       if (contactsObjectShape) {
-        // Préserve les sociétés déjà définies pour ce prestataire.
+        // Préserve les sociétés/nom officiel déjà définis pour ce prestataire.
         const existing = (nc[nom] && typeof nc[nom] === 'object') ? nc[nom] : {};
+        const noVal = nomOfficiel === null ? (existing.nomOfficiel || '') : (nomOfficiel || '').trim();
         const next = { ...existing, tel: tVal, email: eVal };
-        if (!next.tel && !next.email && (!next.societes || next.societes.length === 0)) delete nc[nom];
-        else nc[nom] = next;
+        if (noVal) next.nomOfficiel = noVal; else delete next.nomOfficiel;
+        const isEmpty = (!next.tel && !next.email && !next.nomOfficiel && (!next.societes || next.societes.length === 0));
+        if (isEmpty) delete nc[nom]; else nc[nom] = next;
       } else {
         if (tVal) nc[nom] = tVal; else delete nc[nom];
       }
@@ -13300,23 +13329,22 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
     const p = pending[nom];
     if (!p) return;
     const tarifs = { ...(data[nom] || {}) };
-    let telToSave = null, emailToSave = null;
+    let telToSave = null, emailToSave = null, nomOfficielToSave = null;
     Object.entries(p).forEach(([k, v]) => {
-      // Convention : clés __tel et __email sortent vers `contacts`, le reste
-      // vers `data` (tarifs par puissance ou produit).
+      // Convention : clés __tel, __email et __nomOfficiel sortent vers `contacts`,
+      // le reste vers `data` (tarifs par puissance ou produit).
       if (k === '__tel') { telToSave = v; return; }
       if (k === '__email') { emailToSave = v; return; }
+      if (k === '__nomOfficiel') { nomOfficielToSave = v; return; }
       const num = parseFloat(v);
       if (v === '' || isNaN(num) || num === 0) delete tarifs[k]; else tarifs[k] = num;
     });
     setData({ ...data, [nom]: tarifs });
-    // Sauve les contacts si modifiés. Pour les contacts en string (legacy
-    // poseurs), seul le tél compte ; pour les contacts object (régies), on
-    // sauve tél+email ensemble pour éviter d'écraser une 2e valeur.
-    if ((telToSave !== null || emailToSave !== null) && setContacts) {
+    if ((telToSave !== null || emailToSave !== null || nomOfficielToSave !== null) && setContacts) {
       const currentTel = telToSave !== null ? telToSave : getTel(nom);
       const currentEmail = emailToSave !== null ? emailToSave : getEmail(nom);
-      saveContact(nom, currentTel, currentEmail);
+      const currentNomOfficiel = nomOfficielToSave !== null ? nomOfficielToSave : getNomOfficiel(nom);
+      saveContact(nom, currentTel, currentEmail, currentNomOfficiel);
     }
     setPending(prev => { const np = { ...prev }; delete np[nom]; return np; });
   };
@@ -13331,28 +13359,30 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
   const saveAllPending = () => {
     if (nomsPending.length === 0) return;
     const merged = { ...data };
-    const pendingContacts = {}; // { nom: { tel, email } }
+    const pendingContacts = {}; // { nom: { tel, email, nomOfficiel } }
     nomsPending.forEach(nom => {
       const p = pending[nom] || {};
       const tarifs = { ...(merged[nom] || {}) };
-      let tel = null, email = null;
+      let tel = null, email = null, nomOfficiel = null;
       Object.entries(p).forEach(([k, v]) => {
         if (k === '__tel') { tel = v; return; }
         if (k === '__email') { email = v; return; }
+        if (k === '__nomOfficiel') { nomOfficiel = v; return; }
         const num = parseFloat(v);
         if (v === '' || isNaN(num) || num === 0) delete tarifs[k]; else tarifs[k] = num;
       });
       merged[nom] = tarifs;
-      if (tel !== null || email !== null) {
+      if (tel !== null || email !== null || nomOfficiel !== null) {
         pendingContacts[nom] = {
           tel: tel !== null ? tel : getTel(nom),
           email: email !== null ? email : getEmail(nom),
+          nomOfficiel: nomOfficiel !== null ? nomOfficiel : getNomOfficiel(nom),
         };
       }
     });
     setData(merged);
     if (Object.keys(pendingContacts).length > 0) {
-      Object.entries(pendingContacts).forEach(([nom, { tel, email }]) => saveContact(nom, tel, email));
+      Object.entries(pendingContacts).forEach(([nom, { tel, email, nomOfficiel }]) => saveContact(nom, tel, email, nomOfficiel));
     }
     setPending({});
   };
@@ -13580,6 +13610,7 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                     pending={pending}
                     getTel={getTel}
                     getEmail={getEmail}
+                    getNomOfficiel={getNomOfficiel}
                     contactsObjectShape={contactsObjectShape}
                     rename={rename}
                     del={del}
@@ -15220,7 +15251,7 @@ function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
   );
 }
 
-function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, produits, societes = [], projexioMoisCourant = { parSociete: {} }, projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, dossiers = [], currentUser, onClose, onSubmit, isAdmin, onOpenGmailSearch = null }) {
+function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, poseursContacts = {}, regiesContacts = {}, produits, societes = [], projexioMoisCourant = { parSociete: {} }, projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, dossiers = [], currentUser, onClose, onSubmit, isAdmin, onOpenGmailSearch = null }) {
   // 🚨 Détection de doublons : scanne les dossiers existants à mesure que
   // l'utilisateur saisit nom/prenom/tel. Match strict sur :
   //   - téléphone normalisé E.164 (le plus fiable)
@@ -16348,7 +16379,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             }}
                             pennylaneInfo={{
                               societe: formData.societe || '',
-                              supplierName: r.nom,
+                              supplierName: (regiesContacts?.[r.nom]?.nomOfficiel || r.nom),
                               factureNo: r.factureNo,
                               dateFacture: r.dateFacture || new Date().toISOString().slice(0, 10),
                               montantHt: parseFloat(r.htCustom) || (calculs.regiesDetail?.[idx]?.autoHt) || 0,
@@ -16494,7 +16525,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           }}
                           pennylaneInfo={{
                             societe: formData.societe || '',
-                            supplierName: p.nom,
+                            supplierName: (poseursContacts?.[p.nom]?.nomOfficiel || p.nom),
                             factureNo: p.factureNo,
                             dateFacture: p.dateFacture || new Date().toISOString().slice(0, 10),
                             montantHt: parseFloat(p.htCustom) || (calculs.poseursDetail?.[idx]?.autoHt) || 0,
@@ -22162,7 +22193,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               }}
                               pennylaneInfo={{
                                 societe: d.societe || '',
-                                supplierName: r.nom,
+                                supplierName: (regiesContacts?.[r.nom]?.nomOfficiel || r.nom),
                                 factureNo: r.factureNo,
                                 dateFacture: r.dateFacture || new Date().toISOString().slice(0, 10),
                                 montantHt: parseFloat(r.htCustom) || (d.regiesDetail?.[i]?.autoHt) || 0,
@@ -22538,7 +22569,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         }}
                         pennylaneInfo={{
                           societe: d.societe || '',
-                          supplierName: p.nom,
+                          supplierName: (poseursContacts?.[p.nom]?.nomOfficiel || p.nom),
                           factureNo: p.factureNo,
                           dateFacture: p.dateFacture || new Date().toISOString().slice(0, 10),
                           montantHt: parseFloat(p.htCustom) || (d.poseursDetail?.[i]?.autoHt) || 0,
