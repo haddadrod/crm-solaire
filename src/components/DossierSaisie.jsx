@@ -12147,7 +12147,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, dossiers
       )}
 
       {section === 'expert' && (
-        <ExpertToolsPanel dossiers={dossiers} setDossiers={setDossiers} setShowImportJson={setShowImportJson} />
+        <ExpertToolsPanel dossiers={dossiers} setDossiers={setDossiers} setShowImportJson={setShowImportJson} STATUTS={STATUTS} onShowQuick={(id) => setShowQuickViewId(id)} />
       )}
     </div>
   );
@@ -12326,7 +12326,8 @@ const SUPABASE_SECRETS_RLS_OK_HINT = false;
 // suppression d'import sheet, validation CQ massive, sync paiement client).
 // Volontairement regroupés ici (hors barre principale) pour éviter qu'un
 // utilisateur ne déclenche par erreur une action irréversible.
-function ExpertToolsPanel({ dossiers, setDossiers, setShowImportJson }) {
+function ExpertToolsPanel({ dossiers, setDossiers, setShowImportJson, STATUTS = [], onShowQuick }) {
+  const [showSheet, setShowSheet] = useState(false);
   const handleBackup = () => {
     try {
       const json = JSON.stringify(dossiers, null, 2);
@@ -12435,13 +12436,205 @@ function ExpertToolsPanel({ dossiers, setDossiers, setShowImportJson }) {
           <button
             onClick={handleSyncStatutPaye}
             disabled={nbPayeSync === 0}
-            className="bg-white hover:bg-blue-50 disabled:bg-slate-50 disabled:text-slate-400 text-blue-700 px-4 py-3 rounded-xl font-semibold border border-blue-200 disabled:border-slate-200 text-left disabled:cursor-not-allowed md:col-span-2"
+            className="bg-white hover:bg-blue-50 disabled:bg-slate-50 disabled:text-slate-400 text-blue-700 px-4 py-3 rounded-xl font-semibold border border-blue-200 disabled:border-slate-200 text-left disabled:cursor-not-allowed"
             title="Pour chaque dossier au statut PAYÉ sans payeClient, force payeClient=true."
           >
             <div className="flex items-center gap-2 font-bold">💰 Sync statut PAYÉ → paiement reçu {nbPayeSync > 0 && <span className="text-[10px] bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded-full">{nbPayeSync}</span>}</div>
             <div className="text-[11px] text-slate-500 mt-0.5">{nbPayeSync > 0 ? `Marque payeClient=true sur ${nbPayeSync} dossiers déjà au statut PAYÉ.` : 'Statut et paiement sont déjà cohérents (sync auto active à chaque chargement).'}</div>
           </button>
+          <button
+            onClick={() => setShowSheet(v => !v)}
+            className="bg-white hover:bg-emerald-50 text-emerald-700 px-4 py-3 rounded-xl font-semibold border border-emerald-200 text-left"
+            title="Affiche tous les dossiers en vue tableau (façon Google Sheet)."
+          >
+            <div className="flex items-center gap-2 font-bold">📊 {showSheet ? 'Cacher' : 'Afficher'} vue Sheet</div>
+            <div className="text-[11px] text-slate-500 mt-0.5">Tous les dossiers en grille triable, façon Google Sheet — pratique pour exporter ou comparer.</div>
+          </button>
         </div>
+        {showSheet && <SheetView dossiers={dossiers} STATUTS={STATUTS} onShowQuick={onShowQuick} />}
+      </div>
+    </div>
+  );
+}
+
+// 📊 Vue Sheet : affichage tabulaire (façon Google Sheet) de tous les dossiers
+// avec leurs infos clés. Triable par colonne, filtrage simple par recherche.
+// Scroll horizontal pour ne couper aucune colonne.
+function SheetView({ dossiers, STATUTS = [], onShowQuick }) {
+  const [sortKey, setSortKey] = useState('dateInsta');
+  const [sortDir, setSortDir] = useState('desc');
+  const [filter, setFilter] = useState('');
+
+  const statutMap = useMemo(() => {
+    const m = {};
+    (STATUTS || []).forEach(s => { m[s.id] = s; });
+    return m;
+  }, [STATUTS]);
+
+  const rows = useMemo(() => {
+    const list = (dossiers || []).map(d => {
+      const fournisseur1 = (d.fournisseurs || [])[0]?.nom || '';
+      const factureNo = (d.fournisseurs || []).find(f => f?.factureNo)?.factureNo
+        || (d.poseurs || []).find(p => p?.factureNo)?.factureNo
+        || (d.regies || []).find(r => r?.factureNo)?.factureNo
+        || '';
+      // Retard en jours depuis paiement bancaire / date pose
+      const refRetard = d.datePaiementBanque || d.dateInsta || d.savedAt;
+      let retardJours = '';
+      if (refRetard) {
+        const diff = Math.floor((Date.now() - new Date(refRetard).getTime()) / (1000 * 60 * 60 * 24));
+        retardJours = isNaN(diff) ? '' : Math.max(0, diff);
+      }
+      return {
+        d,
+        id: d.id || '',
+        dateInsta: d.dateInsta || '',
+        accordDef: !!d.accordDef,
+        consuel: !!d.consuel,
+        statut: d.statut || '',
+        dateStatutChange: d.dateStatutChange || d.savedAt || '',
+        comptant: d.financement === 'COMPTANT' || d.financement === 'comptant' ? 'COMPTANT' : '',
+        nom: d.nom || '',
+        prenom: d.prenom || '',
+        financement: d.financement || '',
+        montantTotal: parseFloat(d.montantTotal) || 0,
+        montantHt: parseFloat(d.montantHt) || 0,
+        datePaiementBanque: d.datePaiementBanque || '',
+        retardJours,
+        delaisDePayer: d.payeClient ? '' : 'PAS PAYER',
+        payeClient: !!d.payeClient,
+        puissance: d.puissance || 0,
+        fournisseur1,
+        factureNo,
+      };
+    });
+    const f = filter.trim().toLowerCase();
+    const filtered = f
+      ? list.filter(r =>
+          (r.nom + ' ' + r.prenom + ' ' + r.id + ' ' + r.fournisseur1 + ' ' + r.factureNo).toLowerCase().includes(f)
+        )
+      : list;
+    filtered.sort((a, b) => {
+      let av = a[sortKey]; let bv = b[sortKey];
+      if (av == null) av = ''; if (bv == null) bv = '';
+      if (typeof av === 'number' && typeof bv === 'number') return sortDir === 'asc' ? av - bv : bv - av;
+      return sortDir === 'asc' ? String(av).localeCompare(String(bv)) : String(bv).localeCompare(String(av));
+    });
+    return filtered;
+  }, [dossiers, sortKey, sortDir, filter]);
+
+  const toggleSort = (k) => {
+    if (sortKey === k) setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(k); setSortDir('asc'); }
+  };
+  const Th = ({ k, children, className = '' }) => (
+    <th
+      onClick={k ? () => toggleSort(k) : undefined}
+      className={`px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-cyan-900 bg-cyan-200 border border-cyan-400 ${k ? 'cursor-pointer hover:bg-cyan-300' : ''} ${className}`}
+    >
+      {children}{sortKey === k && <span className="ml-0.5">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+    </th>
+  );
+
+  const fmtDate = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      const dd = String(d.getDate()).padStart(2, '0');
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const yy = String(d.getFullYear()).slice(-2);
+      const hh = String(d.getHours()).padStart(2, '0');
+      const mn = String(d.getMinutes()).padStart(2, '0');
+      return `${dd}/${mm}/${yy} ${hh}:${mn}`;
+    } catch (_) { return ''; }
+  };
+  const fmtDateShort = (iso) => {
+    if (!iso) return '';
+    try {
+      const d = new Date(iso);
+      return `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${String(d.getFullYear()).slice(-2)}`;
+    } catch (_) { return ''; }
+  };
+  const fmtEuro = (v) => v ? `${v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €` : '- €';
+
+  return (
+    <div className="mt-4 bg-white border border-slate-300 rounded-2xl overflow-hidden">
+      <div className="px-3 py-2 bg-cyan-50 border-b border-cyan-200 flex items-center justify-between gap-3 flex-wrap">
+        <div className="text-xs font-bold text-cyan-900">📊 Vue Sheet — {rows.length} dossier{rows.length > 1 ? 's' : ''}</div>
+        <input
+          type="text"
+          value={filter}
+          onChange={(e) => setFilter(e.target.value)}
+          placeholder="🔍 Filtre (nom, id, fournisseur, n° facture)…"
+          className="px-2 py-1 text-xs border border-cyan-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-cyan-400 min-w-[280px]"
+        />
+      </div>
+      <div className="overflow-auto" style={{ maxHeight: '70vh' }}>
+        <table className="w-full text-[11px] border-collapse">
+          <thead className="sticky top-0 z-10">
+            <tr>
+              <Th>Lien</Th>
+              <Th k="id">id</Th>
+              <Th k="dateInsta">Date insta</Th>
+              <Th k="accordDef">Acc. déf</Th>
+              <Th k="consuel">Cons.</Th>
+              <Th k="statut">Rapport</Th>
+              <Th k="dateStatutChange">Date statut</Th>
+              <Th k="comptant">Compt.</Th>
+              <Th k="nom">Nom</Th>
+              <Th k="prenom">Prénom</Th>
+              <Th k="financement">Financement</Th>
+              <Th k="montantTotal" className="text-right">Mt total</Th>
+              <Th k="montantHt" className="text-right">Mt total HT</Th>
+              <Th k="datePaiementBanque">Date paiement</Th>
+              <Th k="retardJours" className="text-right">Retard</Th>
+              <Th k="delaisDePayer">Délai</Th>
+              <Th k="payeClient">Payé</Th>
+              <Th k="puissance" className="text-right">Puiss.</Th>
+              <Th k="fournisseur1">Fourn. 1</Th>
+              <Th k="factureNo">BL / Fac</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => {
+              const s = statutMap[r.statut];
+              const statutCls = s
+                ? `${s.bg || 'bg-slate-100'} ${s.text || 'text-slate-700'} font-bold`
+                : 'bg-slate-100 text-slate-500';
+              return (
+                <tr key={r.d.localId || i} className={`hover:bg-cyan-50 ${i % 2 ? 'bg-white' : 'bg-slate-50/40'}`}>
+                  <td className="border border-slate-200 px-1.5 py-1 text-center">
+                    <button onClick={() => onShowQuick && onShowQuick(r.d.localId)} className="text-blue-600 hover:text-blue-800 hover:underline font-bold">Voir</button>
+                  </td>
+                  <td className="border border-slate-200 px-1.5 py-1 font-mono text-slate-700">{r.id}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap">{fmtDateShort(r.dateInsta)}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-center">{r.accordDef ? '✓' : ''}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-center">{r.consuel ? '✓' : ''}</td>
+                  <td className={`border border-slate-200 px-1.5 py-1 ${statutCls}`} title={s?.label || r.statut}>
+                    {s?.emoji} {s?.label || r.statut}
+                  </td>
+                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap text-slate-600">{fmtDate(r.dateStatutChange)}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-center font-bold text-amber-700">{r.comptant}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 font-semibold uppercase">{r.nom}</td>
+                  <td className="border border-slate-200 px-1.5 py-1">{r.prenom}</td>
+                  <td className="border border-slate-200 px-1.5 py-1">{r.financement}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap">{fmtEuro(r.montantTotal)}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap">{fmtEuro(r.montantHt)}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap">{fmtDateShort(r.datePaiementBanque)}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-right font-bold text-rose-600">{r.retardJours}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-center font-bold text-rose-700">{r.delaisDePayer}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-center">{r.payeClient ? '☑' : '☐'}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 text-right font-semibold">{r.puissance || ''}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 bg-yellow-50">{r.fournisseur1}</td>
+                  <td className="border border-slate-200 px-1.5 py-1 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
+                </tr>
+              );
+            })}
+            {rows.length === 0 && (
+              <tr><td colSpan={20} className="text-center text-slate-400 italic py-6">Aucun dossier {filter ? 'correspondant au filtre' : ''}.</td></tr>
+            )}
+          </tbody>
+        </table>
       </div>
     </div>
   );
