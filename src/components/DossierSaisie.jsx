@@ -3975,7 +3975,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         const key = `${regie}::${soc}`;
         if (!penaliteMap[key]) penaliteMap[key] = { nom: regie, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, lignes: [] };
         // 🛡️ Backfill : anciennes tentatives sans `penalite` stockée → on
-        // applique 500 € par défaut (la valeur usuelle proposée dans le form).
+        // applique 500 € par défaut. ?? pour préserver un 0 intentionnel.
         const pen = (t.penalite ?? null) !== null && !isNaN(parseFloat(t.penalite))
           ? parseFloat(t.penalite)
           : 500;
