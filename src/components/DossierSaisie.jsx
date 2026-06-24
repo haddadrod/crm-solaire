@@ -13081,19 +13081,22 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                   <Cell className="text-center" title={`${totals.nbClientPayes} clients payés sur ${rows.length}`}>{totals.nbClientPayes}/{rows.length}</Cell>{/* 12 Client payé */}
                   <Cell className="text-right">{totals.puissance.toLocaleString('fr-FR')}</Cell>{/* 13 Puiss */}
                   <Cell></Cell>{/* 14 Poseur */}
-                  <Cell className="text-right whitespace-nowrap" title={`Total ${fmtEuro(totals.poseursHtTotal)} — payé ${fmtEuro(totals.poseursPaye)}`}>{/* 15 Mt Poseur */}
+                  <Cell className="text-right whitespace-nowrap" title={`Total ${fmtEuro(totals.poseursHtTotal)} = ✓ payé ${fmtEuro(totals.poseursPaye)} + ⏳ à payer ${fmtEuro(totals.poseursHtTotal - totals.poseursPaye)}`}>{/* 15 Mt Poseur */}
                     <div className="font-mono text-amber-700">{fmtEuroShort(totals.poseursHtTotal)}</div>
-                    <div className="text-[9px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.poseursPaye)}</div>
+                    {totals.poseursPaye > 0 && <div className="text-[9px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.poseursPaye)}</div>}
+                    {(totals.poseursHtTotal - totals.poseursPaye) > 0 && <div className="text-[9px] text-orange-600 font-normal">⏳ {fmtEuroShort(totals.poseursHtTotal - totals.poseursPaye)}</div>}
                   </Cell>
                   <Cell></Cell>{/* 16 Régie */}
-                  <Cell className="text-right whitespace-nowrap" title={`Total ${fmtEuro(totals.regiesHtTotal)} — payé ${fmtEuro(totals.regiesPaye)}`}>{/* 17 Mt Régie */}
+                  <Cell className="text-right whitespace-nowrap" title={`Total ${fmtEuro(totals.regiesHtTotal)} = ✓ payé ${fmtEuro(totals.regiesPaye)} + ⏳ à payer ${fmtEuro(totals.regiesHtTotal - totals.regiesPaye)}`}>{/* 17 Mt Régie */}
                     <div className="font-mono text-purple-700">{fmtEuroShort(totals.regiesHtTotal)}</div>
-                    <div className="text-[9px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.regiesPaye)}</div>
+                    {totals.regiesPaye > 0 && <div className="text-[9px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.regiesPaye)}</div>}
+                    {(totals.regiesHtTotal - totals.regiesPaye) > 0 && <div className="text-[9px] text-orange-600 font-normal">⏳ {fmtEuroShort(totals.regiesHtTotal - totals.regiesPaye)}</div>}
                   </Cell>
                   <Cell></Cell>{/* 18 Fourn */}
-                  <Cell className="text-right whitespace-nowrap" title={`Total ${fmtEuro(totals.fournisseursHtTotal)} — payé ${fmtEuro(totals.fournPaye)}`}>{/* 19 Mt Fourn */}
+                  <Cell className="text-right whitespace-nowrap" title={`Total ${fmtEuro(totals.fournisseursHtTotal)} = ✓ payé ${fmtEuro(totals.fournPaye)} + ⏳ à payer ${fmtEuro(totals.fournisseursHtTotal - totals.fournPaye)}`}>{/* 19 Mt Fourn */}
                     <div className="font-mono text-orange-700">{fmtEuroShort(totals.fournisseursHtTotal)}</div>
-                    <div className="text-[9px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.fournPaye)}</div>
+                    {totals.fournPaye > 0 && <div className="text-[9px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.fournPaye)}</div>}
+                    {(totals.fournisseursHtTotal - totals.fournPaye) > 0 && <div className="text-[9px] text-orange-600 font-normal">⏳ {fmtEuroShort(totals.fournisseursHtTotal - totals.fournPaye)}</div>}
                   </Cell>
                   <Cell></Cell>{/* 20 N° Fac */}
                   <Cell className={`text-right whitespace-nowrap font-extrabold ${totals.margeHt >= 0 ? 'text-emerald-800 bg-emerald-100' : 'text-rose-800 bg-rose-100'}`}>{/* 21 Marge */}
