@@ -12733,13 +12733,12 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
       <th
         onClick={k ? () => toggleSort(k) : undefined}
         style={colWidth ? { width: `${colWidth}px`, minWidth: `${colWidth}px`, maxWidth: `${colWidth}px` } : undefined}
-        className={`relative px-3 py-2.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600 bg-gradient-to-b from-slate-50 to-slate-100 border-b-2 border-slate-300 ${k ? 'cursor-pointer hover:from-slate-100 hover:to-slate-200 transition' : ''} ${className}`}
+        className={`relative px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400 bg-white border-b border-slate-200 ${k ? 'cursor-pointer hover:text-slate-700 transition' : ''} ${className}`}
       >
         <div className="flex items-center justify-between gap-1">
           <span>{children}</span>
-          {sortKey === k && <span className="text-violet-500 text-xs">{sortDir === 'asc' ? '▲' : '▼'}</span>}
+          {sortKey === k && <span className="text-violet-500 text-[10px]">{sortDir === 'asc' ? '↑' : '↓'}</span>}
         </div>
-        {/* 📏 Poignée de redimensionnement */}
         <span
           onMouseDown={(e) => {
             const rect = e.currentTarget.parentElement.getBoundingClientRect();
@@ -12747,10 +12746,23 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
           }}
           onClick={(e) => e.stopPropagation()}
           title="Tirer pour redimensionner"
-          className="absolute top-1 right-0 bottom-1 w-1 cursor-col-resize hover:bg-violet-400 active:bg-violet-600 rounded select-none"
+          className="absolute top-2 right-0 bottom-2 w-1 cursor-col-resize hover:bg-violet-400 active:bg-violet-600 rounded select-none opacity-0 hover:opacity-100"
           style={{ touchAction: 'none' }}
         />
       </th>
+    );
+  };
+
+  // 🏢 Avatar rond pour la société (Y / E / autres lettres).
+  const SocieteAvatar = ({ societe }) => {
+    const def = (societes || []).find(s => s?.id === societe);
+    const colorMap = { emerald: 'bg-emerald-500', blue: 'bg-blue-500', violet: 'bg-violet-500', amber: 'bg-amber-500', rose: 'bg-rose-500', slate: 'bg-slate-500' };
+    const cls = colorMap[def?.color] || 'bg-slate-400';
+    const letter = (def?.label || societe || '?').trim().charAt(0).toUpperCase();
+    return (
+      <span title={def?.label || societe} className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold text-white ${cls}`}>
+        {letter}
+      </span>
     );
   };
 
@@ -12769,42 +12781,49 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
     );
   };
 
-  // Cellule prestataire ÉDITABLE : 1 ligne par prestataire, avec sélection
-  // nom + toggle ✓/⏳ + suppression. Bouton ➕ Ajouter en dessous.
+  // Cellule prestataire — chip style Linear (dot + nom + ✓×).
+  // Chip cliquable pour basculer payé, select pour changer nom, × pour supprimer.
   const PrestataireCell = ({ items, kind, lid, color, options = [] }) => {
+    const dotCls = (paye) => paye ? 'bg-emerald-500' : 'bg-slate-300';
     return (
-      <div className="space-y-1 min-w-[180px]">
-        {items.map((it) => (
-          <div key={`${kind}-${it.idx}`} className="flex items-center gap-1 group" style={{ height: '26px' }}>
-            <select
-              value={it.nom}
-              onChange={(e) => renamePrestataire(lid, kind, it.idx, e.target.value)}
-              className={`flex-1 min-w-0 text-[11px] font-medium rounded-md px-2 py-0.5 border transition ${it.paye ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : `bg-${color}-50/70 border-${color}-200 text-${color}-800 hover:bg-${color}-100`}`}
-              title={it.nom ? `${it.nom} — clic pour changer` : 'Choisir un prestataire'}
-            >
-              <option value="">— choisir —</option>
-              {it.nom && !options.includes(it.nom) && <option value={it.nom}>{it.nom} (existant)</option>}
-              {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
-            </select>
-            <button
-              onClick={() => togglePrestataire(lid, kind, it.idx)}
-              title={it.paye ? 'Marquer non payé' : 'Marquer payé'}
-              className={`flex-shrink-0 w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center transition ${it.paye ? 'bg-emerald-500 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-400 hover:border-emerald-400 hover:text-emerald-600'}`}
-            >
-              {it.paye ? '✓' : '⏳'}
-            </button>
-            <button
-              onClick={() => removePrestataire(lid, kind, it.idx)}
-              title="Supprimer cette ligne"
-              className="flex-shrink-0 w-4 h-5 rounded text-[12px] text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition"
-            >
-              ×
-            </button>
-          </div>
-        ))}
+      <div className="space-y-1.5 min-w-[180px]">
+        {items.map((it) => {
+          const baseChip = it.paye
+            ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
+            : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100';
+          return (
+            <div key={`${kind}-${it.idx}`} className={`group inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border transition w-full ${baseChip}`}>
+              <span className={`flex-shrink-0 w-2 h-2 rounded-full ${dotCls(it.paye)}`}></span>
+              <select
+                value={it.nom}
+                onChange={(e) => renamePrestataire(lid, kind, it.idx, e.target.value)}
+                className="flex-1 min-w-0 text-[11px] font-semibold bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-violet-400 rounded px-1 py-0.5 cursor-pointer"
+                title={it.nom ? `${it.nom} — clic pour changer` : 'Choisir un prestataire'}
+              >
+                <option value="">— choisir —</option>
+                {it.nom && !options.includes(it.nom) && <option value={it.nom}>{it.nom} (existant)</option>}
+                {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+              </select>
+              <button
+                onClick={() => togglePrestataire(lid, kind, it.idx)}
+                title={it.paye ? 'Marquer non payé' : 'Marquer payé'}
+                className={`flex-shrink-0 w-5 h-5 rounded-md text-[10px] font-bold flex items-center justify-center transition ${it.paye ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-300 text-slate-400 hover:border-emerald-400 hover:text-emerald-600'}`}
+              >
+                {it.paye ? '✓' : '⏳'}
+              </button>
+              <button
+                onClick={() => removePrestataire(lid, kind, it.idx)}
+                title="Supprimer"
+                className="flex-shrink-0 w-4 h-5 text-[14px] leading-none text-slate-300 hover:text-rose-600 opacity-0 group-hover:opacity-100 transition"
+              >
+                ×
+              </button>
+            </div>
+          );
+        })}
         <button
           onClick={() => addPrestataire(lid, kind)}
-          className={`w-full text-[10px] font-semibold py-1 rounded-md border border-dashed border-${color}-200 text-${color}-600 hover:bg-${color}-50 hover:border-${color}-400 transition`}
+          className="w-full text-[10px] font-medium py-1 rounded-lg border border-dashed border-slate-200 text-slate-400 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-600 transition"
           title={`Ajouter un ${kind}`}
         >
           + Ajouter
@@ -12993,8 +13012,11 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                   <td className="border-b border-slate-100 px-2 py-1.5 whitespace-nowrap">
                     <input type="date" value={r.dateInsta} onChange={(e) => updateDossier(lid, { dateInsta: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
                   </td>
-                  <td className={`border-b border-slate-100 px-2 py-1.5 ${statutCls} whitespace-nowrap`} title={s?.label || r.statut}>
-                    {s?.emoji} {s?.label || r.statut}
+                  <td className="border-b border-slate-100 px-2 py-1.5 whitespace-nowrap" title={s?.label || r.statut}>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold ${s?.bg || 'bg-slate-100'} ${s?.text || 'text-slate-700'}`}>
+                      <span>{s?.emoji}</span>
+                      <span>{s?.label || r.statut}</span>
+                    </span>
                   </td>
                   <td className="border-b border-slate-100 px-2 py-1.5 font-semibold uppercase" style={{ minWidth: '160px' }}>
                     <EditCell value={r.nom} onCommit={(v) => updateDossier(lid, { nom: v })} />
@@ -13002,12 +13024,12 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                   <td className="border-b border-slate-100 px-2 py-1.5" style={{ minWidth: '140px' }}>
                     <EditCell value={r.prenom} onCommit={(v) => updateDossier(lid, { prenom: v })} />
                   </td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 text-center text-[10px] font-bold uppercase">{r.societe}</td>
+                  <td className="border-b border-slate-100 px-2 py-1.5 text-center"><SocieteAvatar societe={r.societe} /></td>
                   <td className="border-b border-slate-100 px-2 py-1.5">{r.financement}</td>
                   <td className="border-b border-slate-100 px-2 py-1.5 text-right whitespace-nowrap">
                     <EditCell value={r.montantTotal || ''} type="number" onCommit={(v) => updateDossier(lid, { montantTotal: parseFloat(v) || 0 })} className="text-right" />
                   </td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 text-right whitespace-nowrap text-slate-600">{fmtEuro(r.montantHt)}</td>
+                  <td className="border-b border-slate-100 px-2 py-1.5 text-right whitespace-nowrap font-mono text-slate-600 text-[11px]">{fmtEuro(r.montantHt)}</td>
                   <td className="border-b border-slate-100 px-2 py-1.5 whitespace-nowrap">
                     <input type="date" value={r.datePaiementBanque} onChange={(e) => updateDossier(lid, { datePaiementBanque: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
                   </td>
@@ -13022,7 +13044,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                   <td className="border-b border-slate-100 px-2 py-1.5 align-top"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" options={FOURNISSEURS} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" /></td>
                   <td className="border-b border-slate-100 px-2 py-1.5 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
-                  <td className={`border-b border-slate-100 px-2 py-1.5 text-right whitespace-nowrap font-bold ${r.margeHt > 0 ? 'text-emerald-700 bg-emerald-50' : r.margeHt < 0 ? 'text-rose-700 bg-rose-50' : 'text-slate-500'}`}>{fmtEuro(r.margeHt)}</td>
+                  <td className={`border-b border-slate-100 px-2 py-1.5 text-right whitespace-nowrap font-mono font-semibold ${r.margeHt > 0 ? 'text-emerald-700' : r.margeHt < 0 ? 'text-rose-700' : 'text-slate-500'}`}>{r.margeHt > 0 ? '+ ' : ''}{fmtEuro(r.margeHt)}</td>
                 </tr>
               );
             })}
