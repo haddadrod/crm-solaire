@@ -6035,6 +6035,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {activeTab === 'reglages' && (
           <ReglagesView
             statutsOrder={statutsOrder} setStatutsOrder={setStatutsOrder} STATUTS_ORDERED={STATUTS_ORDERED} STATUTS={STATUTS} dossiers={dossiers} dossiersEnriched={dossiersEnriched}
+            POSEURS={POSEURS} REGIES={REGIES} FOURNISSEURS={FOURNISSEURS}
             setDossiers={setDossiers} setShowImportJson={setShowImportJson} setShowQuickViewId={setShowQuickViewId}
             tarifsPoseurs={tarifsPoseurs} setTarifsPoseurs={setTarifsPoseurs}
             tarifsRegies={tarifsRegies} setTarifsRegies={setTarifsRegies}
@@ -12002,7 +12003,7 @@ function BanquePerfList({ data, dossiers = [], societes = [], onShowQuick }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS = [], dossiers, dossiersEnriched = null, setDossiers, setShowImportJson, setShowQuickViewId = null, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS = [], dossiers, dossiersEnriched = null, POSEURS = [], REGIES = [], FOURNISSEURS = [], setDossiers, setShowImportJson, setShowQuickViewId = null, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
   // Init depuis le hash URL pour qu'un refresh garde la sous-section.
   // Format : #reglages/utilisateurs → section = 'utilisateurs'
   const sectionFromHash = (typeof window !== 'undefined' && window.location.hash)
@@ -12173,6 +12174,9 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS 
           setShowImportJson={setShowImportJson}
           STATUTS={STATUTS}
           societes={societes}
+          POSEURS={POSEURS}
+          REGIES={REGIES}
+          FOURNISSEURS={FOURNISSEURS}
           onShowQuick={setShowQuickViewId ? (id) => setShowQuickViewId(id) : null}
         />
       )}
@@ -12353,7 +12357,7 @@ const SUPABASE_SECRETS_RLS_OK_HINT = false;
 // suppression d'import sheet, validation CQ massive, sync paiement client).
 // Volontairement regroupés ici (hors barre principale) pour éviter qu'un
 // utilisateur ne déclenche par erreur une action irréversible.
-function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setShowImportJson, STATUTS = [], societes = [], onShowQuick }) {
+function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setShowImportJson, STATUTS = [], societes = [], POSEURS = [], REGIES = [], FOURNISSEURS = [], onShowQuick }) {
   const [showSheet, setShowSheet] = useState(false);
   const handleBackup = () => {
     try {
@@ -12478,7 +12482,7 @@ function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setS
             <div className="text-[11px] text-slate-500 mt-0.5">Tous les dossiers en grille triable, façon Google Sheet — pratique pour exporter ou comparer.</div>
           </button>
         </div>
-        {showSheet && <SheetView dossiers={dossiersEnriched || dossiers} setDossiers={setDossiers} STATUTS={STATUTS} societes={societes} onShowQuick={onShowQuick} />}
+        {showSheet && <SheetView dossiers={dossiersEnriched || dossiers} setDossiers={setDossiers} STATUTS={STATUTS} societes={societes} POSEURS={POSEURS} REGIES={REGIES} FOURNISSEURS={FOURNISSEURS} onShowQuick={onShowQuick} />}
       </div>
     </div>
   );
@@ -12487,7 +12491,7 @@ function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setS
 // 📊 Vue Sheet : affichage tabulaire (façon Google Sheet) de tous les dossiers
 // avec leurs infos clés. Triable par colonne, filtrage simple par recherche.
 // Scroll horizontal pour ne couper aucune colonne.
-function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQuick }) {
+function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS = [], REGIES = [], FOURNISSEURS = [], onShowQuick }) {
   const [sortKey, setSortKey] = useState('dateInsta');
   const [sortDir, setSortDir] = useState('desc');
   const [filter, setFilter] = useState('');
@@ -12516,9 +12520,10 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
     const now = new Date().toISOString();
     setDossiers(prev => prev.map(d => d.localId === localId ? { ...d, ...patch, savedAt: now, modifiedAt: now } : d));
   };
+  const kindToField = (k) => k === 'poseur' ? 'poseurs' : k === 'regie' ? 'regies' : 'fournisseurs';
   // ✓ Toggle « payé » sur un prestataire (poseur/régie/fournisseur) d'un dossier.
   const togglePrestataire = (localId, kind, idx) => {
-    const field = kind === 'poseur' ? 'poseurs' : kind === 'regie' ? 'regies' : 'fournisseurs';
+    const field = kindToField(kind);
     setDossiers(prev => prev.map(d => {
       if (d.localId !== localId) return d;
       const list = [...(d[field] || [])];
@@ -12527,6 +12532,46 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
       list[idx] = { ...list[idx], paye: next, datePaye: next ? (list[idx].datePaye || new Date().toISOString().split('T')[0]) : '' };
       const now = new Date().toISOString();
       return { ...d, [field]: list, savedAt: now, modifiedAt: now };
+    }));
+  };
+  // ✏️ Change le nom d'un prestataire (sélection dans la liste configurée).
+  const renamePrestataire = (localId, kind, idx, nom) => {
+    const field = kindToField(kind);
+    setDossiers(prev => prev.map(d => {
+      if (d.localId !== localId) return d;
+      const list = [...(d[field] || [])];
+      if (!list[idx]) return d;
+      list[idx] = { ...list[idx], nom };
+      return { ...d, [field]: list, savedAt: new Date().toISOString(), modifiedAt: new Date().toISOString() };
+    }));
+  };
+  // 💰 Change le HT (htCustom) d'un prestataire.
+  const setHtPrestataire = (localId, kind, idx, htRaw) => {
+    const field = kindToField(kind);
+    setDossiers(prev => prev.map(d => {
+      if (d.localId !== localId) return d;
+      const list = [...(d[field] || [])];
+      if (!list[idx]) return d;
+      list[idx] = { ...list[idx], htCustom: htRaw };
+      return { ...d, [field]: list, savedAt: new Date().toISOString(), modifiedAt: new Date().toISOString() };
+    }));
+  };
+  // ➕ Ajoute une ligne vide pour pouvoir choisir un prestataire.
+  const addPrestataire = (localId, kind) => {
+    const field = kindToField(kind);
+    setDossiers(prev => prev.map(d => {
+      if (d.localId !== localId) return d;
+      const list = [...(d[field] || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '' }];
+      return { ...d, [field]: list, savedAt: new Date().toISOString(), modifiedAt: new Date().toISOString() };
+    }));
+  };
+  // 🗑️ Retire un prestataire de la liste.
+  const removePrestataire = (localId, kind, idx) => {
+    const field = kindToField(kind);
+    setDossiers(prev => prev.map(d => {
+      if (d.localId !== localId) return d;
+      const list = (d[field] || []).filter((_, i) => i !== idx);
+      return { ...d, [field]: list, savedAt: new Date().toISOString(), modifiedAt: new Date().toISOString() };
     }));
   };
 
@@ -12683,47 +12728,79 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
     );
   };
 
-  // Cellule prestataire : chips cliquables (nom seul). Le montant HT vit dans
-  // une colonne dédiée (Poseur HT / Régie HT / Fournisseur HT) pour ne pas
-  // surcharger les chips.
-  const PrestataireCell = ({ items, kind, lid, color }) => {
-    if (items.length === 0) return <span className="text-slate-300 italic text-[10px]">—</span>;
+  // Cellule prestataire ÉDITABLE : 1 ligne par prestataire, avec sélection de
+  // nom + toggle ✓/⏳ + suppression. Bouton ➕ Ajouter en dessous.
+  // Les lignes sont alignées avec la cellule Mt (même hauteur).
+  const PrestataireCell = ({ items, kind, lid, color, options = [] }) => {
     return (
-      <div className="flex flex-wrap gap-1">
-        {items.filter(it => it.nom).map((it) => (
-          <button
-            key={`${kind}-${it.idx}`}
-            onClick={() => togglePrestataire(lid, kind, it.idx)}
-            title={it.paye
-              ? `${it.nom} — ${fmtEuroShort(it.ht)} HT payé · clic pour annuler`
-              : `${it.nom} — ${fmtEuroShort(it.ht)} HT à payer · clic pour marquer payé`}
-            className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border transition ${it.paye ? 'bg-emerald-100 border-emerald-300 text-emerald-700 hover:bg-emerald-200' : `bg-${color}-50 border-${color}-300 text-${color}-700 hover:bg-${color}-100`}`}
-          >
-            <span>{it.paye ? '✓' : '⏳'}</span>
-            <span className="truncate max-w-[140px]">{it.nom}</span>
-          </button>
+      <div className="space-y-1 min-w-[170px]">
+        {items.map((it) => (
+          <div key={`${kind}-${it.idx}`} className="flex items-center gap-1" style={{ height: '24px' }}>
+            <select
+              value={it.nom}
+              onChange={(e) => renamePrestataire(lid, kind, it.idx, e.target.value)}
+              className={`flex-1 min-w-0 text-[10px] font-semibold border rounded px-1 py-0.5 ${it.paye ? 'bg-emerald-50 border-emerald-200 text-emerald-700' : `bg-${color}-50 border-${color}-200 text-${color}-700`}`}
+              title={it.nom ? `${it.nom} — clic pour changer` : 'Choisir un prestataire'}
+            >
+              <option value="">— choisir —</option>
+              {it.nom && !options.includes(it.nom) && <option value={it.nom}>{it.nom} (existant)</option>}
+              {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
+            </select>
+            <button
+              onClick={() => togglePrestataire(lid, kind, it.idx)}
+              title={it.paye ? 'Marquer non payé' : 'Marquer payé'}
+              className={`flex-shrink-0 w-5 h-5 rounded text-[10px] font-bold flex items-center justify-center border ${it.paye ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-white border-slate-300 text-slate-400 hover:border-emerald-400'}`}
+            >
+              {it.paye ? '✓' : '⏳'}
+            </button>
+            <button
+              onClick={() => removePrestataire(lid, kind, it.idx)}
+              title="Supprimer cette ligne"
+              className="flex-shrink-0 w-5 h-5 rounded text-[10px] text-rose-500 hover:bg-rose-50 hover:text-rose-700 flex items-center justify-center"
+            >
+              ×
+            </button>
+          </div>
         ))}
+        <button
+          onClick={() => addPrestataire(lid, kind)}
+          className={`w-full text-[10px] font-bold py-0.5 rounded border border-dashed ${`border-${color}-300 text-${color}-700 hover:bg-${color}-50`}`}
+          title={`Ajouter un ${kind}`}
+        >
+          ➕ Ajouter
+        </button>
       </div>
     );
   };
-  // Cellule montant HT pour une catégorie de prestataires (poseurs/régies/fourn).
-  // Affiche le total HT, et un mini détail si plusieurs lignes.
-  const MontantCell = ({ items, color }) => {
-    const visible = items.filter(it => it.nom);
-    if (visible.length === 0) return <span className="text-slate-300 italic text-[10px]">—</span>;
-    const total = visible.reduce((s, it) => s + (it.ht || 0), 0);
+  // Cellule montant HT ÉDITABLE : 1 input par prestataire (aligné sur la cellule
+  // PrestataireCell), avec total en bas.
+  const MontantCell = ({ items, kind, lid, color }) => {
+    const total = items.reduce((s, it) => s + (it.ht || 0), 0);
     return (
-      <div className="text-right">
-        <div className={`font-bold font-mono text-${color}-700`}>{fmtEuroShort(total)}</div>
-        {visible.length > 1 && (
-          <div className="text-[9px] text-slate-500 leading-tight">
-            {visible.map((it, i) => (
-              <span key={i} className={it.paye ? 'line-through opacity-60' : ''}>
-                {fmtEuroShort(it.ht)}{i < visible.length - 1 ? ' + ' : ''}
-              </span>
-            ))}
+      <div className="space-y-1 min-w-[100px]">
+        {items.map((it) => (
+          <div key={`${kind}-mt-${it.idx}`} style={{ height: '24px' }} className="flex items-center">
+            <input
+              type="number"
+              step="0.01"
+              defaultValue={it.ht || ''}
+              onBlur={(e) => {
+                const v = e.target.value;
+                const curNum = parseFloat(v) || 0;
+                if (curNum !== (it.ht || 0)) setHtPrestataire(lid, kind, it.idx, v);
+              }}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+              placeholder="0"
+              className={`w-full text-right text-[10px] font-mono font-bold bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded ${it.paye ? 'text-emerald-700 line-through' : `text-${color}-700`}`}
+            />
+          </div>
+        ))}
+        {items.length > 1 && (
+          <div style={{ height: '20px' }} className={`flex items-center justify-end text-[10px] font-bold border-t border-${color}-200 text-${color}-800`}>
+            = {fmtEuroShort(total)}
           </div>
         )}
+        {items.length === 0 && <span className="text-slate-300 italic text-[10px]">—</span>}
       </div>
     );
   };
@@ -12879,12 +12956,12 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], onShowQ
                     <input type="checkbox" checked={r.payeClient} onChange={(e) => updateDossier(lid, { payeClient: e.target.checked, payeClientDate: e.target.checked ? (r.d.payeClientDate || new Date().toISOString().split('T')[0]) : '' })} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" />
                   </td>
                   <td className="border border-slate-200 px-1.5 py-1 text-right font-semibold">{r.puissance || ''}</td>
-                  <td className="border border-slate-200 px-1.5 py-1"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" /></td>
-                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap"><MontantCell items={r.poseurs} color="amber" /></td>
-                  <td className="border border-slate-200 px-1.5 py-1"><PrestataireCell items={r.regies} kind="regie" lid={lid} color="purple" /></td>
-                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap"><MontantCell items={r.regies} color="purple" /></td>
-                  <td className="border border-slate-200 px-1.5 py-1"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" /></td>
-                  <td className="border border-slate-200 px-1.5 py-1 whitespace-nowrap"><MontantCell items={r.fournisseurs} color="orange" /></td>
+                  <td className="border border-slate-200 px-1 py-1 align-top"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" options={POSEURS} /></td>
+                  <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.poseurs} kind="poseur" lid={lid} color="amber" /></td>
+                  <td className="border border-slate-200 px-1 py-1 align-top"><PrestataireCell items={r.regies} kind="regie" lid={lid} color="purple" options={REGIES} /></td>
+                  <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.regies} kind="regie" lid={lid} color="purple" /></td>
+                  <td className="border border-slate-200 px-1 py-1 align-top"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" options={FOURNISSEURS} /></td>
+                  <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" /></td>
                   <td className="border border-slate-200 px-1.5 py-1 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
                   <td className={`border border-slate-200 px-1.5 py-1 text-right whitespace-nowrap font-bold ${r.margeHt > 0 ? 'text-emerald-700 bg-emerald-50' : r.margeHt < 0 ? 'text-rose-700 bg-rose-50' : 'text-slate-500'}`}>{fmtEuro(r.margeHt)}</td>
                 </tr>
