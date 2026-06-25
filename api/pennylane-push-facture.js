@@ -67,6 +67,38 @@ async function resolveApiKey(societe) {
   return pickApiKey(societe);
 }
 
+// 🧾 Récupère le `ledger_account_id` (compte de charges Pennylane) configuré
+//    pour cette société dans Supabase. Sans ça, Pennylane applique un compte
+//    par défaut qui n'est pas forcément le bon (cf. bug remonté par le user :
+//    factures classées dans le mauvais compte).
+//
+//    Clé Supabase : `secret-pennylane-<societe>-ledger` (entier ou chaîne).
+//    L'admin la pose via Réglages → 🔐 Clés Pennylane.
+async function resolveLedgerAccountId(societe) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return null;
+  const norm = String(societe || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!norm) return null;
+  try {
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data } = await admin.from('storage').select('value').eq('key', `secret-pennylane-${norm}-ledger`).maybeSingle();
+    const v = data?.value;
+    if (!v) return null;
+    // Pennylane accepte un entier ou un UUID-like — on garde la string tel
+    // quel après trim, le caller la passe brut dans le body JSON.
+    const s = String(v).trim();
+    if (!s) return null;
+    // Si numérique pur, on convertit en number (Pennylane attend INTEGER pour
+    // ledger_account_id dans la majorité des comptes). Sinon on garde string.
+    if (/^\d+$/.test(s)) return parseInt(s, 10);
+    return s;
+  } catch (e) {
+    console.error('resolveLedgerAccountId from Supabase failed:', e?.message);
+    return null;
+  }
+}
+
 function json(res, status, body) {
   res.status(status).setHeader('Content-Type', 'application/json');
   res.send(JSON.stringify(body));
@@ -190,6 +222,7 @@ export default async function handler(req, res) {
     fileBase64,
     fileName,
     storagePath,
+    ledgerAccountId: ledgerOverride, // override par push (rare) — sinon on lit depuis Supabase
   } = body;
 
   // Sélection de la clé selon la société émettrice — d'abord Supabase (CRM),
@@ -252,6 +285,23 @@ export default async function handler(req, res) {
       } catch (e) { return dateFacture; }
     })();
 
+    // 🧾 Compte de charges : override du body sinon valeur configurée pour la
+    //    société. Si aucun → on omet le champ (Pennylane mettra un défaut,
+    //    souvent faux → la facture devra être recatégorisée manuellement).
+    const resolvedLedger = ledgerOverride
+      ? (/^\d+$/.test(String(ledgerOverride).trim()) ? parseInt(String(ledgerOverride).trim(), 10) : String(ledgerOverride).trim())
+      : await resolveLedgerAccountId(societe);
+
+    const invoiceLine = {
+      currency_amount: ttc,
+      currency_tax: tax,
+      vat_rate: vatCode,
+    };
+    // N'ajoute la clé que si on a une valeur — Pennylane refuse `null`.
+    if (resolvedLedger !== null && resolvedLedger !== undefined && resolvedLedger !== '') {
+      invoiceLine.ledger_account_id = resolvedLedger;
+    }
+
     const invoiceBody = {
       supplier_id: supplierId,
       file_attachment_id: fileAttachmentId,
@@ -261,13 +311,11 @@ export default async function handler(req, res) {
       currency_tax: tax,
       currency_amount: ttc,
       label: factureNo,
-      invoice_lines: [
-        {
-          currency_amount: ttc,
-          currency_tax: tax,
-          vat_rate: vatCode,
-        },
-      ],
+      // 🛑 Importée en "Pré-traité" → vérif humaine obligatoire avant
+      //    validation. Sans ce flag, Pennylane marque la facture comme
+      //    déjà traitée et personne ne la revoit.
+      import_as_incomplete: true,
+      invoice_lines: [invoiceLine],
     };
 
     const { ok, status, payload } = await plFetch(apiKey, `/supplier_invoices/import`, {
@@ -288,6 +336,8 @@ export default async function handler(req, res) {
         pennylaneSupplierCreated: supplierCreated, // true si on l'a créé à la volée
         pennylaneStatus: payload?.status || 'imported',
         pennylaneAccount: keySource, // utile pour vérifier qu'on a tapé sur le bon compte
+        pennylaneLedgerAccountId: resolvedLedger || null,
+        importedAsIncomplete: true,
       },
     });
   } catch (e) {

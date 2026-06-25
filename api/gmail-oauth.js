@@ -322,16 +322,46 @@ async function imapScan(inbox, maxMessages = 60, ignoredSenders = [], importedSe
 // Recherche IMAP par mot-clé (text = sujet+from+body) sur 180 derniers jours.
 // Sert aux boutons « 🔍 Gmail » sur une ligne dossier/prestataire : on ne
 // scanne pas tout, on cible un nom (client ou prestataire).
-async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = [], importedSet = new Set()) {
+// `lenient=true` (par défaut pour les recherches explicites) : accepte les
+//   PDFs par mimeType + skip le filtre isLikelyFacture.
+async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = [], importedSet = new Set(), lenient = true) {
   const client = makeImapClient(inbox);
   await client.connect();
   const messages = [];
   try {
     const lock = await client.getMailboxLock('INBOX');
     try {
-      const since = new Date(Date.now() - 180 * 24 * 3600 * 1000);
-      // imapflow accepte { text: 'foo' } qui devient TEXT "foo" (subject+from+body)
-      const uids = await client.search({ since, text: query }, { uid: true });
+      const since = new Date(Date.now() - 365 * 24 * 3600 * 1000);
+      // 🚀 Gmail X-GM-RAW : utilise la SYNTAXE de recherche Gmail web (qui
+      //    indexe aussi le contenu OCR des PDFs). Bien plus puissant que
+      //    le TEXT IMAP standard, qui rate les noms uniquement présents
+      //    dans les pièces jointes ou dans du HTML encodé.
+      //    Fallback sur { text } si X-GM-RAW pas supporté (rare).
+      let uids = [];
+      try {
+        uids = await client.search({ gmailRaw: `${query} newer_than:365d` }, { uid: true });
+      } catch (e) {
+        uids = [];
+      }
+      // Fallback 1 : TEXT IMAP standard (subject+from+body, sans OCR PDF)
+      if (!uids || uids.length === 0) {
+        try {
+          uids = await client.search({ since, text: query }, { uid: true });
+        } catch (e) {
+          uids = [];
+        }
+      }
+      // Fallback 2 : OR explicite sur subject/from/to (au cas où text:
+      //    aurait été décodé bizarrement par certains serveurs)
+      if (!uids || uids.length === 0) {
+        try {
+          uids = await client.search({ since, or: [
+            { subject: query }, { from: query }, { to: query }, { body: query }
+          ] }, { uid: true });
+        } catch (e) {
+          uids = [];
+        }
+      }
       const recent = (uids || []).slice(-maxMessages);
       if (recent.length === 0) return [];
       for await (const msg of client.fetch(recent, { uid: true, envelope: true, bodyStructure: true, internalDate: true }, { uid: true })) {
@@ -340,10 +370,13 @@ async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = [], i
           if (!node) return;
           if (Array.isArray(node.childNodes)) node.childNodes.forEach(walk);
           const fname = node.dispositionParameters?.filename || node.parameters?.name || '';
-          if (fname && /\.pdf$/i.test(fname)) {
+          const mtype = `${node.type || ''}/${node.subtype || ''}`.toLowerCase();
+          const isPdfByExt = fname && /\.pdf$/i.test(fname);
+          const isPdfByMime = lenient && (mtype === 'application/pdf' || mtype === 'application/x-pdf');
+          if (isPdfByExt || isPdfByMime) {
             attachments.push({
               attachmentId: node.part || '1',
-              filename: fname,
+              filename: fname || `attachment-${node.part || '1'}.pdf`,
               sizeBytes: node.size || 0,
             });
           }
@@ -354,6 +387,7 @@ async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = [], i
         const subject = msg.envelope?.subject || '(sans sujet)';
         const factureAtts = attachments.filter(a => {
           if (importedSet.has(attachmentKey(inbox.email, msg.uid, a.attachmentId))) return false;
+          if (lenient) return true;
           return isLikelyFacture(a.filename, subject);
         });
         if (factureAtts.length > 0) {
@@ -464,7 +498,10 @@ async function listMessagesWithPdf(accessToken, maxResults = 50, sinceDays = 60)
 }
 
 // 📩 Récupère les métadonnées d'un message (sujet, expéditeur, date, attachments).
-async function getMessageMeta(accessToken, messageId, ignoredSenders = [], importedSet = new Set(), inboxEmail = '') {
+// `lenient=true` : utilisé pour la recherche explicite (boutons 🔍 Gmail) — on
+//   accepte les PDFs par mimeType (pas seulement .pdf en fin de nom) et on
+//   skip le filtre isLikelyFacture (user a tapé un nom, il veut tout voir).
+async function getMessageMeta(accessToken, messageId, ignoredSenders = [], importedSet = new Set(), inboxEmail = '', lenient = false) {
   const r = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages/${messageId}?format=full`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
@@ -476,14 +513,21 @@ async function getMessageMeta(accessToken, messageId, ignoredSenders = [], impor
     return acc;
   }, {});
   // Cherche récursivement les pièces jointes PDF.
+  // En mode lenient : accepte mimeType application/pdf même si le nom ne finit pas par .pdf.
+  const isPdfPart = (p) => {
+    if (!p?.body?.attachmentId) return false;
+    if (p.filename && /\.pdf$/i.test(p.filename)) return true;
+    if (lenient && (p.mimeType === 'application/pdf' || p.mimeType === 'application/x-pdf')) return true;
+    return false;
+  };
   const attachments = [];
   const walkParts = (parts) => {
     (parts || []).forEach(p => {
       if (p.parts) walkParts(p.parts);
-      if (p.filename && /\.pdf$/i.test(p.filename) && p.body?.attachmentId) {
+      if (isPdfPart(p)) {
         attachments.push({
           attachmentId: p.body.attachmentId,
-          filename: p.filename,
+          filename: p.filename || `attachment-${p.body.attachmentId.slice(0, 8)}.pdf`,
           sizeBytes: p.body.size || 0,
           mimeType: p.mimeType || 'application/pdf',
         });
@@ -492,10 +536,10 @@ async function getMessageMeta(accessToken, messageId, ignoredSenders = [], impor
   };
   walkParts(data.payload?.parts);
   // Le payload racine peut aussi être l'attachement si single-part PDF.
-  if (data.payload?.filename && /\.pdf$/i.test(data.payload.filename) && data.payload.body?.attachmentId) {
+  if (isPdfPart(data.payload)) {
     attachments.push({
       attachmentId: data.payload.body.attachmentId,
-      filename: data.payload.filename,
+      filename: data.payload.filename || `attachment-${data.payload.body.attachmentId.slice(0, 8)}.pdf`,
       sizeBytes: data.payload.body.size || 0,
       mimeType: data.payload.mimeType || 'application/pdf',
     });
@@ -510,8 +554,12 @@ async function getMessageMeta(accessToken, messageId, ignoredSenders = [], impor
   }
   // 🧹 Filtre : on garde uniquement les pièces qui ressemblent à une facture
   //    ou un avoir, et qui n'ont pas DÉJÀ été importées.
+  //    En lenient : on ne filtre PAS par isLikelyFacture (user a explicitement
+  //    tapé un nom/numéro, il veut TOUT voir — quitte à avoir un devis dans
+  //    les résultats).
   const factureAtts = attachments.filter(a => {
     if (importedSet.has(attachmentKey(inboxEmail, messageId, a.attachmentId))) return false;
+    if (lenient) return true;
     return isLikelyFacture(a.filename, subject);
   });
   return {
@@ -803,7 +851,11 @@ export default async function handler(req, res) {
           const enriched = [];
           for (const m of messages) {
             try {
-              const meta = await getMessageMeta(accessToken, m.id, ignoredSenders, importedSet, inbox.email);
+              // lenient=true : user a explicitement tapé un nom/N° → on
+              // accepte tous les PDFs (pas seulement ceux qui matchent
+              // isLikelyFacture). Sinon devis/BL/etc. sont droppés alors
+              // qu'ils peuvent être ce que cherche l'utilisateur.
+              const meta = await getMessageMeta(accessToken, m.id, ignoredSenders, importedSet, inbox.email, true);
               if (meta.attachments.length > 0) enriched.push(meta);
             } catch (e) {}
           }
