@@ -7585,11 +7585,15 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
         const props = (payload.matching && payload.matching.proposals) || [];
         const top = props[0];
         let autoSkipped = false;
+        // ⚠️ certain = factureNo identique (sûr à 100%). On ne marque
+        //    côté serveur (mark-imported) QUE pour les certain.
+        let autoSkipCertain = false;
         if (top && payload.matching?.direct === true) {
           // 1️⃣ On fait CONFIANCE au flag serveur (la source de vérité Supabase
           //    peut être plus fraîche que le state client sur multi-postes).
           if (top.alreadyAttached === true) {
             autoSkipped = true;
+            autoSkipCertain = true;
           } else {
             // 2️⃣ Fallback legacy : check côté client si le flag est absent
             //    (anciens déploys du serveur sans alreadyAttached).
@@ -7597,6 +7601,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
             const tLine = tDoss?.[top.type]?.[top.index];
             if (tLine && (tLine.factureFile || tLine.facturePdfUrl || tLine.factureExternalUrl)) {
               autoSkipped = true;
+              autoSkipCertain = true;
             }
           }
         }
@@ -7654,9 +7659,13 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
           matching: payload.matching || { proposals: [], notes: '' },
           pickedIdx: props.length > 0 ? 0 : null,
         }) : x));
-        // 📥 Auto-skip → marque aussi côté serveur (la même carte ne reviendra
-        //    plus jamais dans un futur scan, même partagé équipe).
-        if (autoSkipped) markGmailImportedSilent(it);
+        // 📥 Auto-skip → marque côté serveur UNIQUEMENT si certain (factureNo
+        //    identique). L'heuristique (même fournisseur + même montant) est
+        //    trop floue : pour une régie comme Flex qui émet plein de factures
+        //    de montant identique, on marquait à tort 48 factures pour 2 vrais
+        //    imports. L'auto-skip visuel local reste OK (cache la carte cette
+        //    session) mais on ne grave pas côté serveur.
+        if (autoSkipCertain) markGmailImportedSilent(it);
       } catch (e) {
         setFiles(prev => prev.map(x => x.id === it.id ? { ...x, status: 'error', error: e.message } : x));
       }
@@ -8218,6 +8227,34 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                   </div>
                 );
               })()}
+              {/* 🔓 Récupération : déverrouille toutes les factures marquées
+                  « déjà importé ». Utile quand l'auto-skip heuristique a
+                  marqué à tort (cas régie Flex où plein de factures de même
+                  montant). Le prochain scan ramènera TOUT ce qui était caché. */}
+              <div className="flex flex-wrap gap-2 px-1">
+                <button
+                  onClick={async () => {
+                    if (!window.confirm('Déverrouille TOUTES les factures Gmail marquées « déjà importée ».\n\nLe prochain scan va les ramener toutes (potentiellement beaucoup).\n\nÀ faire si des factures que tu n\'as pas vraiment importées ont été masquées par erreur (bug heuristique).\n\nContinuer ?')) return;
+                    try {
+                      const { data: { session } } = await supabase.auth.getSession();
+                      const headers = { 'Content-Type': 'application/json' };
+                      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+                      const res = await fetch('/api/gmail-oauth?action=unmark-imported', {
+                        method: 'POST', headers,
+                        body: JSON.stringify({ all: true }),
+                      });
+                      const payload = await res.json().catch(() => ({}));
+                      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+                      alert('✅ Filtre déverrouillé. Lance un nouveau scan pour voir TOUTES les factures (y compris déjà importées).');
+                      handleGmailScan();
+                    } catch (e) { alert(`Erreur : ${e?.message || 'inconnu'}`); }
+                  }}
+                  className="px-2 py-1 rounded-lg bg-amber-100 hover:bg-amber-200 text-amber-800 text-[12px] font-bold"
+                  title="Si des factures que tu n'as pas vraiment importées ont été masquées par erreur (auto-skip heuristique trop greedy), ce bouton les remet visibles."
+                >
+                  🔓 Réinitialiser le filtre « déjà importé »
+                </button>
+              </div>
               {(gmailScanResults.results || []).map(r => {
                 const totalAttachments = (r.messages || []).reduce((s, m) => s + (m.attachments || []).length, 0);
                 if (totalAttachments === 0) return null;

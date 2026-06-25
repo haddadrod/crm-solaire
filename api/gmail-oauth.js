@@ -962,7 +962,28 @@ export default async function handler(req, res) {
       return json(res, 200, { data: { count: set.size } });
     }
 
-    return json(res, 400, { error: `Action inconnue : ${action || '(vide)'}. Utilise scan, search, fetch-attachment, imap-connect, ignored-list, ignore-sender, unignore-sender ou mark-imported.` });
+    // 🔓 Démarque (un, plusieurs, ou TOUT). Utile quand des factures ont été
+    //    marquées à tort comme « déjà importé » via l'auto-skip heuristique.
+    //    Body : { entries: [...] } pour ciblé, ou { all: true } pour tout vider.
+    if (action === 'unmark-imported') {
+      if (body.all === true) {
+        await writeImportedAttachments(admin, new Set());
+        return json(res, 200, { data: { count: 0, cleared: true } });
+      }
+      const entries = Array.isArray(body.entries) ? body.entries : (body.inboxEmail ? [body] : []);
+      if (entries.length === 0) {
+        return json(res, 400, { error: 'entries ou all=true requis.' });
+      }
+      const set = await readImportedAttachments(admin);
+      for (const e of entries) {
+        if (!e || !e.inboxEmail || !e.messageId || !e.attachmentId) continue;
+        set.delete(attachmentKey(e.inboxEmail, e.messageId, e.attachmentId));
+      }
+      await writeImportedAttachments(admin, set);
+      return json(res, 200, { data: { count: set.size } });
+    }
+
+    return json(res, 400, { error: `Action inconnue : ${action || '(vide)'}. Utilise scan, search, fetch-attachment, imap-connect, ignored-list, ignore-sender, unignore-sender, mark-imported ou unmark-imported.` });
   } catch (e) {
     console.error('gmail-oauth error:', e?.message || e);
     return json(res, 502, { error: e?.message || 'Erreur Gmail OAuth' });
