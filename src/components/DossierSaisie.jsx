@@ -1842,6 +1842,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
     setGmailSearchOpen({ query, contextLabel, onAttach, clientHint });
   };
   const [showImport, setShowImport] = useState(false); // 📥 modal import dossiers
+  // 📊 Vue Sheet globale — bouton dans la barre du haut. Ouvre la Sheet en
+  // overlay plein écran pour éviter le détour par Réglages → Outils experts.
+  const [showSheetGlobal, setShowSheetGlobal] = useState(false);
   const [showImportJson, setShowImportJson] = useState(false); // 📦 modal import dossiers JSON
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
   // Plus de dropdown local — qui est connecté = qui agit.
@@ -5366,8 +5369,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <Upload className="w-4 h-4" />Importer
                 </button>
               )}
-              {/* Outils experts (Import JSON, Sauvegarde JSON, Annuler import,
-                  CQ fait sur importés, Statut PAYÉ → paiement reçu) déplacés
+              {/* 📊 Vue Sheet — accès direct depuis la barre du haut, pas besoin de
+                  passer par Réglages → Outils experts. */}
+              {isAdmin && (
+                <button onClick={() => setShowSheetGlobal(true)} className="bg-gradient-to-r from-violet-50 to-fuchsia-50 hover:from-violet-100 hover:to-fuchsia-100 text-violet-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-violet-200 whitespace-nowrap flex-shrink-0">
+                  📊 Vue Sheet
+                </button>
+              )}
+              {/* Outils experts (Import JSON, Sauvegarde JSON, etc.) restent
                   dans Réglages → 🛠 Outils experts pour désencombrer la barre. */}
               {/* Groupe utilisateur poussé tout à droite (ml-auto) — séparé visuellement
                   des boutons d'action. Plus propre. */}
@@ -6287,6 +6296,25 @@ export default function DossierSaisie({ authUser, onLogout }) {
             FOURNISSEURS={FOURNISSEURS}
             produits={produits}
           />
+        )}
+
+        {/* 📊 MODAL VUE SHEET — plein écran, accessible depuis la barre du haut */}
+        {showSheetGlobal && (
+          <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 overflow-auto" onClick={() => setShowSheetGlobal(false)}>
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[98vw] my-2 relative" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => setShowSheetGlobal(false)} className="absolute top-3 right-3 z-50 w-8 h-8 rounded-full bg-white border border-slate-200 hover:bg-rose-50 hover:border-rose-300 text-slate-600 hover:text-rose-700 flex items-center justify-center text-sm font-bold shadow" title="Fermer">×</button>
+              <SheetView
+                dossiers={dossiersEnriched}
+                setDossiers={setDossiers}
+                STATUTS={STATUTS}
+                societes={societes}
+                POSEURS={POSEURS}
+                REGIES={REGIES}
+                FOURNISSEURS={FOURNISSEURS}
+                onShowQuick={(id) => { setShowQuickViewId(id); setShowSheetGlobal(false); }}
+              />
+            </div>
+          </div>
         )}
 
         {/* 📦 IMPORT JSON — drag-drop d'un fichier JSON de dossiers (migration) */}
