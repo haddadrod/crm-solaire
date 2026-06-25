@@ -7670,7 +7670,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
   //    le PDF courant comme AVOIR (note de crédit). Différent du flow
   //    « confirmer un rattachement » qui met factureFile : ici on push
   //    dans avoirs[] avec le file sur l'avoir, et le montant déduit le coût.
-  const handleCreateAndAttachAvoir = async (fileItemId, dossierLocalId, fournisseurNom) => {
+  const handleCreateAndAttachAvoir = async (fileItemId, dossierLocalId, nom, kind = 'fournisseur') => {
     const item = files.find(x => x.id === fileItemId);
     if (!item) return;
     if (item.file && item.file.size > MAX_FILE_SIZE_KV) {
@@ -7679,34 +7679,33 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
     }
     setFiles(prev => prev.map(x => x.id === fileItemId ? { ...x, status: 'saving' } : x));
     try {
-      // 1️⃣ Stocke le PDF en KV (même format que factureFile).
       const dataUrl = await readFileAsDataURL(item.file);
       const fileId = `avoir_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const ok = await window.storage.set(`file:${fileId}`, JSON.stringify({ dataUrl, name: item.file.name, type: item.file.type || 'application/pdf' }));
       if (!ok) throw new Error('Échec du stockage du fichier (storage KV).');
 
-      // 2️⃣ Met à jour le dossier : retrouve le fournisseur (fuzzy) ou en crée
-      //    un, puis push un nouvel avoir avec le file et les métadonnées IA.
       const e = item.extracted || {};
-      const targetName = String(fournisseurNom || '').trim();
+      const targetName = String(nom || '').trim();
       const normalize = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
       const targetN = normalize(targetName);
       const now = new Date().toISOString();
+      // Quel tableau cibler selon le type
+      const field = kind === 'poseur' ? 'poseurs' : kind === 'regie' ? 'regies' : 'fournisseurs';
       let targetIdx = -1;
 
       setDossiers(prev => prev.map(d => {
         if (d.localId !== dossierLocalId) return d;
-        const fournisseurs = Array.isArray(d.fournisseurs) ? [...d.fournisseurs] : [];
-        // Fuzzy : match par nom normalisé (au cas où l'IA a une typo type INOVA/INNOVA)
-        targetIdx = fournisseurs.findIndex(f => normalize(f.nom) === targetN || normalize(f.nom).includes(targetN) || (targetN && targetN.includes(normalize(f.nom))));
+        const list = Array.isArray(d[field]) ? [...d[field]] : [];
+        targetIdx = list.findIndex(p => normalize(p.nom) === targetN || normalize(p.nom).includes(targetN) || (targetN && targetN.includes(normalize(p.nom))));
         if (targetIdx < 0) {
-          fournisseurs.push({ nom: targetName, htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '', avoirs: [] });
-          targetIdx = fournisseurs.length - 1;
+          // Nouvelle entrée selon le type (structure cohérente avec l'existant)
+          if (kind === 'poseur') list.push({ nom: targetName, htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '', surplus: 0, deplacements: [], avoirs: [] });
+          else if (kind === 'regie') list.push({ nom: targetName, htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '', avoirs: [] });
+          else list.push({ nom: targetName, htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '', avoirs: [] });
+          targetIdx = list.length - 1;
         }
-        const f = { ...fournisseurs[targetIdx] };
-        const avoirs = Array.isArray(f.avoirs) ? [...f.avoirs] : [];
-        // L'IA renvoie un HT négatif sur un avoir (-500€) — la donnée stockée
-        // est la valeur absolue (la déduction est l'opération de soustraction).
+        const p = { ...list[targetIdx] };
+        const avoirs = Array.isArray(p.avoirs) ? [...p.avoirs] : [];
         const montantAbs = Math.abs(Number(e.montantHt) || 0);
         avoirs.push({
           montantHt: montantAbs > 0 ? String(montantAbs) : '',
@@ -7714,9 +7713,9 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
           date: String(e.dateFacture || now.slice(0, 10)),
           file: fileId,
         });
-        f.avoirs = avoirs;
-        fournisseurs[targetIdx] = f;
-        return { ...d, fournisseurs, savedAt: now, modifiedAt: now, modifiedBy: '[tri-factures avoir]' };
+        p.avoirs = avoirs;
+        list[targetIdx] = p;
+        return { ...d, [field]: list, savedAt: now, modifiedAt: now, modifiedBy: '[tri-factures avoir]' };
       }));
 
       setFiles(prev => prev.map(x => x.id === fileItemId ? { ...x, status: 'confirmed', savedPath: fileId } : x));
@@ -8426,7 +8425,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
               onPick={(idx) => setFiles(prev => prev.map(x => x.id === item.id ? { ...x, pickedIdx: idx } : x))}
               onManualPick={(prop) => handleManualPick(item.id, prop)}
               onCreateAndPickLine={(dossierLocalId, type, nom) => handleCreateAndPickLine(item.id, dossierLocalId, type, nom)}
-              onCreateAndAttachAvoir={(dossierLocalId, nom) => handleCreateAndAttachAvoir(item.id, dossierLocalId, nom)}
+              onCreateAndAttachAvoir={(dossierLocalId, nom, kind) => handleCreateAndAttachAvoir(item.id, dossierLocalId, nom, kind)}
               onIgnoreSender={() => handleIgnoreSender(item)}
               onConfirm={() => handleConfirm(item)}
               onSkip={() => handleSkip(item)}
@@ -8738,21 +8737,29 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
                                   + {t.emoji} Créer {t.label}
                                 </button>
                               ))}
-                              {/* 🧾 Avoir / note de crédit : s'attache à un fournisseur
-                                  (existant ou créé). Différencie de « Créer fournisseur »
-                                  car ça push dans avoirs[], pas factureFile. */}
-                              {isAvoir && onCreateAndAttachAvoir && (
-                                <button
-                                  onClick={() => {
-                                    onCreateAndAttachAvoir(manualDossier.localId, fournisseurNom);
-                                    setManualOpen(false); setManualDossier(null); setManualQuery('');
-                                  }}
-                                  className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold"
-                                  title="Crée une note de crédit (avoir) sur le fournisseur — déduit le montant du coût"
-                                >
-                                  + 🧾 Créer avoir
-                                </button>
-                              )}
+                              {/* 🧾 Avoir / note de crédit : 3 boutons pour choisir
+                                  le type de prestataire (poseur/régie/fournisseur).
+                                  Pousse dans avoirs[] du type choisi, pas factureFile. */}
+                              {isAvoir && onCreateAndAttachAvoir && (() => {
+                                const avoirTypes = [
+                                  { kind: 'poseur', emoji: '🔧', label: 'poseur' },
+                                  { kind: 'regie', emoji: '🤝', label: 'régie' },
+                                  { kind: 'fournisseur', emoji: '📦', label: 'fournisseur' },
+                                ];
+                                return avoirTypes.map(t => (
+                                  <button
+                                    key={t.kind}
+                                    onClick={() => {
+                                      onCreateAndAttachAvoir(manualDossier.localId, fournisseurNom, t.kind);
+                                      setManualOpen(false); setManualDossier(null); setManualQuery('');
+                                    }}
+                                    className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold"
+                                    title={`Crée une note de crédit (avoir) sur le ${t.label} — déduit du coût`}
+                                  >
+                                    + 🧾 Avoir {t.emoji} {t.label}
+                                  </button>
+                                ));
+                              })()}
                             </div>
                           </div>
                         );
