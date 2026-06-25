@@ -324,7 +324,7 @@ async function imapScan(inbox, maxMessages = 60, ignoredSenders = [], importedSe
 // scanne pas tout, on cible un nom (client ou prestataire).
 // `lenient=true` (par défaut pour les recherches explicites) : accepte les
 //   PDFs par mimeType + skip le filtre isLikelyFacture.
-async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = [], importedSet = new Set(), lenient = true) {
+async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = [], importedSet = new Set(), lenient = true, debug = null) {
   const client = makeImapClient(inbox);
   await client.connect();
   const messages = [];
@@ -338,16 +338,21 @@ async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = [], i
       //    dans les pièces jointes ou dans du HTML encodé.
       //    Fallback sur { text } si X-GM-RAW pas supporté (rare).
       let uids = [];
+      const steps = [];
       try {
         uids = await client.search({ gmailRaw: `${query} newer_than:365d` }, { uid: true });
+        steps.push(`gmailRaw=${(uids || []).length}`);
       } catch (e) {
+        steps.push(`gmailRaw=ERR(${e?.message || 'unknown'})`);
         uids = [];
       }
       // Fallback 1 : TEXT IMAP standard (subject+from+body, sans OCR PDF)
       if (!uids || uids.length === 0) {
         try {
           uids = await client.search({ since, text: query }, { uid: true });
+          steps.push(`text=${(uids || []).length}`);
         } catch (e) {
+          steps.push(`text=ERR(${e?.message || 'unknown'})`);
           uids = [];
         }
       }
@@ -358,11 +363,15 @@ async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = [], i
           uids = await client.search({ since, or: [
             { subject: query }, { from: query }, { to: query }, { body: query }
           ] }, { uid: true });
+          steps.push(`or=${(uids || []).length}`);
         } catch (e) {
+          steps.push(`or=ERR(${e?.message || 'unknown'})`);
           uids = [];
         }
       }
+      if (debug) debug.steps = steps;
       const recent = (uids || []).slice(-maxMessages);
+      if (debug) { debug.totalUids = (uids || []).length; debug.fetchedCount = recent.length; debug.ignoredBySender = 0; debug.noPdf = 0; debug.allFiltered = 0; debug.sampleSubjects = []; debug.sampleFilenames = []; }
       if (recent.length === 0) return [];
       for await (const msg of client.fetch(recent, { uid: true, envelope: true, bodyStructure: true, internalDate: true }, { uid: true })) {
         const attachments = [];
@@ -383,13 +392,19 @@ async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = [], i
         };
         walk(msg.bodyStructure);
         const senderEmail = (msg.envelope?.from?.[0]?.address || '').toLowerCase();
-        if (isSenderIgnored(senderEmail, ignoredSenders)) continue;
+        if (debug && debug.sampleSubjects.length < 5) {
+          debug.sampleSubjects.push(`${msg.envelope?.subject || '(sans sujet)'} | from ${senderEmail} | ${attachments.length} pdf`);
+          attachments.forEach(a => { if (debug.sampleFilenames.length < 10) debug.sampleFilenames.push(a.filename); });
+        }
+        if (isSenderIgnored(senderEmail, ignoredSenders)) { if (debug) debug.ignoredBySender++; continue; }
         const subject = msg.envelope?.subject || '(sans sujet)';
+        if (attachments.length === 0 && debug) debug.noPdf++;
         const factureAtts = attachments.filter(a => {
           if (importedSet.has(attachmentKey(inbox.email, msg.uid, a.attachmentId))) return false;
           if (lenient) return true;
           return isLikelyFacture(a.filename, subject);
         });
+        if (attachments.length > 0 && factureAtts.length === 0 && debug) debug.allFiltered++;
         if (factureAtts.length > 0) {
           messages.push({
             messageId: String(msg.uid),
@@ -829,8 +844,9 @@ export default async function handler(req, res) {
         const method = boxMethod(inbox);
         if (method === 'imap') {
           try {
-            const enriched = await imapSearch(inbox, query, 20, ignoredSenders, importedSet);
-            results.push({ email: inbox.email, messages: enriched, count: enriched.length, method: 'imap' });
+            const dbg = {};
+            const enriched = await imapSearch(inbox, query, 20, ignoredSenders, importedSet, true, dbg);
+            results.push({ email: inbox.email, messages: enriched, count: enriched.length, method: 'imap', debug: dbg });
           } catch (e) {
             errors.push({ email: inbox.email, error: e?.message || 'Recherche IMAP échouée' });
           }
