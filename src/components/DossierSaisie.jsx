@@ -4962,6 +4962,27 @@ export default function DossierSaisie({ authUser, onLogout }) {
       return b.jours - a.jours;
     });
 
+    // ⚠️ Dossier posé sans régie — quand statutPose === 'visite_ok' mais aucune
+    // régie n'a été assignée au dossier. Bug fréquent sur les imports ou
+    // dossiers anciens : on n'identifie plus qui a apporté l'affaire → impact
+    // commission régie, statistiques, traçabilité. Alerte pour qu'on complète.
+    const rappelsPoseSansRegie = [];
+    dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return;
+      if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') return;
+      if (d.statutPose !== 'visite_ok') return; // seulement les vraiment posés
+      const hasRegie = (d.regies || []).some(r => r?.nom);
+      const hasEquipeInterne = d.typeRegie === 'interne'; // régie interne = OK pas besoin de régie externe
+      if (hasRegie || hasEquipeInterne) return;
+      const ref = d.dateInsta || d.savedAt;
+      const jours = ref ? joursEcoules(ref) : 0;
+      let level = 'warn';
+      if (jours >= 30) level = 'critical';
+      else if (jours >= 14) level = 'high';
+      rappelsPoseSansRegie.push({ dossier: d, jours, level });
+    });
+    rappelsPoseSansRegie.sort((a, b) => b.jours - a.jours);
+
     // 📅 Activité mensuelle — pour chaque mois on compte les ÉVÉNEMENTS qui
     // ont eu lieu ce mois-là, chacun sur sa propre date :
     //   - Créés         : createdAt du dossier dans le mois
@@ -5003,7 +5024,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Tri du plus récent au plus ancien (mois actuel en premier).
     const activiteMois = Object.values(activiteMoisMap).sort((a, b) => b.mois.localeCompare(a.mois));
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsFournisseurs, statsCommerciaux, statsBanques, activiteMois, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsMaterielInsere, rappelsLitige, rappelsSav, rappelsClientRappel };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsFournisseurs, statsCommerciaux, statsBanques, activiteMois, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsMaterielInsere, rappelsPoseSansRegie, rappelsLitige, rappelsSav, rappelsClientRappel };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -10645,6 +10666,7 @@ function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onS
     { key: 'rappelsPennylaneAEnvoyer',  emoji: '📤', label: 'Envoyer les factures à Pennylane (compta)', scrollTo: 'poseurs',     cat: 'Argent', adminCompta: true },
     { key: 'rappelsMaterielNonRendu',   emoji: '📦', label: 'Récupérer le matériel chez le poseur',   scrollTo: 'materielNonRendu', cat: 'Pose' },
     { key: 'rappelsMaterielInsere',     emoji: '📦', label: 'Matériel inséré — poseur/facture manquant', scrollTo: 'poseurs',     cat: 'Pose' },
+    { key: 'rappelsPoseSansRegie',      emoji: '⚠️', label: 'Dossier posé sans régie — à attribuer',      scrollTo: 'regie',       cat: 'Régie' },
     { key: 'rappelsLitige',             emoji: '⚖️', label: 'Traiter le litige',                      scrollTo: 'litige',        cat: 'Litige' },
     { key: 'rappelsSav',                emoji: '🛠️', label: 'Traiter le SAV',                         scrollTo: 'sav',           cat: 'SAV' },
     { key: 'rappelsStagnation',         emoji: '🐌', label: 'Dossier bloqué trop longtemps — débloquer', scrollTo: null,         cat: 'Blocage' },
@@ -12657,17 +12679,17 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
       const poseurs = (d.poseurs || []).map((p, idx) => {
         const det = (d.poseursDetail || [])[idx];
         const ht = det?.ht ?? det?.autoHt ?? (parseFloat(p?.htCustom) || 0);
-        return { nom: p?.nom || '', paye: !!p?.paye, ht: ht || 0, idx };
+        return { nom: p?.nom || '', paye: !!p?.paye, ht: ht || 0, factureNo: p?.factureNo || '', idx };
       });
       const regies = (d.regies || []).map((r, idx) => {
         const det = (d.regiesDetail || [])[idx];
         const ht = det?.ht ?? det?.autoHt ?? (parseFloat(r?.htCustom) || 0);
-        return { nom: r?.nom || '', paye: !!r?.paye, ht: ht || 0, idx };
+        return { nom: r?.nom || '', paye: !!r?.paye, ht: ht || 0, factureNo: r?.factureNo || '', idx };
       });
       const fournisseurs = (d.fournisseurs || []).map((f, idx) => {
         const det = (d.fournisseursDetail || [])[idx];
         const ht = det?.ht ?? det?.autoHt ?? (parseFloat(f?.htCustom) || 0);
-        return { nom: f?.nom || '', paye: !!f?.paye, ht: ht || 0, idx };
+        return { nom: f?.nom || '', paye: !!f?.paye, ht: ht || 0, factureNo: f?.factureNo || '', idx };
       });
       const poseursPasPayes = poseurs.filter(p => p.nom && !p.paye).length;
       const regiesPasPayees = regies.filter(r => r.nom && !r.paye).length;
@@ -12748,6 +12770,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
     if (regieFilter) filtered = filtered.filter(r => r.regies.some(rg => rg.nom === regieFilter));
     if (fournisseurFilter) filtered = filtered.filter(r => r.fournisseurs.some(f => f.nom === fournisseurFilter));
     // Filtres paiement (AND) — chaque chip est un critère à respecter.
+    const hasFac = (it) => !!(it.factureNo && String(it.factureNo).trim());
     const checkPay = {
       client_paye: r => r.payeClient,
       client_non_paye: r => !r.payeClient,
@@ -12755,6 +12778,13 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
       regie_du: r => r.regiesPasPayees > 0,
       fourn_du: r => r.fournPasPayes > 0,
       tout_paye: r => r.payeClient && r.poseursPasPayes === 0 && r.regiesPasPayees === 0 && r.fournPasPayes === 0,
+      // ⚠️ Filtres « manques » — focus sur les dossiers à compléter.
+      sans_poseur: r => r.poseurs.filter(p => p.nom).length === 0,
+      sans_regie: r => r.regies.filter(rg => rg.nom).length === 0,
+      sans_fourn: r => r.fournisseurs.filter(f => f.nom).length === 0,
+      sans_facture_poseur: r => r.poseurs.some(p => p.nom && !hasFac(p)),
+      sans_facture_regie: r => r.regies.some(rg => rg.nom && !hasFac(rg)),
+      sans_facture_fourn: r => r.fournisseurs.some(f => f.nom && !hasFac(f)),
     };
     paySelected.forEach(id => {
       const test = checkPay[id];
@@ -12989,6 +13019,13 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
     { id: 'poseur_du', label: '🔧 Poseur à payer', color: 'bg-amber-100 text-amber-700 border-amber-300' },
     { id: 'regie_du', label: '🤝 Régie à payer', color: 'bg-purple-100 text-purple-700 border-purple-300' },
     { id: 'fourn_du', label: '📦 Fournisseur à payer', color: 'bg-orange-100 text-orange-700 border-orange-300' },
+    // ⚠️ Filtres « dossiers à problème » — pour identifier rapidement les manques.
+    { id: 'sans_poseur', label: '⚠️ Sans poseur', color: 'bg-rose-100 text-rose-700 border-rose-300' },
+    { id: 'sans_regie', label: '⚠️ Sans régie', color: 'bg-rose-100 text-rose-700 border-rose-300' },
+    { id: 'sans_fourn', label: '⚠️ Sans fournisseur', color: 'bg-rose-100 text-rose-700 border-rose-300' },
+    { id: 'sans_facture_poseur', label: '⚠️ Poseur sans facture', color: 'bg-rose-100 text-rose-700 border-rose-300' },
+    { id: 'sans_facture_regie', label: '⚠️ Régie sans facture', color: 'bg-rose-100 text-rose-700 border-rose-300' },
+    { id: 'sans_facture_fourn', label: '⚠️ Fournisseur sans facture', color: 'bg-rose-100 text-rose-700 border-rose-300' },
   ];
 
   return (
@@ -27133,6 +27170,16 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
         return parts.length ? parts.join(' · ') : 'BL matériel à récupérer';
       },
       suffixLabel: 'sans retour',
+    },
+    poseSansRegie: {
+      title: '⚠️ Dossier posé sans régie',
+      subtitle: 'Dossiers où la pose a été marquée OK mais aucune régie n\'a été attribuée. Clic pour ouvrir le dossier et compléter (section RÉGIE).',
+      items: dashboard.rappelsPoseSansRegie || [],
+      gradient: 'from-rose-500 to-orange-500',
+      bgHeader: 'from-rose-50 to-orange-50',
+      borderColor: 'border-rose-200',
+      lineLabel: (d) => `Posé le ${d.dateInsta ? new Date(d.dateInsta).toLocaleDateString('fr-FR') : '?'} · ${d.financement || '—'}`,
+      suffixLabel: 'depuis pose',
     },
     materielInsere: {
       title: '📦 Matériel inséré — action requise',
