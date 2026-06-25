@@ -9804,6 +9804,10 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
     '🔧 Poseurs',
     '👥 Équipe interne',
   ]));
+  // 🔍 Recherche par prestataire — clé = prestaKey (Type::Nom::Société),
+  // valeur = string saisie. Filtre les lignes dossier pour trouver vite un
+  // client précis quand un prestataire a 100+ dossiers.
+  const [searchByPresta, setSearchByPresta] = useState({});
   const toggleGroup = (label) => {
     setFoldedGroups(prev => {
       const next = new Set(prev);
@@ -10237,6 +10241,11 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
               const prestaKey = `${p.type}::${p.nom}::${p.societe || ''}`;
               const kind = kindFromType(p.type);
               const selSet = selectedByKey[prestaKey] || new Set();
+              // 🔍 Filtre par recherche client (sur lignesFiltrees)
+              const prestaSearch = (searchByPresta[prestaKey] || '').trim().toLowerCase();
+              const lignesAffichees = prestaSearch
+                ? lignesFiltrees.filter(l => (l.client || '').toLowerCase().includes(prestaSearch))
+                : lignesFiltrees;
               return (
                 <details key={idx} className="group">
                   <summary className="p-4 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-3 list-none flex-wrap">
@@ -10257,6 +10266,27 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                     </div>
                   </summary>
                   <div className="bg-slate-50 px-4 py-3 space-y-1.5">
+                    {/* 🔍 Recherche dossier dans ce prestataire — utile dès 10+ lignes */}
+                    {lignesFiltrees.length > 5 && (
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={searchByPresta[prestaKey] || ''}
+                          onChange={(e) => setSearchByPresta(prev => ({ ...prev, [prestaKey]: e.target.value }))}
+                          placeholder={`🔍 Filtrer parmi les ${lignesFiltrees.length} dossiers de ${p.nom}…`}
+                          className="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+                        />
+                        {(searchByPresta[prestaKey] || '').length > 0 && (
+                          <button
+                            onClick={() => setSearchByPresta(prev => { const { [prestaKey]: _, ...rest } = prev; return rest; })}
+                            className="px-2 py-1.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg"
+                          >× Effacer</button>
+                        )}
+                        <span className="text-[10px] text-slate-500 font-semibold">
+                          {lignesAffichees.length}/{lignesFiltrees.length}
+                        </span>
+                      </div>
+                    )}
                     {/* 💰 Barre virement groupé — STICKY EN HAUT pour voir le total
                         sans avoir à scroller jusqu'en bas de la liste des dossiers. */}
                     {kind && onMarkPrestaPaye && selSet.size > 0 && (() => {
@@ -10296,7 +10326,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                         </div>
                       );
                     })()}
-                    {lignesFiltrees.map((l, i) => {
+                    {lignesAffichees.map((l, i) => {
                       const etat = l.paye ? (l.payeAvance ? 'paye_avance' : 'paye') : l.financeurPaye ? 'a_payer' : 'bloque';
                       const styles = {
                         paye: { bg: 'bg-emerald-50 border-emerald-200', icon: 'bg-emerald-500', label: '✓ Payé', labelBg: 'bg-emerald-200 text-emerald-800', amount: 'text-emerald-700' },
