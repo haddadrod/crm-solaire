@@ -12699,6 +12699,27 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
     }));
   };
 
+  // 🔄 Listes enrichies : POSEURS/REGIES/FOURNISSEURS configurés en Réglages
+  // + tous les noms RÉELLEMENT présents sur les dossiers (cas legacy : nom
+  // saisi à la main qui n'est plus dans la liste, ou import qui a apporté
+  // des noms inconnus). Comme ça l'utilisateur peut renommer « INNOVA » en
+  // « INNOWATT » directement depuis le select du dossier.
+  const allPoseurs = useMemo(() => {
+    const s = new Set(POSEURS);
+    (dossiers || []).forEach(d => (d.poseurs || []).forEach(p => { if (p?.nom) s.add(p.nom); }));
+    return Array.from(s).sort();
+  }, [POSEURS, dossiers]);
+  const allRegies = useMemo(() => {
+    const s = new Set(REGIES);
+    (dossiers || []).forEach(d => (d.regies || []).forEach(r => { if (r?.nom) s.add(r.nom); }));
+    return Array.from(s).sort();
+  }, [REGIES, dossiers]);
+  const allFournisseurs = useMemo(() => {
+    const s = new Set(FOURNISSEURS);
+    (dossiers || []).forEach(d => (d.fournisseurs || []).forEach(f => { if (f?.nom) s.add(f.nom); }));
+    return Array.from(s).sort();
+  }, [FOURNISSEURS, dossiers]);
+
   const rows = useMemo(() => {
     const list = (dossiers || []).map(d => {
       const factureNo = (d.fournisseurs || []).find(f => f?.factureNo)?.factureNo
@@ -13125,15 +13146,15 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
           <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mr-1">Prestataire</span>
           <select value={poseurFilter} onChange={(e) => setPoseurFilter(e.target.value)} className={`text-[11px] font-medium border rounded-lg px-2.5 py-1 transition ${poseurFilter ? 'bg-amber-50 border-amber-300 text-amber-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
             <option value="">🔧 Tous poseurs</option>
-            {POSEURS.map(n => <option key={n} value={n}>🔧 {n}</option>)}
+            {allPoseurs.map(n => <option key={n} value={n}>🔧 {n}{!POSEURS.includes(n) ? ' (legacy)' : ''}</option>)}
           </select>
           <select value={regieFilter} onChange={(e) => setRegieFilter(e.target.value)} className={`text-[11px] font-medium border rounded-lg px-2.5 py-1 transition ${regieFilter ? 'bg-purple-50 border-purple-300 text-purple-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
             <option value="">🤝 Toutes régies</option>
-            {REGIES.map(n => <option key={n} value={n}>🤝 {n}</option>)}
+            {allRegies.map(n => <option key={n} value={n}>🤝 {n}{!REGIES.includes(n) ? ' (legacy)' : ''}</option>)}
           </select>
           <select value={fournisseurFilter} onChange={(e) => setFournisseurFilter(e.target.value)} className={`text-[11px] font-medium border rounded-lg px-2.5 py-1 transition ${fournisseurFilter ? 'bg-orange-50 border-orange-300 text-orange-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
             <option value="">📦 Tous fournisseurs</option>
-            {FOURNISSEURS.map(n => <option key={n} value={n}>📦 {n}</option>)}
+            {allFournisseurs.map(n => <option key={n} value={n}>📦 {n}{!FOURNISSEURS.includes(n) ? ' (legacy)' : ''}</option>)}
           </select>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 mt-3">
@@ -13229,11 +13250,11 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                     <input type="checkbox" checked={r.payeClient} onChange={(e) => updateDossier(lid, { payeClient: e.target.checked, payeClientDate: e.target.checked ? (r.d.payeClientDate || new Date().toISOString().split('T')[0]) : '' })} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" />
                   </td>
                   <td className="px-2 py-2.5 text-right font-semibold">{r.puissance || ''}</td>
-                  <td className="px-2 py-2.5 align-top"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" options={POSEURS} /></td>
+                  <td className="px-2 py-2.5 align-top"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" options={allPoseurs} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.poseurs} kind="poseur" lid={lid} color="amber" /></td>
-                  <td className="px-2 py-2.5 align-top"><PrestataireCell items={r.regies} kind="regie" lid={lid} color="purple" options={REGIES} /></td>
+                  <td className="px-2 py-2.5 align-top"><PrestataireCell items={r.regies} kind="regie" lid={lid} color="purple" options={allRegies} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.regies} kind="regie" lid={lid} color="purple" /></td>
-                  <td className="px-2 py-2.5 align-top"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" options={FOURNISSEURS} /></td>
+                  <td className="px-2 py-2.5 align-top"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" options={allFournisseurs} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" /></td>
                   <td className="px-2 py-2.5 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
                   <td className={`px-2 py-2.5 text-right whitespace-nowrap font-mono font-semibold ${r.margeHt > 0 ? 'text-emerald-700' : r.margeHt < 0 ? 'text-rose-700' : 'text-slate-500'}`}>{r.margeHt > 0 ? '+ ' : ''}{fmtEuro(r.margeHt)}</td>
