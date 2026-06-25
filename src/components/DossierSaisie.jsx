@@ -25202,7 +25202,12 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
                         >
                           <span className="text-base">{matched ? '✅' : '📎'}</span>
                           <div className="flex-1 min-w-0">
-                            <div className="text-sm font-semibold text-slate-800 truncate">{a.filename}</div>
+                            <div className="text-sm font-semibold text-slate-800 truncate flex items-center gap-2">
+                              <span className="truncate">{a.filename}</span>
+                              {a.alreadyImported && (
+                                <span className="shrink-0 px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded text-[10px] font-bold uppercase">✓ déjà importé</span>
+                              )}
+                            </div>
                             <div className="text-[12px] text-slate-400 flex items-center gap-2 flex-wrap">
                               {a.sizeBytes ? <span>{Math.round(a.sizeBytes / 1024)} Ko</span> : null}
                               {ia?.status === 'done' && (
