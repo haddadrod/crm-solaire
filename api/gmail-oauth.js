@@ -332,8 +332,36 @@ async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = [], i
     const lock = await client.getMailboxLock('INBOX');
     try {
       const since = new Date(Date.now() - 365 * 24 * 3600 * 1000);
-      // imapflow accepte { text: 'foo' } qui devient TEXT "foo" (subject+from+body)
-      const uids = await client.search({ since, text: query }, { uid: true });
+      // 🚀 Gmail X-GM-RAW : utilise la SYNTAXE de recherche Gmail web (qui
+      //    indexe aussi le contenu OCR des PDFs). Bien plus puissant que
+      //    le TEXT IMAP standard, qui rate les noms uniquement présents
+      //    dans les pièces jointes ou dans du HTML encodé.
+      //    Fallback sur { text } si X-GM-RAW pas supporté (rare).
+      let uids = [];
+      try {
+        uids = await client.search({ gmailRaw: `${query} newer_than:365d` }, { uid: true });
+      } catch (e) {
+        uids = [];
+      }
+      // Fallback 1 : TEXT IMAP standard (subject+from+body, sans OCR PDF)
+      if (!uids || uids.length === 0) {
+        try {
+          uids = await client.search({ since, text: query }, { uid: true });
+        } catch (e) {
+          uids = [];
+        }
+      }
+      // Fallback 2 : OR explicite sur subject/from/to (au cas où text:
+      //    aurait été décodé bizarrement par certains serveurs)
+      if (!uids || uids.length === 0) {
+        try {
+          uids = await client.search({ since, or: [
+            { subject: query }, { from: query }, { to: query }, { body: query }
+          ] }, { uid: true });
+        } catch (e) {
+          uids = [];
+        }
+      }
       const recent = (uids || []).slice(-maxMessages);
       if (recent.length === 0) return [];
       for await (const msg of client.fetch(recent, { uid: true, envelope: true, bodyStructure: true, internalDate: true }, { uid: true })) {
