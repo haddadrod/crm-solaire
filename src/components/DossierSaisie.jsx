@@ -11277,7 +11277,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
         </div>
       )}
 
-      <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" />
+      <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" simpleCashflow={true} />
       <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
       <PerfList titre="📦 Performance des fournisseurs" data={dashboard.statsFournisseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="📦" border="border-orange-100" header="from-orange-50 to-amber-50" iconColor="text-orange-500" simpleCashflow={true} />
       {(dashboard.statsCommerciaux || []).length > 0 && (
