@@ -25126,6 +25126,29 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
               <div className="text-4xl mb-2">🤷</div>
               <div className="font-bold text-slate-700">Aucune facture trouvée</div>
               <div className="text-xs mt-1">Essaie un autre mot-clé (autre nom, n° de chantier, etc.).</div>
+              {/* 🔍 Diagnostic : si le serveur a envoyé debug{} on l'affiche. */}
+              {(results.results || []).some(r => r.debug) && (
+                <div className="mt-4 mx-4 text-left bg-slate-50 border border-slate-200 rounded-lg p-3 text-[11px] font-mono text-slate-700">
+                  <div className="font-bold mb-1 text-slate-800">🔍 Diagnostic recherche :</div>
+                  {(results.results || []).map((r, i) => r.debug && (
+                    <div key={i} className="mt-1 pt-1 border-t border-slate-200">
+                      <div><span className="font-bold">{r.email}</span></div>
+                      <div>· étapes : {(r.debug.steps || []).join(' → ')}</div>
+                      <div>· uids retournés : {r.debug.totalUids} (gardés : {r.debug.fetchedCount})</div>
+                      <div>· ignorés par sender : {r.debug.ignoredBySender || 0}</div>
+                      <div>· sans PDF : {r.debug.noPdf || 0}</div>
+                      <div>· tous filtrés : {r.debug.allFiltered || 0}</div>
+                      {(r.debug.sampleSubjects || []).length > 0 && (
+                        <div className="mt-1">· échantillon :
+                          <ul className="ml-4 list-disc">
+                            {r.debug.sampleSubjects.map((s, idx) => <li key={idx}>{s}</li>)}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
           {!loading && results && (results.errors || []).length > 0 && (
