@@ -13000,7 +13000,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
           // pour ne plus tronquer (l'utilisateur veut voir « YC CONSEIL - ECOH ENR »
           // en entier).
           const labelLen = (it.nom || '— choisir —').length;
-          const selectWidth = Math.max(70, labelLen * 7 + 18);
+          const selectWidth = Math.max(80, labelLen * 8 + 20);
           const hasFacture = !!(it.factureNo && String(it.factureNo).trim());
           return (
             <div key={`${kind}-${it.idx}`} className={`group inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition ${baseChip}`}>
@@ -13009,7 +13009,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                 value={it.nom}
                 onChange={(e) => renamePrestataire(lid, kind, it.idx, e.target.value)}
                 style={{ width: `${selectWidth}px` }}
-                className="text-[10px] font-semibold bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-violet-400 rounded px-0.5 py-0.5 cursor-pointer whitespace-nowrap"
+                className="text-[12px] font-bold bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-violet-400 rounded px-0.5 py-0.5 cursor-pointer whitespace-nowrap"
                 title={it.nom ? `${it.nom} — clic pour changer` : 'Choisir un prestataire'}
               >
                 <option value="">— choisir —</option>
@@ -13025,7 +13025,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                 onCommit={(v) => setFactureNoPrestataire(lid, kind, it.idx, v)}
                 placeholder="N° fac"
                 title={hasFacture ? `Facture ${it.factureNo}` : 'Aucune facture saisie — risque de payer sans justificatif'}
-                className={`flex-shrink-0 w-[80px] text-[10px] font-mono font-semibold border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400 ${hasFacture ? 'bg-white border-slate-200 text-slate-700' : 'bg-rose-50 border-rose-200 text-rose-600 placeholder-rose-400'}`}
+                className={`flex-shrink-0 w-[90px] text-[11px] font-mono font-bold border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400 ${hasFacture ? 'bg-white border-slate-200 text-slate-800' : 'bg-rose-50 border-rose-200 text-rose-600 placeholder-rose-400'}`}
               />
               <button
                 onClick={() => togglePrestataire(lid, kind, it.idx)}
@@ -13075,7 +13075,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
               value={cleanHt(it.ht)}
               onCommit={(v) => { const n = parseFloat(v) || 0; if (n !== (it.ht || 0)) setHtPrestataire(lid, kind, it.idx, v); }}
               placeholder="0"
-              className={`w-full text-right text-[10px] font-mono font-semibold bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-1 focus:ring-yellow-400 px-1 py-0.5 rounded ${it.paye ? 'text-emerald-700 line-through' : `text-${color}-700`}`}
+              className={`w-full text-right text-[12px] font-mono font-bold bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-1 focus:ring-yellow-400 px-1 py-0.5 rounded ${it.paye ? 'text-emerald-700 line-through' : `text-${color}-800`}`}
             />
           </div>
         ))}
@@ -13202,7 +13202,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
         </div>
       </div>
       <div className="overflow-auto" style={{ maxHeight: '75vh' }}>
-        <table className="text-[11px] border-collapse" style={{ minWidth: '1900px' }}>
+        <table className="text-[12px] border-collapse" style={{ minWidth: '1900px' }}>
           <thead className="sticky top-0 z-10">
             <tr>
               <Th className="sticky left-0 z-30">Lien</Th>
@@ -13236,47 +13236,47 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                 : 'bg-slate-100 text-slate-500';
               const lid = r.d.localId;
               return (
-                <tr key={lid || i} className={`hover:bg-violet-50/60 transition border-b-2 border-slate-200 ${i % 2 ? 'bg-white' : 'bg-slate-50'}`}>
-                  <td className={`px-2 py-2.5 text-center sticky left-0 z-10 ${i % 2 ? 'bg-white' : 'bg-slate-50'}`}>
-                    <button onClick={() => onShowQuick && onShowQuick(lid)} className="text-violet-600 hover:text-white hover:bg-violet-600 px-2 py-0.5 rounded-md text-[11px] font-semibold transition">Voir</button>
+                <tr key={lid || i} className={`hover:bg-violet-50/80 transition border-b-[3px] border-slate-300 ${i % 2 ? 'bg-white' : 'bg-slate-100'}`}>
+                  <td className={`px-2 py-3 text-center sticky left-0 z-10 ${i % 2 ? 'bg-white' : 'bg-slate-100'}`}>
+                    <button onClick={() => onShowQuick && onShowQuick(lid)} className="text-violet-600 hover:text-white hover:bg-violet-600 px-2.5 py-1 rounded-md text-[12px] font-bold transition">Voir</button>
                   </td>
-                  <td className="px-2 py-2.5 font-mono text-slate-700 whitespace-nowrap">{r.id}</td>
-                  <td className="px-2 py-2.5 whitespace-nowrap">
+                  <td className="px-2 py-3 font-mono text-slate-700 whitespace-nowrap">{r.id}</td>
+                  <td className="px-2 py-3 whitespace-nowrap">
                     <input type="date" value={r.dateInsta} onChange={(e) => updateDossier(lid, { dateInsta: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
                   </td>
-                  <td className="px-2 py-2.5 whitespace-nowrap" title={s?.label || r.statut}>
+                  <td className="px-2 py-3 whitespace-nowrap" title={s?.label || r.statut}>
                     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold ${s?.bg || 'bg-slate-100'} ${s?.text || 'text-slate-700'}`}>
                       <span>{s?.emoji}</span>
                       <span>{s?.label || r.statut}</span>
                     </span>
                   </td>
-                  <td className="px-2 py-2.5 font-semibold uppercase" style={{ minWidth: '160px' }}>
+                  <td className="px-2 py-3 font-bold uppercase text-[13px] text-slate-900" style={{ minWidth: '160px' }}>
                     <EditCell value={r.nom} onCommit={(v) => updateDossier(lid, { nom: v })} />
                   </td>
-                  <td className="px-2 py-2.5" style={{ minWidth: '140px' }}>
+                  <td className="px-2 py-3 font-bold text-[13px] text-slate-900" style={{ minWidth: '140px' }}>
                     <EditCell value={r.prenom} onCommit={(v) => updateDossier(lid, { prenom: v })} />
                   </td>
-                  <td className="px-2 py-2.5 text-center"><SocieteAvatar societe={r.societe} /></td>
-                  <td className="px-2 py-2.5">{r.financement}</td>
-                  <td className="px-2 py-2.5 text-right whitespace-nowrap">
+                  <td className="px-2 py-3 text-center"><SocieteAvatar societe={r.societe} /></td>
+                  <td className="px-2 py-3">{r.financement}</td>
+                  <td className="px-2 py-3 text-right whitespace-nowrap">
                     <EditCell value={r.montantTotal || ''} type="number" onCommit={(v) => updateDossier(lid, { montantTotal: parseFloat(v) || 0 })} className="text-right" />
                   </td>
-                  <td className="px-2 py-2.5 text-right whitespace-nowrap font-mono text-slate-600 text-[11px]">{fmtEuro(r.montantHt)}</td>
-                  <td className="px-2 py-2.5 whitespace-nowrap">
+                  <td className="px-2 py-3 text-right whitespace-nowrap font-mono text-slate-600 text-[11px]">{fmtEuro(r.montantHt)}</td>
+                  <td className="px-2 py-3 whitespace-nowrap">
                     <input type="date" value={r.datePaiementBanque} onChange={(e) => updateDossier(lid, { datePaiementBanque: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
                   </td>
-                  <td className="px-2 py-2.5 text-center">
+                  <td className="px-2 py-3 text-center">
                     <input type="checkbox" checked={r.payeClient} onChange={(e) => updateDossier(lid, { payeClient: e.target.checked, payeClientDate: e.target.checked ? (r.d.payeClientDate || new Date().toISOString().split('T')[0]) : '' })} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" />
                   </td>
-                  <td className="px-2 py-2.5 text-right font-semibold">{r.puissance || ''}</td>
-                  <td className="px-2 py-2.5 align-top"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" options={allPoseurs} /></td>
+                  <td className="px-2 py-3 text-right font-semibold">{r.puissance || ''}</td>
+                  <td className="px-2 py-3 align-top"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" options={allPoseurs} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.poseurs} kind="poseur" lid={lid} color="amber" /></td>
-                  <td className="px-2 py-2.5 align-top"><PrestataireCell items={r.regies} kind="regie" lid={lid} color="purple" options={allRegies} /></td>
+                  <td className="px-2 py-3 align-top"><PrestataireCell items={r.regies} kind="regie" lid={lid} color="purple" options={allRegies} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.regies} kind="regie" lid={lid} color="purple" /></td>
-                  <td className="px-2 py-2.5 align-top"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" options={allFournisseurs} /></td>
+                  <td className="px-2 py-3 align-top"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" options={allFournisseurs} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" /></td>
-                  <td className="px-2 py-2.5 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
-                  <td className={`px-2 py-2.5 text-right whitespace-nowrap font-mono font-semibold ${r.margeHt > 0 ? 'text-emerald-700' : r.margeHt < 0 ? 'text-rose-700' : 'text-slate-500'}`}>{r.margeHt > 0 ? '+ ' : ''}{fmtEuro(r.margeHt)}</td>
+                  <td className="px-2 py-3 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
+                  <td className={`px-2 py-3 text-right whitespace-nowrap font-mono font-semibold ${r.margeHt > 0 ? 'text-emerald-700' : r.margeHt < 0 ? 'text-rose-700' : 'text-slate-500'}`}>{r.margeHt > 0 ? '+ ' : ''}{fmtEuro(r.margeHt)}</td>
                 </tr>
               );
             })}
