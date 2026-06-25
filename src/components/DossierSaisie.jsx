@@ -12704,19 +12704,31 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
   // saisi à la main qui n'est plus dans la liste, ou import qui a apporté
   // des noms inconnus). Comme ça l'utilisateur peut renommer « INNOVA » en
   // « INNOWATT » directement depuis le select du dossier.
+  // Note : on lit fournisseurs ET fournisseursDetail (idem poseurs/régies) pour
+  // capter tous les noms — selon la source des dossiers (raw vs enrichi),
+  // l'un ou l'autre peut être renseigné.
   const allPoseurs = useMemo(() => {
     const s = new Set(POSEURS);
-    (dossiers || []).forEach(d => (d.poseurs || []).forEach(p => { if (p?.nom) s.add(p.nom); }));
+    (dossiers || []).forEach(d => {
+      (d.poseurs || []).forEach(p => { if (p?.nom) s.add(p.nom); });
+      (d.poseursDetail || []).forEach(p => { if (p?.nom) s.add(p.nom); });
+    });
     return Array.from(s).sort();
   }, [POSEURS, dossiers]);
   const allRegies = useMemo(() => {
     const s = new Set(REGIES);
-    (dossiers || []).forEach(d => (d.regies || []).forEach(r => { if (r?.nom) s.add(r.nom); }));
+    (dossiers || []).forEach(d => {
+      (d.regies || []).forEach(r => { if (r?.nom) s.add(r.nom); });
+      (d.regiesDetail || []).forEach(r => { if (r?.nom) s.add(r.nom); });
+    });
     return Array.from(s).sort();
   }, [REGIES, dossiers]);
   const allFournisseurs = useMemo(() => {
     const s = new Set(FOURNISSEURS);
-    (dossiers || []).forEach(d => (d.fournisseurs || []).forEach(f => { if (f?.nom) s.add(f.nom); }));
+    (dossiers || []).forEach(d => {
+      (d.fournisseurs || []).forEach(f => { if (f?.nom) s.add(f.nom); });
+      (d.fournisseursDetail || []).forEach(f => { if (f?.nom) s.add(f.nom); });
+    });
     return Array.from(s).sort();
   }, [FOURNISSEURS, dossiers]);
 
