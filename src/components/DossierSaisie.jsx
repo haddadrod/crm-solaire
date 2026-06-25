@@ -12920,8 +12920,11 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
           const baseChip = it.paye
             ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
             : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100';
+          // Largeur du select calée sur la longueur RÉELLE du texte — pas de cap
+          // pour ne plus tronquer (l'utilisateur veut voir « YC CONSEIL - ECOH ENR »
+          // en entier).
           const labelLen = (it.nom || '— choisir —').length;
-          const selectWidth = Math.max(70, Math.min(160, labelLen * 7 + 12));
+          const selectWidth = Math.max(70, labelLen * 7 + 18);
           const hasFacture = !!(it.factureNo && String(it.factureNo).trim());
           return (
             <div key={`${kind}-${it.idx}`} className={`group inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition ${baseChip}`}>
@@ -12930,7 +12933,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                 value={it.nom}
                 onChange={(e) => renamePrestataire(lid, kind, it.idx, e.target.value)}
                 style={{ width: `${selectWidth}px` }}
-                className="text-[10px] font-semibold bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-violet-400 rounded px-0.5 py-0.5 cursor-pointer truncate"
+                className="text-[10px] font-semibold bg-transparent border-none focus:outline-none focus:ring-1 focus:ring-violet-400 rounded px-0.5 py-0.5 cursor-pointer whitespace-nowrap"
                 title={it.nom ? `${it.nom} — clic pour changer` : 'Choisir un prestataire'}
               >
                 <option value="">— choisir —</option>
