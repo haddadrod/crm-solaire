@@ -396,14 +396,23 @@ async function imapSearch(inbox, query, maxMessages = 20, ignoredSenders = [], i
           debug.sampleSubjects.push(`${msg.envelope?.subject || '(sans sujet)'} | from ${senderEmail} | ${attachments.length} pdf`);
           attachments.forEach(a => { if (debug.sampleFilenames.length < 10) debug.sampleFilenames.push(a.filename); });
         }
-        if (isSenderIgnored(senderEmail, ignoredSenders)) { if (debug) debug.ignoredBySender++; continue; }
+        // 🔓 En recherche EXPLICITE (lenient) : on NE skip PAS les expéditeurs
+        //    blacklistés. La blacklist sert au scan automatique (anti-spam),
+        //    mais si l'user tape un nom, il veut voir ces mails quand même.
+        if (!lenient && isSenderIgnored(senderEmail, ignoredSenders)) { if (debug) debug.ignoredBySender++; continue; }
         const subject = msg.envelope?.subject || '(sans sujet)';
         if (attachments.length === 0 && debug) debug.noPdf++;
-        const factureAtts = attachments.filter(a => {
-          if (importedSet.has(attachmentKey(inbox.email, msg.uid, a.attachmentId))) return false;
-          if (lenient) return true;
-          return isLikelyFacture(a.filename, subject);
-        });
+        // 🔓 En lenient : on garde TOUTES les pièces (même déjà importées) et
+        //    on les marque `alreadyImported` → l'UI affiche un badge au lieu
+        //    de les cacher. Sinon une recherche ne ramène jamais les factures
+        //    déjà attachées au CRM (cas IONERGIK : tout est déjà importé).
+        const factureAtts = attachments
+          .map(a => ({ ...a, alreadyImported: importedSet.has(attachmentKey(inbox.email, msg.uid, a.attachmentId)) }))
+          .filter(a => {
+            if (lenient) return true;
+            if (a.alreadyImported) return false;
+            return isLikelyFacture(a.filename, subject);
+          });
         if (attachments.length > 0 && factureAtts.length === 0 && debug) debug.allFiltered++;
         if (factureAtts.length > 0) {
           messages.push({
@@ -562,21 +571,23 @@ async function getMessageMeta(accessToken, messageId, ignoredSenders = [], impor
   const subject = headers['subject'] || '(sans sujet)';
   const fromHeader = headers['from'] || '';
   const senderEmail = extractFirstEmail(fromHeader);
-  // 🚫 Liste noire d'expéditeurs — on signale au caller via attachments=[]
-  //    plutôt que de throw (le caller boucle sur N messages).
-  if (isSenderIgnored(senderEmail, ignoredSenders)) {
+  // 🚫 Liste noire d'expéditeurs — uniquement pour le scan auto. En recherche
+  //    explicite (lenient), on ne filtre PAS : l'user a tapé un nom, il veut
+  //    voir ces mails même si l'expéditeur est blacklisté (cas vosfactures.fr).
+  if (!lenient && isSenderIgnored(senderEmail, ignoredSenders)) {
     return { messageId, subject, from: fromHeader, fromEmail: senderEmail, date: headers['date'] || '', internalDate: data.internalDate || '', attachments: [] };
   }
   // 🧹 Filtre : on garde uniquement les pièces qui ressemblent à une facture
   //    ou un avoir, et qui n'ont pas DÉJÀ été importées.
-  //    En lenient : on ne filtre PAS par isLikelyFacture (user a explicitement
-  //    tapé un nom/numéro, il veut TOUT voir — quitte à avoir un devis dans
-  //    les résultats).
-  const factureAtts = attachments.filter(a => {
-    if (importedSet.has(attachmentKey(inboxEmail, messageId, a.attachmentId))) return false;
-    if (lenient) return true;
-    return isLikelyFacture(a.filename, subject);
-  });
+  //    En lenient : on garde TOUT (même déjà importé → badge côté UI) car
+  //    l'user a explicitement tapé un nom/numéro et veut tout voir.
+  const factureAtts = attachments
+    .map(a => ({ ...a, alreadyImported: importedSet.has(attachmentKey(inboxEmail, messageId, a.attachmentId)) }))
+    .filter(a => {
+      if (lenient) return true;
+      if (a.alreadyImported) return false;
+      return isLikelyFacture(a.filename, subject);
+    });
   return {
     messageId,
     subject,
@@ -845,7 +856,7 @@ export default async function handler(req, res) {
         if (method === 'imap') {
           try {
             const dbg = {};
-            const enriched = await imapSearch(inbox, query, 20, ignoredSenders, importedSet, true, dbg);
+            const enriched = await imapSearch(inbox, query, 40, ignoredSenders, importedSet, true, dbg);
             results.push({ email: inbox.email, messages: enriched, count: enriched.length, method: 'imap', debug: dbg });
           } catch (e) {
             errors.push({ email: inbox.email, error: e?.message || 'Recherche IMAP échouée' });
