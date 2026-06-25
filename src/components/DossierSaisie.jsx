@@ -1845,6 +1845,25 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // 📊 Vue Sheet globale — bouton dans la barre du haut. Ouvre la Sheet en
   // overlay plein écran pour éviter le détour par Réglages → Outils experts.
   const [showSheetGlobal, setShowSheetGlobal] = useState(false);
+  // 🌙 Mode nuit — toggle dans la barre du haut. Inversion CSS sur le wrapper
+  // racine (+ ré-inversion des images via CSS pour garder les photos/logos
+  // dans leurs vraies couleurs). Persisté en Supabase storage (clé ui-theme).
+  const [darkMode, setDarkMode] = useState(false);
+  // Chargement initial du thème
+  useEffect(() => {
+    let cancelled = false;
+    window.storage.get('ui-theme').then(r => {
+      if (cancelled || !r?.value) return;
+      try { setDarkMode(r.value === 'dark'); } catch (_) {}
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+  // Sauvegarde à chaque changement (skip 1er render via ref)
+  const isInitialTheme = useRef(true);
+  useEffect(() => {
+    if (isInitialTheme.current) { isInitialTheme.current = false; return; }
+    window.storage.set('ui-theme', darkMode ? 'dark' : 'light').catch(() => {});
+  }, [darkMode]);
   const [showImportJson, setShowImportJson] = useState(false); // 📦 modal import dossiers JSON
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
   // Plus de dropdown local — qui est connecté = qui agit.
@@ -5313,7 +5332,26 @@ export default function DossierSaisie({ authUser, onLogout }) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-violet-50 via-pink-50 to-amber-50 p-4 md:p-8">
+    <div className={`min-h-screen bg-gradient-to-br from-violet-50 via-pink-50 to-amber-50 p-4 md:p-8 ${darkMode ? 'crm-dark-mode' : ''}`}>
+      {/* 🌙 Style mode nuit : invert global + ré-invert des images/PDF/médias
+          pour qu'ils gardent leurs vraies couleurs. */}
+      {darkMode && (
+        <style>{`
+          .crm-dark-mode { filter: invert(1) hue-rotate(180deg); background-color: #f1f5f9; }
+          .crm-dark-mode img,
+          .crm-dark-mode video,
+          .crm-dark-mode iframe,
+          .crm-dark-mode embed,
+          .crm-dark-mode object,
+          .crm-dark-mode canvas,
+          .crm-dark-mode svg,
+          .crm-dark-mode .leaflet-tile,
+          .crm-dark-mode .leaflet-marker-icon,
+          .crm-dark-mode .leaflet-marker-shadow {
+            filter: invert(1) hue-rotate(180deg);
+          }
+        `}</style>
+      )}
       {celebrating && (
         <div className="fixed inset-0 pointer-events-none z-50 flex items-center justify-center">
           <div className="bg-white rounded-2xl shadow-2xl px-8 py-6 animate-bounce">
@@ -5397,6 +5435,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   📊 Vue Sheet
                 </button>
               )}
+              {/* 🌙 Toggle mode nuit / jour */}
+              <button
+                onClick={() => setDarkMode(v => !v)}
+                title={darkMode ? 'Passer en mode jour' : 'Passer en mode nuit'}
+                className="bg-white hover:bg-slate-100 text-slate-700 px-3 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200 whitespace-nowrap flex-shrink-0 text-lg"
+              >
+                {darkMode ? '☀️' : '🌙'}
+              </button>
               {/* Outils experts (Import JSON, Sauvegarde JSON, etc.) restent
                   dans Réglages → 🛠 Outils experts pour désencombrer la barre. */}
               {/* Groupe utilisateur poussé tout à droite (ml-auto) — séparé visuellement
