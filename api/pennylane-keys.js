@@ -53,6 +53,11 @@ function keyFor(societe) {
   if (!norm) return null;
   return `secret-pennylane-${norm}`;
 }
+function ledgerKeyFor(societe) {
+  const norm = normSociete(societe);
+  if (!norm) return null;
+  return `secret-pennylane-${norm}-ledger`;
+}
 
 // Audit log append-only — partagé avec api/users.js (clé `users-audit-log`)
 async function appendAudit(admin, event) {
@@ -87,10 +92,14 @@ export default async function handler(req, res) {
     if (req.method === 'GET') {
       // Liste les sociétés demandées (query ?societes=yolico,elsun)
       // ou renvoie tout ce qui commence par secret-pennylane-*.
+      // Renvoie 2 trucs par société : la clé API + le ledger_account_id.
       const requested = (req.query?.societes || '').split(',').map(s => s.trim()).filter(Boolean);
       let rows = [];
       if (requested.length > 0) {
-        const keys = requested.map(keyFor).filter(Boolean);
+        const keys = [
+          ...requested.map(keyFor).filter(Boolean),
+          ...requested.map(ledgerKeyFor).filter(Boolean),
+        ];
         const { data } = await admin.from('storage').select('key, value').in('key', keys);
         rows = data || [];
       } else {
@@ -98,54 +107,111 @@ export default async function handler(req, res) {
         rows = data || [];
       }
       const result = {};
+      const ensureSlot = (societe) => {
+        if (!result[societe]) {
+          result[societe] = { configured: false, last4: '', length: 0, ledgerAccountId: '' };
+        }
+        return result[societe];
+      };
       rows.forEach(r => {
-        const societe = String(r.key || '').replace(/^secret-pennylane-/, '');
+        const rawKey = String(r.key || '');
         const val = r.value || '';
-        result[societe] = {
-          configured: val.length > 0,
-          last4: val.length >= 4 ? val.slice(-4) : '',
-          length: val.length,
-        };
+        // Suffixe ledger : secret-pennylane-<societe>-ledger → ledgerAccountId
+        const ledgerMatch = rawKey.match(/^secret-pennylane-(.+)-ledger$/);
+        if (ledgerMatch) {
+          const slot = ensureSlot(ledgerMatch[1]);
+          slot.ledgerAccountId = String(val || '').trim();
+          return;
+        }
+        // Sinon = clé API
+        const societe = rawKey.replace(/^secret-pennylane-/, '');
+        const slot = ensureSlot(societe);
+        slot.configured = val.length > 0;
+        slot.last4 = val.length >= 4 ? val.slice(-4) : '';
+        slot.length = val.length;
       });
       // Reflète aussi les sociétés demandées même si pas configurées (pour l'UI)
       requested.forEach(s => {
         const norm = normSociete(s);
-        if (norm && !result[norm]) result[norm] = { configured: false, last4: '', length: 0 };
+        if (norm) ensureSlot(norm);
       });
       return json(res, 200, { keys: result });
     }
 
     if (req.method === 'POST') {
-      const { societe, apiKey } = req.body || {};
-      const key = keyFor(societe);
-      if (!key) return json(res, 400, { error: 'societe invalide' });
-      const v = String(apiKey || '').trim();
-      if (!v) return json(res, 400, { error: 'apiKey vide' });
-      if (v.length < 10) return json(res, 400, { error: 'apiKey trop courte (suspecte)' });
-      const { error } = await admin.from('storage').upsert({
-        key,
-        value: v,
-        updated_at: new Date().toISOString(),
-      });
-      if (error) return json(res, 500, { error: error.message });
-      await appendAudit(admin, {
-        type: 'pennylane_key_set',
-        target_societe: normSociete(societe),
-        last4: v.slice(-4),
-        ...actorInfo,
-      });
-      return json(res, 200, { ok: true, configured: true, last4: v.slice(-4) });
+      const { societe, apiKey, ledgerAccountId } = req.body || {};
+      const norm = normSociete(societe);
+      if (!norm) return json(res, 400, { error: 'societe invalide' });
+
+      // 2 modes de POST :
+      //  - { societe, apiKey }            → pose/modifie la clé API
+      //  - { societe, ledgerAccountId }   → pose/modifie le ledger account id
+      //    (chaîne vide accepté pour effacer)
+      const hasApiKey = typeof apiKey === 'string' && apiKey.trim().length > 0;
+      const hasLedger = typeof ledgerAccountId !== 'undefined';
+      if (!hasApiKey && !hasLedger) {
+        return json(res, 400, { error: 'apiKey ou ledgerAccountId requis' });
+      }
+
+      const responses = {};
+      if (hasApiKey) {
+        const v = String(apiKey).trim();
+        if (v.length < 10) return json(res, 400, { error: 'apiKey trop courte (suspecte)' });
+        const { error } = await admin.from('storage').upsert({
+          key: keyFor(norm),
+          value: v,
+          updated_at: new Date().toISOString(),
+        });
+        if (error) return json(res, 500, { error: error.message });
+        await appendAudit(admin, {
+          type: 'pennylane_key_set',
+          target_societe: norm,
+          last4: v.slice(-4),
+          ...actorInfo,
+        });
+        responses.apiKey = { configured: true, last4: v.slice(-4) };
+      }
+      if (hasLedger) {
+        const v = String(ledgerAccountId || '').trim();
+        const lk = ledgerKeyFor(norm);
+        if (!v) {
+          // Vide = on supprime le ledger account id
+          await admin.from('storage').delete().eq('key', lk);
+          await appendAudit(admin, {
+            type: 'pennylane_ledger_cleared',
+            target_societe: norm,
+            ...actorInfo,
+          });
+          responses.ledgerAccountId = '';
+        } else {
+          const { error } = await admin.from('storage').upsert({
+            key: lk,
+            value: v,
+            updated_at: new Date().toISOString(),
+          });
+          if (error) return json(res, 500, { error: error.message });
+          await appendAudit(admin, {
+            type: 'pennylane_ledger_set',
+            target_societe: norm,
+            ledger_account_id: v,
+            ...actorInfo,
+          });
+          responses.ledgerAccountId = v;
+        }
+      }
+      return json(res, 200, { ok: true, ...responses });
     }
 
     if (req.method === 'DELETE') {
       const societe = req.query?.societe || (req.body && req.body.societe);
-      const key = keyFor(societe);
-      if (!key) return json(res, 400, { error: 'societe invalide' });
-      const { error } = await admin.from('storage').delete().eq('key', key);
+      const norm = normSociete(societe);
+      if (!norm) return json(res, 400, { error: 'societe invalide' });
+      // Supprime à la fois la clé API ET le ledger account id liés.
+      const { error } = await admin.from('storage').delete().in('key', [keyFor(norm), ledgerKeyFor(norm)]);
       if (error) return json(res, 500, { error: error.message });
       await appendAudit(admin, {
         type: 'pennylane_key_deleted',
-        target_societe: normSociete(societe),
+        target_societe: norm,
         ...actorInfo,
       });
       return json(res, 200, { ok: true });

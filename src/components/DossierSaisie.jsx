@@ -12412,12 +12412,38 @@ function PennylaneKeysPanel({ societes = [] }) {
     setError(''); setSuccess('');
     try {
       const data = await callApi('POST', { body: { societe: id, apiKey: v } });
-      setSuccess(`✅ Clé Pennylane enregistrée pour ${id} (••••${data.last4})`);
+      setSuccess(`✅ Clé Pennylane enregistrée pour ${id} (••••${data.apiKey?.last4 || data.last4})`);
       cancelEdit(id);
       await fetchKeys();
     } catch (e) {
       setError(`Erreur : ${e.message}`);
       setEditing(prev => ({ ...prev, [id]: { ...prev[id], saving: false } }));
+    }
+  };
+
+  // 🧾 Ledger account id (compte de charges Pennylane) : édition à part, en
+  //    clair (pas un secret en soi, c'est juste un n° de compte comptable).
+  const [ledgerEditing, setLedgerEditing] = useState({}); // { [id]: { value, saving } }
+  const startLedgerEdit = (id) => {
+    const current = keys[id]?.ledgerAccountId || '';
+    setLedgerEditing(prev => ({ ...prev, [id]: { value: current, saving: false } }));
+  };
+  const cancelLedgerEdit = (id) => setLedgerEditing(prev => { const np = { ...prev }; delete np[id]; return np; });
+  const changeLedgerValue = (id, v) => setLedgerEditing(prev => ({ ...prev, [id]: { ...(prev[id] || {}), value: v } }));
+  const saveLedger = async (id) => {
+    const v = (ledgerEditing[id]?.value || '').trim();
+    setLedgerEditing(prev => ({ ...prev, [id]: { ...prev[id], saving: true } }));
+    setError(''); setSuccess('');
+    try {
+      await callApi('POST', { body: { societe: id, ledgerAccountId: v } });
+      setSuccess(v
+        ? `✅ Compte comptable enregistré pour ${id} (${v})`
+        : `✅ Compte comptable retiré pour ${id} — Pennylane appliquera son défaut`);
+      cancelLedgerEdit(id);
+      await fetchKeys();
+    } catch (e) {
+      setError(`Erreur : ${e.message}`);
+      setLedgerEditing(prev => ({ ...prev, [id]: { ...prev[id], saving: false } }));
     }
   };
 
@@ -12467,8 +12493,9 @@ function PennylaneKeysPanel({ societes = [] }) {
           )}
           {!loading && targets.map(s => {
             const id = s.id;
-            const info = keys[id] || { configured: false, last4: '' };
+            const info = keys[id] || { configured: false, last4: '', ledgerAccountId: '' };
             const ed = editing[id];
+            const led = ledgerEditing[id];
             return (
               <div key={id} className="p-3 border border-slate-200 rounded-xl bg-slate-50/30">
                 <div className="flex items-center gap-3 flex-wrap">
@@ -12520,6 +12547,55 @@ function PennylaneKeysPanel({ societes = [] }) {
                     </div>
                   </div>
                 )}
+                {/* 🧾 Compte de charges Pennylane (ledger_account_id). Sans ça,
+                    Pennylane applique son défaut → factures classées dans le
+                    mauvais compte. À récupérer dans Pennylane → Plan comptable. */}
+                <div className="mt-3 pt-3 border-t border-slate-200">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="text-[13px] text-slate-700">
+                      <span className="font-semibold">🧾 Compte comptable par défaut</span>
+                      {info.ledgerAccountId ? (
+                        <span className="ml-2 inline-flex items-center gap-1 px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded font-mono text-[12px]">
+                          {info.ledgerAccountId}
+                        </span>
+                      ) : (
+                        <span className="ml-2 text-amber-700 italic text-[12px]">non configuré → Pennylane mettra son défaut (peut être faux)</span>
+                      )}
+                    </div>
+                    {!led && (
+                      <button onClick={() => startLedgerEdit(id)} className="px-3 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-[12px] font-bold">
+                        {info.ledgerAccountId ? '✏️ Modifier' : '➕ Renseigner'}
+                      </button>
+                    )}
+                  </div>
+                  {led && (
+                    <div className="mt-2 space-y-2">
+                      <label className="block text-[12px] font-bold text-slate-500 uppercase">
+                        ID du compte de charges Pennylane (ex : 12345 ou 606300)
+                      </label>
+                      <input
+                        type="text"
+                        value={led.value}
+                        onChange={(e) => changeLedgerValue(id, e.target.value)}
+                        placeholder="ex: 606300 (Achats matériel)"
+                        autoFocus
+                        disabled={led.saving}
+                        className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs font-mono"
+                      />
+                      <div className="text-[11px] text-slate-500">
+                        Récupère l'ID dans Pennylane → Comptabilité → Plan comptable. Laisse vide pour effacer.
+                      </div>
+                      <div className="flex gap-2">
+                        <button onClick={() => cancelLedgerEdit(id)} disabled={led.saving} className="px-3 py-1.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-lg text-xs font-bold disabled:opacity-50">
+                          Annuler
+                        </button>
+                        <button onClick={() => saveLedger(id)} disabled={led.saving} className="flex-1 px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold disabled:opacity-50">
+                          {led.saving ? '⏳ …' : '💾 Enregistrer'}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             );
           })}
