@@ -982,7 +982,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
     const pennylanePushed = pennylaneInfo?.pushedId;
     return (
       <>
-        <div className={`flex items-center gap-1 px-2 py-1 rounded border bg-white text-[10px] ${palette}`}>
+        <div className={`flex items-center gap-1 px-2 py-1 rounded border bg-white text-[11px] ${palette}`}>
           <span className="flex-1 truncate font-semibold">📄 {meta.name}</span>
           {onExtract && (
             <button onClick={handleReExtract} disabled={extracting} className="px-1 py-0.5 hover:bg-violet-100 text-violet-600 rounded" title="Re-lire les infos de la facture avec l'IA">
@@ -991,14 +991,14 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
           )}
           {pennylaneInfo && (
             pennylanePushed ? (
-              <span className="px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[9px] font-bold" title={`Déjà envoyé à Pennylane (ID ${pennylanePushed})`}>
+              <span className="px-1 py-0.5 bg-emerald-100 text-emerald-700 rounded text-[10px] font-bold" title={`Déjà envoyé à Pennylane (ID ${pennylanePushed})`}>
                 ✓ Pennylane
               </span>
             ) : (
               <button
                 onClick={handlePushPennylane}
                 disabled={pushingPennylane}
-                className="px-1.5 py-0.5 bg-violet-500 hover:bg-violet-600 text-white rounded text-[9px] font-bold"
+                className="px-1.5 py-0.5 bg-violet-500 hover:bg-violet-600 text-white rounded text-[10px] font-bold"
                 title="Envoyer cette facture à Pennylane (compta)"
               >
                 {pushingPennylane ? '⏳' : '📤 Pennylane'}
@@ -1029,7 +1029,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
           <button onClick={handleRemove} className="px-1 py-0.5 text-rose-500 hover:bg-rose-100 rounded" title="Retirer">🗑️</button>
         </div>
         {justSaved && (
-          <div className="mt-1 text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 inline-flex items-center gap-1 animate-pulse">
+          <div className="mt-1 text-[11px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-1.5 py-0.5 inline-flex items-center gap-1 animate-pulse">
             ✓ Facture enregistrée
           </div>
         )}
@@ -1048,7 +1048,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
     <>
       {missingFile && (
         <div
-          className="mb-1 px-2 py-1 rounded border border-rose-300 bg-rose-50 text-[10px] text-rose-700 flex items-center gap-1"
+          className="mb-1 px-2 py-1 rounded border border-rose-300 bg-rose-50 text-[11px] text-rose-700 flex items-center gap-1"
           title="Le fichier était attaché mais introuvable maintenant. Glisse-le à nouveau."
         >
           <span>⚠️ Fichier facture introuvable — uploade-le à nouveau ci-dessous</span>
@@ -1063,7 +1063,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
         <label
           onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f) handleUpload(f); }}
           onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
-          className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-dashed bg-white text-[10px] cursor-pointer ${palette} ${uploading || extracting ? 'opacity-60' : ''}`}
+          className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-dashed bg-white text-[11px] cursor-pointer ${palette} ${uploading || extracting ? 'opacity-60' : ''}`}
         >
           <span>
             {uploading ? '⏳ Upload…' : extracting ? '✨ Lecture IA…' : (onExtract ? `📎 Glisser PDF — l'IA lira la ${label} ✨` : `📎 Glisser PDF ${label} ou cliquer`)}
@@ -1084,7 +1084,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
               );
             }}
             disabled={uploading || extracting}
-            className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1.5 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] font-bold cursor-pointer disabled:opacity-50"
+            className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1.5 rounded border border-blue-300 bg-blue-50 hover:bg-blue-100 text-blue-700 text-[11px] font-bold cursor-pointer disabled:opacity-50"
             title={`Cherche cette facture dans Gmail (${gmailQuery})`}
           >
             🔍 Gmail
@@ -1129,7 +1129,7 @@ function DeplacementsPoseurBloc({ deplacements = [], onChange, poseurNom = '', c
       <button
         type="button"
         onClick={addDeplacement}
-        className="text-[10px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded border border-dashed border-amber-300 inline-flex items-center gap-1 w-fit"
+        className="text-[11px] font-semibold text-amber-700 bg-amber-50 hover:bg-amber-100 px-2 py-1 rounded border border-dashed border-amber-300 inline-flex items-center gap-1 w-fit"
         title="Ajouter un coût de déplacement (RDV raté facturé par le poseur)"
       >
         🚗 + Déplacement
@@ -1140,12 +1140,12 @@ function DeplacementsPoseurBloc({ deplacements = [], onChange, poseurNom = '', c
   return (
     <div className="bg-amber-50/50 border border-amber-200 rounded-lg p-1.5 space-y-1">
       <div className="flex items-center justify-between gap-2">
-        <button type="button" onClick={() => setOpen(o => !o)} className="text-[10px] font-bold text-amber-700 flex items-center gap-1 hover:opacity-80">
+        <button type="button" onClick={() => setOpen(o => !o)} className="text-[11px] font-bold text-amber-700 flex items-center gap-1 hover:opacity-80">
           <span>{open ? '▼' : '▶'}</span>
           🚗 Déplacements ({deplacements.length})
           {total > 0 && <span className="text-amber-900">— {total.toFixed(0)} €</span>}
         </button>
-        <button type="button" onClick={addDeplacement} className="text-[10px] font-bold text-amber-700 bg-white hover:bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
+        <button type="button" onClick={addDeplacement} className="text-[11px] font-bold text-amber-700 bg-white hover:bg-amber-100 px-2 py-0.5 rounded border border-amber-300">
           + Ajouter
         </button>
       </div>
@@ -1156,7 +1156,7 @@ function DeplacementsPoseurBloc({ deplacements = [], onChange, poseurNom = '', c
               type="date"
               value={d.date || ''}
               onChange={(e) => updateOne(idx, { date: e.target.value })}
-              className="px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[10px]"
+              className="px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[11px]"
               title="Date du déplacement"
             />
             <input
@@ -1165,7 +1165,7 @@ function DeplacementsPoseurBloc({ deplacements = [], onChange, poseurNom = '', c
               value={d.montant || ''}
               onChange={(e) => updateOne(idx, { montant: e.target.value })}
               placeholder="Montant € (500, 750, 1000…)"
-              className="px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[10px] w-full"
+              className="px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[11px] w-full"
             />
             <button
               type="button"
@@ -1181,7 +1181,7 @@ function DeplacementsPoseurBloc({ deplacements = [], onChange, poseurNom = '', c
             value={d.note || ''}
             onChange={(e) => updateOne(idx, { note: e.target.value })}
             placeholder="Note (ex : client absent, refus sur place…)"
-            className="w-full px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[10px]"
+            className="w-full px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[11px]"
           />
           {/* 📎 Facture du déplacement — séparée de la facture de pose */}
           <FactureFileInput
@@ -1566,8 +1566,8 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
               <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-100 to-cyan-100 flex items-center justify-center text-lg flex-shrink-0">{emoji}</div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-1.5 mb-0.5">
-                  <span className="text-[11px] font-bold text-blue-700 truncate">{recentToast.from}</span>
-                  <span className="text-[9px] text-slate-400 whitespace-nowrap">vient d'écrire</span>
+                  <span className="text-[12px] font-bold text-blue-700 truncate">{recentToast.from}</span>
+                  <span className="text-[10px] text-slate-400 whitespace-nowrap">vient d'écrire</span>
                 </div>
                 <div className="text-xs text-slate-700 leading-snug line-clamp-2 break-words">
                   {short || '(message vide)'}
@@ -1590,7 +1590,7 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
         )}
         <MessageCircle className="w-6 h-6 relative z-10" />
         {totalUnread > 0 && (
-          <span className={`absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-rose-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center border-2 border-white z-10 ${!open ? 'chat-badge-pulse' : ''}`}>
+          <span className={`absolute -top-1 -right-1 min-w-[20px] h-5 px-1 bg-rose-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center border-2 border-white z-10 ${!open ? 'chat-badge-pulse' : ''}`}>
             {totalUnread > 9 ? '9+' : totalUnread}
           </span>
         )}
@@ -1612,12 +1612,12 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
                   })() : '💬 Chat équipe'}
                 </div>
                 {activePeer ? (
-                  <div className="text-[10px] opacity-90 flex items-center gap-1">
+                  <div className="text-[11px] opacity-90 flex items-center gap-1">
                     <span className={`inline-block w-1.5 h-1.5 rounded-full ${onlineUsers.has(activePeer) ? 'bg-emerald-300' : 'bg-slate-300'}`} />
                     {onlineUsers.has(activePeer) ? 'En ligne' : 'Hors ligne'}
                   </div>
                 ) : (
-                  <div className="text-[10px] opacity-90 truncate">Connecté(e) : {currentUserEmoji} {currentUser}</div>
+                  <div className="text-[11px] opacity-90 truncate">Connecté(e) : {currentUserEmoji} {currentUser}</div>
                 )}
               </div>
             </div>
@@ -1659,7 +1659,7 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center justify-between gap-1">
                             <div className={`font-bold text-sm truncate ${conv.unread ? 'text-blue-700' : 'text-slate-800'}`}>{c.name}</div>
-                            {lastMsg && <div className="text-[10px] text-slate-400 flex-shrink-0">{formatTime(lastMsg.sentAt)}</div>}
+                            {lastMsg && <div className="text-[11px] text-slate-400 flex-shrink-0">{formatTime(lastMsg.sentAt)}</div>}
                           </div>
                           <div className="flex items-center justify-between gap-1">
                             <div className="text-xs text-slate-500 truncate">
@@ -1673,7 +1673,7 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
                               )}
                             </div>
                             {conv.unread > 0 && (
-                              <span className="ml-1 min-w-[18px] h-4 px-1 bg-blue-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center flex-shrink-0">{conv.unread}</span>
+                              <span className="ml-1 min-w-[18px] h-4 px-1 bg-blue-500 text-white text-[11px] font-bold rounded-full flex items-center justify-center flex-shrink-0">{conv.unread}</span>
                             )}
                           </div>
                         </div>
@@ -1702,7 +1702,7 @@ function TeamChat({ currentUser, currentUserEmoji, users, messages, setMessages 
                       <div key={m.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
                         <div className={`max-w-[80%] px-3 py-1.5 rounded-2xl text-sm ${mine ? 'bg-blue-500 text-white rounded-br-sm' : 'bg-white text-slate-800 border border-slate-200 rounded-bl-sm'}`}>
                           <div className="whitespace-pre-wrap break-words">{m.body}</div>
-                          <div className={`text-[9px] mt-0.5 ${mine ? 'text-blue-100' : 'text-slate-400'} text-right flex items-center justify-end gap-1`}>
+                          <div className={`text-[10px] mt-0.5 ${mine ? 'text-blue-100' : 'text-slate-400'} text-right flex items-center justify-end gap-1`}>
                             <span>{formatTime(m.sentAt)}</span>
                             {mine && (
                               <span
@@ -5487,7 +5487,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       <option value="administratif">🏛️ Administratif</option>
                     </select>
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none text-sm">👁️</span>
-                    <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[10px] opacity-60">▼</span>
+                    <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[11px] opacity-60">▼</span>
                   </div>
                 )}
                 {onLogout && (
@@ -5652,12 +5652,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
                               {l.paye && <Check className="w-3 h-3 text-white" strokeWidth={3} />}
                             </span>
                             <span className="font-semibold text-slate-700 truncate">{l.client}</span>
-                            {l.ville && <span className="text-[11px] text-slate-400 truncate">📍 {l.ville}</span>}
-                            {l.dateInsta && <span className="text-[10px] text-slate-400">📅 {formatDateForSheet(l.dateInsta)}</span>}
+                            {l.ville && <span className="text-[12px] text-slate-400 truncate">📍 {l.ville}</span>}
+                            {l.dateInsta && <span className="text-[11px] text-slate-400">📅 {formatDateForSheet(l.dateInsta)}</span>}
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <span className={`font-bold ${l.paye ? 'text-emerald-700' : 'text-orange-700'}`}>{formatEuro(l.ttc)}</span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${l.paye ? 'bg-emerald-200 text-emerald-800' : 'bg-orange-200 text-orange-800'}`}>
+                            <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${l.paye ? 'bg-emerald-200 text-emerald-800' : 'bg-orange-200 text-orange-800'}`}>
                               {l.paye ? `✓ Payé${l.datePaye ? ' · ' + formatDateForSheet(l.datePaye) : ''}` : '⏳ En attente'}
                             </span>
                           </div>
@@ -5673,7 +5673,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 <Check className="w-5 h-5 text-slate-600 flex-shrink-0" />
                 <div className="flex-1 min-w-[200px]">
                   <div className="font-bold text-sm text-slate-700">📦 Archivés ({nbArchives})</div>
-                  <div className="text-[11px] text-slate-500">Coche les dossiers à gauche pour les désarchiver en masse</div>
+                  <div className="text-[12px] text-slate-500">Coche les dossiers à gauche pour les désarchiver en masse</div>
                 </div>
                 {/* 🔘 Bulk actions désarchivage */}
                 <div className="flex items-center gap-2 flex-wrap">
@@ -5711,7 +5711,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       ));
                       alert(`✅ ${aDesarchiver.length} dossier(s) ramené(s) en actif.`);
                     }}
-                    className="text-[11px] font-bold bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-sm"
+                    className="text-[12px] font-bold bg-amber-500 hover:bg-amber-600 text-white px-2.5 py-1.5 rounded-lg whitespace-nowrap shadow-sm"
                     title="Ramène en actif les dossiers archivés à tort (pas réellement terminés). Annulés et dossiers entièrement payés restent archivés."
                   >
                     🔧 Ré-évaluer les archives
@@ -5719,7 +5719,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <button
                     type="button"
                     onClick={() => setSelectedArchiveIds(new Set(filteredDossiers.map(d => d.localId)))}
-                    className="text-[11px] font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-2.5 py-1.5 rounded-lg whitespace-nowrap"
+                    className="text-[12px] font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-2.5 py-1.5 rounded-lg whitespace-nowrap"
                     disabled={filteredDossiers.length === 0}
                   >
                     ☑ Tout sélectionner ({filteredDossiers.length})
@@ -5728,7 +5728,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     <button
                       type="button"
                       onClick={() => setSelectedArchiveIds(new Set())}
-                      className="text-[11px] font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-2.5 py-1.5 rounded-lg whitespace-nowrap"
+                      className="text-[12px] font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-300 px-2.5 py-1.5 rounded-lg whitespace-nowrap"
                     >
                       ☐ Désélectionner
                     </button>
@@ -5761,7 +5761,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   >
                     <Filter className="w-4 h-4 text-slate-500" />
                     <span className="text-xs font-semibold text-slate-600 uppercase">Filtrer par statut</span>
-                    <span className="text-[10px] text-slate-500">{showStatutFilter ? '▲' : '▼'}</span>
+                    <span className="text-[11px] text-slate-500">{showStatutFilter ? '▲' : '▼'}</span>
                   </button>
 
                   {/* ← Retour à l'accueil (visible uniquement quand on est
@@ -5808,9 +5808,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       <div className="flex items-center gap-2">
                         <span className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 bg-gradient-to-r ${color} text-white shadow-md`}>
                           <span>{emoji}</span>{label}
-                          <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-white/30">{count}</span>
+                          <span className="px-1.5 py-0.5 rounded-full text-[11px] bg-white/30">{count}</span>
                         </span>
-                        <button onClick={() => setFilterStatut('all')} className="text-[10px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-lg flex items-center gap-0.5" title="Effacer le filtre">
+                        <button onClick={() => setFilterStatut('all')} className="text-[11px] font-semibold text-rose-600 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-lg flex items-center gap-0.5" title="Effacer le filtre">
                           <X className="w-3 h-3" />
                         </button>
                       </div>
@@ -5818,7 +5818,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   })()}
 
                   {!showStatutFilter && filterStatut === 'all' && (
-                    <span className="text-[11px] text-slate-400 italic">Tous les statuts affichés</span>
+                    <span className="text-[12px] text-slate-400 italic">Tous les statuts affichés</span>
                   )}
 
                   {showStatutFilter && (() => {
@@ -5829,7 +5829,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     const emptyCount = STATUTS_ORDERED.filter(s => dForCount.filter(d => d.statut === s.id).length === 0).length;
                     if (emptyCount === 0) return null;
                     return (
-                      <button onClick={() => setShowEmptyStatuts(!showEmptyStatuts)} className="ml-auto text-[10px] font-semibold text-slate-500 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg flex items-center gap-1">
+                      <button onClick={() => setShowEmptyStatuts(!showEmptyStatuts)} className="ml-auto text-[11px] font-semibold text-slate-500 bg-slate-100 hover:bg-slate-200 px-2 py-1 rounded-lg flex items-center gap-1">
                         {showEmptyStatuts ? '👁️ Masquer' : '👁️ Voir'} les {emptyCount} vides
                       </button>
                     );
@@ -5849,7 +5849,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <div className="flex gap-2 flex-wrap mt-2">
                     <button onClick={() => setFilterStatut('all')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${filterStatut === 'all' ? 'bg-gradient-to-r from-violet-500 to-pink-500 text-white shadow-md scale-105' : 'bg-slate-100 text-slate-600'}`}>
                       📋 Tous
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${filterStatut === 'all' ? 'bg-white/30' : 'bg-white text-slate-700'}`}>{dForCount.length}</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[11px] ${filterStatut === 'all' ? 'bg-white/30' : 'bg-white text-slate-700'}`}>{dForCount.length}</span>
                     </button>
                     {(() => {
                       // 🎯 Raccourci : tous les dossiers posés (statutPose === 'visite_ok')
@@ -5858,7 +5858,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       return (
                         <button onClick={() => setFilterStatut('pose_done')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-emerald-500 to-green-600 text-white shadow-md scale-105' : 'bg-emerald-50 text-emerald-700'}`} title="Tous les dossiers avec le bouton « ✓ Posé » coché, peu importe l'étape banque/paiement">
                           ✓ Posés
-                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${sel ? 'bg-white/30' : 'bg-white text-emerald-700'}`}>{count}</span>
+                          <span className={`px-1.5 py-0.5 rounded-full text-[11px] ${sel ? 'bg-white/30' : 'bg-white text-emerald-700'}`}>{count}</span>
                         </button>
                       );
                     })()}
@@ -5869,7 +5869,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       return (
                         <button onClick={() => setFilterStatut('pose_done_unpaid')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-amber-500 to-orange-600 text-white shadow-md scale-105' : 'bg-amber-50 text-amber-700'}`} title="Dossiers posés mais pas encore encaissés par le financeur (annulés et refus banque exclus). Le suivi banque actif.">
                           ⏳ Posés non payés
-                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${sel ? 'bg-white/30' : 'bg-white text-amber-700'}`}>{count}</span>
+                          <span className={`px-1.5 py-0.5 rounded-full text-[11px] ${sel ? 'bg-white/30' : 'bg-white text-amber-700'}`}>{count}</span>
                         </button>
                       );
                     })()}
@@ -5883,7 +5883,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       return (
                         <button onClick={() => setFilterStatut('needs_import_review')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-rose-500 to-pink-600 text-white shadow-md scale-105' : 'bg-rose-50 text-rose-700'}`} title="Dossiers importés dont le produit/puissance n'a pas pu être déterminé automatiquement — à compléter à la main.">
                           📋 À compléter (import)
-                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${sel ? 'bg-white/30' : 'bg-white text-rose-700'}`}>{count}</span>
+                          <span className={`px-1.5 py-0.5 rounded-full text-[11px] ${sel ? 'bg-white/30' : 'bg-white text-rose-700'}`}>{count}</span>
                         </button>
                       );
                     })()}
@@ -5895,7 +5895,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       return (
                         <button onClick={() => setFilterStatut('doublons')} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? 'bg-gradient-to-r from-fuchsia-500 to-violet-600 text-white shadow-md scale-105' : 'bg-fuchsia-50 text-fuchsia-700'}`} title="Dossiers qui partagent un id, un nom/prénom ou un téléphone avec un autre — pour faire le ménage après un import en masse.">
                           🔍 Doublons
-                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${sel ? 'bg-white/30' : 'bg-white text-fuchsia-700'}`}>{nbDoublons}</span>
+                          <span className={`px-1.5 py-0.5 rounded-full text-[11px] ${sel ? 'bg-white/30' : 'bg-white text-fuchsia-700'}`}>{nbDoublons}</span>
                         </button>
                       );
                     })()}
@@ -5912,7 +5912,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                       return (
                         <button key={s.id} onClick={() => setFilterStatut(s.id)} className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 ${sel ? `bg-gradient-to-r ${s.color} text-white shadow-md scale-105` : empty ? 'bg-slate-50 text-slate-400 opacity-70' : `${s.bg} ${s.text}`}`}>
                           <span>{s.emoji}</span>{s.label}
-                          <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${sel ? 'bg-white/30' : empty ? 'bg-slate-200 text-slate-500' : 'bg-white/80'}`}>{count}</span>
+                          <span className={`px-1.5 py-0.5 rounded-full text-[11px] ${sel ? 'bg-white/30' : empty ? 'bg-slate-200 text-slate-500' : 'bg-white/80'}`}>{count}</span>
                         </button>
                       );
                     })}
@@ -5930,7 +5930,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <input type="date" value={filterDateFrom} onChange={(e) => setFilterDateFrom(e.target.value)} className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
                   <span className="font-bold text-slate-600 uppercase mx-1">au</span>
                   <input type="date" value={filterDateTo} onChange={(e) => setFilterDateTo(e.target.value)} className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs" />
-                  <span className="text-[10px] text-slate-400 italic mr-2">(date de pose)</span>
+                  <span className="text-[11px] text-slate-400 italic mr-2">(date de pose)</span>
 
                   <select value={filterPoseur} onChange={(e) => setFilterPoseur(e.target.value)} className="px-2 py-1 bg-slate-50 border border-slate-200 rounded-lg text-xs">
                     <option value="">🔧 Tous poseurs</option>
@@ -5948,7 +5948,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   {(filterDateFrom || filterDateTo || filterPoseur || filterRegie || filterFournisseur) && (
                     <button
                       onClick={() => { setFilterDateFrom(''); setFilterDateTo(''); setFilterPoseur(''); setFilterRegie(''); setFilterFournisseur(''); }}
-                      className="ml-auto px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[11px] font-bold"
+                      className="ml-auto px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[12px] font-bold"
                     >
                       ✕ Effacer les filtres
                     </button>
@@ -6000,7 +6000,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     🔍 Recherche globale : {searchMatchesInOtherTab} dossier{searchMatchesInOtherTab > 1 ? 's' : ''}{' '}
                     {activeTab === 'archives' ? 'actif' : 'archivé'}{searchMatchesInOtherTab > 1 ? 's' : ''}{' '}
                     inclus{searchMatchesInOtherTab > 1 ? '' : ''} dans la liste — repérés par le badge{' '}
-                    <span className={`inline-block ml-1 text-[9px] font-bold px-1.5 py-0.5 rounded ${activeTab === 'archives' ? 'bg-violet-600' : 'bg-slate-700'} text-white`}>
+                    <span className={`inline-block ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded ${activeTab === 'archives' ? 'bg-violet-600' : 'bg-slate-700'} text-white`}>
                       {activeTab === 'archives' ? '📁 ACTIF' : '📦 ARCHIVÉ'}
                     </span>
                   </div>
@@ -6025,7 +6025,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     (activeTab === 'archives' && !dArch)
                   );
                   const provenanceBadge = showProvenanceBadge ? (
-                    <span className={`absolute top-2 right-2 z-10 text-[9px] font-bold px-1.5 py-0.5 rounded shadow-sm ${dArch ? 'bg-slate-700 text-white' : 'bg-violet-600 text-white'}`}>
+                    <span className={`absolute top-2 right-2 z-10 text-[10px] font-bold px-1.5 py-0.5 rounded shadow-sm ${dArch ? 'bg-slate-700 text-white' : 'bg-violet-600 text-white'}`}>
                       {dArch ? '📦 ARCHIVÉ' : '📁 ACTIF'}
                     </span>
                   ) : null;
@@ -6576,7 +6576,7 @@ function TabButton({ active, onClick, icon: Icon, label, color, badge, badgeColo
   return (
     <button onClick={onClick} className={`px-4 py-2 rounded-xl font-semibold text-sm transition-all flex items-center gap-2 shrink-0 whitespace-nowrap ${active ? `bg-gradient-to-r ${color} text-white shadow-md` : baseInactive}`}>
       <Icon className="w-4 h-4" />{label}
-      {badge && <span className={`ml-1 px-2 py-0.5 rounded-full text-[10px] font-bold ${active || highlight ? 'bg-white/30 text-white' : badgeColor}`}>{badge}</span>}
+      {badge && <span className={`ml-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${active || highlight ? 'bg-white/30 text-white' : badgeColor}`}>{badge}</span>}
     </button>
   );
 }
@@ -6643,7 +6643,7 @@ function SocieteBadge({ societe, variant = 'inline', active = false, onClick = n
   }
   // Mode inline (défaut) : badge compact avec logo ou emoji + label
   return (
-    <span title={`Société : ${societe.label}`} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold border ${hasLogo ? 'bg-white text-slate-700 border-slate-300' : cls}`}>
+    <span title={`Société : ${societe.label}`} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-bold border ${hasLogo ? 'bg-white text-slate-700 border-slate-300' : cls}`}>
       {hasLogo
         ? <img src={societe.logoUrl} alt={societe.label} className="h-3.5 w-auto object-contain" />
         : <span>{societe.emoji}</span>}
@@ -6681,7 +6681,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
       >
         <Paperclip className={cls} />
         {docCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-gradient-to-br from-violet-500 to-pink-500 text-white text-[9px] rounded-full min-w-[14px] h-[14px] px-1 flex items-center justify-center font-bold shadow-sm">
+          <span className="absolute -top-1 -right-1 bg-gradient-to-br from-violet-500 to-pink-500 text-white text-[10px] rounded-full min-w-[14px] h-[14px] px-1 flex items-center justify-center font-bold shadow-sm">
             {docCount}
           </span>
         )}
@@ -6702,7 +6702,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
       >
         <Activity className={cls} />
         {histCount > 0 && (
-          <span className="absolute -top-1 -right-1 bg-gradient-to-br from-amber-500 to-orange-500 text-white text-[9px] rounded-full min-w-[14px] h-[14px] px-1 flex items-center justify-center font-bold shadow-sm">
+          <span className="absolute -top-1 -right-1 bg-gradient-to-br from-amber-500 to-orange-500 text-white text-[10px] rounded-full min-w-[14px] h-[14px] px-1 flex items-center justify-center font-bold shadow-sm">
             {histCount}
           </span>
         )}
@@ -6714,12 +6714,12 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
   if (viewMode === 'compact') {
     return (
       <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border-l-4 px-3 py-2 flex items-center gap-2 flex-wrap" style={{ borderLeftColor: '#a855f7' }}>
-        {d.id && <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex-shrink-0">#{d.id}</span>}
+        {d.id && <span className="text-[11px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex-shrink-0">#{d.id}</span>}
         {societeMeta && <SocieteBadge societe={societeMeta} variant="inline" />}
         {readOnly
           ? <span className="font-bold text-slate-800 text-sm">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</span>
           : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 text-sm hover:text-violet-600 hover:underline transition-colors text-left" title="Voir l'aperçu rapide">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>}
-        {statut && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold ${statut.bg} ${statut.text}`}><span>{statut.emoji}</span>{statut.label}</span>}
+        {statut && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${statut.bg} ${statut.text}`}><span>{statut.emoji}</span>{statut.label}</span>}
         {(() => {
           const nCQ = (d.tentativesCQ || []).length;
           const nLiv = (d.tentativesControleLivraison || []).length;
@@ -6729,27 +6729,27 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           const total = (showCQ ? nCQ : 0) + (showLiv ? nLiv : 0);
           const tip = [showCQ ? `${nCQ} essai${nCQ > 1 ? 's' : ''} CQ sans réponse` : null, showLiv ? `${nLiv} essai${nLiv > 1 ? 's' : ''} contrôle livraison sans réponse` : null].filter(Boolean).join(' · ');
           return (
-            <span title={tip} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300">
+            <span title={tip} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700 border border-amber-300">
               🔁 {total} essai{total > 1 ? 's' : ''}
             </span>
           );
         })()}
-        <span className="text-[11px] text-slate-500">📅 {formatDateForSheet(d.dateInsta)}</span>
+        <span className="text-[12px] text-slate-500">📅 {formatDateForSheet(d.dateInsta)}</span>
         {(() => {
           const firstProd = dossierProduits[0];
           const prod = findProduit(produits, firstProd?.type);
           const label = prod.autoTarif && firstProd.puissance ? `${prod.emoji} ${firstProd.puissance}` : `${prod.emoji} ${prod.label}`;
           return (
-            <span className="text-[11px] text-amber-700">
+            <span className="text-[12px] text-amber-700">
               {label}{dossierProduits.length > 1 ? ` +${dossierProduits.length - 1}` : ''}
             </span>
           );
         })()}
-        {!readOnly && <span className="text-[11px] text-violet-700">💳 {d.financement}</span>}
+        {!readOnly && <span className="text-[12px] text-violet-700">💳 {d.financement}</span>}
         <span className="ml-auto inline-flex items-center gap-2">
           {!readOnly && <span className="font-bold text-blue-600 text-sm">{formatEuro(d.montantTotal)}</span>}
           {isAdmin && (
-            <span className={`text-[11px] font-semibold ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} title="Marge HT">
+            <span className={`text-[12px] font-semibold ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} title="Marge HT">
               ({formatEuro(d.margeHt)})
             </span>
           )}
@@ -6782,7 +6782,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
         <div className="flex items-start justify-between gap-2 flex-wrap">
           <div className="flex-1 min-w-[200px]">
             <div className="flex items-center gap-2 flex-wrap mb-1">
-              {d.id && <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">#{d.id}</span>}
+              {d.id && <span className="text-[11px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">#{d.id}</span>}
               <h3 className="font-bold text-slate-800 text-sm">
                 {readOnly
                   ? <span>{d.nom} {d.prenom && <span className="font-normal text-slate-600">{d.prenom}</span>}</span>
@@ -6798,7 +6798,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
               )}
             </div>
             <div className="flex items-center gap-1.5 flex-wrap">
-              {statut && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold ${statut.bg} ${statut.text}`}><span>{statut.emoji}</span>{statut.label}</span>}
+              {statut && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-semibold ${statut.bg} ${statut.text}`}><span>{statut.emoji}</span>{statut.label}</span>}
               {(() => {
                 const nCQ = (d.tentativesCQ || []).length;
                 const nLiv = (d.tentativesControleLivraison || []).length;
@@ -6808,20 +6808,20 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                 const total = (showCQ ? nCQ : 0) + (showLiv ? nLiv : 0);
                 const tip = [showCQ ? `${nCQ} essai${nCQ > 1 ? 's' : ''} CQ sans réponse` : null, showLiv ? `${nLiv} essai${nLiv > 1 ? 's' : ''} contrôle livraison sans réponse` : null].filter(Boolean).join(' · ');
                 return (
-                  <span title={tip} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700 border border-amber-300">
+                  <span title={tip} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-bold bg-amber-100 text-amber-700 border border-amber-300">
                     🔁 {total} essai{total > 1 ? 's' : ''}
                   </span>
                 );
               })()}
-              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-blue-50 text-blue-700"><Calendar className="w-3 h-3" />{formatDateForSheet(d.dateInsta)}</span>
-              {d.dateSignature && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-pink-50 text-pink-700">✍️ {formatDateForSheet(d.dateSignature)}</span>}
+              <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-semibold bg-blue-50 text-blue-700"><Calendar className="w-3 h-3" />{formatDateForSheet(d.dateInsta)}</span>
+              {d.dateSignature && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-semibold bg-pink-50 text-pink-700">✍️ {formatDateForSheet(d.dateSignature)}</span>}
               {d.needsImportReview && (
-                <span title={d.importNote ? `À compléter — ${d.importNote}` : 'Dossier importé à vérifier'} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-700 border border-rose-300">
+                <span title={d.importNote ? `À compléter — ${d.importNote}` : 'Dossier importé à vérifier'} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-bold bg-rose-100 text-rose-700 border border-rose-300">
                   📋 À compléter{d.importNote ? ` · ${d.importNote}` : ''}
                 </span>
               )}
               {doublonBadge && (
-                <span title={`Doublon — ${doublonBadge.n} autre${doublonBadge.n > 1 ? 's' : ''} dossier${doublonBadge.n > 1 ? 's' : ''} partage${doublonBadge.n > 1 ? 'nt' : ''} ${doublonBadge.reasons}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-300">
+                <span title={`Doublon — ${doublonBadge.n} autre${doublonBadge.n > 1 ? 's' : ''} dossier${doublonBadge.n > 1 ? 's' : ''} partage${doublonBadge.n > 1 ? 'nt' : ''} ${doublonBadge.reasons}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-bold bg-fuchsia-100 text-fuchsia-700 border border-fuchsia-300">
                   🔍 Doublon ×{doublonBadge.n + 1}
                 </span>
               )}
@@ -6840,14 +6840,14 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                   ? `${prod.emoji} ${p.puissance} Wc${mm ? ' · ' + mm : ''}`
                   : `${qtyPrefix}${prod.emoji} ${prod.label}${mm ? ' · ' + mm : ''}${p.description ? ' · ' + p.description : ''}`;
                 return (
-                  <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700">
+                  <span key={i} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-semibold bg-amber-50 text-amber-700">
                     {label}
                   </span>
                 );
               })}
-              {!readOnly && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-violet-50 text-violet-700">💳 {d.financement}</span>}
+              {!readOnly && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-semibold bg-violet-50 text-violet-700">💳 {d.financement}</span>}
               {docCount > 0 && (
-                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-violet-100 text-violet-700">
+                <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-semibold bg-violet-100 text-violet-700">
                   <Paperclip className="w-3 h-3" />{docCount} doc{docCount > 1 ? 's' : ''}
                 </span>
               )}
@@ -6870,7 +6870,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
               const lastHist = (d.historique || []).slice(-1)[0];
               const lastModBy = d.modifiedBy && d.modifiedBy !== d.createdBy ? d.modifiedBy : null;
               return (
-                <div className="mt-2 flex items-center gap-1.5 flex-wrap text-[11px]">
+                <div className="mt-2 flex items-center gap-1.5 flex-wrap text-[12px]">
                   {d.createdBy && (
                     <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-semibold">
                       <span className="text-base leading-none">👤</span>
@@ -6897,9 +6897,9 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
             })()}
             {(d.telephone || d.email || d.adresse || d.ville) && (
               <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                {d.telephone && <a href={`tel:${d.telephone}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-700">📞 {d.telephone}</a>}
-                {d.email && <a href={`mailto:${d.email}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-cyan-50 text-cyan-700">✉️ {d.email}</a>}
-                {(d.adresse || d.ville) && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([d.adresse, d.codePostal, d.ville].filter(Boolean).join(' '))}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700">📍 {[d.adresse, d.codePostal, d.ville].filter(Boolean).join(', ')}</a>}
+                {d.telephone && <a href={`tel:${d.telephone}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-semibold bg-emerald-50 text-emerald-700">📞 {d.telephone}</a>}
+                {d.email && <a href={`mailto:${d.email}`} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-semibold bg-cyan-50 text-cyan-700">✉️ {d.email}</a>}
+                {(d.adresse || d.ville) && <a href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([d.adresse, d.codePostal, d.ville].filter(Boolean).join(' '))}`} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-semibold bg-rose-50 text-rose-700">📍 {[d.adresse, d.codePostal, d.ville].filter(Boolean).join(', ')}</a>}
               </div>
             )}
           </div>
@@ -6954,13 +6954,13 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
             {/* Poseurs */}
             {(d.poseursDetail?.length || 0) > 0 && (
               <div className="bg-amber-50 rounded-lg p-1.5 border border-amber-200">
-                <div className="text-[10px] font-bold text-amber-700 uppercase mb-1 flex items-center justify-between gap-1">
+                <div className="text-[11px] font-bold text-amber-700 uppercase mb-1 flex items-center justify-between gap-1">
                   <span>🔧 Poseurs ({d.poseursDetail.length})</span>
                   <span className="font-bold text-amber-800" title={"TTC : " + formatEuro(d.poseurTtc)}>{formatEuro(d.poseurHt)} HT</span>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {d.poseursDetail.map((p, i) => (
-                    <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${p.paye ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-amber-700 border-amber-200'}`} title={p.paye && p.datePaye ? `Payé le ${new Date(p.datePaye).toLocaleDateString('fr-FR')}` : (p.paye ? 'Payé' : 'Non payé')}>
+                    <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold border ${p.paye ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-amber-700 border-amber-200'}`} title={p.paye && p.datePaye ? `Payé le ${new Date(p.datePaye).toLocaleDateString('fr-FR')}` : (p.paye ? 'Payé' : 'Non payé')}>
                       {p.paye && <span className="text-emerald-600 font-bold">✓</span>}
                       <span className="font-bold">{p.nom}</span>
                       <span className={p.paye ? 'text-emerald-500' : 'text-amber-500'}>·</span>
@@ -6980,13 +6980,13 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
             {/* Régies */}
             {(d.regiesDetail?.length || 0) > 0 && (
               <div className="bg-purple-50 rounded-lg p-1.5 border border-purple-200">
-                <div className="text-[10px] font-bold text-purple-700 uppercase mb-1 flex items-center justify-between gap-1">
+                <div className="text-[11px] font-bold text-purple-700 uppercase mb-1 flex items-center justify-between gap-1">
                   <span>🤝 Régies ({d.regiesDetail.length})</span>
                   <span className="font-bold text-purple-800" title={"TTC : " + formatEuro(d.regieTtc)}>{formatEuro(d.regieHt)} HT</span>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {d.regiesDetail.map((r, i) => (
-                    <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${r.paye ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-purple-700 border-purple-200'}`} title={r.paye && r.datePaye ? `Payée le ${new Date(r.datePaye).toLocaleDateString('fr-FR')}` : (r.paye ? 'Payée' : 'Non payée')}>
+                    <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold border ${r.paye ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-purple-700 border-purple-200'}`} title={r.paye && r.datePaye ? `Payée le ${new Date(r.datePaye).toLocaleDateString('fr-FR')}` : (r.paye ? 'Payée' : 'Non payée')}>
                       {r.paye && <span className="text-emerald-600 font-bold">✓</span>}
                       <span className="font-bold">{r.nom}</span>
                       <span className={r.paye ? 'text-emerald-500' : 'text-purple-500'}>·</span>
@@ -7006,13 +7006,13 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
             {/* Fournisseurs */}
             {(d.fournisseursDetail?.length || 0) > 0 && (
               <div className="bg-orange-50 rounded-lg p-1.5 border border-orange-200">
-                <div className="text-[10px] font-bold text-orange-700 uppercase mb-1 flex items-center justify-between gap-1">
+                <div className="text-[11px] font-bold text-orange-700 uppercase mb-1 flex items-center justify-between gap-1">
                   <span>📦 Fournisseurs ({d.fournisseursDetail.length})</span>
                   <span className="font-bold text-orange-800" title={"TTC : " + formatEuro(d.fournisseurTtc)}>{formatEuro(d.fournisseurHt)} HT</span>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {d.fournisseursDetail.map((f, i) => (
-                    <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-semibold border ${f.paye ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-orange-700 border-orange-200'}`} title={f.paye && f.datePaye ? `Payé le ${new Date(f.datePaye).toLocaleDateString('fr-FR')}` : (f.paye ? 'Payé' : 'Non payé')}>
+                    <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[11px] font-semibold border ${f.paye ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-orange-700 border-orange-200'}`} title={f.paye && f.datePaye ? `Payé le ${new Date(f.datePaye).toLocaleDateString('fr-FR')}` : (f.paye ? 'Payé' : 'Non payé')}>
                       {f.paye && <span className="text-emerald-600 font-bold">✓</span>}
                       <span className="font-bold">{f.nom}</span>
                       <span className={f.paye ? 'text-emerald-500' : 'text-orange-500'}>·</span>
@@ -7039,9 +7039,9 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
 function Mini({ label, value, sub, color }) {
   return (
     <div className="bg-slate-50 rounded p-1.5">
-      <div className="text-[9px] font-semibold text-slate-500 uppercase">{label}</div>
+      <div className="text-[10px] font-semibold text-slate-500 uppercase">{label}</div>
       <div className={`text-xs font-bold ${color || 'text-slate-700'} truncate`}>{value}</div>
-      {sub && <div className="text-[9px] text-slate-500">{sub}</div>}
+      {sub && <div className="text-[10px] text-slate-500">{sub}</div>}
     </div>
   );
 }
@@ -7099,13 +7099,13 @@ function VocalCqAudio({ storagePath, fallbackUrl, className }) {
     : (fallbackUrl && isSafeMediaUrl(fallbackUrl) ? fallbackUrl : null);
 
   if (storagePath && !resolvedUrl && !error) {
-    return <div className="text-[10px] text-slate-500 italic">⏳ Chargement de l'audio…</div>;
+    return <div className="text-[11px] text-slate-500 italic">⏳ Chargement de l'audio…</div>;
   }
   if (error) {
-    return <div className="p-2 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-700">⚠️ {error}</div>;
+    return <div className="p-2 bg-rose-50 border border-rose-300 rounded text-[11px] text-rose-700">⚠️ {error}</div>;
   }
   if (!storagePath && fallbackUrl && !isSafeMediaUrl(fallbackUrl)) {
-    return <div className="p-2 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-700">⚠️ Lien audio invalide. Seuls les liens HTTPS sont acceptés.</div>;
+    return <div className="p-2 bg-rose-50 border border-rose-300 rounded text-[11px] text-rose-700">⚠️ Lien audio invalide. Seuls les liens HTTPS sont acceptés.</div>;
   }
   if (!playUrl) return null;
 
@@ -7171,7 +7171,7 @@ function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier
         type="button"
         onClick={() => inputRef.current?.click()}
         disabled={uploading}
-        className={className || 'px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-[10px] font-bold disabled:opacity-60'}
+        className={className || 'px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-[11px] font-bold disabled:opacity-60'}
       >
         {uploading ? '⏳ Téléversement…' : label}
       </button>
@@ -8011,7 +8011,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
             </p>
           </div>
           {stats.total > 0 && (
-            <div className="flex items-center gap-2 text-[11px] font-bold flex-wrap">
+            <div className="flex items-center gap-2 text-[12px] font-bold flex-wrap">
               {stats.analyzing > 0 && <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded-lg">⏳ {stats.analyzing} en cours</span>}
               {stats.ready > 0 && <span className="px-2 py-1 bg-amber-100 text-amber-700 rounded-lg">🤔 {stats.ready} à valider</span>}
               {stats.confirmed > 0 && <span className="px-2 py-1 bg-emerald-100 text-emerald-700 rounded-lg">✅ {stats.confirmed} OK</span>}
@@ -8057,7 +8057,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
               <div className="text-sm font-bold text-blue-900 flex items-center gap-2">
                 📧 Scanner les factures reçues par Gmail
               </div>
-              <div className="text-[11px] text-blue-700 mt-0.5">
+              <div className="text-[12px] text-blue-700 mt-0.5">
                 {gmailScannableInboxes.length > 0
                   ? <>{gmailScannableInboxes.length} boîte{gmailScannableInboxes.length > 1 ? 's' : ''} prête{gmailScannableInboxes.length > 1 ? 's' : ''} au scan — cherche les PDFs reçus dans la période ci-contre et les ajoute à la queue d'analyse.</>
                   : <>⚠️ Aucune boîte n'a le scope lecture activé. Reconnecte tes Gmail dans Réglages → Email pour activer le scan (1 clic, autorisation Google).</>
@@ -8073,13 +8073,13 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                   const yearStart = new Date(now.getFullYear(), 0, 1);
                   const sinceJan1 = Math.min(1095, Math.max(1, Math.round((now - yearStart) / (24 * 3600 * 1000))));
                   return (
-                    <label className="text-[10px] font-semibold text-blue-700 flex items-center gap-1">
+                    <label className="text-[11px] font-semibold text-blue-700 flex items-center gap-1">
                       📅
                       <select
                         value={gmailScanDays}
                         onChange={(e) => setGmailScanDays(Number(e.target.value))}
                         disabled={gmailScanning || gmailImporting}
-                        className="px-2 py-1 bg-white border border-blue-300 rounded text-[11px] font-bold text-blue-700"
+                        className="px-2 py-1 bg-white border border-blue-300 rounded text-[12px] font-bold text-blue-700"
                       >
                         <option value={60}>60 derniers jours</option>
                         <option value={180}>6 derniers mois</option>
@@ -8106,12 +8106,12 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
           {gmailScanResults && (
             <div className="mt-3 space-y-2">
               {(gmailScanResults.errors || []).map((e, i) => (
-                <div key={i} className="text-[11px] bg-rose-50 border border-rose-200 rounded-lg px-2 py-1.5 text-rose-700">
+                <div key={i} className="text-[12px] bg-rose-50 border border-rose-200 rounded-lg px-2 py-1.5 text-rose-700">
                   ⚠️ <span className="font-bold">{e.email}</span> : {e.error}
                 </div>
               ))}
               {(gmailScanResults.results || []).length === 0 && (gmailScanResults.errors || []).length === 0 && (
-                <div className="text-[11px] italic text-blue-700">Aucun PDF trouvé dans les boîtes connectées.</div>
+                <div className="text-[12px] italic text-blue-700">Aucun PDF trouvé dans les boîtes connectées.</div>
               )}
               {/* ☑ Tout cocher / décocher — pratique quand on a 50+ PDFs et
                   qu'on ne veut en garder qu'une poignée (ou l'inverse). */}
@@ -8165,15 +8165,15 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                   <div className="flex items-center gap-2 px-1 flex-wrap">
                     <button
                       onClick={() => setGmailSelection(allChecked ? new Set() : new Set(visibleKeys))}
-                      className="px-2 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-[10px] font-bold"
+                      className="px-2 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-[11px] font-bold"
                     >
                       {allChecked ? '☐ Tout décocher' : '☑ Tout cocher'} ({visibleKeys.length})
                     </button>
-                    <span className="text-[10px] text-blue-600">{gmailSelection.size} sélectionné{gmailSelection.size > 1 ? 's' : ''}</span>
+                    <span className="text-[11px] text-blue-600">{gmailSelection.size} sélectionné{gmailSelection.size > 1 ? 's' : ''}</span>
                     {hiddenCount > 0 && (
                       <button
                         onClick={() => setShowAlreadyInCrm(v => !v)}
-                        className={`px-2 py-1 rounded-lg text-[10px] font-bold ${showAlreadyInCrm ? 'bg-emerald-200 text-emerald-800 hover:bg-emerald-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+                        className={`px-2 py-1 rounded-lg text-[11px] font-bold ${showAlreadyInCrm ? 'bg-emerald-200 text-emerald-800 hover:bg-emerald-300' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
                         title={showAlreadyInCrm ? 'Cacher les PDFs déjà rattachés à un dossier' : 'Afficher quand même les PDFs déjà rattachés'}
                       >
                         {showAlreadyInCrm ? `👁️ Cacher ${hiddenCount} déjà-en-CRM` : `👁️‍🗨️ Afficher ${hiddenCount} déjà-en-CRM`}
@@ -8202,7 +8202,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                             handleGmailScan();
                           } catch (e) { alert(`Erreur : ${e?.message || 'inconnu'}`); }
                         }}
-                        className="px-2 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[10px] font-bold"
+                        className="px-2 py-1 rounded-lg bg-emerald-100 hover:bg-emerald-200 text-emerald-800 text-[11px] font-bold"
                         title="Marque côté serveur les PDFs détectés comme déjà en CRM (badge ✅). Ils ne reviendront plus dans les scans futurs."
                       >
                         ✅ Marquer {gmailKnownInCrm.size} déjà-en-CRM
@@ -8210,7 +8210,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                     )}
                     <button
                       onClick={handleIgnoreAll}
-                      className="ml-auto px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 text-[10px] font-bold"
+                      className="ml-auto px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 text-[11px] font-bold"
                       title="Marque les PDFs ci-dessous comme déjà traités côté serveur. Ils ne reviendront plus aux prochains scans."
                     >
                       🚫 Tout ignorer (ne plus les remontrer)
@@ -8223,7 +8223,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                 if (totalAttachments === 0) return null;
                 return (
                   <div key={r.email} className="bg-white border border-blue-200 rounded-lg p-2">
-                    <div className="text-[11px] font-bold text-blue-800 mb-1.5">
+                    <div className="text-[12px] font-bold text-blue-800 mb-1.5">
                       📥 {r.email} — {totalAttachments} PDF{totalAttachments > 1 ? 's' : ''}
                     </div>
                     <div className="space-y-1">
@@ -8251,11 +8251,11 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                               onChange={() => toggleGmailSelected(key)}
                               className="mt-0.5 flex-shrink-0 accent-blue-600"
                             />
-                            <div className="min-w-0 flex-1 text-[10px]">
+                            <div className="min-w-0 flex-1 text-[11px]">
                               <div className="font-semibold text-slate-800 truncate flex items-center gap-1.5" title={a.filename}>
                                 📄 {a.filename}
                                 <span className="font-normal text-slate-500">· {sizeKb} Ko</span>
-                                {alreadyInCrm && <span className="flex-shrink-0 px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-800 text-[9px] font-bold" title="Une ligne dans le CRM a déjà ce n° de facture + un PDF attaché">✅ Déjà en CRM</span>}
+                                {alreadyInCrm && <span className="flex-shrink-0 px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-800 text-[10px] font-bold" title="Une ligne dans le CRM a déjà ce n° de facture + un PDF attaché">✅ Déjà en CRM</span>}
                               </div>
                               <div className="text-slate-600 truncate" title={m.subject}>✉️ {m.subject || '(sans sujet)'}</div>
                               <div className="text-slate-500 truncate" title={m.from}>De {m.from || '?'} {dateLabel ? `· ${dateLabel}` : ''}</div>
@@ -8304,7 +8304,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                                   alert(`Aperçu impossible : ${err?.message || 'inconnu'}`);
                                 }
                               }}
-                              className="flex-shrink-0 self-center px-2 py-1 rounded bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[10px] font-bold"
+                              className="flex-shrink-0 self-center px-2 py-1 rounded bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 text-[11px] font-bold"
                               title="Aperçu du PDF dans un nouvel onglet (sans importer)"
                             >
                               👁️ Aperçu
@@ -8382,15 +8382,15 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
             </div>
             <span className="text-xs text-amber-700">{pendingOpen ? '▲ Masquer' : '▼ Afficher'}</span>
           </button>
-          <div className="text-[11px] text-amber-700 mt-1 text-left">
+          <div className="text-[12px] text-amber-700 mt-1 text-left">
             Tu retrouves ici les factures sans dossier identifié. Clique « 🔁 Reprendre » après avoir créé le dossier manquant (ou si le matching a depuis été amélioré).
           </div>
           {pendingOpen && (
             <div className="mt-3 space-y-2">
               {pendingFactures.map(p => (
                 <div key={p.id} className="bg-white rounded-lg p-2 border border-amber-100">
-                  <div className="text-[11px] font-bold text-slate-800 truncate" title={p.name}>📄 {p.name}</div>
-                  <div className="text-[10px] text-slate-600 mt-0.5 flex flex-wrap gap-x-2">
+                  <div className="text-[12px] font-bold text-slate-800 truncate" title={p.name}>📄 {p.name}</div>
+                  <div className="text-[11px] text-slate-600 mt-0.5 flex flex-wrap gap-x-2">
                     {p.extracted?.fournisseur && <span>Émetteur : <b>{p.extracted.fournisseur}</b></span>}
                     {p.extracted?.factureNo && <span>N° : <b>{p.extracted.factureNo}</b></span>}
                     {p.extracted?.dateFacture && <span>Date : <b>{p.extracted.dateFacture}</b></span>}
@@ -8398,16 +8398,16 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                     {p.extracted?.montantHt > 0 && <span>HT : <b>{p.extracted.montantHt} €</b></span>}
                   </div>
                   {p.matching?.notes && (
-                    <div className="text-[10px] text-amber-700 italic mt-0.5">💬 {p.matching.notes}</div>
+                    <div className="text-[11px] text-amber-700 italic mt-0.5">💬 {p.matching.notes}</div>
                   )}
-                  <div className="text-[10px] text-slate-400 mt-0.5">
+                  <div className="text-[11px] text-slate-400 mt-0.5">
                     Mise de côté le {p.skippedAt ? new Date(p.skippedAt).toLocaleString('fr-FR') : '—'}
                   </div>
                   <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                     <button
                       type="button"
                       onClick={() => handleResumePending(p)}
-                      className="px-2 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded text-[10px] font-bold"
+                      className="px-2 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded text-[11px] font-bold"
                       title="Re-lance le matching IA (utile si tu as créé le bon dossier entre temps)"
                     >
                       🔁 Reprendre
@@ -8415,7 +8415,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                     <button
                       type="button"
                       onClick={() => handleViewPending(p)}
-                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[10px] font-bold"
+                      className="px-2 py-1 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded text-[11px] font-bold"
                       title="Ouvre le PDF dans un nouvel onglet"
                     >
                       👁️ Voir le PDF
@@ -8423,7 +8423,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                     <button
                       type="button"
                       onClick={() => handleDeletePending(p)}
-                      className="ml-auto px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[10px] font-bold"
+                      className="ml-auto px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[11px] font-bold"
                       title="Supprime définitivement la facture du bucket"
                     >
                       🗑️ Supprimer
@@ -8443,13 +8443,13 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
         const autoSkipped = files.filter(f => f.status === 'skipped' && f.skipReason === 'already_attached');
         if (autoSkipped.length === 0) return null;
         return (
-          <div className="mb-3 p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-[11px] text-slate-600 flex items-center justify-between gap-2">
+          <div className="mb-3 p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-[12px] text-slate-600 flex items-center justify-between gap-2">
             <span>
               ⏭️ <strong>{autoSkipped.length}</strong> facture{autoSkipped.length > 1 ? 's' : ''} déjà attachée{autoSkipped.length > 1 ? 's' : ''} sur leur dossier — ignorée{autoSkipped.length > 1 ? 's' : ''} automatiquement.
             </span>
             <button
               onClick={() => setFiles(prev => prev.filter(f => !(f.status === 'skipped' && f.skipReason === 'already_attached')))}
-              className="px-2 py-1 bg-white border border-slate-300 rounded text-[10px] font-bold text-slate-700 hover:bg-slate-50"
+              className="px-2 py-1 bg-white border border-slate-300 rounded text-[11px] font-bold text-slate-700 hover:bg-slate-50"
               title="Retire ces cartes de la liste"
             >🗑 Nettoyer</button>
           </div>
@@ -8560,21 +8560,21 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
                     setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
                   } catch (e) { alert('Aperçu impossible : ' + e.message); }
                 }}
-                className="shrink-0 px-2 py-0.5 rounded bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-[10px] font-bold"
+                className="shrink-0 px-2 py-0.5 rounded bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 text-[11px] font-bold"
                 title="Ouvrir le PDF dans un nouvel onglet"
               >
                 👁️ Aperçu
               </button>
             )}
           </div>
-          <div className="text-[10px] text-slate-500">{item.sizeKb} Ko</div>
+          <div className="text-[11px] text-slate-500">{item.sizeKb} Ko</div>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
-          {item.status === 'analyzing' && <span className="text-[10px] font-bold text-blue-600 animate-pulse">⏳ Analyse IA…</span>}
-          {item.status === 'saving' && <span className="text-[10px] font-bold text-amber-600 animate-pulse">💾 Sauvegarde…</span>}
-          {item.status === 'confirmed' && <span className="text-[10px] font-bold text-emerald-600">✅ Rattaché</span>}
-          {item.status === 'skipped' && <span className="text-[10px] font-bold text-slate-500">⏭️ Mis de côté</span>}
-          {item.status === 'error' && <span className="text-[10px] font-bold text-rose-600">⚠️ Erreur</span>}
+          {item.status === 'analyzing' && <span className="text-[11px] font-bold text-blue-600 animate-pulse">⏳ Analyse IA…</span>}
+          {item.status === 'saving' && <span className="text-[11px] font-bold text-amber-600 animate-pulse">💾 Sauvegarde…</span>}
+          {item.status === 'confirmed' && <span className="text-[11px] font-bold text-emerald-600">✅ Rattaché</span>}
+          {item.status === 'skipped' && <span className="text-[11px] font-bold text-slate-500">⏭️ Mis de côté</span>}
+          {item.status === 'error' && <span className="text-[11px] font-bold text-rose-600">⚠️ Erreur</span>}
           <button onClick={onRemove} className="text-slate-400 hover:text-rose-600" title="Retirer cette carte">
             <X className="w-4 h-4" />
           </button>
@@ -8583,10 +8583,10 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
 
       {/* Erreur */}
       {item.status === 'error' && (
-        <div className="mt-2 bg-rose-50 border border-rose-200 rounded-lg p-2 text-[11px] text-rose-700">
+        <div className="mt-2 bg-rose-50 border border-rose-200 rounded-lg p-2 text-[12px] text-rose-700">
           <div className="font-bold">Échec de l'analyse :</div>
           <div className="mt-1">{item.error || 'Erreur inconnue'}</div>
-          <button onClick={onRetry} className="mt-2 px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-[10px] font-bold">
+          <button onClick={onRetry} className="mt-2 px-2 py-1 bg-rose-600 hover:bg-rose-700 text-white rounded text-[11px] font-bold">
             🔄 Réessayer
           </button>
         </div>
@@ -8596,7 +8596,7 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
       {(item.status === 'ready' || item.status === 'saving' || item.status === 'confirmed') && (
         <div className="mt-3 space-y-2">
           {/* Bloc extraction */}
-          <div className="bg-slate-50 rounded-lg p-2 text-[11px]">
+          <div className="bg-slate-50 rounded-lg p-2 text-[12px]">
             <div className="font-bold text-slate-700 mb-1">Lecture IA :</div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-x-3 gap-y-0.5 text-slate-700">
               <div><span className="text-slate-500">Émetteur :</span> <span className="font-semibold">{e.fournisseur || '—'}</span></div>
@@ -8613,9 +8613,9 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
           {/* Propositions de rattachement */}
           {item.status !== 'confirmed' && (
             <div className="space-y-1.5">
-              <div className="font-bold text-slate-700 text-[11px]">Rattacher à :</div>
+              <div className="font-bold text-slate-700 text-[12px]">Rattacher à :</div>
               {proposals.length === 0 ? (
-                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-[11px] text-amber-800">
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 text-[12px] text-amber-800">
                   🤷 Aucun dossier candidat trouvé.
                   {m.notes && <div className="italic mt-1">{m.notes}</div>}
                 </div>
@@ -8635,7 +8635,7 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
                     const both = !!crmVal && !!pdfVal;
                     const same = both && normNo(crmVal) === normNo(pdfVal);
                     return (
-                      <div className={`text-[10px] rounded px-1.5 py-0.5 inline-flex items-center gap-1 mr-1 mt-1 ${
+                      <div className={`text-[11px] rounded px-1.5 py-0.5 inline-flex items-center gap-1 mr-1 mt-1 ${
                         same ? 'bg-emerald-100 text-emerald-800' : both ? 'bg-rose-100 text-rose-800' : 'bg-slate-100 text-slate-600'
                       }`}>
                         {same ? '✅' : both ? '❌' : '➖'} {label} : CRM <span className="font-bold">{crmVal || '—'}</span> · PDF <span className="font-bold">{pdfVal || '—'}</span>
@@ -8654,14 +8654,14 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2 flex-wrap">
-                        <div className="text-[11px] font-bold text-slate-800">
+                        <div className="text-[12px] font-bold text-slate-800">
                           {dossierLabel(p.localId)}
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
+                          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700">
                             {typeEmoji} {typeLabel} #{p.index + 1}{propLine?.nom ? ` — ${propLine.nom}` : ''}
                           </span>
-                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                          <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${
                             p.confidence >= 0.85 ? 'bg-emerald-100 text-emerald-700' :
                             p.confidence >= 0.6 ? 'bg-amber-100 text-amber-700' :
                             'bg-rose-100 text-rose-700'
@@ -8675,17 +8675,17 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
                         {renderCompare('BL', propLine?.bl, e.bl)}
                       </div>
                       {p.reasoning && (
-                        <div className="text-[10px] text-slate-500 mt-1 italic">{p.reasoning}</div>
+                        <div className="text-[11px] text-slate-500 mt-1 italic">{p.reasoning}</div>
                       )}
                     </button>
                   );
                 })
               )}
               {m.notes && proposals.length > 0 && (
-                <div className="text-[10px] text-slate-500 italic px-1">💬 {m.notes}</div>
+                <div className="text-[11px] text-slate-500 italic px-1">💬 {m.notes}</div>
               )}
               {m.aliasMode && proposals.length > 0 && (
-                <div className="text-[10px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
+                <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1">
                   ⚠️ L'émetteur « {e.fournisseur || '?'} » ne correspond à aucun prestataire connu — propositions basées sur montant + date uniquement. Vérifie bien avant de confirmer.
                 </div>
               )}
@@ -8694,14 +8694,14 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
               {!manualOpen ? (
                 <button
                   onClick={() => setManualOpen(true)}
-                  className="text-[11px] font-semibold text-violet-600 hover:text-violet-800 underline px-1"
+                  className="text-[12px] font-semibold text-violet-600 hover:text-violet-800 underline px-1"
                 >
                   🔍 Aucune proposition ne convient ? Chercher un dossier manuellement
                 </button>
               ) : (
                 <div className="bg-violet-50 border border-violet-200 rounded-lg p-2 space-y-1.5">
                   <div className="flex items-center justify-between">
-                    <div className="text-[11px] font-bold text-violet-800">🔍 Rattachement manuel</div>
+                    <div className="text-[12px] font-bold text-violet-800">🔍 Rattachement manuel</div>
                     <button onClick={() => { setManualOpen(false); setManualDossier(null); setManualQuery(''); }} className="text-violet-400 hover:text-violet-700"><X className="w-3.5 h-3.5" /></button>
                   </div>
                   {!manualDossier ? (
@@ -8718,24 +8718,24 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
                         <button
                           key={d.localId}
                           onClick={() => setManualDossier(d)}
-                          className="w-full text-left px-2 py-1.5 rounded-lg bg-white hover:bg-violet-100 border border-violet-100 text-[11px] font-semibold text-slate-800"
+                          className="w-full text-left px-2 py-1.5 rounded-lg bg-white hover:bg-violet-100 border border-violet-100 text-[12px] font-semibold text-slate-800"
                         >
                           #{d.id || '?'} {d.nom || ''} {d.prenom || ''} {d.dateInsta ? `· posé le ${new Date(d.dateInsta).toLocaleDateString('fr-FR')}` : ''}
                         </button>
                       ))}
                       {manualQuery.trim().length >= 2 && manualResults.length === 0 && (
-                        <div className="text-[10px] text-slate-500 italic px-1">Aucun dossier trouvé.</div>
+                        <div className="text-[11px] text-slate-500 italic px-1">Aucun dossier trouvé.</div>
                       )}
                     </>
                   ) : (
                     <>
-                      <div className="text-[11px] text-slate-700">
+                      <div className="text-[12px] text-slate-700">
                         Dossier : <span className="font-bold">#{manualDossier.id || '?'} {manualDossier.nom || ''} {manualDossier.prenom || ''}</span>
-                        <button onClick={() => setManualDossier(null)} className="ml-2 text-violet-600 underline text-[10px]">changer</button>
+                        <button onClick={() => setManualDossier(null)} className="ml-2 text-violet-600 underline text-[11px]">changer</button>
                       </div>
-                      <div className="text-[10px] text-slate-500">Choisis la ligne à laquelle rattacher la facture :</div>
+                      <div className="text-[11px] text-slate-500">Choisis la ligne à laquelle rattacher la facture :</div>
                       {manualLines.length === 0 && (
-                        <div className="text-[10px] text-amber-700">Ce dossier n'a aucun prestataire renseigné. Crée la ligne ci-dessous avec le nom du fournisseur.</div>
+                        <div className="text-[11px] text-amber-700">Ce dossier n'a aucun prestataire renseigné. Crée la ligne ci-dessous avec le nom du fournisseur.</div>
                       )}
                       {manualLines.map(l => (
                         <button
@@ -8744,10 +8744,10 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
                             onManualPick({ localId: manualDossier.localId, type: l.type, index: l.index, confidence: 1, reasoning: 'Choix manuel' });
                             setManualOpen(false); setManualDossier(null); setManualQuery('');
                           }}
-                          className="w-full text-left px-2 py-1.5 rounded-lg bg-white hover:bg-emerald-50 border border-violet-100 text-[11px] font-semibold text-slate-800 flex items-center justify-between"
+                          className="w-full text-left px-2 py-1.5 rounded-lg bg-white hover:bg-emerald-50 border border-violet-100 text-[12px] font-semibold text-slate-800 flex items-center justify-between"
                         >
                           <span>{l.emoji} {l.label} #{l.index + 1} — {l.nom}</span>
-                          {l.has && <span className="text-[9px] font-bold text-amber-600">⚠️ a déjà une facture</span>}
+                          {l.has && <span className="text-[10px] font-bold text-amber-600">⚠️ a déjà une facture</span>}
                         </button>
                       ))}
 
@@ -8769,7 +8769,7 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
                           || /avoir|credit/i.test(item.name || '');
                         return (
                           <div className="pt-1 mt-1 border-t border-violet-200">
-                            <div className="text-[10px] text-violet-600 mb-1">Ou créer une nouvelle ligne avec « <span className="font-bold">{fournisseurNom}</span> » :</div>
+                            <div className="text-[11px] text-violet-600 mb-1">Ou créer une nouvelle ligne avec « <span className="font-bold">{fournisseurNom}</span> » :</div>
                             <div className="flex gap-1 flex-wrap">
                               {types.map(t => (
                                 <button
@@ -8778,7 +8778,7 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
                                     onCreateAndPickLine(manualDossier.localId, t.type, fournisseurNom);
                                     setManualOpen(false); setManualDossier(null); setManualQuery('');
                                   }}
-                                  className="px-2 py-1 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-[10px] font-bold"
+                                  className="px-2 py-1 rounded-lg bg-violet-600 hover:bg-violet-700 text-white text-[11px] font-bold"
                                 >
                                   + {t.emoji} Créer {t.label}
                                 </button>
@@ -8799,7 +8799,7 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
                                       onCreateAndAttachAvoir(manualDossier.localId, fournisseurNom, t.kind);
                                       setManualOpen(false); setManualDossier(null); setManualQuery('');
                                     }}
-                                    className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[10px] font-bold"
+                                    className="px-2 py-1 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-[11px] font-bold"
                                     title={`Crée une note de crédit (avoir) sur le ${t.label} — déduit du coût`}
                                   >
                                     + 🧾 Avoir {t.emoji} {t.label}
@@ -8850,14 +8850,14 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
 
           {/* Confirmé : rappel + bouton ouvrir le dossier pour vérifier */}
           {item.status === 'confirmed' && picked && (
-            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-[11px] text-emerald-800 flex items-center justify-between gap-2 flex-wrap">
+            <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2 text-[12px] text-emerald-800 flex items-center justify-between gap-2 flex-wrap">
               <span>
                 ✅ Rattaché à <span className="font-bold">{dossierLabel(picked.localId)}</span> · {picked.type === 'poseurs' ? '🔧 Poseur' : picked.type === 'regies' ? '🤝 Régie' : '📦 Fournisseur'} #{picked.index + 1}
               </span>
               {onOpenDossier && (
                 <button
                   onClick={() => onOpenDossier(picked.localId)}
-                  className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
+                  className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-bold whitespace-nowrap"
                 >
                   👁️ Voir dans le dossier
                 </button>
@@ -9294,7 +9294,7 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin, canSeeBLFactures 
                       <div className={`text-xs truncate ${sel ? 'opacity-90' : 'text-slate-500'}`}>{cat.sublabel}</div>
                     </div>
                     {count > 0 && (
-                      <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${sel ? 'bg-white/30' : 'bg-violet-100 text-violet-700'}`}>{count}</span>
+                      <span className={`px-1.5 py-0.5 rounded-full text-[11px] font-bold ${sel ? 'bg-white/30' : 'bg-violet-100 text-violet-700'}`}>{count}</span>
                     )}
                   </button>
                 );
@@ -9304,7 +9304,7 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin, canSeeBLFactures 
             <div className="px-3">
               <PdfGeneratorPanel dossier={dossier} />
             </div>
-            <div className="p-3 mx-3 mb-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-700 leading-relaxed">
+            <div className="p-3 mx-3 mb-3 bg-blue-50 border border-blue-200 rounded-xl text-[12px] text-blue-700 leading-relaxed">
               💡 Max <strong>50 Mo / fichier</strong> grâce au stockage Supabase. Les PDF lourds passent sans problème.
             </div>
           </div>
@@ -9614,7 +9614,7 @@ function SubCategoryCard({ subcat, docs, uploading, onFile, onOpen, onDownload, 
         <span className="text-base">{subcat.emoji}</span>
         <span className="text-xs font-bold text-slate-700 uppercase tracking-wide truncate">{subcat.label}</span>
         {hasDocs && (
-          <span className={`ml-auto text-[10px] font-bold ${c.count} rounded-full px-2 py-0.5`}>{docs.length}</span>
+          <span className={`ml-auto text-[11px] font-bold ${c.count} rounded-full px-2 py-0.5`}>{docs.length}</span>
         )}
       </div>
       {/* Zone de drop compacte (toujours visible, même quand il y a des docs) */}
@@ -9741,7 +9741,7 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
         <div className="flex-1 min-w-0">
           <button onClick={onOpen} className={`font-semibold text-slate-800 ${compact ? 'text-xs' : 'text-sm'} truncate hover:text-violet-600 text-left w-full block`}>{doc.name}</button>
           {!compact && (
-            <div className="flex items-center gap-2 text-[11px] text-slate-500 flex-wrap">
+            <div className="flex items-center gap-2 text-[12px] text-slate-500 flex-wrap">
               <span>{formatFileSize(doc.size)}</span>
               <span>•</span>
               <span>📅 {formatDateForSheet(doc.uploadedAt?.split('T')[0])}</span>
@@ -9750,7 +9750,7 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
             </div>
           )}
           {compact && (
-            <div className="text-[10px] text-slate-500">{formatFileSize(doc.size)}</div>
+            <div className="text-[11px] text-slate-500">{formatFileSize(doc.size)}</div>
           )}
         </div>
         <div className="flex items-center gap-0.5 flex-shrink-0">
@@ -9773,10 +9773,10 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
       {showFraud && hasFraudFlags && (
         <div className={`px-3 py-2 border-t ${fraudColor}`}>
           <div className="text-xs font-bold mb-1">{fraudIcon} Suspicion de fraude — {fraudRisk === 'high' ? 'forte' : 'à vérifier'}</div>
-          <ul className="text-[11px] space-y-0.5">
+          <ul className="text-[12px] space-y-0.5">
             {fraudFlags.map((flag, i) => <li key={i}>• {flag}</li>)}
           </ul>
-          <div className="text-[10px] italic mt-1 opacity-70">⚠️ L'IA peut se tromper — vérifie manuellement avant toute conclusion.</div>
+          <div className="text-[11px] italic mt-1 opacity-70">⚠️ L'IA peut se tromper — vérifie manuellement avant toute conclusion.</div>
         </div>
       )}
       {expanded && (
@@ -9784,7 +9784,7 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
           {/* Sélecteur de sous-catégorie (uniquement pour les docs Client) */}
           {subCats && (
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">📂 Catégorie</label>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">📂 Catégorie</label>
               <select
                 value={doc.subCategory || 'autre'}
                 onChange={(e) => onUpdateMeta({ subCategory: e.target.value })}
@@ -9796,7 +9796,7 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
           )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">💰 Montant TTC (€)</label>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">💰 Montant TTC (€)</label>
               <input
                 type="number"
                 step="0.01"
@@ -9807,7 +9807,7 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
               />
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">📅 Date pièce</label>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">📅 Date pièce</label>
               <div className="flex gap-1">
                 <input
                   type="date"
@@ -9821,7 +9821,7 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
               </div>
             </div>
             <div>
-              <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">📝 Note</label>
+              <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">📝 Note</label>
               <input
                 type="text"
                 defaultValue={doc.note || ''}
@@ -10020,7 +10020,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                 <div className="rounded-2xl border-2 border-emerald-200 bg-emerald-50 p-4">
                   <div className="text-xs font-bold text-emerald-700 uppercase">⬆️ À encaisser</div>
                   <div className="text-2xl font-bold text-emerald-800 mt-1">{formatEuro(entrees)}</div>
-                  <div className="mt-2 space-y-1 text-[11px]">
+                  <div className="mt-2 space-y-1 text-[12px]">
                     <div className="flex justify-between"><span className="text-emerald-700">🟢 Imminent (livraison contrôlée)</span><span className="font-bold text-emerald-800">{formatEuro(imminent)}</span></div>
                     <div className="flex justify-between"><span className="text-emerald-600">⏳ À venir (pose faite)</span><span className="font-bold text-emerald-700">{formatEuro(avenir)}</span></div>
                   </div>
@@ -10029,13 +10029,13 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                 <div className="rounded-2xl border-2 border-rose-200 bg-rose-50 p-4">
                   <div className="text-xs font-bold text-rose-700 uppercase">⬇️ À décaisser</div>
                   <div className="text-2xl font-bold text-rose-800 mt-1">{formatEuro(sorties)}</div>
-                  <div className="mt-2 text-[11px] text-rose-600">Poseurs, régies, fournisseurs et commissions internes des dossiers posés, pas encore payés.</div>
+                  <div className="mt-2 text-[12px] text-rose-600">Poseurs, régies, fournisseurs et commissions internes des dossiers posés, pas encore payés.</div>
                 </div>
                 {/* SOLDE NET */}
                 <div className={`rounded-2xl border-2 p-4 ${solde >= 0 ? 'border-emerald-300 bg-gradient-to-br from-emerald-500 to-teal-500' : 'border-rose-300 bg-gradient-to-br from-rose-500 to-orange-500'} text-white`}>
                   <div className="text-xs font-bold uppercase opacity-90">{solde >= 0 ? '✅ Solde net prévisionnel' : '⚠️ Solde net prévisionnel'}</div>
                   <div className="text-2xl font-bold mt-1">{solde >= 0 ? '+' : ''}{formatEuro(solde)}</div>
-                  <div className="mt-2 text-[11px] opacity-90">
+                  <div className="mt-2 text-[12px] opacity-90">
                     {solde >= 0
                       ? 'Les encaissements attendus couvrent les sorties à prévoir.'
                       : 'Attention : les sorties dépassent les rentrées attendues. Anticipe.'}
@@ -10053,7 +10053,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
       {projBarsCompact.length > 0 && (
         <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-2 space-y-1.5">
           {projBarsCompact.map(b => (
-            <div key={b.socId} className="flex items-center gap-2 text-[11px]">
+            <div key={b.socId} className="flex items-center gap-2 text-[12px]">
               <span className="flex-shrink-0 w-32 truncate font-semibold text-slate-700">
                 <span>{b.emoji}</span> PROJEXIO {b.label}
               </span>
@@ -10092,34 +10092,34 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                   <div className={`px-2.5 py-1.5 ${restant ? 'bg-gradient-to-r from-amber-500 to-orange-500' : 'bg-gradient-to-r from-emerald-500 to-teal-500'} text-white`}>
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="min-w-0">
-                        <div className="text-[9px] opacity-90 uppercase">💳 Financeur</div>
+                        <div className="text-[10px] opacity-90 uppercase">💳 Financeur</div>
                         <div className="text-sm font-bold flex items-center gap-1 flex-wrap">{e.nom}{renderSocieteBadge(e.societe)}</div>
                       </div>
                       {restant ? (
                         <div className="text-right">
-                          <div className="text-[9px] opacity-90 uppercase">⏳ Vous doit</div>
+                          <div className="text-[10px] opacity-90 uppercase">⏳ Vous doit</div>
                           <div className="text-base font-bold whitespace-nowrap">{formatEuro(e.totalRestant)}</div>
                         </div>
-                      ) : <div className="px-2 py-0.5 bg-white/30 rounded-full text-[10px] font-bold">✓ Tout payé</div>}
+                      ) : <div className="px-2 py-0.5 bg-white/30 rounded-full text-[11px] font-bold">✓ Tout payé</div>}
                     </div>
                   </div>
                   <div className="p-2 space-y-1.5">
                     <div className="grid grid-cols-3 gap-1 text-center">
                       <div className="bg-white rounded px-1 py-1 border border-slate-200">
-                        <div className="text-[9px] font-bold text-slate-500 uppercase">Attendu</div>
-                        <div className="text-[11px] font-bold text-slate-800">{formatEuro(e.totalAttendu)}</div>
+                        <div className="text-[10px] font-bold text-slate-500 uppercase">Attendu</div>
+                        <div className="text-[12px] font-bold text-slate-800">{formatEuro(e.totalAttendu)}</div>
                       </div>
                       <div className="bg-emerald-100 rounded px-1 py-1 border border-emerald-200">
-                        <div className="text-[9px] font-bold text-emerald-700 uppercase">✓ Reçu</div>
-                        <div className="text-[11px] font-bold text-emerald-800">{formatEuro(e.totalRecu)}</div>
+                        <div className="text-[10px] font-bold text-emerald-700 uppercase">✓ Reçu</div>
+                        <div className="text-[12px] font-bold text-emerald-800">{formatEuro(e.totalRecu)}</div>
                       </div>
                       <div className={`rounded px-1 py-1 border ${restant ? 'bg-amber-100 border-amber-300' : 'bg-slate-50 border-slate-200'}`}>
-                        <div className={`text-[9px] font-bold uppercase ${restant ? 'text-amber-700' : 'text-slate-400'}`}>⏳ Reste</div>
-                        <div className={`text-[11px] font-bold ${restant ? 'text-amber-800' : 'text-slate-400'}`}>{formatEuro(e.totalRestant)}</div>
+                        <div className={`text-[10px] font-bold uppercase ${restant ? 'text-amber-700' : 'text-slate-400'}`}>⏳ Reste</div>
+                        <div className={`text-[12px] font-bold ${restant ? 'text-amber-800' : 'text-slate-400'}`}>{formatEuro(e.totalRestant)}</div>
                       </div>
                     </div>
                     <div>
-                      <div className="flex items-center justify-between text-[9px] text-slate-600 mb-0.5 gap-1.5 flex-wrap">
+                      <div className="flex items-center justify-between text-[10px] text-slate-600 mb-0.5 gap-1.5 flex-wrap">
                         <span className="font-semibold">Progression</span>
                         <span className="flex items-center gap-1.5">
                           <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold">✓ {dossiersPayes.length} payé{dossiersPayes.length > 1 ? 's' : ''}</span>
@@ -10133,7 +10133,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                     </div>
                     {dossiersAttente.length > 0 && (
                       <details className="group">
-                        <summary className="cursor-pointer text-[10px] font-bold text-amber-700 list-none flex items-center gap-1">
+                        <summary className="cursor-pointer text-[11px] font-bold text-amber-700 list-none flex items-center gap-1">
                           <span className="group-open:rotate-90 inline-block transition-transform">▶</span>
                           Voir les {dossiersAttente.length} en attente
                         </summary>
@@ -10164,11 +10164,11 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                                       title="Cocher pour valider l'encaissement en groupe"
                                     />
                                   )}
-                                  {l.dossierId !== '—' && <span className="text-[9px] font-mono bg-slate-100 text-slate-600 px-0.5 rounded">#{l.dossierId}</span>}
-                                  <span className="font-semibold text-slate-700 truncate text-[11px]">{l.client}</span>
+                                  {l.dossierId !== '—' && <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-0.5 rounded">#{l.dossierId}</span>}
+                                  <span className="font-semibold text-slate-700 truncate text-[12px]">{l.client}</span>
                                 </div>
-                                <span className="font-bold text-amber-700 text-[11px] whitespace-nowrap">{formatEuro(l.ttc)}</span>
-                                {canOpen && <span className="text-slate-400 text-[10px]">›</span>}
+                                <span className="font-bold text-amber-700 text-[12px] whitespace-nowrap">{formatEuro(l.ttc)}</span>
+                                {canOpen && <span className="text-slate-400 text-[11px]">›</span>}
                               </div>
                             );
                           })}
@@ -10187,13 +10187,13 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                             <div className="sticky bottom-0 mt-2 -mx-2 px-2 py-2 bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-md rounded-b-lg flex items-center justify-between gap-2 flex-wrap z-10">
                               <div className="flex items-center gap-2 min-w-0">
                                 <span className="text-base font-extrabold whitespace-nowrap">{formatEuro(totalSel)}</span>
-                                <span className="text-[10px] opacity-90 whitespace-nowrap">reçu · {toMark.length} dossier{toMark.length > 1 ? 's' : ''}</span>
+                                <span className="text-[11px] opacity-90 whitespace-nowrap">reçu · {toMark.length} dossier{toMark.length > 1 ? 's' : ''}</span>
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0">
                                 <button
                                   type="button"
                                   onClick={(ev) => { ev.stopPropagation(); clearFinanceurSelection(finKey); }}
-                                  className="text-[10px] font-bold text-white/90 bg-white/10 hover:bg-white/20 px-1.5 py-0.5 rounded"
+                                  className="text-[11px] font-bold text-white/90 bg-white/10 hover:bg-white/20 px-1.5 py-0.5 rounded"
                                 >Désélectionner</button>
                                 <button
                                   type="button"
@@ -10204,7 +10204,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                                     onMarkClientPaye(toMark);
                                     clearFinanceurSelection(finKey);
                                   }}
-                                  className="text-[11px] font-bold bg-white text-emerald-700 hover:bg-emerald-50 px-2 py-1 rounded shadow"
+                                  className="text-[12px] font-bold bg-white text-emerald-700 hover:bg-emerald-50 px-2 py-1 rounded shadow"
                                 >✓ Valider l'encaissement</button>
                               </div>
                             </div>
@@ -10227,7 +10227,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
           </h2>
           <p className="text-xs text-slate-500 mt-1">💡 Vous payez seulement quand le financeur a payé</p>
           <div className="mt-2 flex items-center gap-2 flex-wrap">
-            <label className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-slate-600 cursor-pointer select-none bg-white border border-slate-200 px-2 py-1 rounded-lg hover:bg-slate-50">
+            <label className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-600 cursor-pointer select-none bg-white border border-slate-200 px-2 py-1 rounded-lg hover:bg-slate-50">
               <input type="checkbox" checked={showOnlyAPayer} onChange={(e) => setShowOnlyAPayer(e.target.checked)} className="w-3.5 h-3.5 accent-violet-600" />
               🔥 Afficher uniquement les dossiers à payer
             </label>
@@ -10276,7 +10276,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                     className="w-full px-4 py-2 bg-slate-50 border-b border-slate-200 sticky top-0 z-[1] flex items-center justify-between gap-2 hover:bg-slate-100 transition"
                     title={isFolded ? 'Cliquer pour déplier' : 'Cliquer pour plier'}
                   >
-                    <span className="text-[11px] font-bold text-slate-600 uppercase tracking-wide">{g.label} ({g.items.length})</span>
+                    <span className="text-[12px] font-bold text-slate-600 uppercase tracking-wide">{g.label} ({g.items.length})</span>
                     <span className="text-slate-500 text-xs font-bold">{isFolded ? '▶' : '▼'}</span>
                   </button>
                   {!isFolded && g.items.map((p, idx) => {
@@ -10335,7 +10335,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                             className="px-2 py-1.5 text-xs font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 rounded-lg"
                           >× Effacer</button>
                         )}
-                        <span className="text-[10px] text-slate-500 font-semibold">
+                        <span className="text-[11px] text-slate-500 font-semibold">
                           {lignesAffichees.length}/{lignesFiltrees.length}
                         </span>
                       </div>
@@ -10362,7 +10362,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); clearSelection(prestaKey); }}
-                              className="text-[11px] font-bold text-white/90 bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg"
+                              className="text-[12px] font-bold text-white/90 bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg"
                             >Tout désélectionner</button>
                             <button
                               type="button"
@@ -10418,12 +10418,12 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                             )}
                             {l.dossierId !== '—' && <span className="text-xs font-mono text-slate-500">#{l.dossierId}</span>}
                             <span className="font-medium text-slate-700 truncate">{l.client || '(sans nom)'}</span>
-                            <span className="text-[10px] text-slate-400">💳 {l.financement}</span>
-                            {l.paye && l.datePaye && <span className="text-[10px] text-slate-500">📅 {formatDateForSheet(l.datePaye)}</span>}
+                            <span className="text-[11px] text-slate-400">💳 {l.financement}</span>
+                            {l.paye && l.datePaye && <span className="text-[11px] text-slate-500">📅 {formatDateForSheet(l.datePaye)}</span>}
                           </div>
                           <div className="flex items-center gap-2">
                             <span className={`font-bold ${styles.amount}`}>{formatEuro(l.ttc)}</span>
-                            <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${styles.labelBg}`}>{styles.label}</span>
+                            <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${styles.labelBg}`}>{styles.label}</span>
                             {canOpen && <span className="text-slate-400 text-xs">›</span>}
                           </div>
                         </div>
@@ -10452,9 +10452,9 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
           <div className="min-w-0">
             <h2 className="text-sm font-bold text-slate-800 flex items-center gap-1.5">
               <AlertTriangle className="w-4 h-4 text-rose-500" />Pénalités régies (poses ratées)
-              <span className="text-[11px] font-semibold text-slate-500">({rapportPaiements.penalitesList.length})</span>
+              <span className="text-[12px] font-semibold text-slate-500">({rapportPaiements.penalitesList.length})</span>
             </h2>
-            <p className="text-[10px] text-slate-500 mt-0.5">💡 Coche dès qu'une régie t'a remboursé sa pénalité</p>
+            <p className="text-[11px] text-slate-500 mt-0.5">💡 Coche dès qu'une régie t'a remboursé sa pénalité</p>
           </div>
           <span className="text-slate-500 text-xs font-bold flex-shrink-0 mt-1">{foldedGroups.has('__penalites__') ? '▶' : '▼'}</span>
         </button>
@@ -10462,15 +10462,15 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
         {!foldedGroups.has('__penalites__') && rapportPaiements.totalPenalitesDu > 0 && (
           <div className="p-2 bg-slate-50 border-b border-slate-100 grid grid-cols-1 md:grid-cols-3 gap-2">
             <div className="bg-gradient-to-br from-rose-500 to-red-500 rounded-xl p-2.5 text-white">
-              <div className="text-[10px] font-semibold opacity-90 uppercase">⚠️ Total dû par les régies</div>
+              <div className="text-[11px] font-semibold opacity-90 uppercase">⚠️ Total dû par les régies</div>
               <div className="text-lg font-bold leading-tight">{formatEuro(rapportPaiements.totalPenalitesDu)}</div>
             </div>
             <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl p-2.5 text-white">
-              <div className="text-[10px] font-semibold opacity-90 uppercase">✅ Déjà remboursé</div>
+              <div className="text-[11px] font-semibold opacity-90 uppercase">✅ Déjà remboursé</div>
               <div className="text-lg font-bold leading-tight">{formatEuro(rapportPaiements.totalPenalitesPaye)}</div>
             </div>
             <div className="bg-gradient-to-br from-orange-500 to-amber-500 rounded-xl p-2.5 text-white">
-              <div className="text-[10px] font-semibold opacity-90 uppercase">⏳ Reste à recevoir</div>
+              <div className="text-[11px] font-semibold opacity-90 uppercase">⏳ Reste à recevoir</div>
               <div className="text-lg font-bold leading-tight">{formatEuro(rapportPaiements.totalPenalitesRestant)}</div>
             </div>
           </div>
@@ -10489,11 +10489,11 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                     {/* Badge total dû — TOUJOURS visible quand il y a un reste à recevoir.
                         + Badge total reçu si déjà encaissé.
                         + Badge total cumulé si tout est à 0 (transparence). */}
-                    <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-orange-100 text-orange-700" title={`${p.lignes.length} pénalité${p.lignes.length > 1 ? 's' : ''} cumulée${p.lignes.length > 1 ? 's' : ''} : ${formatEuro(p.totalDu)}`}>
+                    <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-orange-100 text-orange-700" title={`${p.lignes.length} pénalité${p.lignes.length > 1 ? 's' : ''} cumulée${p.lignes.length > 1 ? 's' : ''} : ${formatEuro(p.totalDu)}`}>
                       {formatEuro(p.totalRestant)} dû
                     </span>
                     {p.totalPaye > 0 && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700">{formatEuro(p.totalPaye)} reçu</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700">{formatEuro(p.totalPaye)} reçu</span>
                     )}
                   </span>
                 </summary>
@@ -10503,7 +10503,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                     const nbDues = p.lignes.length - nbPayees;
                     if (nbPayees === 0) return null;
                     return (
-                      <div className="flex items-center justify-between gap-2 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded-lg text-[10px] text-emerald-800">
+                      <div className="flex items-center justify-between gap-2 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-800">
                         <span>✓ {nbPayees} pénalité{nbPayees > 1 ? 's' : ''} déjà payée{nbPayees > 1 ? 's' : ''} — {nbDues} restante{nbDues > 1 ? 's' : ''}</span>
                         <button
                           onClick={() => setShowPaidPenalites(v => !v)}
@@ -10530,15 +10530,15 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                           <span className="truncate">{l.client}</span>
                         </button>
                         <span className="text-xs text-slate-500">{fmtD(l.date)}</span>
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold">{motifLabel}</span>
-                        {l.definitif && <span className="text-[9px] px-1 py-0.5 rounded bg-red-700 text-white font-bold">DÉF.</span>}
+                        <span className="text-[11px] px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold">{motifLabel}</span>
+                        {l.definitif && <span className="text-[10px] px-1 py-0.5 rounded bg-red-700 text-white font-bold">DÉF.</span>}
                         <span className={`font-bold ${paye ? 'text-emerald-700 line-through' : 'text-rose-700'}`}>{formatEuro(l.penalite)}</span>
                         {/* ✅ Bouton explicite « marquer payé » — séparé du nom pour éviter
                             les clics accidentels qui marquaient comme payé. */}
                         <button
                           onClick={() => onTogglePenalite(l.dossierLocalId, l.tentativeIdx)}
                           title={paye ? 'Régie a remboursé — cliquer pour annuler' : 'Marquer comme remboursée par la régie'}
-                          className={`flex-shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors flex items-center gap-1 ${paye ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-700 border border-slate-300'}`}
+                          className={`flex-shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 ${paye ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-700 border border-slate-300'}`}
                         >
                           {paye ? <><Check className="w-3 h-3" strokeWidth={3} />Payée</> : '⏳ À payer'}
                         </button>
@@ -10589,10 +10589,10 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                   <span className="text-xs text-slate-500">{p.lignes.length} litige{p.lignes.length > 1 ? 's' : ''}</span>
                   <span className="ml-auto flex items-center gap-2">
                     {p.totalRestant > 0 && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-orange-100 text-orange-700">{formatEuro(p.totalRestant)} dû</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-orange-100 text-orange-700">{formatEuro(p.totalRestant)} dû</span>
                     )}
                     {p.totalPaye > 0 && (
-                      <span className="text-[10px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700">{formatEuro(p.totalPaye)} reçu</span>
+                      <span className="text-[11px] px-2 py-0.5 rounded-full font-bold bg-emerald-100 text-emerald-700">{formatEuro(p.totalPaye)} reçu</span>
                     )}
                   </span>
                 </summary>
@@ -10610,19 +10610,19 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                           <span className="truncate">{l.client}</span>
                         </button>
                         {l.accordPdfUrl && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 font-semibold" title="Accord transactionnel joint">📎 PDF</span>
+                          <span className="text-[11px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 font-semibold" title="Accord transactionnel joint">📎 PDF</span>
                         )}
                         {l.rembourse && l.dateRembourse && (
-                          <span className="text-[10px] text-slate-500">📅 {fmtD(l.dateRembourse)}</span>
+                          <span className="text-[11px] text-slate-500">📅 {fmtD(l.dateRembourse)}</span>
                         )}
                         {l.factureNo && (
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono">{l.factureNo}</span>
+                          <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-mono">{l.factureNo}</span>
                         )}
                         <span className={`font-bold ${l.rembourse ? 'text-emerald-700 line-through' : 'text-purple-700'}`}>{formatEuro(l.montant)}</span>
                         <button
                           onClick={() => onToggleLitige && onToggleLitige(l.dossierLocalId)}
                           title={l.rembourse ? 'Régie a remboursé — cliquer pour annuler' : 'Marquer comme remboursé par la régie'}
-                          className={`flex-shrink-0 px-2 py-1 rounded-lg text-[10px] font-bold transition-colors flex items-center gap-1 ${l.rembourse ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-700 border border-slate-300'}`}
+                          className={`flex-shrink-0 px-2 py-1 rounded-lg text-[11px] font-bold transition-colors flex items-center gap-1 ${l.rembourse ? 'bg-emerald-500 hover:bg-emerald-600 text-white' : 'bg-slate-100 hover:bg-emerald-100 text-slate-600 hover:text-emerald-700 border border-slate-300'}`}
                         >
                           {l.rembourse ? <><Check className="w-3 h-3" strokeWidth={3} />Remboursé</> : '⏳ Dû'}
                         </button>
@@ -10642,7 +10642,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
 function SmallStat({ label, value, color, width = 'w-28' }) {
   return (
     <div className={`text-right text-xs ${width} flex-shrink-0`}>
-      <div className="font-semibold text-slate-500 uppercase text-[10px] truncate">{label}</div>
+      <div className="font-semibold text-slate-500 uppercase text-[11px] truncate">{label}</div>
       <div className={`font-bold ${color} tabular-nums whitespace-nowrap`}>{value}</div>
     </div>
   );
@@ -10682,17 +10682,17 @@ function PrestatairesPayerSection({ rappels, onShowQuick }) {
           <Flame className="w-4 h-4" />Prestataires à payer ({filtered.length})
           {filter !== 'all' && <span className="text-xs font-normal text-slate-500">/ {rappels.length}</span>}
         </h3>
-        <div className="text-[11px] font-semibold text-slate-600">Total : <span className="text-orange-700 font-bold">{formatEuro(totalA)}</span></div>
+        <div className="text-[12px] font-semibold text-slate-600">Total : <span className="text-orange-700 font-bold">{formatEuro(totalA)}</span></div>
       </div>
 
       {/* Filtres */}
       <div className="flex items-center gap-1 mb-2 flex-wrap">
-        <button onClick={() => setFilter('all')} className={`text-[10px] px-2 py-1 rounded-full font-semibold ${filter === 'all' ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}>Tous ({rappels.length})</button>
-        <button onClick={() => setFilter('externe')} className={`text-[10px] px-2 py-1 rounded-full font-semibold ${filter === 'externe' ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}>🌐 Externes ({nbExterne})</button>
-        <button onClick={() => setFilter('interne')} className={`text-[10px] px-2 py-1 rounded-full font-semibold ${filter === 'interne' ? 'bg-fuchsia-500 text-white' : 'bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200'}`}>👥 Équipe interne ({nbInterne})</button>
-        <span className="ml-auto text-[10px] text-slate-500 font-semibold">Trier :</span>
-        <button onClick={() => setTri('jours')} className={`text-[10px] px-2 py-1 rounded-full font-semibold ${tri === 'jours' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}>⏰ Anciens</button>
-        <button onClick={() => setTri('montant')} className={`text-[10px] px-2 py-1 rounded-full font-semibold ${tri === 'montant' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}>💰 Montants</button>
+        <button onClick={() => setFilter('all')} className={`text-[11px] px-2 py-1 rounded-full font-semibold ${filter === 'all' ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}>Tous ({rappels.length})</button>
+        <button onClick={() => setFilter('externe')} className={`text-[11px] px-2 py-1 rounded-full font-semibold ${filter === 'externe' ? 'bg-orange-500 text-white' : 'bg-orange-50 text-orange-700 border border-orange-200'}`}>🌐 Externes ({nbExterne})</button>
+        <button onClick={() => setFilter('interne')} className={`text-[11px] px-2 py-1 rounded-full font-semibold ${filter === 'interne' ? 'bg-fuchsia-500 text-white' : 'bg-fuchsia-50 text-fuchsia-700 border border-fuchsia-200'}`}>👥 Équipe interne ({nbInterne})</button>
+        <span className="ml-auto text-[11px] text-slate-500 font-semibold">Trier :</span>
+        <button onClick={() => setTri('jours')} className={`text-[11px] px-2 py-1 rounded-full font-semibold ${tri === 'jours' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}>⏰ Anciens</button>
+        <button onClick={() => setTri('montant')} className={`text-[11px] px-2 py-1 rounded-full font-semibold ${tri === 'montant' ? 'bg-slate-700 text-white' : 'bg-slate-100 text-slate-600'}`}>💰 Montants</button>
       </div>
 
       <div className="space-y-1.5">
@@ -10703,7 +10703,7 @@ function PrestatairesPayerSection({ rappels, onShowQuick }) {
             className={`w-full ${isInterne(r) ? 'bg-fuchsia-50 hover:bg-fuchsia-100 border-fuchsia-200' : 'bg-orange-50 hover:bg-orange-100 border-orange-200'} border rounded-lg px-3 py-2 flex items-center justify-between gap-2 flex-wrap text-left transition-colors`}
           >
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${isInterne(r) ? 'bg-fuchsia-100 text-fuchsia-700' : 'bg-amber-100 text-amber-700'}`}>{r.type}</span>
+              <span className={`text-[11px] px-2 py-0.5 rounded-full font-semibold ${isInterne(r) ? 'bg-fuchsia-100 text-fuchsia-700' : 'bg-amber-100 text-amber-700'}`}>{r.type}</span>
               <span className="font-semibold text-slate-700 truncate">{r.nom}</span>
               <span className="text-xs text-slate-500">→ {r.dossier.nom}</span>
             </div>
@@ -10715,7 +10715,7 @@ function PrestatairesPayerSection({ rappels, onShowQuick }) {
         ))}
       </div>
       {sorted.length > 30 && (
-        <div className="text-[11px] text-center text-slate-500 mt-2 italic">{sorted.length - 30} autres non affichés</div>
+        <div className="text-[12px] text-center text-slate-500 mt-2 italic">{sorted.length - 30} autres non affichés</div>
       )}
     </>
   );
@@ -10849,7 +10849,7 @@ function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onS
                     {a.jours > 0 && (
                       <div className={`text-lg font-bold ${a.level === 'critical' ? 'text-rose-600' : a.level === 'high' ? 'text-orange-600' : 'text-amber-600'}`}>{a.jours}j</div>
                     )}
-                    <div className="text-[9px] text-slate-400 uppercase">{a.level === 'critical' ? 'urgent' : a.level === 'high' ? 'à faire' : 'à voir'}</div>
+                    <div className="text-[10px] text-slate-400 uppercase">{a.level === 'critical' ? 'urgent' : a.level === 'high' ? 'à faire' : 'à voir'}</div>
                   </div>
                 </button>
                 {/* 🤖 Sol — pré-rédige un message contextualisé pour cette action */}
@@ -10918,7 +10918,7 @@ function FactureDupeWarning({ factureNo, allDossiers, currentLocalId }) {
   const aperc = conflicts.slice(0, 2).join(', ');
   const reste = conflicts.length > 2 ? ` (+${conflicts.length - 2})` : '';
   return (
-    <div className="mt-0.5 text-[10px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 inline-flex items-center gap-1" title={`Doublon de N° facture : ${conflicts.join(', ')}`}>
+    <div className="mt-0.5 text-[11px] font-bold text-rose-700 bg-rose-50 border border-rose-200 rounded px-1.5 py-0.5 inline-flex items-center gap-1" title={`Doublon de N° facture : ${conflicts.join(', ')}`}>
       ⚠️ Doublon — aussi sur {aperc}{reste}
     </div>
   );
@@ -11034,9 +11034,9 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
         <span className="flex items-center gap-2 font-bold text-slate-800 text-sm">
           🩺 Santé des dossiers
           {total > 0 ? (
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700">{total} à corriger</span>
+            <span className="px-2 py-0.5 rounded-full text-[12px] font-bold bg-amber-100 text-amber-700">{total} à corriger</span>
           ) : (
-            <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-700">✅ tout est propre</span>
+            <span className="px-2 py-0.5 rounded-full text-[12px] font-bold bg-emerald-100 text-emerald-700">✅ tout est propre</span>
           )}
         </span>
         {total > 0 && <span className="text-slate-400 text-xs">{open ? '▼' : '▶'}</span>}
@@ -11051,11 +11051,11 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
             >
               <span className="flex items-center gap-2 text-[13px] font-semibold text-slate-800">
                 {`${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)'}
-                {d.ville && <span className="text-[11px] font-normal text-slate-400">· {d.ville}</span>}
+                {d.ville && <span className="text-[12px] font-normal text-slate-400">· {d.ville}</span>}
               </span>
               <span className="flex flex-wrap gap-1">
                 {issues.map((iss, k) => (
-                  <span key={k} className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-amber-100 text-amber-800">⚠️ {iss}</span>
+                  <span key={k} className="px-1.5 py-0.5 rounded text-[11px] font-semibold bg-amber-100 text-amber-800">⚠️ {iss}</span>
                 ))}
               </span>
             </button>
@@ -11146,30 +11146,30 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
         <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
           <div className="bg-gradient-to-br from-blue-500 to-cyan-500 rounded-xl p-2.5 text-white" title="Dossiers payés ce mois (basé sur la date de paiement client)">
             <div className="flex justify-between items-center mb-0.5">
-              <div className="text-[10px] font-semibold opacity-90 uppercase">Encaissé ce mois</div>
+              <div className="text-[11px] font-semibold opacity-90 uppercase">Encaissé ce mois</div>
               <Activity className="w-3.5 h-3.5 opacity-80" />
             </div>
             <div className="text-xl font-bold leading-tight">{dashboard.moisCourant.count}</div>
-            <div className="text-[10px] opacity-90 mt-0.5">{formatEuro(dashboard.moisCourant.ca)} CA payé</div>
+            <div className="text-[11px] opacity-90 mt-0.5">{formatEuro(dashboard.moisCourant.ca)} CA payé</div>
           </div>
           <div className="bg-gradient-to-br from-slate-500 to-gray-600 rounded-xl p-2.5 text-white" title="Dossiers payés le mois précédent">
             <div className="flex justify-between items-center mb-0.5">
-              <div className="text-[10px] font-semibold opacity-90 uppercase">Mois précédent</div>
+              <div className="text-[11px] font-semibold opacity-90 uppercase">Mois précédent</div>
               <Calendar className="w-3.5 h-3.5 opacity-80" />
             </div>
             <div className="text-xl font-bold leading-tight">{dashboard.moisPrecedent.count}</div>
-            <div className="text-[10px] opacity-90 mt-0.5">{formatEuro(dashboard.moisPrecedent.ca)} CA payé</div>
+            <div className="text-[11px] opacity-90 mt-0.5">{formatEuro(dashboard.moisPrecedent.ca)} CA payé</div>
           </div>
           <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-xl p-2.5 text-white" title="Marge sur les dossiers payés ce mois">
             <div className="flex justify-between items-center mb-0.5">
-              <div className="text-[10px] font-semibold opacity-90 uppercase">Marge ce mois</div>
+              <div className="text-[11px] font-semibold opacity-90 uppercase">Marge ce mois</div>
               <TrendingUp className="w-3.5 h-3.5 opacity-80" />
             </div>
             <div className="text-lg font-bold truncate leading-tight">{formatEuro(dashboard.moisCourant.marge)}</div>
           </div>
           <div className={`bg-gradient-to-br ${dashboard.moisCourant.ca >= dashboard.moisPrecedent.ca ? 'from-emerald-500 to-green-500' : 'from-rose-500 to-pink-500'} rounded-xl p-2.5 text-white`}>
             <div className="flex justify-between items-center mb-0.5">
-              <div className="text-[10px] font-semibold opacity-90 uppercase">Évolution</div>
+              <div className="text-[11px] font-semibold opacity-90 uppercase">Évolution</div>
               <Zap className="w-3.5 h-3.5 opacity-80" />
             </div>
             <div className="text-xl font-bold leading-tight">
@@ -11220,15 +11220,15 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
                       <span className="font-bold text-slate-800 text-sm truncate">{d.nom} {d.prenom}</span>
-                      <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">💳 {d.financement}</span>
+                      <span className="text-[11px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700">💳 {d.financement}</span>
                     </div>
-                    <div className="text-[11px] text-slate-500">
+                    <div className="text-[12px] text-slate-500">
                       Contrôle le {d.dateControleLivraison && new Date(d.dateControleLivraison).toLocaleDateString('fr-FR')}
                     </div>
                   </div>
                   <div className="flex-shrink-0 text-right">
                     <div className={`text-base font-bold ${levelStyle}`}>{r.jours}j</div>
-                    <div className="text-[9px] text-slate-400">sans paiement</div>
+                    <div className="text-[10px] text-slate-400">sans paiement</div>
                   </div>
                 </button>
               );
@@ -11408,7 +11408,7 @@ function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
                         <span className="text-slate-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
                         {isAnonymous ? '⚠️ ' : '👤 '}{u.name}
                       </div>
-                      <div className="text-[10px] text-slate-500">Dernière activité : {formatLast(u.lastActivity)}</div>
+                      <div className="text-[11px] text-slate-500">Dernière activité : {formatLast(u.lastActivity)}</div>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 flex-wrap">
@@ -11422,11 +11422,11 @@ function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
                 <div className="w-full bg-slate-100 rounded-full h-1.5 overflow-hidden">
                   <div className={`h-full rounded-full ${isAnonymous ? 'bg-rose-400' : 'bg-gradient-to-r from-cyan-400 to-blue-500'}`} style={{ width: `${pct}%` }}></div>
                 </div>
-                <div className="text-[10px] text-slate-400 mt-1">{pct.toFixed(0)}% de l'activité totale</div>
+                <div className="text-[11px] text-slate-400 mt-1">{pct.toFixed(0)}% de l'activité totale</div>
               </button>
               {isExpanded && (
                 <div className="px-4 pb-3 bg-slate-50">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase mb-1.5 mt-1">📜 Détail des dernières actions</div>
+                  <div className="text-[11px] font-bold text-slate-500 uppercase mb-1.5 mt-1">📜 Détail des dernières actions</div>
                   {u.entries.length === 0 ? (
                     <div className="text-xs text-slate-400 italic py-2">Aucun détail (anciens dossiers non tracés).</div>
                   ) : (
@@ -11447,34 +11447,34 @@ function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
                             className="w-full text-left bg-white hover:bg-violet-50 border border-slate-100 rounded-lg p-2 transition-colors"
                           >
                             <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <span className="text-[11px] font-bold text-slate-700 truncate">
+                              <span className="text-[12px] font-bold text-slate-700 truncate">
                                 {e.type === 'création' ? '✨ Créé' : e.type === 'modification' ? '✏️ Modifié' : e.type === 'statut' ? '🔄 Statut' : '📞 Relance'} · {e.client}
                               </span>
-                              <span className="text-[9px] text-slate-400 flex-shrink-0">{formatEntryDate(e.date)}</span>
+                              <span className="text-[10px] text-slate-400 flex-shrink-0">{formatEntryDate(e.date)}</span>
                             </div>
                             {/* Détail selon le type */}
                             {e.type === 'modification' && (
                               visibleChanges.length > 0 ? (
                                 <div className="mt-1 flex flex-wrap gap-1">
                                   {visibleChanges.slice(0, 6).map((c, k) => (
-                                    <span key={k} className="text-[10px] bg-slate-100 rounded px-1.5 py-0.5 text-slate-600">
+                                    <span key={k} className="text-[11px] bg-slate-100 rounded px-1.5 py-0.5 text-slate-600">
                                       <strong className="text-slate-700">{FIELD_LABELS[c.field] || c.field}</strong>
                                       {': '}{fmtFieldVal(c.from)} → <span className="text-emerald-700 font-semibold">{fmtFieldVal(c.to)}</span>
                                     </span>
                                   ))}
-                                  {visibleChanges.length > 6 && <span className="text-[10px] text-slate-400">+{visibleChanges.length - 6} autres</span>}
+                                  {visibleChanges.length > 6 && <span className="text-[11px] text-slate-400">+{visibleChanges.length - 6} autres</span>}
                                 </div>
                               ) : (
-                                <div className="mt-0.5 text-[10px] text-slate-400 italic">ajustement interne</div>
+                                <div className="mt-0.5 text-[11px] text-slate-400 italic">ajustement interne</div>
                               )
                             )}
                             {e.type === 'statut' && (
-                              <div className="mt-0.5 text-[10px] text-slate-500">
+                              <div className="mt-0.5 text-[11px] text-slate-500">
                                 {e.from ? `${e.from} → ` : ''}<span className="font-semibold text-amber-700">{e.to}</span>
                               </div>
                             )}
                             {e.type === 'relance' && (
-                              <div className="mt-0.5 text-[10px] text-slate-500">
+                              <div className="mt-0.5 text-[11px] text-slate-500">
                                 {e.channel === 'whatsapp' ? '📲 WhatsApp' : e.channel?.startsWith('email') ? '📧 Email' : '✉️ Message'}{e.motif ? ` · ${e.motif}` : ''}
                               </div>
                             )}
@@ -11529,14 +11529,14 @@ function ActiviteMensuellePanel({ data = [] }) {
       >
         <span className="flex items-center gap-2 font-bold text-slate-800 text-sm">
           📅 Activité mensuelle
-          <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-100 text-blue-700">{data.length} mois</span>
+          <span className="px-2 py-0.5 rounded-full text-[12px] font-bold bg-blue-100 text-blue-700">{data.length} mois</span>
         </span>
         <span className="text-slate-400 text-xs">{open ? '▼' : '▶'}</span>
       </button>
       {open && (
         <div className="border-t border-slate-100 overflow-x-auto">
           <table className="w-full text-xs">
-            <thead className="bg-slate-50 text-slate-600 uppercase text-[10px]">
+            <thead className="bg-slate-50 text-slate-600 uppercase text-[11px]">
               <tr>
                 <th className="text-left px-3 py-2 font-semibold">Mois</th>
                 <th className="text-right px-3 py-2 font-semibold" title="Dossiers créés dans le CRM ce mois-là">Créés</th>
@@ -11565,7 +11565,7 @@ function ActiviteMensuellePanel({ data = [] }) {
                 </tr>
               ))}
             </tbody>
-            <tfoot className="bg-slate-100 font-bold text-slate-800 text-[11px]">
+            <tfoot className="bg-slate-100 font-bold text-slate-800 text-[12px]">
               <tr>
                 <td className="px-3 py-2">Total</td>
                 <td className="px-3 py-2 text-right">{totalDossiers}</td>
@@ -11667,9 +11667,9 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                         {soc ? (
                           <SocieteBadge societe={soc} variant="inline" />
                         ) : p.societe ? (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{p.societe}</span>
+                          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{p.societe}</span>
                         ) : (
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 italic">sans société</span>
+                          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 italic">sans société</span>
                         )}
                       </div>
                       <div className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
@@ -11694,7 +11694,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                         const tauxPoses = Math.round(((p.nbPoses || 0) / p.count) * 100);
                         const dureeMoy = p.dureeCount > 0 ? Math.round(p.dureeTotale / p.dureeCount) : null;
                         return (
-                          <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                          <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
                             <span className="text-emerald-600 font-semibold" title={`${p.nbPayes} dossier(s) payé(s) sur ${p.count}`}>✅ {tauxTransfo}% payés</span>
                             <span className="text-amber-600 font-semibold" title={`${p.nbPoses || 0} dossier(s) posé(s) sur ${p.count}`}>🔧 {tauxPoses}% posés</span>
                             {p.nbRefusBanque > 0 && (
@@ -11797,7 +11797,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                           try { navigator.clipboard.writeText(txt); alert('📋 Récap copié dans le presse-papier (collable dans un email / Excel)'); }
                           catch (err) { alert('Copie impossible : ' + err.message); }
                         }}
-                        className="text-[11px] font-bold text-violet-700 bg-violet-100 hover:bg-violet-200 px-2 py-1 rounded-lg flex items-center gap-1"
+                        className="text-[12px] font-bold text-violet-700 bg-violet-100 hover:bg-violet-200 px-2 py-1 rounded-lg flex items-center gap-1"
                         title="Copier la liste des dossiers (client, n° facture, montant, payé/non payé) pour la coller dans un email ou Excel"
                       >
                         📋 Copier le récap
@@ -11888,29 +11888,29 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                           >
                             <span className="text-xs font-semibold text-slate-700 truncate">
                               {d.nom} {d.prenom}
-                              {factureNo && <span className="text-[10px] text-slate-400 ml-1">· 🧾 {factureNo}</span>}
-                              {!factureNo && d.id && <span className="text-[10px] text-slate-400 ml-1">· #{d.id}</span>}
+                              {factureNo && <span className="text-[11px] text-slate-400 ml-1">· 🧾 {factureNo}</span>}
+                              {!factureNo && d.id && <span className="text-[11px] text-slate-400 ml-1">· #{d.id}</span>}
                             </span>
                           </button>
                           {age >= 0 && (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap ${ageColor}`} title="Ancienneté — les plus vieux sont en haut, à payer en priorité">
+                            <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap ${ageColor}`} title="Ancienneté — les plus vieux sont en haut, à payer en priorité">
                               {age === 0 ? "auj." : age === 1 ? "1j" : `${age}j`}
                             </span>
                           )}
-                          <span className="text-[11px] font-bold text-slate-700 flex-shrink-0 whitespace-nowrap">
+                          <span className="text-[12px] font-bold text-slate-700 flex-shrink-0 whitespace-nowrap">
                             {formatEuro(amount)}
                           </span>
                           {canToggle ? (
                             <button
                               type="button"
                               onClick={(e) => { e.stopPropagation(); onTogglePresta(lid, p.nom, p.kind); }}
-                              className={`text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${paye ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
+                              className={`text-[11px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${paye ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
                               title={paye && detail?.datePaye ? `Payé le ${new Date(detail.datePaye).toLocaleDateString('fr-FR')} — clic pour repointer` : 'Pointer comme payé (rapide, sans groupe)'}
                             >
                               {paye ? `✓ Payé${detail?.datePaye ? ' ' + new Date(detail.datePaye).toLocaleDateString('fr-FR') : ''}` : '⏳ Non payé'}
                             </button>
                           ) : (
-                            d.dateInsta && <span className="text-[11px] text-slate-500 flex-shrink-0">📅 {new Date(d.dateInsta).toLocaleDateString('fr-FR')}</span>
+                            d.dateInsta && <span className="text-[12px] text-slate-500 flex-shrink-0">📅 {new Date(d.dateInsta).toLocaleDateString('fr-FR')}</span>
                           )}
                         </div>
                       );
@@ -11931,8 +11931,8 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                         {idsEncaisses.length > 0 && (
                           <div>
                             <div className="flex items-center justify-between gap-2 px-2 py-2 bg-emerald-50 border-y border-emerald-200 sticky top-0 z-[1]">
-                              <span className="text-[11px] font-bold text-emerald-800 uppercase">💚 Client a payé — à payer maintenant ({idsEncaisses.length})</span>
-                              <span className="text-[11px] font-bold text-emerald-900">{formatEuro(totalEncaisses)}</span>
+                              <span className="text-[12px] font-bold text-emerald-800 uppercase">💚 Client a payé — à payer maintenant ({idsEncaisses.length})</span>
+                              <span className="text-[12px] font-bold text-emerald-900">{formatEuro(totalEncaisses)}</span>
                             </div>
                             <div className="divide-y divide-slate-200">
                               {idsEncaisses.map(lid => renderLine(lid, true, ageEncaisse(lid)))}
@@ -11942,8 +11942,8 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                         {idsAttente.length > 0 && (
                           <div className="mt-2">
                             <div className="flex items-center justify-between gap-2 px-2 py-2 bg-slate-100 border-y border-slate-200 sticky top-0 z-[1]">
-                              <span className="text-[11px] font-bold text-slate-600 uppercase">⏳ En attente d'encaissement client — pas encore à payer ({idsAttente.length})</span>
-                              <span className="text-[11px] font-bold text-slate-700">{formatEuro(totalAttente)}</span>
+                              <span className="text-[12px] font-bold text-slate-600 uppercase">⏳ En attente d'encaissement client — pas encore à payer ({idsAttente.length})</span>
+                              <span className="text-[12px] font-bold text-slate-700">{formatEuro(totalAttente)}</span>
                             </div>
                             <div className="divide-y divide-slate-200">
                               {idsAttente.map(lid => renderLine(lid, true, ageAttente(lid)))}
@@ -11997,7 +11997,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); setSelectedIds(new Set()); }}
-                            className="text-[11px] font-bold text-white/90 bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg"
+                            className="text-[12px] font-bold text-white/90 bg-white/10 hover:bg-white/20 px-2 py-1 rounded-lg"
                           >
                             Tout désélectionner
                           </button>
@@ -12112,14 +12112,14 @@ function BanquePerfList({ data, dossiers = [], societes = [], onShowQuick }) {
                         <span className="text-slate-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
                         💳 {p.nom}
                         {soc ? <SocieteBadge societe={soc} variant="inline" /> :
-                          p.societe ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{p.societe}</span> :
-                          <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 italic">sans société</span>}
+                          p.societe ? <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{p.societe}</span> :
+                          <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-400 italic">sans société</span>}
                       </div>
                       <div className="text-xs text-slate-500 flex items-center gap-1.5 flex-wrap">
                         <span>{p.count} envoyé{p.count > 1 ? 's' : ''}</span>
                         <span className="font-bold text-violet-600" title={`${p.count} sur ${total} dossiers ${p.nom} toutes sociétés confondues`}>· {pctSoc}% de {p.nom}</span>
                       </div>
-                      <div className="text-[10px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                      <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
                         <span className="text-emerald-600 font-semibold" title={`${p.nbAccordes} dossier(s) accordé(s) sur ${p.count}`}>✅ {tauxAccord}% accordés</span>
                         {p.nbAttente > 0 && (
                           <span className="text-blue-600 font-semibold" title={`${p.nbAttente} dossier(s) envoyé(s) sans retour`}>⏳ {tauxAttente}% en attente</span>
@@ -12161,10 +12161,10 @@ function BanquePerfList({ data, dossiers = [], societes = [], onShowQuick }) {
                       >
                         <span className="text-xs font-semibold text-slate-700 truncate">
                           {d.nom} {d.prenom}
-                          {d.id && <span className="text-[10px] text-slate-400 ml-1">· #{d.id}</span>}
-                          {d.statutFin && <span className={`ml-2 text-[9px] font-bold px-1.5 py-0.5 rounded ${d.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' : d.statutFin === 'refusé' ? 'bg-rose-100 text-rose-700' : d.statutFin === 'manque_doc' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{d.statutFin}</span>}
+                          {d.id && <span className="text-[11px] text-slate-400 ml-1">· #{d.id}</span>}
+                          {d.statutFin && <span className={`ml-2 text-[10px] font-bold px-1.5 py-0.5 rounded ${d.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' : d.statutFin === 'refusé' ? 'bg-rose-100 text-rose-700' : d.statutFin === 'manque_doc' ? 'bg-amber-100 text-amber-700' : 'bg-blue-100 text-blue-700'}`}>{d.statutFin}</span>}
                         </span>
-                        <span className="text-[11px] text-slate-500 flex-shrink-0">
+                        <span className="text-[12px] text-slate-500 flex-shrink-0">
                           {formatEuro(d.montantTotal || 0)}
                           {d.dateEnvoiFin && <span className="ml-2">📤 {new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR')}</span>}
                         </span>
@@ -12244,7 +12244,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS 
                 <span className="text-lg">{s.emoji}</span>
                 <span>{s.label}</span>
                 {count !== null && (
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${sel ? 'bg-white/30' : 'bg-white text-slate-700'}`}>
+                  <span className={`px-2 py-0.5 rounded-full text-[11px] font-bold ${sel ? 'bg-white/30' : 'bg-white text-slate-700'}`}>
                     {count}
                   </span>
                 )}
@@ -12477,11 +12477,11 @@ function PennylaneKeysPanel({ societes = [] }) {
                     <div>
                       <div className="font-bold text-slate-800">{s.label || id}</div>
                       {info.configured ? (
-                        <div className="text-[11px] text-emerald-700 font-semibold">
+                        <div className="text-[12px] text-emerald-700 font-semibold">
                           ✓ Clé configurée — <code className="bg-emerald-100 px-1 rounded">••••{info.last4}</code>
                         </div>
                       ) : (
-                        <div className="text-[11px] text-slate-500">Aucune clé enregistrée dans le CRM (fallback Vercel actif).</div>
+                        <div className="text-[12px] text-slate-500">Aucune clé enregistrée dans le CRM (fallback Vercel actif).</div>
                       )}
                     </div>
                   </div>
@@ -12500,7 +12500,7 @@ function PennylaneKeysPanel({ societes = [] }) {
                 </div>
                 {ed && (
                   <div className="mt-3 pt-3 border-t border-slate-200 space-y-2">
-                    <label className="block text-[10px] font-bold text-slate-500 uppercase">Nouvelle clé API Pennylane (récupérée sur app.pennylane.com → Mon compte → API)</label>
+                    <label className="block text-[11px] font-bold text-slate-500 uppercase">Nouvelle clé API Pennylane (récupérée sur app.pennylane.com → Mon compte → API)</label>
                     <input
                       type="password"
                       value={ed.value}
@@ -12615,7 +12615,7 @@ function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setS
             title="Télécharge un fichier JSON de TOUS tes dossiers actuels."
           >
             <div className="flex items-center gap-2 font-bold">💾 Sauvegarde JSON</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Backup local de tous les dossiers (à faire avant toute opération expert).</div>
+            <div className="text-[12px] text-slate-500 mt-0.5">Backup local de tous les dossiers (à faire avant toute opération expert).</div>
           </button>
           <button
             onClick={() => setShowImportJson(true)}
@@ -12623,7 +12623,7 @@ function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setS
             title="Importer un fichier JSON de dossiers (migration ou restauration)."
           >
             <div className="flex items-center gap-2 font-bold">📦 Import JSON</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Importe un fichier JSON de dossiers (migration sheet ou restauration backup).</div>
+            <div className="text-[12px] text-slate-500 mt-0.5">Importe un fichier JSON de dossiers (migration sheet ou restauration backup).</div>
           </button>
           {/* 🚫 Ancien bouton « Annuler l'import » retiré : trop dangereux —
               un clic = suppression définitive de tous les dossiers importés.
@@ -12634,8 +12634,8 @@ function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setS
             className="bg-white hover:bg-emerald-50 disabled:bg-slate-50 disabled:text-slate-400 text-emerald-700 px-4 py-3 rounded-xl font-semibold border border-emerald-200 disabled:border-slate-200 text-left disabled:cursor-not-allowed"
             title="Marque le contrôle qualité comme validé sur tous les dossiers importés sans décision CQ."
           >
-            <div className="flex items-center gap-2 font-bold">✓ CQ fait sur importés {nbCqImported > 0 && <span className="text-[10px] bg-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded-full">{nbCqImported}</span>}</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">{nbCqImported > 0 ? `Valide le CQ sur ${nbCqImported} dossiers importés.` : 'Tous les imports ont déjà leur décision CQ.'}</div>
+            <div className="flex items-center gap-2 font-bold">✓ CQ fait sur importés {nbCqImported > 0 && <span className="text-[11px] bg-emerald-200 text-emerald-800 px-1.5 py-0.5 rounded-full">{nbCqImported}</span>}</div>
+            <div className="text-[12px] text-slate-500 mt-0.5">{nbCqImported > 0 ? `Valide le CQ sur ${nbCqImported} dossiers importés.` : 'Tous les imports ont déjà leur décision CQ.'}</div>
           </button>
           <button
             onClick={handleSyncStatutPaye}
@@ -12643,8 +12643,8 @@ function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setS
             className="bg-white hover:bg-blue-50 disabled:bg-slate-50 disabled:text-slate-400 text-blue-700 px-4 py-3 rounded-xl font-semibold border border-blue-200 disabled:border-slate-200 text-left disabled:cursor-not-allowed"
             title="Pour chaque dossier au statut PAYÉ sans payeClient, force payeClient=true."
           >
-            <div className="flex items-center gap-2 font-bold">💰 Sync statut PAYÉ → paiement reçu {nbPayeSync > 0 && <span className="text-[10px] bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded-full">{nbPayeSync}</span>}</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">{nbPayeSync > 0 ? `Marque payeClient=true sur ${nbPayeSync} dossiers déjà au statut PAYÉ.` : 'Statut et paiement sont déjà cohérents (sync auto active à chaque chargement).'}</div>
+            <div className="flex items-center gap-2 font-bold">💰 Sync statut PAYÉ → paiement reçu {nbPayeSync > 0 && <span className="text-[11px] bg-blue-200 text-blue-800 px-1.5 py-0.5 rounded-full">{nbPayeSync}</span>}</div>
+            <div className="text-[12px] text-slate-500 mt-0.5">{nbPayeSync > 0 ? `Marque payeClient=true sur ${nbPayeSync} dossiers déjà au statut PAYÉ.` : 'Statut et paiement sont déjà cohérents (sync auto active à chaque chargement).'}</div>
           </button>
           <button
             onClick={() => setShowSheet(v => !v)}
@@ -12652,7 +12652,7 @@ function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setS
             title="Affiche tous les dossiers en vue tableau (façon Google Sheet)."
           >
             <div className="flex items-center gap-2 font-bold">📊 {showSheet ? 'Cacher' : 'Afficher'} vue Sheet</div>
-            <div className="text-[11px] text-slate-500 mt-0.5">Tous les dossiers en grille triable, façon Google Sheet — pratique pour exporter ou comparer.</div>
+            <div className="text-[12px] text-slate-500 mt-0.5">Tous les dossiers en grille triable, façon Google Sheet — pratique pour exporter ou comparer.</div>
           </button>
         </div>
         {showSheet && <SheetView dossiers={dossiersEnriched || dossiers} setDossiers={setDossiers} STATUTS={STATUTS} societes={societes} POSEURS={POSEURS} REGIES={REGIES} FOURNISSEURS={FOURNISSEURS} onShowQuick={onShowQuick} />}
@@ -12953,11 +12953,11 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
       <th
         onClick={k ? () => toggleSort(k) : undefined}
         style={colWidth ? { width: `${colWidth}px`, minWidth: `${colWidth}px`, maxWidth: `${colWidth}px` } : undefined}
-        className={`relative px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-400 bg-white border-b border-slate-200 ${k ? 'cursor-pointer hover:text-slate-700 transition' : ''} ${className}`}
+        className={`relative px-4 py-3 text-[11px] font-semibold uppercase tracking-[0.08em] text-slate-400 bg-white border-b border-slate-200 ${k ? 'cursor-pointer hover:text-slate-700 transition' : ''} ${className}`}
       >
         <div className="flex items-center justify-between gap-1">
           <span>{children}</span>
-          {sortKey === k && <span className="text-violet-500 text-[10px]">{sortDir === 'asc' ? '↑' : '↓'}</span>}
+          {sortKey === k && <span className="text-violet-500 text-[11px]">{sortDir === 'asc' ? '↑' : '↓'}</span>}
         </div>
         <span
           onMouseDown={(e) => {
@@ -12980,7 +12980,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
     const cls = colorMap[def?.color] || 'bg-slate-400';
     const letter = (def?.label || societe || '?').trim().charAt(0).toUpperCase();
     return (
-      <span title={def?.label || societe} className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[10px] font-bold text-white ${cls}`}>
+      <span title={def?.label || societe} className={`inline-flex items-center justify-center w-6 h-6 rounded-full text-[11px] font-bold text-white ${cls}`}>
         {letter}
       </span>
     );
@@ -13071,12 +13071,12 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                 onCommit={(v) => setFactureNoPrestataire(lid, kind, it.idx, v)}
                 placeholder="N° fac"
                 title={hasFacture ? `Facture ${it.factureNo}` : 'Aucune facture saisie — risque de payer sans justificatif'}
-                className={`flex-shrink-0 w-[90px] text-[11px] font-mono font-bold border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400 ${hasFacture ? 'bg-white border-slate-200 text-slate-800' : 'bg-rose-50 border-rose-200 text-rose-600 placeholder-rose-400'}`}
+                className={`flex-shrink-0 w-[90px] text-[12px] font-mono font-bold border rounded px-1.5 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400 ${hasFacture ? 'bg-white border-slate-200 text-slate-800' : 'bg-rose-50 border-rose-200 text-rose-600 placeholder-rose-400'}`}
               />
               <button
                 onClick={() => togglePrestataire(lid, kind, it.idx)}
                 title={it.paye ? 'Marquer non payé' : (hasFacture ? 'Marquer payé' : '⚠️ Pas de facture — marquer payé quand même')}
-                className={`flex-shrink-0 w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center transition ${it.paye ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-300 text-slate-400 hover:border-emerald-400 hover:text-emerald-600'}`}
+                className={`flex-shrink-0 w-4 h-4 rounded text-[10px] font-bold flex items-center justify-center transition ${it.paye ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-300 text-slate-400 hover:border-emerald-400 hover:text-emerald-600'}`}
               >
                 {it.paye ? '✓' : '⏳'}
               </button>
@@ -13092,7 +13092,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
         })}
         <button
           onClick={() => addPrestataire(lid, kind)}
-          className="text-[9px] font-medium py-0.5 px-2 rounded-md border border-dashed border-slate-200 text-slate-400 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-600 transition"
+          className="text-[10px] font-medium py-0.5 px-2 rounded-md border border-dashed border-slate-200 text-slate-400 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-600 transition"
           title={`Ajouter un ${kind}`}
         >
           + Ajouter
@@ -13126,11 +13126,11 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
           </div>
         ))}
         {items.length > 1 && (
-          <div style={{ height: '18px' }} className={`flex items-center justify-end text-[10px] font-bold border-t border-${color}-200 text-${color}-800`}>
+          <div style={{ height: '18px' }} className={`flex items-center justify-end text-[11px] font-bold border-t border-${color}-200 text-${color}-800`}>
             = {fmtEuroShort(total)}
           </div>
         )}
-        {items.length === 0 && <span className="text-slate-300 italic text-[10px]">—</span>}
+        {items.length === 0 && <span className="text-slate-300 italic text-[11px]">—</span>}
       </div>
     );
   };
@@ -13175,7 +13175,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
             <span className="text-lg">📊</span>
             <span>Vue Sheet</span>
             <span className="px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 text-xs">{rows.length} dossier{rows.length > 1 ? 's' : ''}</span>
-            <span className="text-[11px] font-normal text-slate-500 hidden md:inline">· clic sur ✓/⏳ pour basculer payé</span>
+            <span className="text-[12px] font-normal text-slate-500 hidden md:inline">· clic sur ✓/⏳ pour basculer payé</span>
           </div>
           <input
             type="text"
@@ -13188,49 +13188,49 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
         {/* 🏢 Sélecteur société — MULTI-SÉLECTION (vide = toutes, sélection = OR) */}
         {societes.length > 0 && (
           <div className="flex flex-wrap items-center gap-1.5 mt-3">
-            <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mr-2">Société</span>
+            <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-2">Société</span>
             {societes.filter(s => s?.id).map(s => {
               const on = societeSelected.has(s.id);
               return (
                 <button
                   key={s.id}
                   onClick={() => toggleSociete(s.id)}
-                  className={`px-3 py-1 rounded-full text-[11px] font-semibold border transition flex items-center gap-1.5 ${on ? 'bg-violet-600 text-white border-violet-600 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}`}
+                  className={`px-3 py-1 rounded-full text-[12px] font-semibold border transition flex items-center gap-1.5 ${on ? 'bg-violet-600 text-white border-violet-600 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}`}
                 >
                   {s.emoji ? <span>{s.emoji}</span> : null}
                   <span>{s.label || s.id}</span>
-                  {on && <span className="text-[10px]">✓</span>}
+                  {on && <span className="text-[11px]">✓</span>}
                 </button>
               );
             })}
-            {societeSelected.size === 0 && <span className="text-[10px] text-slate-400 italic">toutes sélectionnées</span>}
+            {societeSelected.size === 0 && <span className="text-[11px] text-slate-400 italic">toutes sélectionnées</span>}
           </div>
         )}
         {/* 🔧🤝📦 Filtres par prestataire précis (dropdown). Empty = tous. */}
         <div className="flex flex-wrap items-center gap-2 mt-3">
-          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mr-1">Prestataire</span>
-          <select value={poseurFilter} onChange={(e) => setPoseurFilter(e.target.value)} className={`text-[11px] font-medium border rounded-lg px-2.5 py-1 transition ${poseurFilter ? 'bg-amber-50 border-amber-300 text-amber-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1">Prestataire</span>
+          <select value={poseurFilter} onChange={(e) => setPoseurFilter(e.target.value)} className={`text-[12px] font-medium border rounded-lg px-2.5 py-1 transition ${poseurFilter ? 'bg-amber-50 border-amber-300 text-amber-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
             <option value="">🔧 Tous poseurs</option>
             {allPoseurs.map(n => <option key={n} value={n}>🔧 {n}{!POSEURS.includes(n) ? ' (legacy)' : ''}</option>)}
           </select>
-          <select value={regieFilter} onChange={(e) => setRegieFilter(e.target.value)} className={`text-[11px] font-medium border rounded-lg px-2.5 py-1 transition ${regieFilter ? 'bg-purple-50 border-purple-300 text-purple-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+          <select value={regieFilter} onChange={(e) => setRegieFilter(e.target.value)} className={`text-[12px] font-medium border rounded-lg px-2.5 py-1 transition ${regieFilter ? 'bg-purple-50 border-purple-300 text-purple-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
             <option value="">🤝 Toutes régies</option>
             {allRegies.map(n => <option key={n} value={n}>🤝 {n}{!REGIES.includes(n) ? ' (legacy)' : ''}</option>)}
           </select>
-          <select value={fournisseurFilter} onChange={(e) => setFournisseurFilter(e.target.value)} className={`text-[11px] font-medium border rounded-lg px-2.5 py-1 transition ${fournisseurFilter ? 'bg-orange-50 border-orange-300 text-orange-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
+          <select value={fournisseurFilter} onChange={(e) => setFournisseurFilter(e.target.value)} className={`text-[12px] font-medium border rounded-lg px-2.5 py-1 transition ${fournisseurFilter ? 'bg-orange-50 border-orange-300 text-orange-800 shadow-sm' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}>
             <option value="">📦 Tous fournisseurs</option>
             {allFournisseurs.map(n => <option key={n} value={n}>📦 {n}{!FOURNISSEURS.includes(n) ? ' (legacy)' : ''}</option>)}
           </select>
         </div>
         <div className="flex flex-wrap items-center gap-1.5 mt-3">
-          <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider mr-1">Paiement</span>
+          <span className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mr-1">Paiement</span>
           {PAY_FILTERS.filter(pf => pf.id !== 'all').map(pf => {
             const on = paySelected.has(pf.id);
             return (
               <button
                 key={pf.id}
                 onClick={() => togglePay(pf.id)}
-                className={`px-3 py-1 rounded-full text-[11px] font-semibold border transition ${on ? `${pf.color} shadow-sm` : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}`}
+                className={`px-3 py-1 rounded-full text-[12px] font-semibold border transition ${on ? `${pf.color} shadow-sm` : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-50 hover:border-slate-300'}`}
               >
                 {pf.label}{on && ' ✓'}
               </button>
@@ -13239,7 +13239,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
           {(paySelected.size > 0 || societeSelected.size > 0 || poseurFilter || regieFilter || fournisseurFilter) && (
             <button
               onClick={() => { setPaySelected(new Set()); setSocieteSelected(new Set()); setPoseurFilter(''); setRegieFilter(''); setFournisseurFilter(''); }}
-              className="ml-auto px-3 py-1 rounded-full text-[11px] font-semibold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition"
+              className="ml-auto px-3 py-1 rounded-full text-[12px] font-semibold bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 transition"
               title="Effacer tous les filtres"
             >
               ✕ Réinitialiser ({paySelected.size + societeSelected.size + (poseurFilter ? 1 : 0) + (regieFilter ? 1 : 0) + (fournisseurFilter ? 1 : 0)})
@@ -13291,7 +13291,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                     <input type="date" value={r.dateInsta} onChange={(e) => updateDossier(lid, { dateInsta: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
                   </td>
                   <td className="px-2 py-3 whitespace-nowrap" title={s?.label || r.statut}>
-                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold ${s?.bg || 'bg-slate-100'} ${s?.text || 'text-slate-700'}`}>
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-semibold ${s?.bg || 'bg-slate-100'} ${s?.text || 'text-slate-700'}`}>
                       <span>{s?.emoji}</span>
                       <span>{s?.label || r.statut}</span>
                     </span>
@@ -13307,7 +13307,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                   <td className="px-2 py-3 text-right whitespace-nowrap">
                     <EditCell value={r.montantTotal || ''} type="number" onCommit={(v) => updateDossier(lid, { montantTotal: parseFloat(v) || 0 })} className="text-right" />
                   </td>
-                  <td className="px-2 py-3 text-right whitespace-nowrap font-mono text-slate-600 text-[11px]">{fmtEuro(r.montantHt)}</td>
+                  <td className="px-2 py-3 text-right whitespace-nowrap font-mono text-slate-600 text-[12px]">{fmtEuro(r.montantHt)}</td>
                   <td className="px-2 py-3 whitespace-nowrap">
                     <input type="date" value={r.datePaiementBanque} onChange={(e) => updateDossier(lid, { datePaiementBanque: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
                   </td>
@@ -13383,20 +13383,20 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                   <Cell></Cell>{/* 14 Poseur */}
                   <Cell className="text-right whitespace-nowrap" title={`Total ${fmtEuro(totals.poseursHtTotal)} = ✓ payé ${fmtEuro(totals.poseursPaye)} + ⏳ à payer ${fmtEuro(totals.poseursHtTotal - totals.poseursPaye)}`}>{/* 15 Mt Poseur */}
                     <div className="font-mono text-amber-700">{fmtEuroShort(totals.poseursHtTotal)}</div>
-                    {totals.poseursPaye > 0 && <div className="text-[9px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.poseursPaye)}</div>}
-                    {(totals.poseursHtTotal - totals.poseursPaye) > 0 && <div className="text-[9px] text-orange-600 font-normal">⏳ {fmtEuroShort(totals.poseursHtTotal - totals.poseursPaye)}</div>}
+                    {totals.poseursPaye > 0 && <div className="text-[10px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.poseursPaye)}</div>}
+                    {(totals.poseursHtTotal - totals.poseursPaye) > 0 && <div className="text-[10px] text-orange-600 font-normal">⏳ {fmtEuroShort(totals.poseursHtTotal - totals.poseursPaye)}</div>}
                   </Cell>
                   <Cell></Cell>{/* 16 Régie */}
                   <Cell className="text-right whitespace-nowrap" title={`Total ${fmtEuro(totals.regiesHtTotal)} = ✓ payé ${fmtEuro(totals.regiesPaye)} + ⏳ à payer ${fmtEuro(totals.regiesHtTotal - totals.regiesPaye)}`}>{/* 17 Mt Régie */}
                     <div className="font-mono text-purple-700">{fmtEuroShort(totals.regiesHtTotal)}</div>
-                    {totals.regiesPaye > 0 && <div className="text-[9px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.regiesPaye)}</div>}
-                    {(totals.regiesHtTotal - totals.regiesPaye) > 0 && <div className="text-[9px] text-orange-600 font-normal">⏳ {fmtEuroShort(totals.regiesHtTotal - totals.regiesPaye)}</div>}
+                    {totals.regiesPaye > 0 && <div className="text-[10px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.regiesPaye)}</div>}
+                    {(totals.regiesHtTotal - totals.regiesPaye) > 0 && <div className="text-[10px] text-orange-600 font-normal">⏳ {fmtEuroShort(totals.regiesHtTotal - totals.regiesPaye)}</div>}
                   </Cell>
                   <Cell></Cell>{/* 18 Fourn */}
                   <Cell className="text-right whitespace-nowrap" title={`Total ${fmtEuro(totals.fournisseursHtTotal)} = ✓ payé ${fmtEuro(totals.fournPaye)} + ⏳ à payer ${fmtEuro(totals.fournisseursHtTotal - totals.fournPaye)}`}>{/* 19 Mt Fourn */}
                     <div className="font-mono text-orange-700">{fmtEuroShort(totals.fournisseursHtTotal)}</div>
-                    {totals.fournPaye > 0 && <div className="text-[9px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.fournPaye)}</div>}
-                    {(totals.fournisseursHtTotal - totals.fournPaye) > 0 && <div className="text-[9px] text-orange-600 font-normal">⏳ {fmtEuroShort(totals.fournisseursHtTotal - totals.fournPaye)}</div>}
+                    {totals.fournPaye > 0 && <div className="text-[10px] text-emerald-700 font-normal">✓ {fmtEuroShort(totals.fournPaye)}</div>}
+                    {(totals.fournisseursHtTotal - totals.fournPaye) > 0 && <div className="text-[10px] text-orange-600 font-normal">⏳ {fmtEuroShort(totals.fournisseursHtTotal - totals.fournPaye)}</div>}
                   </Cell>
                   <Cell></Cell>{/* 20 N° Fac */}
                   <Cell className={`text-right whitespace-nowrap font-extrabold ${totals.margeHt >= 0 ? 'text-emerald-800 bg-emerald-100' : 'text-rose-800 bg-rose-100'}`}>{/* 21 Marge */}
@@ -13476,21 +13476,21 @@ function OnoffConfigManager() {
         <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
           <h4 className="font-bold text-purple-700 text-sm">🔐 1. Token sécurisé</h4>
           {token ? (
-            <button onClick={regenerate} className="text-[11px] font-bold text-rose-600 hover:underline">🔄 Regénérer</button>
+            <button onClick={regenerate} className="text-[12px] font-bold text-rose-600 hover:underline">🔄 Regénérer</button>
           ) : null}
         </div>
         {token ? (
           <>
-            <div className="flex items-center gap-2 bg-white border border-purple-300 rounded-lg p-2 font-mono text-[11px] break-all">
+            <div className="flex items-center gap-2 bg-white border border-purple-300 rounded-lg p-2 font-mono text-[12px] break-all">
               <span className="flex-1 select-all">{token}</span>
               <button
                 onClick={() => copy('token', token)}
-                className="flex-shrink-0 px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[10px] font-bold whitespace-nowrap"
+                className="flex-shrink-0 px-2 py-1 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[11px] font-bold whitespace-nowrap"
               >
                 {copied === 'token' ? '✓ Copié' : '📋 Copier'}
               </button>
             </div>
-            <p className="text-[11px] text-slate-500 mt-2">
+            <p className="text-[12px] text-slate-500 mt-2">
               Ce même token doit être collé dans <strong>Vercel</strong> (étape 2) ET dans <strong>ONOFF</strong> (étape 3). Les deux doivent matcher pour que ça fonctionne.
             </p>
           </>
@@ -13514,7 +13514,7 @@ function OnoffConfigManager() {
           <li>Clique <strong>Add Environment Variable</strong></li>
           <li>
             Key :{' '}
-            <button onClick={() => copy('varname', 'ONOFF_WEBHOOK_TOKEN')} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-blue-300 rounded text-[11px] font-mono font-bold hover:bg-blue-50">
+            <button onClick={() => copy('varname', 'ONOFF_WEBHOOK_TOKEN')} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-blue-300 rounded text-[12px] font-mono font-bold hover:bg-blue-50">
               ONOFF_WEBHOOK_TOKEN {copied === 'varname' ? '✓' : '📋'}
             </button>
           </li>
@@ -13534,12 +13534,12 @@ function OnoffConfigManager() {
           <li>
             Active l'enregistrement : bannière du haut → <strong>Call recording</strong> → <strong>Activate</strong> → <strong>I understand</strong>
             <br/>
-            <span className="text-[11px] text-amber-700">⚠️ Légal : préviens le client en début d'appel que la conversation est enregistrée.</span>
+            <span className="text-[12px] text-amber-700">⚠️ Légal : préviens le client en début d'appel que la conversation est enregistrée.</span>
           </li>
           <li>Va dans <strong>Integrations</strong> → choisis <strong>Call webhook</strong></li>
           <li>
             URL :{' '}
-            <button onClick={() => copy('url', webhookUrl)} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-purple-300 rounded text-[11px] font-mono font-bold hover:bg-purple-50">
+            <button onClick={() => copy('url', webhookUrl)} className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-purple-300 rounded text-[12px] font-mono font-bold hover:bg-purple-50">
               {webhookUrl} {copied === 'url' ? '✓' : '📋'}
             </button>
           </li>
@@ -13807,7 +13807,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
         </div>
 
         {detectedSmtp && config.smtpUser && (
-          <div className="text-[11px] text-slate-500 px-1">
+          <div className="text-[12px] text-slate-500 px-1">
             ℹ️ Le CRM utilisera <strong>{detectedSmtp.host}:{detectedSmtp.port}</strong> ({detectedSmtp.label}). Le destinataire verra "<strong>{config.fromName || 'CRM Solaire'}</strong> &lt;{config.smtpUser}&gt;".
           </div>
         )}
@@ -13847,7 +13847,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
             boîtes IMAP déjà connectées + un formulaire pour en ajouter. */}
         <div className="border-t border-slate-200 pt-3">
           <div className="text-xs font-bold text-slate-700 mb-1">📥 Récupérer les factures reçues par email (Yolico, Elsun…)</div>
-          <div className="text-[11px] text-slate-500 mb-2">
+          <div className="text-[12px] text-slate-500 mb-2">
             Connecte chaque boîte mail avec son <strong>mot de passe d'application</strong> (16 caractères généré par Google). Aucune config Google Cloud. Ensuite : onglet <strong>Tri factures → 🔍 Scanner Gmail</strong>.
             <br /><span className="text-emerald-700 font-semibold">🌍 Ces boîtes sont partagées avec toute l'équipe</span> — tu connectes une fois, tout le monde peut chercher les factures dedans.
           </div>
@@ -13858,13 +13858,13 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
               <div className="min-w-0 flex-1">
                 <div className="text-xs font-bold text-emerald-800 truncate flex items-center gap-1.5">
                   📧 {b.email}
-                  {b.shared && <span className="px-1 py-0.5 bg-emerald-200 text-emerald-800 rounded text-[9px] font-bold">🌍 Équipe</span>}
+                  {b.shared && <span className="px-1 py-0.5 bg-emerald-200 text-emerald-800 rounded text-[10px] font-bold">🌍 Équipe</span>}
                 </div>
-                <div className="text-[10px] text-emerald-600">🔑 Mot de passe d'application · 📥 scan factures actif</div>
+                <div className="text-[11px] text-emerald-600">🔑 Mot de passe d'application · 📥 scan factures actif</div>
               </div>
               <button
                 onClick={() => disconnectGmail(b.email)}
-                className="flex-shrink-0 px-2 py-1 bg-white border border-rose-300 text-rose-600 rounded text-[10px] font-bold hover:bg-rose-50"
+                className="flex-shrink-0 px-2 py-1 bg-white border border-rose-300 text-rose-600 rounded text-[11px] font-bold hover:bg-rose-50"
                 title={`Déconnecter ${b.email}`}
               >🔌</button>
             </div>
@@ -13886,7 +13886,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
               placeholder="Mot de passe d'application (16 caractères)"
               className="w-full px-2 py-1.5 border border-blue-200 rounded text-xs font-mono focus:outline-none focus:ring-2 focus:ring-blue-400"
             />
-            {imapErr && <div className="text-[11px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">⚠️ {imapErr}</div>}
+            {imapErr && <div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded px-2 py-1">⚠️ {imapErr}</div>}
             <button
               onClick={connectImap}
               disabled={imapBusy}
@@ -13894,7 +13894,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
             >
               {imapBusy ? '⏳ Connexion…' : '🔗 Connecter cette boîte'}
             </button>
-            <details className="text-[11px] text-slate-600">
+            <details className="text-[12px] text-slate-600">
               <summary className="cursor-pointer font-bold text-blue-700">❓ Comment obtenir un mot de passe d'application ?</summary>
               <ol className="list-decimal ml-5 space-y-0.5 mt-2">
                 <li>Va sur <a href="https://myaccount.google.com/security" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">myaccount.google.com/security</a></li>
@@ -13912,7 +13912,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
           <button
             type="button"
             onClick={() => setShowAdvanced(!showAdvanced)}
-            className="text-[11px] text-slate-500 hover:text-slate-700 underline"
+            className="text-[12px] text-slate-500 hover:text-slate-700 underline"
           >
             {showAdvanced ? '▾ Masquer' : '▸ Voir'} la méthode alternative (OAuth Google — setup ~30 min)
           </button>
@@ -13920,7 +13920,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
             <div className="mt-3 p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-3">
               {gmailOAuth?.connected ? (
                 <div className="space-y-2">
-                  <div className="text-[11px] font-bold text-emerald-700">
+                  <div className="text-[12px] font-bold text-emerald-700">
                     ✅ {(gmailOAuth.inboxes || [{ email: gmailOAuth.email }]).length} boîte{(gmailOAuth.inboxes || []).length > 1 ? 's' : ''} Gmail connectée{(gmailOAuth.inboxes || []).length > 1 ? 's' : ''}
                   </div>
                   {/* Liste des boîtes : compat ascendante via fallback sur l'ancien
@@ -13932,7 +13932,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
                     <div key={b.email} className="p-2 bg-emerald-50 border border-emerald-300 rounded-lg flex items-center justify-between gap-2">
                       <div className="min-w-0 flex-1">
                         <div className="text-xs font-bold text-emerald-800 truncate">📧 {b.email}</div>
-                        <div className="text-[10px] text-emerald-600 flex items-center gap-2 mt-0.5">
+                        <div className="text-[11px] text-emerald-600 flex items-center gap-2 mt-0.5">
                           {b.connectedAt && <span>Connectée le {new Date(b.connectedAt).toLocaleDateString('fr-FR')}</span>}
                           {b.canScan
                             ? <span className="px-1 py-0.5 bg-blue-100 text-blue-700 rounded font-bold">📥 Scan factures actif</span>
@@ -13941,7 +13941,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
                       </div>
                       <button
                         onClick={() => disconnectGmail(b.email)}
-                        className="flex-shrink-0 px-2 py-1 bg-white border border-rose-300 text-rose-600 rounded text-[10px] font-bold hover:bg-rose-50"
+                        className="flex-shrink-0 px-2 py-1 bg-white border border-rose-300 text-rose-600 rounded text-[11px] font-bold hover:bg-rose-50"
                         title={`Déconnecter ${b.email}`}
                       >
                         🔌
@@ -13959,7 +13959,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
                 </div>
               ) : (
                 <>
-                  <div className="text-[11px] text-slate-600 leading-relaxed">
+                  <div className="text-[12px] text-slate-600 leading-relaxed">
                     Avec OAuth, pas de mot de passe à copier — tu cliques "Connecter Gmail" → consent screen Google → fini. Tu peux connecter <strong>plusieurs adresses</strong> (ex : Yolico + Elsun) pour scanner les factures reçues automatiquement.
                   </div>
                   <button
@@ -13969,7 +13969,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
                   >
                     {oauthBusy ? '⏳ Redirection…' : '🔗 Connecter Gmail (OAuth)'}
                   </button>
-                  <details className="text-[11px] text-slate-600">
+                  <details className="text-[12px] text-slate-600">
                     <summary className="cursor-pointer font-bold">⚙️ Voir les étapes setup Google Cloud</summary>
                     <ol className="list-decimal ml-5 space-y-0.5 mt-2">
                       <li><a href="https://console.cloud.google.com/" target="_blank" rel="noopener noreferrer" className="text-blue-600 underline">console.cloud.google.com</a> → New project "CRM Solaire"</li>
@@ -13986,7 +13986,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
         </div>
 
         {/* Sécurité */}
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[11px] text-slate-600 leading-relaxed">
+        <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-[12px] text-slate-600 leading-relaxed">
           🔒 <strong>Sécurité :</strong> ces identifiants sont stockés dans la base Supabase du CRM (accessibles aux utilisateurs connectés). Pour Gmail, utilise un mot de passe d'application dédié au CRM — révocable à tout moment depuis Google sans toucher à ton vrai mot de passe.
         </div>
       </div>
@@ -14036,10 +14036,10 @@ function CommissionsInternesManager({ tarifs, setTarifs, noms, setNoms, dossiers
               <div className="flex items-center gap-2 flex-wrap">
                 <div className="flex-1 min-w-[180px]">
                   <div className="font-bold text-slate-800 text-sm">{role.emoji} {role.label}</div>
-                  <div className="text-[11px] text-slate-500">{nbDossiers} dossier{nbDossiers > 1 ? 's' : ''} · {liste.length} personne{liste.length > 1 ? 's' : ''}</div>
+                  <div className="text-[12px] text-slate-500">{nbDossiers} dossier{nbDossiers > 1 ? 's' : ''} · {liste.length} personne{liste.length > 1 ? 's' : ''}</div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <label className="text-[10px] font-bold text-slate-600 uppercase">Tarif</label>
+                  <label className="text-[11px] font-bold text-slate-600 uppercase">Tarif</label>
                   <input
                     type="number"
                     step="0.01"
@@ -14055,9 +14055,9 @@ function CommissionsInternesManager({ tarifs, setTarifs, noms, setNoms, dossiers
               {/* Liste des personnes assignables */}
               <div className="bg-white rounded-lg p-2 border border-fuchsia-100">
                 <div className="flex items-center justify-between mb-1.5">
-                  <span className="text-[10px] font-bold text-fuchsia-700 uppercase">Personnes</span>
+                  <span className="text-[11px] font-bold text-fuchsia-700 uppercase">Personnes</span>
                   {addingFor !== role.key && (
-                    <button onClick={() => { setAddingFor(role.key); setNewName(''); }} className="text-[11px] font-semibold text-fuchsia-600 bg-fuchsia-50 hover:bg-fuchsia-100 px-2 py-0.5 rounded flex items-center gap-1">
+                    <button onClick={() => { setAddingFor(role.key); setNewName(''); }} className="text-[12px] font-semibold text-fuchsia-600 bg-fuchsia-50 hover:bg-fuchsia-100 px-2 py-0.5 rounded flex items-center gap-1">
                       <Plus className="w-3 h-3" />Ajouter
                     </button>
                   )}
@@ -14074,17 +14074,17 @@ function CommissionsInternesManager({ tarifs, setTarifs, noms, setNoms, dossiers
                       className="flex-1 px-2 py-1 bg-white border border-fuchsia-300 rounded text-sm"
                       autoFocus
                     />
-                    <button onClick={() => addName(role.key)} className="px-2 py-1 bg-fuchsia-500 text-white rounded text-[11px] font-semibold">OK</button>
-                    <button onClick={() => { setAddingFor(null); setNewName(''); }} className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-[11px] font-semibold">Annuler</button>
+                    <button onClick={() => addName(role.key)} className="px-2 py-1 bg-fuchsia-500 text-white rounded text-[12px] font-semibold">OK</button>
+                    <button onClick={() => { setAddingFor(null); setNewName(''); }} className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-[12px] font-semibold">Annuler</button>
                   </div>
                 )}
 
                 {liste.length === 0 ? (
-                  <div className="text-[11px] text-slate-400 italic px-1 py-1">Aucune personne — clique sur "Ajouter" pour créer la liste</div>
+                  <div className="text-[12px] text-slate-400 italic px-1 py-1">Aucune personne — clique sur "Ajouter" pour créer la liste</div>
                 ) : (
                   <div className="flex flex-wrap gap-1">
                     {liste.map(nom => (
-                      <span key={nom} className="inline-flex items-center gap-1 bg-fuchsia-100 border border-fuchsia-300 text-fuchsia-800 rounded-full px-2 py-0.5 text-[11px] font-semibold">
+                      <span key={nom} className="inline-flex items-center gap-1 bg-fuchsia-100 border border-fuchsia-300 text-fuchsia-800 rounded-full px-2 py-0.5 text-[12px] font-semibold">
                         {nom}
                         <button onClick={() => removeName(role.key, nom)} className="hover:bg-fuchsia-200 rounded-full p-0.5 text-fuchsia-600" title="Retirer de la liste">
                           <X className="w-2.5 h-2.5" />
@@ -14127,7 +14127,7 @@ function ProductPrestaCard({ product, type, lignesActives, nomsDispo, getLocal, 
       <div className="flex items-center justify-between gap-2 px-3 py-2 bg-slate-50 border-b border-slate-200">
         <div className="font-bold text-sm text-slate-800 flex items-center gap-1.5">
           <span>{product.emoji}</span><span>{product.label}</span>
-          <span className="text-[10px] font-normal text-slate-500">({lignesActives.length} {type}{lignesActives.length > 1 ? 's' : ''})</span>
+          <span className="text-[11px] font-normal text-slate-500">({lignesActives.length} {type}{lignesActives.length > 1 ? 's' : ''})</span>
         </div>
         {nomsDispo.length > 0 && (
           showAdd ? (
@@ -14141,11 +14141,11 @@ function ProductPrestaCard({ product, type, lignesActives, nomsDispo, getLocal, 
                 <option value="">— Choisir un {type} —</option>
                 {nomsDispo.map(n => <option key={n} value={n}>{n}</option>)}
               </select>
-              <button onClick={() => handlePickAdd(pickedNom)} disabled={!pickedNom} className="text-[10px] font-bold bg-violet-500 hover:bg-violet-600 disabled:bg-slate-200 disabled:text-slate-400 text-white px-2 py-1 rounded">Ajouter</button>
-              <button onClick={() => { setShowAdd(false); setPickedNom(''); }} className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded">Annuler</button>
+              <button onClick={() => handlePickAdd(pickedNom)} disabled={!pickedNom} className="text-[11px] font-bold bg-violet-500 hover:bg-violet-600 disabled:bg-slate-200 disabled:text-slate-400 text-white px-2 py-1 rounded">Ajouter</button>
+              <button onClick={() => { setShowAdd(false); setPickedNom(''); }} className="text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-1 rounded">Annuler</button>
             </div>
           ) : (
-            <button onClick={() => setShowAdd(true)} className="text-[11px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded flex items-center gap-1">
+            <button onClick={() => setShowAdd(true)} className="text-[12px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-1 rounded flex items-center gap-1">
               <Plus className="w-3 h-3" />Ajouter un {type}
             </button>
           )
@@ -14173,10 +14173,10 @@ function ProductPrestaCard({ product, type, lignesActives, nomsDispo, getLocal, 
                     placeholder="—"
                     className={`w-24 px-2 py-1 ${isEdited ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'} border rounded text-right text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-violet-400`}
                   />
-                  <span className="text-[10px] text-slate-500">€ HT</span>
+                  <span className="text-[11px] text-slate-500">€ HT</span>
                   {hasPending(nom) && (
                     <span className="inline-flex items-center gap-0.5 ml-1">
-                      <button onClick={() => savePending(nom)} title="Enregistrer" className="px-1.5 py-0.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[10px] font-bold">💾</button>
+                      <button onClick={() => savePending(nom)} title="Enregistrer" className="px-1.5 py-0.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[11px] font-bold">💾</button>
                       <button onClick={() => cancelPending(nom)} title="Annuler" className="p-1 text-slate-500 hover:bg-slate-100 rounded text-xs">↶</button>
                     </span>
                   )}
@@ -14226,12 +14226,12 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
           {societes && societes.size > 0 && (
             <span className="flex items-center gap-1 flex-shrink-0">
               {[...societes].map(s => (
-                <span key={s} className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full uppercase ${societesDefinies.includes(s) ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600 border border-blue-200 italic'}`} title={societesDefinies.includes(s) ? 'Société choisie' : 'Déduite des dossiers (pas encore choisie)'}>{labelSociete(s)}</span>
+                <span key={s} className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full uppercase ${societesDefinies.includes(s) ? 'bg-blue-500 text-white' : 'bg-blue-50 text-blue-600 border border-blue-200 italic'}`} title={societesDefinies.includes(s) ? 'Société choisie' : 'Déduite des dossiers (pas encore choisie)'}>{labelSociete(s)}</span>
               ))}
             </span>
           )}
         </span>
-        <span className="flex items-center gap-2 text-[10px] text-slate-500 flex-shrink-0">
+        <span className="flex items-center gap-2 text-[11px] text-slate-500 flex-shrink-0">
           {nbTarifsPuiss > 0 && <span className="px-1.5 py-0.5 bg-emerald-100 text-emerald-700 rounded font-semibold">☀️ {nbTarifsPuiss}</span>}
           {autresActifs.length > 0 && <span className="px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded font-semibold">🛒 {autresActifs.length}</span>}
           {used > 0 && <span className="px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded font-semibold">{used} doss.</span>}
@@ -14243,7 +14243,7 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
           {/* Nom (surnom CRM) + Nom officiel (Pennylane) + tél + email */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase mb-0.5 block">Surnom (CRM)</label>
+              <label className="text-[11px] font-bold text-slate-500 uppercase mb-0.5 block">Surnom (CRM)</label>
               <input
                 type="text"
                 defaultValue={nom}
@@ -14255,7 +14255,7 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
             </div>
             {contactsObjectShape && (
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase mb-0.5 block">🏢 Nom officiel (Pennylane)</label>
+                <label className="text-[11px] font-bold text-slate-500 uppercase mb-0.5 block">🏢 Nom officiel (Pennylane)</label>
                 <input
                   type="text"
                   value={pending[nom] && '__nomOfficiel' in pending[nom] ? pending[nom].__nomOfficiel : getNomOfficiel(nom)}
@@ -14270,7 +14270,7 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
             <div>
-              <label className="text-[10px] font-bold text-slate-500 uppercase mb-0.5 block">📞 Téléphone</label>
+              <label className="text-[11px] font-bold text-slate-500 uppercase mb-0.5 block">📞 Téléphone</label>
               <input
                 type="tel"
                 value={pending[nom] && '__tel' in pending[nom] ? pending[nom].__tel : getTel(nom)}
@@ -14282,7 +14282,7 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
             </div>
             {contactsObjectShape && (
               <div>
-                <label className="text-[10px] font-bold text-slate-500 uppercase mb-0.5 block">📧 Email</label>
+                <label className="text-[11px] font-bold text-slate-500 uppercase mb-0.5 block">📧 Email</label>
                 <input
                   type="email"
                   value={pending[nom] && '__email' in pending[nom] ? pending[nom].__email : getEmail(nom)}
@@ -14297,7 +14297,7 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
           {/* 🏢 Sociétés du groupe pour lesquelles bosse ce prestataire */}
           {setSocietesDefinies && societesGroupe.length > 0 && (
             <div>
-              <div className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1.5">
+              <div className="text-[11px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1.5">
                 <span>🏢</span><span>Société{societesGroupe.length > 1 ? 's' : ''} de ce {type}</span>
               </div>
               <div className="flex items-center gap-3 flex-wrap">
@@ -14323,13 +14323,13 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
                 })}
               </div>
               {societesDefinies.length === 0 && (
-                <div className="text-[10px] text-slate-400 italic mt-1">Aucune coche → le CRM essaie de deviner depuis les dossiers où ce {type} a bossé.</div>
+                <div className="text-[11px] text-slate-400 italic mt-1">Aucune coche → le CRM essaie de deviner depuis les dossiers où ce {type} a bossé.</div>
               )}
             </div>
           )}
           {/* Tarifs panneaux par Wc — grille compacte qui s'enroule */}
           <div>
-            <div className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1.5">
+            <div className="text-[11px] font-bold text-slate-500 uppercase mb-1 flex items-center gap-1.5">
               <span>☀️</span><span>Tarifs panneaux par Wc</span>
             </div>
             <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 gap-1.5">
@@ -14339,7 +14339,7 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
                 const isEdited = pending[nom] && p in pending[nom];
                 return (
                   <div key={p} className="flex flex-col">
-                    <label className="text-[9px] font-bold text-slate-500 text-center">{p} Wc</label>
+                    <label className="text-[10px] font-bold text-slate-500 text-center">{p} Wc</label>
                     <input
                       type="number"
                       value={localVal ?? ''}
@@ -14356,27 +14356,27 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
           {/* Autres produits — uniquement ceux saisis + bouton ajouter */}
           {(autresActifs.length > 0 || otherDispo.length > 0) && (
             <div>
-              <div className="text-[10px] font-bold text-slate-500 uppercase mb-1 flex items-center justify-between">
+              <div className="text-[11px] font-bold text-slate-500 uppercase mb-1 flex items-center justify-between">
                 <span className="flex items-center gap-1.5"><span>🛒</span><span>Autres produits (€ HT par unité)</span></span>
                 {otherDispo.length > 0 && (
                   addingProduct ? (
                     <span className="flex items-center gap-1 normal-case">
-                      <select value={pickedProductId} onChange={(e) => setPickedProductId(e.target.value)} className="text-[11px] bg-white border border-slate-300 rounded px-1.5 py-0.5">
+                      <select value={pickedProductId} onChange={(e) => setPickedProductId(e.target.value)} className="text-[12px] bg-white border border-slate-300 rounded px-1.5 py-0.5">
                         <option value="">— Choisir —</option>
                         {otherDispo.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>)}
                       </select>
-                      <button onClick={handleAddProduct} disabled={!pickedProductId} className="text-[10px] font-bold bg-violet-500 hover:bg-violet-600 disabled:bg-slate-200 text-white px-2 py-0.5 rounded">OK</button>
-                      <button onClick={() => { setAddingProduct(false); setPickedProductId(''); }} className="text-[10px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-0.5 rounded">×</button>
+                      <button onClick={handleAddProduct} disabled={!pickedProductId} className="text-[11px] font-bold bg-violet-500 hover:bg-violet-600 disabled:bg-slate-200 text-white px-2 py-0.5 rounded">OK</button>
+                      <button onClick={() => { setAddingProduct(false); setPickedProductId(''); }} className="text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-600 px-2 py-0.5 rounded">×</button>
                     </span>
                   ) : (
-                    <button onClick={() => setAddingProduct(true)} className="text-[10px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded flex items-center gap-1 normal-case">
+                    <button onClick={() => setAddingProduct(true)} className="text-[11px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded flex items-center gap-1 normal-case">
                       <Plus className="w-2.5 h-2.5" />Ajouter un produit
                     </button>
                   )
                 )}
               </div>
               {autresActifs.length === 0 ? (
-                <div className="text-[10px] text-slate-400 italic">Aucun autre produit pour ce {type}.</div>
+                <div className="text-[11px] text-slate-400 italic">Aucun autre produit pour ce {type}.</div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                   {autresActifs.map(p => {
@@ -14384,7 +14384,7 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
                     const isEdited = pending[nom] && p.id in pending[nom];
                     return (
                       <div key={p.id} className="flex items-center gap-1.5 bg-slate-50 rounded px-2 py-1">
-                        <span className="flex-1 text-[11px] font-semibold text-slate-700 truncate">{p.emoji} {p.label}</span>
+                        <span className="flex-1 text-[12px] font-semibold text-slate-700 truncate">{p.emoji} {p.label}</span>
                         <input
                           type="number"
                           step="0.01"
@@ -14394,7 +14394,7 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
                           placeholder="—"
                           className={`w-20 px-1.5 py-0.5 ${isEdited ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'} border rounded text-right text-xs font-semibold`}
                         />
-                        <span className="text-[10px] text-slate-500">€</span>
+                        <span className="text-[11px] text-slate-500">€</span>
                       </div>
                     );
                   })}
@@ -14406,11 +14406,11 @@ function PrestataireCard({ nom, type, used, societes, societesDefinies = [], soc
           <div className="flex items-center justify-end gap-1.5 pt-1 border-t border-slate-100">
             {dirty ? (
               <>
-                <button onClick={() => cancelPending(nom)} className="px-2 py-1 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded text-[11px] font-semibold">↶ Annuler</button>
-                <button onClick={() => savePending(nom)} className="px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[11px] font-bold">💾 Enregistrer</button>
+                <button onClick={() => cancelPending(nom)} className="px-2 py-1 text-slate-600 bg-slate-100 hover:bg-slate-200 rounded text-[12px] font-semibold">↶ Annuler</button>
+                <button onClick={() => savePending(nom)} className="px-3 py-1 bg-emerald-500 hover:bg-emerald-600 text-white rounded text-[12px] font-bold">💾 Enregistrer</button>
               </>
             ) : (
-              <button onClick={() => del(nom)} className="px-2 py-1 text-rose-500 hover:bg-rose-50 rounded text-[11px] font-semibold flex items-center gap-1">
+              <button onClick={() => del(nom)} className="px-2 py-1 text-rose-500 hover:bg-rose-50 rounded text-[12px] font-semibold flex items-center gap-1">
                 <Trash2 className="w-3 h-3" />Supprimer
               </button>
             )}
@@ -14964,7 +14964,7 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                   )}
                   {importPreview.rows.length > 0 && (
                     <div className="max-h-64 overflow-y-auto">
-                      <table className="w-full text-[11px]">
+                      <table className="w-full text-[12px]">
                         <thead className="bg-slate-50 text-slate-600 sticky top-0">
                           <tr>
                             <th className="text-left px-2 py-1 font-bold">Nom</th>
@@ -14981,7 +14981,7 @@ function PrestataireManager({ titre, description, data, setData, dossiers, dossi
                               <tr key={i} className="hover:bg-slate-50">
                                 <td className="px-2 py-1 font-semibold text-slate-800">{r.nom}</td>
                                 <td className="px-2 py-1 text-right text-slate-600">{Object.keys(r.tarifs).length}</td>
-                                <td className="px-2 py-1 text-right text-slate-500 text-[10px]">{apercu}…</td>
+                                <td className="px-2 py-1 text-right text-slate-500 text-[11px]">{apercu}…</td>
                                 <td className="px-2 py-1 text-center">
                                   {existe ? <span className="text-amber-700 font-bold">↻ Mise à jour</span> : <span className="text-emerald-700 font-bold">+ Nouveau</span>}
                                 </td>
@@ -15126,14 +15126,14 @@ function SocietesManager({ societes, setSocietes, dossiers }) {
                       className="flex-1 min-w-[150px] px-3 py-2 bg-white border border-slate-300 rounded text-sm font-bold"
                       placeholder="Nom de la société"
                     />
-                    <span className="text-[10px] text-slate-500">{used} dossier{used > 1 ? 's' : ''}</span>
+                    <span className="text-[11px] text-slate-500">{used} dossier{used > 1 ? 's' : ''}</span>
                     <button onClick={() => deleteSociete(s.id)} className="p-1.5 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cette société">
                       <Trash2 className="w-4 h-4" />
                     </button>
                   </div>
                   {/* Ligne 2 : Emoji fallback + couleur (si pas de logo uploadé) */}
                   {!s.logoUrl && (
-                    <div className="flex items-center gap-2 flex-wrap text-[10px] text-slate-500">
+                    <div className="flex items-center gap-2 flex-wrap text-[11px] text-slate-500">
                       <span className="font-semibold uppercase">Sans logo →</span>
                       <input
                         type="text"
@@ -15159,7 +15159,7 @@ function SocietesManager({ societes, setSocietes, dossiers }) {
                   )}
                   {/* Preview badge */}
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] text-slate-500 font-semibold uppercase">Aperçu :</span>
+                    <span className="text-[11px] text-slate-500 font-semibold uppercase">Aperçu :</span>
                     <SocieteBadge societe={s} variant="inline" />
                   </div>
                 </div>
@@ -15177,16 +15177,16 @@ function SocietesManager({ societes, setSocietes, dossiers }) {
             <h3 className="text-sm font-bold text-emerald-800">➕ Nouvelle société</h3>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               <div>
-                <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Emoji</label>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1 uppercase">Emoji</label>
                 <input type="text" value={newEmoji} onChange={(e) => setNewEmoji(e.target.value)} maxLength={16} placeholder="🏢" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-center text-lg" />
               </div>
               <div className="md:col-span-2">
-                <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Nom *</label>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1 uppercase">Nom *</label>
                 <input type="text" value={newLabel} onChange={(e) => setNewLabel(e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') addSociete(); }} placeholder="Ex : Yolico, Elsun, Solar Pro…" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-bold" autoFocus />
               </div>
             </div>
             <div>
-              <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Couleur du badge</label>
+              <label className="block text-[11px] font-semibold text-slate-600 mb-1 uppercase">Couleur du badge</label>
               <div className="flex gap-2">
                 {COLORS.map(c => (
                   <button key={c.id} type="button" onClick={() => setNewColor(c.id)} className={`w-8 h-8 rounded-full border-2 ${c.cls} ${newColor === c.id ? 'border-slate-800 ring-2 ring-offset-1 ring-slate-400' : 'border-white opacity-60 hover:opacity-100'}`} title={c.label} />
@@ -15662,7 +15662,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                 <div className="mb-4 p-4 bg-gradient-to-br from-violet-50 to-fuchsia-50 border-2 border-violet-300 rounded-2xl">
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="text-sm font-bold text-violet-800">🛡️ Journal d'audit — actions sensibles</h3>
-                    <button onClick={fetchAuditLog} disabled={loadingAudit} className="text-[11px] font-semibold text-violet-700 bg-white border border-violet-200 hover:bg-violet-100 px-2.5 py-1 rounded-lg disabled:opacity-50">
+                    <button onClick={fetchAuditLog} disabled={loadingAudit} className="text-[12px] font-semibold text-violet-700 bg-white border border-violet-200 hover:bg-violet-100 px-2.5 py-1 rounded-lg disabled:opacity-50">
                       {loadingAudit ? '⏳' : '🔄 Rafraîchir'}
                     </button>
                   </div>
@@ -15683,12 +15683,12 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                         }[ev.type] || { emoji: '•', label: ev.type, color: 'bg-slate-50 border-slate-200 text-slate-700' };
                         const suspect = ev.actor_email === '(anonymous)' || ev.actor_email === '(bootstrap)';
                         return (
-                          <div key={i} className={`flex items-start gap-2 p-2 rounded-lg border text-[11px] ${meta.color} ${suspect ? 'ring-2 ring-rose-400' : ''}`}>
+                          <div key={i} className={`flex items-start gap-2 p-2 rounded-lg border text-[12px] ${meta.color} ${suspect ? 'ring-2 ring-rose-400' : ''}`}>
                             <span className="text-base flex-shrink-0">{meta.emoji}</span>
                             <div className="flex-1 min-w-0">
                               <div className="font-bold">
                                 {meta.label} : <span className="font-mono">{ev.target_email || '—'}</span>
-                                {ev.target_role && <span className="ml-1 px-1.5 py-0.5 bg-white/70 rounded text-[10px]">{ev.target_role}</span>}
+                                {ev.target_role && <span className="ml-1 px-1.5 py-0.5 bg-white/70 rounded text-[11px]">{ev.target_role}</span>}
                               </div>
                               <div className="opacity-80 mt-0.5">
                                 par <strong className={suspect ? 'text-rose-700' : ''}>{ev.actor_email}</strong>
@@ -15713,15 +15713,15 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                   <h3 className="text-sm font-bold text-emerald-800 mb-3">➕ Nouveau membre</h3>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Prénom</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1 uppercase">Prénom</label>
                       <input type="text" value={newPrenom} onChange={(e) => setNewPrenom(e.target.value)} placeholder="Marie" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Nom</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1 uppercase">Nom</label>
                       <input type="text" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Dupont" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm" />
                     </div>
                     <div>
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Emoji</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1 uppercase">Emoji</label>
                       <input type="text" value={newEmoji} onChange={(e) => setNewEmoji(e.target.value)} placeholder="👤" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm text-center" maxLength={16} />
                       <div className="flex flex-wrap gap-1 mt-1">
                         {COMMON_EMOJIS.map(em => (
@@ -15730,25 +15730,25 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                       </div>
                     </div>
                     <div className="md:col-span-2">
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Email *</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1 uppercase">Email *</label>
                       <input type="email" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="marie.dupont@email.com" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm" />
                     </div>
                     <div className="md:col-span-2">
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Mot de passe * (min 6 caractères)</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1 uppercase">Mot de passe * (min 6 caractères)</label>
                       <div className="flex gap-2">
                         <input type="text" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Solaire2026!" className="flex-1 px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-mono" />
                         <button onClick={generatePassword} className="px-3 py-2 bg-violet-500 text-white rounded-lg text-xs font-semibold whitespace-nowrap">🎲 Générer</button>
                       </div>
                     </div>
                     <div className="md:col-span-2">
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">Rôle</label>
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1 uppercase">Rôle</label>
                       <select value={newRole} onChange={(e) => { setNewRole(e.target.value); setNewLinkedTo(''); }} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold">
                         {ROLES.map(r => <option key={r.id} value={r.id}>{r.label} — {r.desc}</option>)}
                       </select>
                     </div>
                     {(newRole === 'poseur' || newRole === 'regie') && (
                       <div className="md:col-span-2">
-                        <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">
+                        <label className="block text-[11px] font-semibold text-slate-600 mb-1 uppercase">
                           Rattaché à {newRole === 'poseur' ? 'quel poseur' : 'quelle régie'} * <span className="text-slate-400 normal-case font-normal">— ce compte ne verra que ces dossiers</span>
                         </label>
                         <select value={newLinkedTo} onChange={(e) => setNewLinkedTo(e.target.value)} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm font-semibold">
@@ -15758,7 +15758,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                       </div>
                     )}
                     <div className="md:col-span-2">
-                      <label className="block text-[10px] font-semibold text-slate-600 mb-1 uppercase">
+                      <label className="block text-[11px] font-semibold text-slate-600 mb-1 uppercase">
                         📞 Téléphone (WhatsApp/SMS) <span className="text-slate-400 normal-case font-normal">— optionnel mais recommandé pour les poseurs/régies (relances facture)</span>
                       </label>
                       <input type="tel" value={newTel} onChange={(e) => setNewTel(e.target.value)} placeholder="0612345678" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-lg text-sm" />
@@ -15796,7 +15796,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                     const linkedTo = meta.linkedTo || '';
                     const isExpanded = expandedUserId === u.id;
                     const fieldCls = "w-full px-2.5 py-1.5 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:border-violet-400 focus:ring-2 focus:ring-violet-100";
-                    const labelCls = "block text-[10px] font-bold text-slate-500 uppercase mb-1";
+                    const labelCls = "block text-[11px] font-bold text-slate-500 uppercase mb-1";
 
                     if (!isExpanded) {
                       // === LIGNE COMPACTE : clic = expand ===
@@ -15810,21 +15810,21 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                           <span className="text-xl flex-shrink-0">{emoji}</span>
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-bold text-slate-800 truncate">{fullName}</div>
-                            <div className="text-[11px] text-slate-500 truncate">
+                            <div className="text-[12px] text-slate-500 truncate">
                               {u.email}{tel ? ` · 📞 ${tel}` : ''}
                             </div>
                           </div>
-                          <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[10px] font-bold border ${roleInfo.color}`}>{roleInfo.label}</span>
+                          <span className={`flex-shrink-0 px-2 py-0.5 rounded-full text-[11px] font-bold border ${roleInfo.color}`}>{roleInfo.label}</span>
                           {/* Le rattachement poseur/régie ne concerne QUE ces 2 rôles.
                               Une donnée linkedTo qui traîne sur un admin/autre rôle
                               ne doit pas s'afficher (lien sans aucun sens). */}
-                          {(role === 'poseur' || role === 'regie') && linkedTo && <span className="flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 text-slate-600">🔗 {linkedTo}</span>}
+                          {(role === 'poseur' || role === 'regie') && linkedTo && <span className="flex-shrink-0 px-2 py-0.5 rounded text-[11px] font-bold bg-slate-100 text-slate-600">🔗 {linkedTo}</span>}
                           {(role === 'poseur' || role === 'regie') && !linkedTo && (
-                            <span className="flex-shrink-0 px-2 py-0.5 rounded text-[10px] font-bold bg-rose-100 text-rose-700">⚠️ Non rattaché</span>
+                            <span className="flex-shrink-0 px-2 py-0.5 rounded text-[11px] font-bold bg-rose-100 text-rose-700">⚠️ Non rattaché</span>
                           )}
                           <button
                             onClick={(e) => { e.stopPropagation(); openEdit(u); }}
-                            className="flex-shrink-0 px-2 py-1 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded text-[11px] font-bold"
+                            className="flex-shrink-0 px-2 py-1 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded text-[12px] font-bold"
                             title="Éditer"
                           >
                             ✏️ Éditer
@@ -15975,7 +15975,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                           const modifAt = m.last_modified_at_iso || '';
                           const suspectCreator = !createdByEmail || createdByEmail === '(anonymous)' || createdByEmail === '(bootstrap)';
                           return (
-                            <div className={`mb-2 px-3 py-2 rounded-lg text-[11px] border ${suspectCreator ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
+                            <div className={`mb-2 px-3 py-2 rounded-lg text-[12px] border ${suspectCreator ? 'bg-rose-50 border-rose-200 text-rose-700' : 'bg-slate-50 border-slate-200 text-slate-600'}`}>
                               <div className="font-bold mb-0.5">🛡️ Traçabilité</div>
                               <div>
                                 {suspectCreator
@@ -15987,7 +15987,7 @@ function UsersManager({ users, setUsers, dossiers, poseursList = [], regiesList 
                           );
                         })()}
                         <div className="flex items-center justify-between pt-2 border-t border-violet-200">
-                          <div className="text-[11px] text-slate-500">{u.last_sign_in_at ? `🕐 Dernière connexion : ${new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}` : '🆕 Jamais connecté'}</div>
+                          <div className="text-[12px] text-slate-500">{u.last_sign_in_at ? `🕐 Dernière connexion : ${new Date(u.last_sign_in_at).toLocaleDateString('fr-FR')}` : '🆕 Jamais connecté'}</div>
                           <div className="flex gap-2">
                             <button onClick={() => resetPasswordSupabaseUser(u.id, u.email)} className="px-3 py-1.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-xs font-semibold">🔑 Reset mdp</button>
                             <button onClick={() => deleteSupabaseUser(u.id, u.email)} className="px-3 py-1.5 bg-rose-100 hover:bg-rose-500 hover:text-white text-rose-700 rounded text-xs font-semibold flex items-center gap-1">
@@ -16074,19 +16074,19 @@ function VariantRow({ variant, onSave, onRemove }) {
     <div className="space-y-1">
       {/* Ligne principale : marque, modèle, W/u, save, delete */}
       <div className="flex items-center gap-1.5 flex-wrap">
-        <span className="text-slate-400 text-[10px] font-semibold">└─</span>
+        <span className="text-slate-400 text-[11px] font-semibold">└─</span>
         <input type="text" value={marque} onChange={(e) => setMarque(e.target.value)} onKeyDown={onKey} placeholder="Marque" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
         <input type="text" value={modele} onChange={(e) => setModele(e.target.value)} onKeyDown={onKey} placeholder="Modèle" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-slate-200 rounded text-xs" />
         <input type="number" min="0" step="1" value={puissanceU} onChange={(e) => setPuissanceU(e.target.value)} onKeyDown={onKey} placeholder="W/u" title="Puissance unitaire en Watts (ex: 500 pour un panneau 500W). Sert au calcul auto Quantité × W = total." className="w-20 px-2 py-1 bg-white border border-slate-200 rounded text-xs text-center" />
         {!showMicro && (
-          <button type="button" onClick={() => setShowMicro(true)} className="px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded text-[10px] font-semibold whitespace-nowrap" title="Ajouter un micro-onduleur fourni avec ce produit (fait partie de la pose)">
+          <button type="button" onClick={() => setShowMicro(true)} className="px-2 py-1 bg-amber-50 hover:bg-amber-100 border border-amber-200 text-amber-700 rounded text-[11px] font-semibold whitespace-nowrap" title="Ajouter un micro-onduleur fourni avec ce produit (fait partie de la pose)">
             + 📡 Micro fourni
           </button>
         )}
         {dirty ? (
-          <button onClick={save} title="Enregistrer cette variante" className="px-2 py-1 bg-violet-500 hover:bg-violet-600 text-white rounded text-[10px] font-bold whitespace-nowrap">💾 Enregistrer</button>
+          <button onClick={save} title="Enregistrer cette variante" className="px-2 py-1 bg-violet-500 hover:bg-violet-600 text-white rounded text-[11px] font-bold whitespace-nowrap">💾 Enregistrer</button>
         ) : (
-          <span className="px-2 py-1 text-emerald-600 text-[10px] font-bold whitespace-nowrap">✓</span>
+          <span className="px-2 py-1 text-emerald-600 text-[11px] font-bold whitespace-nowrap">✓</span>
         )}
         <button onClick={onRemove} className="p-1 text-rose-400 hover:bg-rose-100 rounded" title="Retirer cette variante">
           <Trash2 className="w-3 h-3" />
@@ -16095,12 +16095,12 @@ function VariantRow({ variant, onSave, onRemove }) {
       {/* Sous-ligne micro-onduleur fourni (option) */}
       {showMicro && (
         <div className="ml-6 pl-3 flex items-center gap-1.5 flex-wrap bg-amber-50 border border-amber-200 rounded p-1.5">
-          <span className="text-[10px] font-bold text-amber-700 whitespace-nowrap">📡 Micro fourni :</span>
+          <span className="text-[11px] font-bold text-amber-700 whitespace-nowrap">📡 Micro fourni :</span>
           <input type="text" value={microMarque} onChange={(e) => setMicroMarque(e.target.value)} onKeyDown={onKey} placeholder="Marque (ex: Hoymiles)" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-amber-200 rounded text-xs" />
           <input type="text" value={microModele} onChange={(e) => setMicroModele(e.target.value)} onKeyDown={onKey} placeholder="Modèle (ex: HMS-1000)" className="flex-1 min-w-[100px] px-2 py-1 bg-white border border-amber-200 rounded text-xs" />
-          <span className="text-[10px] text-amber-700 font-semibold whitespace-nowrap">1 pour</span>
+          <span className="text-[11px] text-amber-700 font-semibold whitespace-nowrap">1 pour</span>
           <input type="number" min="0" step="0.5" value={microPanneaux} onChange={(e) => setMicroPanneaux(e.target.value)} onKeyDown={onKey} placeholder="—" title="Combien de panneaux couvre 1 micro-onduleur (ex: 2 pour Hoymiles HMS-1000). Pour les bi-onduleurs (2 micros par panneau) utilise 0.5." className="w-12 px-1 py-1 bg-white border border-amber-200 rounded text-xs text-center" />
-          <span className="text-[10px] text-amber-700 font-semibold whitespace-nowrap">panneau(x)</span>
+          <span className="text-[11px] text-amber-700 font-semibold whitespace-nowrap">panneau(x)</span>
           <button type="button" onClick={() => { setMicroMarque(''); setMicroModele(''); setMicroPanneaux(''); setShowMicro(false); }} className="p-1 text-amber-400 hover:bg-amber-100 rounded" title="Retirer le micro-onduleur">
             <X className="w-3 h-3" />
           </button>
@@ -16365,7 +16365,7 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
                   />
                   {hasPendingType(p.id) && (
                     <span className="inline-flex items-center gap-1">
-                      <button onClick={() => saveType(p.id)} title="Enregistrer le nom/emoji" className="px-2 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[10px] font-bold whitespace-nowrap">💾 Enregistrer</button>
+                      <button onClick={() => saveType(p.id)} title="Enregistrer le nom/emoji" className="px-2 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-[11px] font-bold whitespace-nowrap">💾 Enregistrer</button>
                       <button onClick={() => cancelType(p.id)} title="Annuler les modifs" className="p-1.5 text-slate-500 hover:bg-slate-100 rounded-lg text-xs">↶</button>
                     </span>
                   )}
@@ -16373,15 +16373,15 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
                   <button
                     type="button"
                     onClick={() => toggleExpand(p.id)}
-                    className={`text-[10px] font-bold px-2 py-1 rounded-full whitespace-nowrap ${variants.length > 0 ? 'bg-violet-100 text-violet-700 hover:bg-violet-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                    className={`text-[11px] font-bold px-2 py-1 rounded-full whitespace-nowrap ${variants.length > 0 ? 'bg-violet-100 text-violet-700 hover:bg-violet-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                     title={expanded ? 'Replier' : 'Ouvrir'}
                   >
                     📦 {variants.length} marque{variants.length > 1 ? 's' : ''}/modèle{variants.length > 1 ? 's' : ''}
                   </button>
                   {p.autoTarif && (
-                    <span className="text-[10px] font-bold px-2 py-1 bg-amber-200 text-amber-800 rounded-full whitespace-nowrap">⚡ Tarifs auto par Wc</span>
+                    <span className="text-[11px] font-bold px-2 py-1 bg-amber-200 text-amber-800 rounded-full whitespace-nowrap">⚡ Tarifs auto par Wc</span>
                   )}
-                  <span className={`text-[10px] font-semibold px-2 py-1 rounded-full whitespace-nowrap ${used > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-400'}`}>{used} dossier{used > 1 ? 's' : ''}</span>
+                  <span className={`text-[11px] font-semibold px-2 py-1 rounded-full whitespace-nowrap ${used > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-400'}`}>{used} dossier{used > 1 ? 's' : ''}</span>
                   {/* Boutons de réordonnancement */}
                   <div className="flex items-center gap-0.5">
                     <button onClick={() => moveType(p.id, 'up')} disabled={isFirst} className="p-1 text-slate-500 hover:bg-slate-200 rounded disabled:opacity-20 disabled:cursor-not-allowed" title="Remonter ce type">
@@ -16401,15 +16401,15 @@ function ProduitsManager({ produits, setProduits, dossiers }) {
                   <div className="px-2.5 pb-2.5">
                     <div className="ml-6 pl-3 border-l-2 border-slate-200 space-y-1.5">
                       <div className="flex items-center justify-between gap-2">
-                        <div className="text-[10px] font-bold text-slate-500 uppercase">
+                        <div className="text-[11px] font-bold text-slate-500 uppercase">
                           📦 Marques & modèles {variants.length > 0 ? `(${variants.length})` : ''}
                         </div>
-                        <button onClick={() => addVariant(p.id)} className="text-[10px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-md flex items-center gap-1">
+                        <button onClick={() => addVariant(p.id)} className="text-[11px] font-semibold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-md flex items-center gap-1">
                           <Plus className="w-2.5 h-2.5" />Ajouter une marque/modèle
                         </button>
                       </div>
                       {variants.length === 0 ? (
-                        <div className="text-[10px] text-slate-400 italic">Aucune marque/modèle pour l'instant — le dossier proposera juste « {p.label} » sans variante.</div>
+                        <div className="text-[11px] text-slate-400 italic">Aucune marque/modèle pour l'instant — le dossier proposera juste « {p.label} » sans variante.</div>
                       ) : (
                         variants.map(v => (
                           <VariantRow
@@ -16505,11 +16505,11 @@ function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
               <div key={nom} className="bg-slate-50 rounded-xl border border-slate-200 p-2.5 space-y-1.5">
                 <div className="flex items-center gap-2">
                   <input type="text" defaultValue={nom} onBlur={(e) => rename(nom, e.target.value)} onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} className="flex-1 px-2 py-1 bg-white border border-transparent hover:border-slate-300 focus:border-violet-400 focus:outline-none rounded text-sm font-semibold" />
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${used > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-400'}`} title={`${used} dossier(s) utilisent ce fournisseur`}>{used}</span>
+                  <span className={`text-[11px] font-semibold px-1.5 py-0.5 rounded ${used > 0 ? 'bg-blue-100 text-blue-700' : 'bg-slate-200 text-slate-400'}`} title={`${used} dossier(s) utilisent ce fournisseur`}>{used}</span>
                   <button onClick={() => del(nom)} className="p-1 text-rose-500 hover:bg-rose-100 rounded"><Trash2 className="w-3.5 h-3.5" /></button>
                 </div>
                 <div className="flex items-center gap-2 pl-1">
-                  <span className="text-[10px] font-semibold text-slate-500 uppercase">💰 Tarif</span>
+                  <span className="text-[11px] font-semibold text-slate-500 uppercase">💰 Tarif</span>
                   <input
                     type="number"
                     step="0.01"
@@ -16520,9 +16520,9 @@ function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
                     placeholder="0,00"
                     className="w-20 px-2 py-0.5 bg-white border border-slate-200 rounded text-xs font-bold text-slate-700 text-right"
                   />
-                  <span className="text-[10px] text-slate-500">€ / Wc</span>
+                  <span className="text-[11px] text-slate-500">€ / Wc</span>
                   {tarif > 0 && (
-                    <span className="text-[10px] text-slate-400 ml-auto">ex : 6000 Wc → {(tarif * 6000).toFixed(2)} €</span>
+                    <span className="text-[11px] text-slate-400 ml-auto">ex : 6000 Wc → {(tarif * 6000).toFixed(2)} €</span>
                   )}
                 </div>
               </div>
@@ -16996,7 +16996,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
           <div className="sticky top-0 bg-white p-6 border-b border-slate-100 flex items-center justify-between z-10">
             <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
               <Sparkles className="w-5 h-5 text-violet-500" />{editingId ? 'Modifier le dossier' : 'Nouveau dossier'}
-              {isScanBusy && <span className="text-[10px] font-bold uppercase bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full animate-pulse">🔒 Scan IA en cours</span>}
+              {isScanBusy && <span className="text-[11px] font-bold uppercase bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full animate-pulse">🔒 Scan IA en cours</span>}
             </h2>
             <div className="flex items-center gap-2">
               {scannedSource && (
@@ -17090,23 +17090,23 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         (ex : nom du BC ≠ nom de la carte d'identité). */}
                     {Array.isArray(dossierScanState.incoherences) && dossierScanState.incoherences.length > 0 && (
                       <div className="mb-2 px-2 py-1.5 rounded-lg border-2 bg-orange-50 border-orange-300 text-orange-800">
-                        <div className="font-bold text-[11px]">🔎 {dossierScanState.incoherences.length} incohérence{dossierScanState.incoherences.length > 1 ? 's' : ''} entre documents — à vérifier</div>
-                        <ul className="mt-1 ml-1 text-[10px] space-y-0.5">
+                        <div className="font-bold text-[12px]">🔎 {dossierScanState.incoherences.length} incohérence{dossierScanState.incoherences.length > 1 ? 's' : ''} entre documents — à vérifier</div>
+                        <ul className="mt-1 ml-1 text-[11px] space-y-0.5">
                           {dossierScanState.incoherences.map((inc, j) => <li key={j}>• {inc}</li>)}
                         </ul>
-                        <div className="text-[10px] italic opacity-80 mt-0.5">L'IA a recoupé les documents : le formulaire a été pré-rempli avec la valeur la plus fiable (pièce d'identité). Vérifie quand même.</div>
+                        <div className="text-[11px] italic opacity-80 mt-0.5">L'IA a recoupé les documents : le formulaire a été pré-rempli avec la valeur la plus fiable (pièce d'identité). Vérifie quand même.</div>
                       </div>
                     )}
                     {/* Bandeau anti-fraude global si quelque chose est suspect */}
                     {hasAnyFraud && (
                       <div className={`mb-2 px-2 py-1.5 rounded-lg border-2 ${nHigh > 0 ? 'bg-rose-50 border-rose-300 text-rose-800' : 'bg-amber-50 border-amber-300 text-amber-800'}`}>
-                        <div className="font-bold text-[11px]">
+                        <div className="font-bold text-[12px]">
                           {nHigh > 0 ? '🚨' : '⚠️'} Anti-fraude :{' '}
                           {nHigh > 0 && <span>{nHigh} doc{nHigh > 1 ? 's' : ''} très suspect{nHigh > 1 ? 's' : ''}</span>}
                           {nHigh > 0 && nMedium > 0 && <span> · </span>}
                           {nMedium > 0 && <span>{nMedium} à vérifier</span>}
                         </div>
-                        <div className="text-[10px] italic opacity-80 mt-0.5">Voir les détails ligne par ligne ci-dessous, ou dans la modale Documents après sauvegarde.</div>
+                        <div className="text-[11px] italic opacity-80 mt-0.5">Voir les détails ligne par ligne ci-dessous, ou dans la modale Documents après sauvegarde.</div>
                       </div>
                     )}
                     <ul className="space-y-1.5">
@@ -17128,15 +17128,15 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                               <span>{emoji}</span>
                               <span className="font-semibold text-slate-700">{s.label}</span>
                               <span className="text-slate-400">— p. {s.pageStart}{s.pageEnd > s.pageStart ? `-${s.pageEnd}` : ''}</span>
-                              <span className={`text-[10px] font-bold uppercase ${confiCol}`}>{s.confiance}</span>
+                              <span className={`text-[11px] font-bold uppercase ${confiCol}`}>{s.confiance}</span>
                               {fraudIcon && (
-                                <span className={`text-[10px] font-bold ${fraudRisk === 'high' ? 'text-rose-700' : 'text-amber-700'}`}>
+                                <span className={`text-[11px] font-bold ${fraudRisk === 'high' ? 'text-rose-700' : 'text-amber-700'}`}>
                                   {fraudIcon} {fraudRisk === 'high' ? 'SUSPICION FORTE' : 'À VÉRIFIER'}
                                 </span>
                               )}
                             </div>
                             {fraudFlags.length > 0 && (
-                              <ul className={`mt-0.5 ml-6 text-[10px] space-y-0.5 ${fraudRisk === 'high' ? 'text-rose-700' : 'text-amber-700'}`}>
+                              <ul className={`mt-0.5 ml-6 text-[11px] space-y-0.5 ${fraudRisk === 'high' ? 'text-rose-700' : 'text-amber-700'}`}>
                                 {fraudFlags.map((flag, j) => <li key={j}>• {flag}</li>)}
                               </ul>
                             )}
@@ -17166,7 +17166,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 ))}
               </div>
               {!formData.societe && (
-                <div className="mt-2 text-[11px] text-rose-600 font-bold">⚠️ Choisis une société pour éviter d'envoyer les mauvais documents/emails au client.</div>
+                <div className="mt-2 text-[12px] text-rose-600 font-bold">⚠️ Choisis une société pour éviter d'envoyer les mauvais documents/emails au client.</div>
               )}
             </div>
           )}
@@ -17184,11 +17184,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     {d.telephone && <span className="text-slate-500">· 📞 {d.telephone}</span>}
                     {d.ville && <span className="text-slate-500">· {d.ville}</span>}
                     <span className="text-amber-700 italic">— match sur {reason}</span>
-                    {d.statut && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{d.statut}</span>}
+                    {d.statut && <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{d.statut}</span>}
                   </div>
                 ))}
               </div>
-              <div className="mt-2 text-[11px] text-amber-700">
+              <div className="mt-2 text-[12px] text-amber-700">
                 Continue uniquement si c'est volontairement un <strong>nouveau dossier</strong> (ex : 2ᵉ installation à la même adresse). Sinon, annule et édite le dossier existant pour ne pas créer un doublon.
               </div>
             </div>
@@ -17246,7 +17246,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <div className="flex items-end gap-2 flex-wrap">
                       <span className="flex-shrink-0 self-center text-xs font-bold rounded-full w-7 h-7 flex items-center justify-center bg-amber-100 text-amber-600">{idx + 1}</span>
                       <div className="flex-1 min-w-[180px]">
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Type de produit</label>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Type de produit</label>
                         <select value={prod.type} onChange={(e) => updProd({ type: e.target.value, variantId: '' })} className={inputCls + ' font-semibold'}>
                           <option value="">— Choisir un produit —</option>
                           {produits.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.label}</option>)}
@@ -17261,7 +17261,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         if (variants.length === 0) return null;
                         return (
                           <div className="flex-1 min-w-[160px]">
-                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Marque / modèle</label>
+                            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Marque / modèle</label>
                             <select value={prod.variantId || ''} onChange={(e) => updProd({ variantId: e.target.value })} className={inputCls + ' font-bold'}>
                               <option value="">— Choisir —</option>
                               {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
@@ -17281,7 +17281,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           return (
                             <>
                               <div className="w-24 flex-shrink-0">
-                                <label className="block text-[10px] font-semibold text-slate-500 mb-1">Quantité</label>
+                                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Quantité</label>
                                 <input
                                   type="number"
                                   min="1"
@@ -17296,7 +17296,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                                 />
                               </div>
                               <div className="w-28 flex-shrink-0">
-                                <label className="block text-[10px] font-semibold text-slate-500 mb-1">Puissance totale</label>
+                                <label className="block text-[11px] font-semibold text-slate-500 mb-1">Puissance totale</label>
                                 <div className={inputCls + ' bg-slate-50 text-slate-700 font-bold'}>
                                   {prod.puissance ? `${prod.puissance} Wc` : '—'}
                                 </div>
@@ -17306,7 +17306,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         }
                         return (
                           <div className="flex-1 min-w-[140px]">
-                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Puissance (Wc)</label>
+                            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Puissance (Wc)</label>
                             <select value={prod.puissance || ''} onChange={(e) => updProd({ puissance: parseInt(e.target.value) || 0 })} className={inputCls}>
                               <option value="">— Choisir —</option>
                               {PUISSANCES.map(p => <option key={p} value={p}>{p} Wc</option>)}
@@ -17316,7 +17316,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       })() : (
                         <>
                           <div className={(prod.type === 'ISOLATION' ? 'w-28' : 'w-20') + ' flex-shrink-0'}>
-                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">
+                            <label className="block text-[11px] font-semibold text-slate-500 mb-1">
                               {prod.type === 'ISOLATION' ? 'Surface (m²)' : 'Quantité'}
                             </label>
                             <input
@@ -17333,7 +17333,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             />
                           </div>
                           <div className="flex-1 min-w-[180px]">
-                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">Description (optionnel)</label>
+                            <label className="block text-[11px] font-semibold text-slate-500 mb-1">Description (optionnel)</label>
                             <input type="text" value={prod.description || ''} onChange={(e) => updProd({ description: e.target.value })} placeholder="Ex: 8 kW, 5 kWh..." className={inputCls} />
                           </div>
                         </>
@@ -17442,11 +17442,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   const overflow = cap > 0 && usedAfter > cap;
                   const warning = cap > 0 && pct >= 80 && !overflow;
                   return (
-                    <div className={`mt-1.5 px-2 py-1.5 rounded-lg border text-[11px] ${overflow ? 'bg-rose-50 border-rose-300 text-rose-800' : warning ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+                    <div className={`mt-1.5 px-2 py-1.5 rounded-lg border text-[12px] ${overflow ? 'bg-rose-50 border-rose-300 text-rose-800' : warning ? 'bg-amber-50 border-amber-300 text-amber-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
                       <div className="font-bold">
                         {overflow ? '⚠️ Plafond dépassé' : warning ? '⚠️ Plafond presque atteint' : '🏦 Plafond Projexio'} — {socLabel}
                       </div>
-                      <div className="text-[10px] mt-0.5">
+                      <div className="text-[11px] mt-0.5">
                         Consommé : <strong>{formatEuro(used)}</strong> {montant > 0 && <>+ ce dossier ({formatEuro(montant)}) = <strong>{formatEuro(usedAfter)}</strong></>} / plafond <strong>{formatEuro(cap)}</strong>
                         {cap > 0 && <> ({pct.toFixed(0)}%)</>}
                       </div>
@@ -17517,7 +17517,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 manuelle. Sert à pré-remplir la zone "PAIEMENT AVEC FINANCEMENT" du BC PDF. */}
             {formData.financement && formData.financement !== 'COMPTANT' && (
               <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                <div className="text-[11px] font-bold text-blue-700 uppercase mb-2">🏦 Détails du prêt — {formData.financement}</div>
+                <div className="text-[12px] font-bold text-blue-700 uppercase mb-2">🏦 Détails du prêt — {formData.financement}</div>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <Field label="Montant du prêt (€)">
                     <input type="number" step="0.01" value={formData.montantPret} onChange={(e) => setFormData({ ...formData, montantPret: e.target.value })} placeholder="35900" className={inputCls} />
@@ -17547,7 +17547,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     </select>
                   </Field>
                 </div>
-                <p className="text-[10px] text-slate-500 mt-2">💡 Ces infos sont extraites automatiquement quand tu scannes un BC avec l'IA. Tu peux aussi les saisir à la main ici.</p>
+                <p className="text-[11px] text-slate-500 mt-2">💡 Ces infos sont extraites automatiquement quand tu scannes un BC avec l'IA. Tu peux aussi les saisir à la main ici.</p>
               </div>
             )}
           </Section>
@@ -17604,7 +17604,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       <div className="flex items-end gap-2 flex-wrap">
                         <span className={`flex-shrink-0 self-center text-xs font-bold rounded-full w-7 h-7 flex items-center justify-center ${r.paye ? 'bg-emerald-200 text-emerald-700' : 'bg-purple-100 text-purple-600'}`}>{idx + 1}</span>
                         <div className="flex-1 min-w-[180px]">
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Régie</label>
+                          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Régie</label>
                           <select value={r.nom} onChange={(e) => upd({ nom: e.target.value })} className={inputCls}>
                             <option value="">— Choisir une régie —</option>
                             {r.nom && !REGIES.includes(r.nom) && <option key={r.nom} value={r.nom}>{r.nom} (créé manuellement)</option>}
@@ -17613,7 +17613,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         </div>
                         {isAdmin && (
                           <div className="flex-1 min-w-[120px]">
-                            <label className="block text-[10px] font-semibold text-slate-500 mb-1">{tarifAuto > 0 ? `HT (auto ${formatEuro(tarifAuto)})` : 'HT (€)'}</label>
+                            <label className="block text-[11px] font-semibold text-slate-500 mb-1">{tarifAuto > 0 ? `HT (auto ${formatEuro(tarifAuto)})` : 'HT (€)'}</label>
                             <input type="number" step="0.01" value={r.htCustom} onChange={(e) => upd({ htCustom: e.target.value })} placeholder={tarifAuto > 0 ? 'Vide = auto' : 'Saisir'} className={inputCls} />
                           </div>
                         )}
@@ -17696,7 +17696,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             {/* Si régie interne : équipe interne */}
             {/* Régie interne : juste un message — l'équipe est dans une section séparée ci-dessous */}
             {formData.typeRegie === 'interne' && (
-              <div className="text-[11px] text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg p-2">
+              <div className="text-[12px] text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg p-2">
                 👥 Pas de régie externe — l'équipe interne gère ce dossier (renseigne les rôles dans la section <strong>"👥 Équipe interne"</strong> ci-dessous)
               </div>
             )}
@@ -17735,7 +17735,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <div className="flex items-end gap-2 flex-wrap">
                       <span className={`flex-shrink-0 self-center text-xs font-bold rounded-full w-7 h-7 flex items-center justify-center ${p.paye ? 'bg-emerald-200 text-emerald-700' : 'bg-amber-100 text-amber-600'}`}>{idx + 1}</span>
                       <div className="flex-1 min-w-[180px]">
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Poseur</label>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Poseur</label>
                         <select value={p.nom} onChange={(e) => upd({ nom: e.target.value })} className={inputCls}>
                           <option value="">— Choisir un poseur —</option>
                           {p.nom && !POSEURS.includes(p.nom) && <option key={p.nom} value={p.nom}>{p.nom} (créé manuellement)</option>}
@@ -17744,13 +17744,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       </div>
                       {isAdmin && (
                         <div className="flex-1 min-w-[140px]">
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">{tarifAuto > 0 ? `HT (auto: ${formatEuro(tarifAuto)})` : 'HT (€)'}</label>
+                          <label className="block text-[11px] font-semibold text-slate-500 mb-1">{tarifAuto > 0 ? `HT (auto: ${formatEuro(tarifAuto)})` : 'HT (€)'}</label>
                           <input type="number" step="0.01" value={p.htCustom} onChange={(e) => upd({ htCustom: e.target.value })} placeholder={tarifAuto > 0 ? "Vide = auto" : "Saisir"} className={inputCls} />
                         </div>
                       )}
                       {isAdmin && (
                         <div className="flex-1 min-w-[120px]">
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Statut</label>
+                          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Statut</label>
                           <button type="button" onClick={() => { const np = !p.paye; upd({ paye: np, datePaye: np ? (p.datePaye || new Date().toISOString().split('T')[0]) : '' }); }} className={`w-full px-2 py-2 rounded-xl border-2 text-xs font-semibold flex items-center justify-center gap-1 ${p.paye ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
                             {p.paye ? <><Check className="w-3 h-3" strokeWidth={3} />Payé</> : '⏳ À payer'}
                           </button>
@@ -17764,19 +17764,19 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     {isAdmin && (
                       <div className="mt-3 pt-3 border-t border-amber-100 grid grid-cols-1 md:grid-cols-3 gap-2">
                         <div>
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">📦 N° BL (bordereau)</label>
+                          <label className="block text-[11px] font-semibold text-slate-500 mb-1">📦 N° BL (bordereau)</label>
                           <input type="text" value={p.bl || ''} onChange={(e) => upd({ bl: e.target.value })} placeholder="Ex: 1234567" className={inputCls} />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">🧾 N° facture</label>
+                          <label className="block text-[11px] font-semibold text-slate-500 mb-1">🧾 N° facture</label>
                           <input type="text" value={p.factureNo || ''} onChange={(e) => upd({ factureNo: e.target.value })} placeholder="Ex: FA24-001" className={inputCls} />
                           <FactureDupeWarning factureNo={p.factureNo} allDossiers={dossiers} currentLocalId={editingId} />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
+                          <label className="block text-[11px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
                             <span>🔗 Lien PDF facture</span>
                             {p.facturePdfUrl && (
-                              <a href={p.facturePdfUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-violet-600 hover:underline">📄 Ouvrir</a>
+                              <a href={p.facturePdfUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-violet-600 hover:underline">📄 Ouvrir</a>
                             )}
                           </label>
                           <input type="url" value={p.facturePdfUrl || ''} onChange={(e) => upd({ facturePdfUrl: e.target.value })} placeholder="https://drive.google.com/..." className={inputCls} />
@@ -17872,7 +17872,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     <div className="flex items-end gap-2 flex-wrap">
                       <span className={`flex-shrink-0 self-center text-xs font-bold rounded-full w-7 h-7 flex items-center justify-center ${f.paye ? 'bg-emerald-200 text-emerald-700' : 'bg-amber-100 text-amber-600'}`}>{idx + 1}</span>
                       <div className="flex-1 min-w-[180px]">
-                        <label className="block text-[10px] font-semibold text-slate-500 mb-1">Fournisseur</label>
+                        <label className="block text-[11px] font-semibold text-slate-500 mb-1">Fournisseur</label>
                         <select value={f.nom} onChange={(e) => upd({ nom: e.target.value })} className={inputCls}>
                           <option value="">— Choisir un fournisseur —</option>
                           {f.nom && !FOURNISSEURS.includes(f.nom) && <option key={f.nom} value={f.nom}>{f.nom} (créé manuellement)</option>}
@@ -17881,13 +17881,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       </div>
                       {isAdmin && (
                         <div className="flex-1 min-w-[120px]">
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Prix HT (€)</label>
+                          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Prix HT (€)</label>
                           <input type="number" step="0.01" value={f.htCustom} onChange={(e) => upd({ htCustom: e.target.value })} placeholder="Saisir" className={inputCls} />
                         </div>
                       )}
                       {isAdmin && (
                         <div className="flex-1 min-w-[120px]">
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">Statut</label>
+                          <label className="block text-[11px] font-semibold text-slate-500 mb-1">Statut</label>
                           <button type="button" onClick={() => { const np = !f.paye; upd({ paye: np, datePaye: np ? (f.datePaye || new Date().toISOString().split('T')[0]) : '' }); }} className={`w-full px-2 py-2 rounded-xl border-2 text-xs font-semibold flex items-center justify-center gap-1 ${f.paye ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
                             {f.paye ? <><Check className="w-3 h-3" strokeWidth={3} />Payé</> : '⏳ À payer'}
                           </button>
@@ -17901,19 +17901,19 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     {isAdmin && (
                       <div className="mt-3 pt-3 border-t border-amber-100 grid grid-cols-1 md:grid-cols-3 gap-2">
                         <div>
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">📦 N° BL (bordereau)</label>
+                          <label className="block text-[11px] font-semibold text-slate-500 mb-1">📦 N° BL (bordereau)</label>
                           <input type="text" value={f.bl || ''} onChange={(e) => upd({ bl: e.target.value })} placeholder="Ex: 1234567" className={inputCls} />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1">🧾 N° facture</label>
+                          <label className="block text-[11px] font-semibold text-slate-500 mb-1">🧾 N° facture</label>
                           <input type="text" value={f.factureNo || ''} onChange={(e) => upd({ factureNo: e.target.value })} placeholder="Ex: FA24-001" className={inputCls} />
                           <FactureDupeWarning factureNo={f.factureNo} allDossiers={dossiers} currentLocalId={editingId} />
                         </div>
                         <div>
-                          <label className="block text-[10px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
+                          <label className="block text-[11px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
                             <span>🔗 Lien PDF facture</span>
                             {f.facturePdfUrl && (
-                              <a href={f.facturePdfUrl} target="_blank" rel="noopener noreferrer" className="text-[10px] font-bold text-violet-600 hover:underline">📄 Ouvrir</a>
+                              <a href={f.facturePdfUrl} target="_blank" rel="noopener noreferrer" className="text-[11px] font-bold text-violet-600 hover:underline">📄 Ouvrir</a>
                             )}
                           </label>
                           <input type="url" value={f.facturePdfUrl || ''} onChange={(e) => upd({ facturePdfUrl: e.target.value })} placeholder="https://drive.google.com/..." className={inputCls} />
@@ -18000,7 +18000,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             })()}
           >
             <div className="space-y-2">
-              <div className="text-[11px] text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg p-2 mb-2">
+              <div className="text-[12px] text-fuchsia-700 bg-fuchsia-50 border border-fuchsia-200 rounded-lg p-2 mb-2">
                 👥 Renseigne uniquement les personnes <strong>internes</strong> à toucher une commission sur ce dossier. Tu peux laisser vide les rôles non concernés.
               </div>
               {ROLES_INTERNES.map(role => {
@@ -18057,7 +18057,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                                 <button
                                   type="button"
                                   onClick={() => setNomsInternes({ ...nomsInternes, [role.key]: [...listeNoms, formData[nomKey]] })}
-                                  className="px-2 py-1 bg-fuchsia-100 hover:bg-fuchsia-200 text-fuchsia-700 rounded text-[10px] font-bold whitespace-nowrap"
+                                  className="px-2 py-1 bg-fuchsia-100 hover:bg-fuchsia-200 text-fuchsia-700 rounded text-[11px] font-bold whitespace-nowrap"
                                   title="Ajouter ce nom à la liste pour les futurs dossiers"
                                 >
                                   💾 Mémoriser
@@ -18102,7 +18102,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       <span className="font-bold text-fuchsia-800">💰 Total commissions équipe</span>
                       <span className="font-bold text-fuchsia-800">{formatEuro(totalCommissions)}</span>
                     </div>
-                    <div className="flex items-center justify-between text-[11px] mt-1">
+                    <div className="flex items-center justify-between text-[12px] mt-1">
                       <span className="text-emerald-700">✓ Payé : {formatEuro(totalPaye)}</span>
                       <span className={reste > 0 ? 'text-rose-700 font-bold' : 'text-slate-500'}>⏳ Reste : {formatEuro(reste)}</span>
                     </div>
@@ -18152,13 +18152,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
           >
             {/* ============ ÉTAPE 1 : CONTRÔLE QUALITÉ ============ */}
             <div className={`border-2 rounded-xl p-3 mb-3 ${formData.statutControleQualite === 'ok' ? 'bg-emerald-50 border-emerald-200' : formData.statutControleQualite === 'pas_ok' ? 'bg-rose-50 border-rose-200' : 'bg-purple-50 border-purple-200'}`}>
-              <button type="button" onClick={() => toggleStep('cq')} className={`w-full text-[11px] font-bold text-purple-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.cq ? '' : 'mb-2'}`}>
+              <button type="button" onClick={() => toggleStep('cq')} className={`w-full text-[12px] font-bold text-purple-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.cq ? '' : 'mb-2'}`}>
                 <span className="flex items-center gap-1.5">
-                  <span className="text-purple-600 text-[9px]">{foldedSteps.cq ? '▶' : '▼'}</span>
+                  <span className="text-purple-600 text-[10px]">{foldedSteps.cq ? '▶' : '▼'}</span>
                   <span>1️⃣ 📋 Contrôle qualité (avant envoi banque)</span>
                 </span>
                 {formData.statutControleQualite && (
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                  <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${
                     formData.statutControleQualite === 'ok' ? 'bg-emerald-100 text-emerald-700' :
                     formData.statutControleQualite === 'pas_ok' ? 'bg-rose-100 text-rose-700' :
                     'bg-purple-100 text-purple-700'
@@ -18170,15 +18170,15 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
               {!foldedSteps.cq && (<>
               <div>
-                <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Date contrôle qualité (appel client)</label>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">📞 Date contrôle qualité (appel client)</label>
                 <div className="flex gap-1">
                   <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateControleQualite || ''} onChange={(e) => setFormData({ ...formData, dateControleQualite: e.target.value })} className={inputCls} />
-                  <button type="button" onClick={() => setFormData({ ...formData, dateControleQualite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                  <button type="button" onClick={() => setFormData({ ...formData, dateControleQualite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                 </div>
               </div>
 
               <div className="mt-2">
-                <label className="block text-[10px] font-semibold text-slate-600 mb-1">💳 Crédits / leasings en cours annoncés par le client</label>
+                <label className="block text-[11px] font-semibold text-slate-600 mb-1">💳 Crédits / leasings en cours annoncés par le client</label>
                 {(formData.creditsClientCQ || []).map((c, idx) => (
                   <div key={idx} className="flex items-center gap-1 mb-1">
                     <select
@@ -18221,10 +18221,10 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   <button
                     type="button"
                     onClick={() => setFormData({ ...formData, creditsClientCQ: [...(formData.creditsClientCQ || []), { type: 'conso', montant: '' }] })}
-                    className="px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-[10px] font-bold"
+                    className="px-2 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded-lg text-[11px] font-bold"
                   >+ Ajouter un crédit</button>
                   {(formData.creditsClientCQ || []).length > 0 && (
-                    <span className="text-[10px] text-purple-700 font-bold">
+                    <span className="text-[11px] text-purple-700 font-bold">
                       Total : {(formData.creditsClientCQ || []).reduce((s, c) => s + (parseFloat(c.montant) || 0), 0).toLocaleString('fr-FR')} €
                     </span>
                   )}
@@ -18237,7 +18237,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
               {/* 3 boutons toggleables — toujours visibles */}
               <div className="mt-3">
-                <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Décision sur le dossier (clique pour changer)</div>
+                <div className="text-[11px] font-semibold text-slate-500 uppercase mb-1.5">Décision sur le dossier (clique pour changer)</div>
                 <div className="grid grid-cols-3 gap-2">
                   <button type="button" onClick={() => setFormData({ ...formData, statutControleQualite: '' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${!formData.statutControleQualite ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ En attente</button>
                   <button type="button" onClick={() => {
@@ -18252,37 +18252,37 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               </div>
 
               {formData.statutControleQualite === 'ok' && !formData.dateEnvoiFin && (
-                <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded-lg text-[11px] text-emerald-800 font-bold">
+                <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded-lg text-[12px] text-emerald-800 font-bold">
                   ✅ Validé — la secrétaire peut envoyer le dossier à la banque (étape 2 ci-dessous)
                 </div>
               )}
               {formData.statutControleQualite === 'pas_ok' && (
-                <div className="mt-2 p-2 bg-rose-100 border border-rose-300 rounded-lg text-[11px] text-rose-800 font-bold">
+                <div className="mt-2 p-2 bg-rose-100 border border-rose-300 rounded-lg text-[12px] text-rose-800 font-bold">
                   ✗ Dossier refusé — ne pas envoyer en banque
                 </div>
               )}
 
               {/* 🎤 Vocal du contrôle qualité — fichier téléversé OU lien externe (ONOFF/Drive). */}
               <div className="mt-3 p-2 bg-white border border-purple-200 rounded-lg">
-                <label className="block text-[11px] font-semibold text-purple-700 mb-1.5 flex items-center justify-between flex-wrap gap-1">
+                <label className="block text-[12px] font-semibold text-purple-700 mb-1.5 flex items-center justify-between flex-wrap gap-1">
                   <span className="flex items-center gap-1">
                     🎤 Vocal du contrôle qualité
                     {formData.vocalCQStoragePath && (
-                      <span className="text-[9px] font-bold uppercase bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">📁 Fichier</span>
+                      <span className="text-[10px] font-bold uppercase bg-emerald-100 text-emerald-700 px-1.5 py-0.5 rounded-full">📁 Fichier</span>
                     )}
                     {!formData.vocalCQStoragePath && formData.onoffCallMeta && (
-                      <span className="text-[9px] font-bold uppercase bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">📞 ONOFF</span>
+                      <span className="text-[10px] font-bold uppercase bg-purple-100 text-purple-700 px-1.5 py-0.5 rounded-full">📞 ONOFF</span>
                     )}
                   </span>
                   {!formData.vocalCQStoragePath && formData.vocalCQUrl && isSafeMediaUrl(formData.vocalCQUrl) && (
-                    <a href={formData.vocalCQUrl} download className="text-[10px] font-bold text-purple-600 hover:underline">⬇️ Télécharger</a>
+                    <a href={formData.vocalCQUrl} download className="text-[11px] font-bold text-purple-600 hover:underline">⬇️ Télécharger</a>
                   )}
                 </label>
 
                 <VocalCqAudio storagePath={formData.vocalCQStoragePath} fallbackUrl={formData.vocalCQUrl} />
 
                 {formData.vocalCQStoragePath && formData.onoffCallMeta && (
-                  <div className="text-[10px] text-slate-600 mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
+                  <div className="text-[11px] text-slate-600 mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
                     {formData.onoffCallMeta.callStarted && <span>📅 {new Date(formData.onoffCallMeta.callStarted).toLocaleString('fr-FR')}</span>}
                     {formData.onoffCallMeta.callDuration > 0 && <span>⏱ {formatDurationMmSs(formData.onoffCallMeta.callDuration)}</span>}
                     {formData.onoffCallMeta.onoffUserName && <span>👤 {formData.onoffCallMeta.onoffUserName}</span>}
@@ -18302,13 +18302,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           setFormData({ ...formData, vocalCQStoragePath: '', vocalCQUrl: '' });
                         }
                       }}
-                      className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[10px] font-bold"
+                      className="px-2 py-1 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded-lg text-[11px] font-bold"
                     >🗑️ Supprimer</button>
                   )}
                 </div>
 
                 <details className="mt-2">
-                  <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-purple-600">🔗 Ou coller un lien externe (ONOFF / Drive…)</summary>
+                  <summary className="text-[11px] text-slate-500 cursor-pointer hover:text-purple-600">🔗 Ou coller un lien externe (ONOFF / Drive…)</summary>
                   <input
                     type="url"
                     value={formData.vocalCQUrl}
@@ -18316,7 +18316,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     placeholder="https://..."
                     className={inputCls + ' mt-1.5'}
                   />
-                  <p className="text-[10px] text-slate-500 mt-1">💡 Quand l'appel passera par ONOFF, l'enregistrement viendra ici tout seul.</p>
+                  <p className="text-[11px] text-slate-500 mt-1">💡 Quand l'appel passera par ONOFF, l'enregistrement viendra ici tout seul.</p>
                 </details>
               </div>
               </>)}
@@ -18324,13 +18324,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
             {/* ============ ÉTAPE 1bis : MAIRIE (déclaration préalable) ============ */}
             <div className="bg-indigo-50 border-2 border-indigo-200 rounded-xl p-3 mb-3">
-              <button type="button" onClick={() => toggleStep('mairie')} className={`w-full text-[11px] font-bold text-indigo-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.mairie ? '' : 'mb-2'}`}>
+              <button type="button" onClick={() => toggleStep('mairie')} className={`w-full text-[12px] font-bold text-indigo-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.mairie ? '' : 'mb-2'}`}>
                 <span className="flex items-center gap-1.5">
-                  <span className="text-indigo-600 text-[9px]">{foldedSteps.mairie ? '▶' : '▼'}</span>
+                  <span className="text-indigo-600 text-[10px]">{foldedSteps.mairie ? '▶' : '▼'}</span>
                   <span>🏛️ Mairie (déclaration préalable / urbanisme)</span>
                 </span>
                 {(formData.statutMairie || formData.dateEnvoiMairie) && (
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                  <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${
                     formData.statutMairie === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
                     formData.statutMairie === 'refusé' ? 'bg-rose-100 text-rose-700' :
                     'bg-amber-100 text-amber-700'
@@ -18344,31 +18344,31 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               {!foldedSteps.mairie && (<>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Envoi mairie</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📤 Envoi mairie</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateEnvoiMairie || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiMairie: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📨 Récépissé reçu</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📨 Récépissé reçu</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateRecepisseMairie || ''} onChange={(e) => setFormData({ ...formData, dateRecepisseMairie: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateRecepisseMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateRecepisseMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Accord reçu</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">✅ Accord reçu</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateAccordMairie || ''} onChange={(e) => setFormData({ ...formData, dateAccordMairie: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateAccordMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateAccordMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
               </div>
 
               {/* Upload du PDF du dossier envoyé à la mairie */}
               <div className="mt-3 p-2 bg-white border border-indigo-200 rounded-lg">
-                <div className="text-[10px] font-semibold text-indigo-700 uppercase mb-1.5">📤 Dossier envoyé à la mairie (PDF)</div>
+                <div className="text-[11px] font-semibold text-indigo-700 uppercase mb-1.5">📤 Dossier envoyé à la mairie (PDF)</div>
                 <FactureFileInput
                   fileId={formData.dossierEnvoiMairieFileId || ''}
                   onChange={(id) => setFormData({ ...formData, dossierEnvoiMairieFileId: id })}
@@ -18379,7 +18379,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
               {/* Upload du PDF récépissé — reçu après dépôt en mairie */}
               <div className="mt-3 p-2 bg-white border border-indigo-200 rounded-lg">
-                <div className="text-[10px] font-semibold text-indigo-700 uppercase mb-1.5">📎 Récépissé de dépôt (PDF)</div>
+                <div className="text-[11px] font-semibold text-indigo-700 uppercase mb-1.5">📎 Récépissé de dépôt (PDF)</div>
                 <FactureFileInput
                   fileId={formData.recepisseMairieFileId || ''}
                   onChange={(id) => setFormData({ ...formData, recepisseMairieFileId: id })}
@@ -18390,7 +18390,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
               {formData.dateEnvoiMairie && (
                 <div className="mt-3">
-                  <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Décision mairie (clique pour changer)</div>
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase mb-1.5">Décision mairie (clique pour changer)</div>
                   <div className="grid grid-cols-3 gap-2">
                     <button type="button" onClick={() => setFormData({ ...formData, statutMairie: '' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${!formData.statutMairie ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ En attente</button>
                     <button type="button" onClick={() => {
@@ -18403,12 +18403,12 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               )}
 
               {formData.statutMairie === 'refusé' && (
-                <div className="mt-2 p-2 bg-rose-100 border border-rose-300 rounded-lg text-[11px] text-rose-800 font-bold">
+                <div className="mt-2 p-2 bg-rose-100 border border-rose-300 rounded-lg text-[12px] text-rose-800 font-bold">
                   ✗ Refusé — modifie le projet puis renvoie la déclaration (le dossier reste en alerte 🏛️ jusqu'à acceptation).
                 </div>
               )}
               {formData.statutMairie === 'accepté' && (
-                <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded-lg text-[11px] text-emerald-800 font-bold">
+                <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded-lg text-[12px] text-emerald-800 font-bold">
                   ✅ Mairie accordée — tu peux poser.
                 </div>
               )}
@@ -18416,18 +18416,18 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               {/* Historique des envois — utile si plusieurs aller-retours mairie */}
               <div className="mt-3 p-2 bg-white border border-indigo-200 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-bold text-indigo-700 uppercase">📋 Historique envois ({(formData.envoisMairie || []).length})</span>
+                  <span className="text-[12px] font-bold text-indigo-700 uppercase">📋 Historique envois ({(formData.envoisMairie || []).length})</span>
                   <button type="button" onClick={() => {
                     setFormData({
                       ...formData,
                       envoisMairie: [...(formData.envoisMairie || []), { dateEnvoi: '', dateRecepisse: '', recepisseFileId: '', dateReponse: '', resultat: '', note: '' }]
                     });
-                  }} className="px-2 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded text-[10px] font-bold flex items-center gap-1">
+                  }} className="px-2 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded text-[11px] font-bold flex items-center gap-1">
                     <Plus className="w-3 h-3" />Ajouter un envoi
                   </button>
                 </div>
                 {(!formData.envoisMairie || formData.envoisMairie.length === 0) && (
-                  <div className="text-[11px] text-slate-400 italic text-center py-2">
+                  <div className="text-[12px] text-slate-400 italic text-center py-2">
                     Aucun envoi enregistré. Utilise les dates ci-dessus pour le 1er envoi, puis ajoute ici les renvois si refusé.
                   </div>
                 )}
@@ -18443,36 +18443,36 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     return (
                       <div key={idx} className={`p-2 rounded-lg border-2 ${bg}`}>
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[11px] font-bold text-slate-700">Envoi n°{idx + 1}</span>
-                          <button type="button" onClick={rmE} className="px-2 py-1 bg-rose-100 hover:bg-rose-500 text-rose-600 hover:text-white rounded-lg text-[10px] font-bold flex items-center gap-1" title="Supprimer">
+                          <span className="text-[12px] font-bold text-slate-700">Envoi n°{idx + 1}</span>
+                          <button type="button" onClick={rmE} className="px-2 py-1 bg-rose-100 hover:bg-rose-500 text-rose-600 hover:text-white rounded-lg text-[11px] font-bold flex items-center gap-1" title="Supprimer">
                             <Trash2 className="w-3 h-3" /><span>Suppr.</span>
                           </button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mb-2">
                           <div>
-                            <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date envoi</label>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Date envoi</label>
                             <div className="flex gap-1">
                               <input type="date" min="2000-01-01" max="2100-12-31" value={e.dateEnvoi || ''} onChange={(ev) => updE({ dateEnvoi: ev.target.value })} className={inputCls} />
-                              <button type="button" onClick={() => updE({ dateEnvoi: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                              <button type="button" onClick={() => updE({ dateEnvoi: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
                           <div>
-                            <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date récépissé</label>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Date récépissé</label>
                             <div className="flex gap-1">
                               <input type="date" min="2000-01-01" max="2100-12-31" value={e.dateRecepisse || ''} onChange={(ev) => updE({ dateRecepisse: ev.target.value })} className={inputCls} />
-                              <button type="button" onClick={() => updE({ dateRecepisse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                              <button type="button" onClick={() => updE({ dateRecepisse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
                           <div>
-                            <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date réponse</label>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Date réponse</label>
                             <div className="flex gap-1">
                               <input type="date" min="2000-01-01" max="2100-12-31" value={e.dateReponse || ''} onChange={(ev) => updE({ dateReponse: ev.target.value })} className={inputCls} />
-                              <button type="button" onClick={() => updE({ dateReponse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                              <button type="button" onClick={() => updE({ dateReponse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
                         </div>
                         <div className="mb-2">
-                          <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">📎 Récépissé (PDF)</label>
+                          <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">📎 Récépissé (PDF)</label>
                           <FactureFileInput
                             fileId={e.recepisseFileId || ''}
                             onChange={(id) => updE({ recepisseFileId: id })}
@@ -18481,8 +18481,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           />
                         </div>
                         <div className="grid grid-cols-2 gap-1 mb-2">
-                          <button type="button" onClick={() => updE({ resultat: 'accepté' })} className={`px-2 py-1 rounded text-[10px] font-bold border ${e.resultat === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-emerald-600 border-emerald-200'}`}>✓ Accepté</button>
-                          <button type="button" onClick={() => updE({ resultat: 'refusé' })} className={`px-2 py-1 rounded text-[10px] font-bold border ${e.resultat === 'refusé' ? 'bg-rose-500 text-white border-rose-600' : 'bg-white text-rose-600 border-rose-200'}`}>✗ Refusé</button>
+                          <button type="button" onClick={() => updE({ resultat: 'accepté' })} className={`px-2 py-1 rounded text-[11px] font-bold border ${e.resultat === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-emerald-600 border-emerald-200'}`}>✓ Accepté</button>
+                          <button type="button" onClick={() => updE({ resultat: 'refusé' })} className={`px-2 py-1 rounded text-[11px] font-bold border ${e.resultat === 'refusé' ? 'bg-rose-500 text-white border-rose-600' : 'bg-white text-rose-600 border-rose-200'}`}>✗ Refusé</button>
                         </div>
                         <input type="text" value={e.note || ''} onChange={(ev) => updE({ note: ev.target.value })} placeholder="Note (motif refus, modif demandée…)" className={inputCls} />
                       </div>
@@ -18495,13 +18495,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
             {/* ============ ÉTAPE 2 : FINANCEMENT ============ */}
             <div className="bg-blue-50 border-2 border-blue-200 rounded-xl p-3 mb-3">
-              <button type="button" onClick={() => toggleStep('financement')} className={`w-full text-[11px] font-bold text-blue-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.financement ? '' : 'mb-2'}`}>
+              <button type="button" onClick={() => toggleStep('financement')} className={`w-full text-[12px] font-bold text-blue-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.financement ? '' : 'mb-2'}`}>
                 <span className="flex items-center gap-1.5">
-                  <span className="text-blue-600 text-[9px]">{foldedSteps.financement ? '▶' : '▼'}</span>
+                  <span className="text-blue-600 text-[10px]">{foldedSteps.financement ? '▶' : '▼'}</span>
                   <span>2️⃣ 💳 Financement — {formData.financement || '(à choisir)'}</span>
                 </span>
                 {formData.statutFin && (
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                  <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${
                     formData.statutFin === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
                     formData.statutFin === 'refusé' ? 'bg-rose-100 text-rose-700' :
                     formData.statutFin === 'manque_doc' ? 'bg-orange-100 text-orange-700' :
@@ -18517,12 +18517,12 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               {!foldedSteps.financement && (<>
               {formData.envoisHistorique && formData.envoisHistorique.length > 0 && (
                 <div className="mb-2 p-2 bg-white border border-rose-200 rounded-lg">
-                  <div className="text-[10px] font-bold text-rose-700 uppercase mb-1.5">📜 Banques précédentes ({formData.envoisHistorique.length})</div>
+                  <div className="text-[11px] font-bold text-rose-700 uppercase mb-1.5">📜 Banques précédentes ({formData.envoisHistorique.length})</div>
                   <div className="space-y-1.5">
                     {formData.envoisHistorique.map((env, i) => {
                       const fr = (d) => { if (!d) return null; try { return new Date(d).toLocaleDateString('fr-FR'); } catch (e) { return d; } };
                       return (
-                        <div key={i} className="text-[11px] bg-rose-50/70 border border-rose-100 rounded-lg px-2 py-1.5">
+                        <div key={i} className="text-[12px] bg-rose-50/70 border border-rose-100 rounded-lg px-2 py-1.5">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span className="font-bold text-slate-700">{env.financeur || '(banque)'}</span>
                             <span className="text-rose-600 font-semibold">✗ refusé</span>
@@ -18533,7 +18533,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             {fr(env.dateAccord) && <span>✅ accord {fr(env.dateAccord)}</span>}
                             {fr(env.dateRenvoiDocs) && <span>↩️ docs renvoyés {fr(env.dateRenvoiDocs)}</span>}
                           </div>
-                          {env.motifManqueDoc && <div className="text-[10px] text-slate-500 italic mt-0.5">📄 Docs demandés : {env.motifManqueDoc}</div>}
+                          {env.motifManqueDoc && <div className="text-[11px] text-slate-500 italic mt-0.5">📄 Docs demandés : {env.motifManqueDoc}</div>}
                         </div>
                       );
                     })}
@@ -18543,24 +18543,24 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Envoi banque</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📤 Envoi banque</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateEnvoiFin || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiFin: e.target.value, statutFin: e.target.value && !formData.statutFin ? 'envoyé' : formData.statutFin })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiFin: new Date().toISOString().split('T')[0], statutFin: formData.statutFin || 'envoyé' })} className="flex-shrink-0 px-2 py-1 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiFin: new Date().toISOString().split('T')[0], statutFin: formData.statutFin || 'envoyé' })} className="flex-shrink-0 px-2 py-1 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📥 Retour banque</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📥 Retour banque</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateRetourFin || ''} onChange={(e) => setFormData({ ...formData, dateRetourFin: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateRetourFin: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateRetourFin: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Accord banque</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">✅ Accord banque</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateAccord || ''} onChange={(e) => setFormData({ ...formData, dateAccord: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateAccord: new Date().toISOString().split('T')[0], statutFin: 'accepté' })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateAccord: new Date().toISOString().split('T')[0], statutFin: 'accepté' })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
               </div>
@@ -18569,7 +18569,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   les dates manquantes pour zéro friction (voir QuickViewPanel
                   pour la même logique). */}
               <div className="mt-3">
-                <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Statut banque (clique pour changer)</div>
+                <div className="text-[11px] font-semibold text-slate-500 uppercase mb-1.5">Statut banque (clique pour changer)</div>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                   <button type="button" onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
@@ -18591,7 +18591,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
                 {/* 📝 Observation banque — note libre (motif refus, remarques…) */}
                 <div className="mt-3">
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📝 Observation banque</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📝 Observation banque</label>
                   <textarea
                     value={formData.observationBanque || ''}
                     onChange={(e) => setFormData({ ...formData, observationBanque: e.target.value })}
@@ -18617,39 +18617,39 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
                     {/* Étape 2 : régie prévenue */}
                     <div>
-                      <label className="block text-[11px] font-bold text-orange-700 mb-1">2️⃣ 🤝 Régie prévenue le</label>
+                      <label className="block text-[12px] font-bold text-orange-700 mb-1">2️⃣ 🤝 Régie prévenue le</label>
                       <div className="flex gap-1">
                         <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateNotifRegie || ''} onChange={(e) => setFormData({ ...formData, dateNotifRegie: e.target.value })} className={inputCls + ' text-xs'} />
-                        <button type="button" onClick={() => setFormData({ ...formData, dateNotifRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                        <button type="button" onClick={() => setFormData({ ...formData, dateNotifRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
-                      <p className="text-[10px] text-orange-700/80 mt-1">→ La régie doit ensuite récupérer le(s) doc(s) auprès du client.</p>
+                      <p className="text-[11px] text-orange-700/80 mt-1">→ La régie doit ensuite récupérer le(s) doc(s) auprès du client.</p>
                     </div>
 
                     {/* Étape 3 : docs reçus de la régie */}
                     <div>
-                      <label className="block text-[11px] font-bold text-orange-700 mb-1">3️⃣ 📥 Docs reçus de la régie le</label>
+                      <label className="block text-[12px] font-bold text-orange-700 mb-1">3️⃣ 📥 Docs reçus de la régie le</label>
                       <div className="flex gap-1">
                         <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateRecuRegie || ''} onChange={(e) => setFormData({ ...formData, dateRecuRegie: e.target.value })} className={inputCls + ' text-xs'} />
-                        <button type="button" onClick={() => setFormData({ ...formData, dateRecuRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                        <button type="button" onClick={() => setFormData({ ...formData, dateRecuRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
 
                     {/* Étape 4 : renvoi à la banque */}
                     <div>
-                      <label className="block text-[11px] font-bold text-orange-700 mb-1">4️⃣ 📤 Docs renvoyés à {formData.financement || 'la banque'} le</label>
+                      <label className="block text-[12px] font-bold text-orange-700 mb-1">4️⃣ 📤 Docs renvoyés à {formData.financement || 'la banque'} le</label>
                       <div className="flex gap-1">
                         <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateRenvoiDocs || ''} onChange={(e) => setFormData({ ...formData, dateRenvoiDocs: e.target.value })} className={inputCls + ' text-xs'} />
-                        <button type="button" onClick={() => setFormData({ ...formData, dateRenvoiDocs: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                        <button type="button" onClick={() => setFormData({ ...formData, dateRenvoiDocs: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
 
                     {/* CTA final : repasser en Envoyé */}
                     {formData.dateRenvoiDocs && (
                       <div className="flex items-center justify-between gap-2 p-2 bg-amber-50 border border-amber-300 rounded-lg">
-                        <span className="text-[11px] text-amber-800">✅ Renvoyé le {new Date(formData.dateRenvoiDocs).toLocaleDateString('fr-FR')} — passe le statut à ⏳ Envoyé</span>
+                        <span className="text-[12px] text-amber-800">✅ Renvoyé le {new Date(formData.dateRenvoiDocs).toLocaleDateString('fr-FR')} — passe le statut à ⏳ Envoyé</span>
                         <button type="button" onClick={() => {
                           setFormData({ ...formData, statutFin: 'envoyé', dateEnvoiFin: formData.dateRenvoiDocs, dateRetourFin: '', dateAccord: '' });
-                        }} className="flex-shrink-0 px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-bold whitespace-nowrap">⏳ Envoyé</button>
+                        }} className="flex-shrink-0 px-2 py-1 bg-amber-500 hover:bg-amber-600 text-white rounded text-[11px] font-bold whitespace-nowrap">⏳ Envoyé</button>
                       </div>
                     )}
                   </div>
@@ -18704,8 +18704,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
               {formData.dateEnvoiFin && !formData.dateRetourFin && formData.statutFin === 'envoyé' && (() => {
                 const jours = Math.floor((new Date() - new Date(formData.dateEnvoiFin)) / 86400000);
-                if (jours <= 2) return <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[11px] text-emerald-700">⏳ Envoyé il y a {jours} jour{jours > 1 ? 's' : ''} — en attente</div>;
-                return <div className="mt-2 p-2 bg-rose-50 border border-rose-300 rounded-lg text-[11px] text-rose-700 font-bold">⚠️ Pas de retour depuis {jours} jours — relance la banque !</div>;
+                if (jours <= 2) return <div className="mt-2 p-2 bg-emerald-50 border border-emerald-200 rounded-lg text-[12px] text-emerald-700">⏳ Envoyé il y a {jours} jour{jours > 1 ? 's' : ''} — en attente</div>;
+                return <div className="mt-2 p-2 bg-rose-50 border border-rose-300 rounded-lg text-[12px] text-rose-700 font-bold">⚠️ Pas de retour depuis {jours} jours — relance la banque !</div>;
               })()}
 
               {/* État d'avancement du dossier — recalculé en direct depuis les
@@ -18719,16 +18719,16 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 const changed = effectif !== (formData.statut || 'A_EN_COURS');
                 return (
                   <div className="mt-3 p-2.5 bg-white border-2 border-blue-200 rounded-xl flex items-center gap-2 flex-wrap">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase">État d'avancement</span>
+                    <span className="text-[11px] font-bold text-slate-500 uppercase">État d'avancement</span>
                     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-bold bg-gradient-to-r ${st.color} text-white shadow-sm`}>
                       <span>{st.emoji}</span>{st.label}
                     </span>
                     <button type="button" onClick={() => setFormData({ ...formData, statutLocked: !formData.statutLocked })}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full transition ${formData.statutLocked ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                      className={`text-[11px] font-bold px-2 py-0.5 rounded-full transition ${formData.statutLocked ? 'bg-amber-100 text-amber-700 hover:bg-amber-200' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
                       title={formData.statutLocked ? 'Statut verrouillé — clic pour repasser en calcul auto' : 'Statut en auto — clic pour figer le choix manuel'}>
                       {formData.statutLocked ? '🔒 Verrouillé' : '🔓 Auto'}
                     </button>
-                    {!formData.statutLocked && changed && <span className="text-[10px] text-blue-600 font-semibold">↻ sera appliqué à l'enregistrement</span>}
+                    {!formData.statutLocked && changed && <span className="text-[11px] text-blue-600 font-semibold">↻ sera appliqué à l'enregistrement</span>}
                   </div>
                 );
               })()}
@@ -18737,13 +18737,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
             {/* ============ ÉTAPE 2 : POSE ============ */}
             <div className={`border-2 rounded-xl p-3 mb-3 ${formData.statutPose === 'client_refuse' ? 'bg-rose-50 border-rose-300' : 'bg-amber-50 border-amber-200'}`}>
-              <button type="button" onClick={() => toggleStep('pose')} className={`w-full text-[11px] font-bold text-amber-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.pose ? '' : 'mb-2'}`}>
+              <button type="button" onClick={() => toggleStep('pose')} className={`w-full text-[12px] font-bold text-amber-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.pose ? '' : 'mb-2'}`}>
                 <span className="flex items-center gap-1.5">
-                  <span className="text-amber-600 text-[9px]">{foldedSteps.pose ? '▶' : '▼'}</span>
+                  <span className="text-amber-600 text-[10px]">{foldedSteps.pose ? '▶' : '▼'}</span>
                   <span>3️⃣ 🔧 Pose chez le client</span>
                 </span>
                 {formData.statutPose && (
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                  <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${
                     formData.statutPose === 'visite_ok' ? 'bg-emerald-100 text-emerald-700' :
                     formData.statutPose === 'client_refuse' ? 'bg-rose-100 text-rose-700' :
                     'bg-amber-100 text-amber-700'
@@ -18757,24 +18757,24 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               {!foldedSteps.pose && (<>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📅 Date de pose</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📅 Date de pose</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateEnvoiPose || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiPose: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: formData.statutPose || 'envoyé' })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: formData.statutPose || 'envoyé' })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Visite client</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📞 Visite client</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateVisitePose || ''} onChange={(e) => setFormData({ ...formData, dateVisitePose: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateVisitePose: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateVisitePose: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Posé le</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">✅ Posé le</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.statutPose === 'visite_ok' ? (formData.dateInsta || '') : ''} onChange={(e) => setFormData({ ...formData, dateInsta: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
               </div>
@@ -18782,7 +18782,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               {/* Boutons d'action visite */}
               {/* 3 boutons toggleables — toujours visibles */}
               <div className="mt-3">
-                <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Décision pose (clique pour changer)</div>
+                <div className="text-[11px] font-semibold text-slate-500 uppercase mb-1.5">Décision pose (clique pour changer)</div>
                 <div className="grid grid-cols-3 gap-2">
                   <button type="button" onClick={() => setFormData({ ...formData, statutPose: 'envoyé' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${!formData.statutPose || formData.statutPose === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ En attente</button>
                   <button type="button" onClick={() => {
@@ -18794,13 +18794,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               </div>
 
               {formData.statutPose === 'visite_ok' && formData.dateInsta && (
-                <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded-lg text-[11px] text-emerald-800 font-bold">
+                <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded-lg text-[12px] text-emerald-800 font-bold">
                   ✅ Posé le {new Date(formData.dateInsta).toLocaleDateString('fr-FR')} — tu peux passer au Consuel
                 </div>
               )}
 
               {formData.statutPose === 'client_refuse' && (
-                <div className="mt-2 p-2 bg-rose-100 border border-rose-300 rounded-lg text-[11px] text-rose-700 font-bold">
+                <div className="mt-2 p-2 bg-rose-100 border border-rose-300 rounded-lg text-[12px] text-rose-700 font-bold">
                   ⚠️ Client a refusé la pose — dossier marqué ANNULÉ. Tu peux toujours revenir en arrière en cliquant un autre bouton.
                 </div>
               )}
@@ -18809,13 +18809,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
             {/* ============ ÉTAPE 3 : CONSUEL ============ */}
             <div className="bg-cyan-50 border-2 border-cyan-200 rounded-xl p-3 mb-3">
-              <button type="button" onClick={() => toggleStep('consuel')} className={`w-full text-[11px] font-bold text-cyan-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.consuel ? '' : 'mb-2'}`}>
+              <button type="button" onClick={() => toggleStep('consuel')} className={`w-full text-[12px] font-bold text-cyan-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.consuel ? '' : 'mb-2'}`}>
                 <span className="flex items-center gap-1.5">
-                  <span className="text-cyan-600 text-[9px]">{foldedSteps.consuel ? '▶' : '▼'}</span>
+                  <span className="text-cyan-600 text-[10px]">{foldedSteps.consuel ? '▶' : '▼'}</span>
                   <span>4️⃣ ⚡ Consuel (certificat conformité)</span>
                 </span>
                 {formData.statutConsuel && (
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                  <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${
                     formData.statutConsuel === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
                     formData.statutConsuel === 'visite' ? 'bg-sky-100 text-sky-700' :
                     'bg-amber-100 text-amber-700'
@@ -18830,17 +18830,17 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               {/* Envoi + Accord (= reçu) */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Envoi Consuel</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📤 Envoi Consuel</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateEnvoiConsuel || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiConsuel: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiConsuel: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiConsuel: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Accord reçu</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">✅ Accord reçu</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateConsuel || ''} onChange={(e) => setFormData({ ...formData, dateConsuel: e.target.value, consuel: !!e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateConsuel: new Date().toISOString().split('T')[0], consuel: true })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateConsuel: new Date().toISOString().split('T')[0], consuel: true })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
               </div>
@@ -18848,7 +18848,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               {/* 3 boutons toggleables — toujours visibles */}
               {formData.dateEnvoiConsuel && (
                 <div className="mt-3">
-                  <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Retour du Consuel (clique pour changer)</div>
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase mb-1.5">Retour du Consuel (clique pour changer)</div>
                   <div className="grid grid-cols-3 gap-2">
                     <button type="button" onClick={() => setFormData({ ...formData, statutConsuel: '' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${!formData.statutConsuel || formData.statutConsuel === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ En attente</button>
                     <button type="button" onClick={() => setFormData({ ...formData, statutConsuel: 'visite' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutConsuel === 'visite' ? 'bg-sky-500 text-white border-sky-600 shadow-md' : 'bg-white text-sky-600 border-sky-200 hover:bg-sky-50'}`}>🔍 Visite demandée</button>
@@ -18861,35 +18861,35 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               )}
 
               {formData.statutConsuel === 'accepté' && !formData.dateControleLivraison && (
-                <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded-lg text-[11px] text-emerald-800 font-bold">
+                <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded-lg text-[12px] text-emerald-800 font-bold">
                   ✅ Consuel visé — appelle le client pour le contrôle livraison (étape 5 ci-dessous)
                 </div>
               )}
               {formData.statutConsuel === 'visite' && (
-                <div className="mt-2 p-2 bg-sky-50 border-2 border-sky-300 rounded-lg text-[11px] text-sky-800">
+                <div className="mt-2 p-2 bg-sky-50 border-2 border-sky-300 rounded-lg text-[12px] text-sky-800">
                   <div className="font-bold">🔍 Le Consuel demande une visite de conformité.</div>
-                  <div className="text-[10px] text-sky-700/90 mt-0.5">→ Cale la date de visite ci-dessous, envoie ton poseur vérifier que tout est aux normes. Si la visite révèle un défaut → remets aux normes et ajoute une contre-visite, jusqu'à l'accord.</div>
+                  <div className="text-[11px] text-sky-700/90 mt-0.5">→ Cale la date de visite ci-dessous, envoie ton poseur vérifier que tout est aux normes. Si la visite révèle un défaut → remets aux normes et ajoute une contre-visite, jusqu'à l'accord.</div>
                 </div>
               )}
 
               {/* Visites Consuel — peuvent être plusieurs (visite + contre-visites) */}
               <div className="mt-3 p-2 bg-white border border-cyan-200 rounded-lg">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-[11px] font-bold text-cyan-700 uppercase">🔍 Visites Consuel ({(formData.visitesConsuel || []).length})</span>
+                  <span className="text-[12px] font-bold text-cyan-700 uppercase">🔍 Visites Consuel ({(formData.visitesConsuel || []).length})</span>
                   <button type="button" onClick={() => {
                     const isFirst = !formData.visitesConsuel || formData.visitesConsuel.length === 0;
                     setFormData({
                       ...formData,
                       visitesConsuel: [...(formData.visitesConsuel || []), { date: '', resultat: '', note: '', type: isFirst ? 'visite' : 'contre_visite' }]
                     });
-                  }} className="px-2 py-1 bg-cyan-500 hover:bg-cyan-600 text-white rounded text-[10px] font-bold flex items-center gap-1">
+                  }} className="px-2 py-1 bg-cyan-500 hover:bg-cyan-600 text-white rounded text-[11px] font-bold flex items-center gap-1">
                     <Plus className="w-3 h-3" />
                     {(formData.visitesConsuel || []).length === 0 ? 'Ajouter une visite' : 'Ajouter une contre-visite'}
                   </button>
                 </div>
 
                 {(!formData.visitesConsuel || formData.visitesConsuel.length === 0) && (
-                  <div className="text-[11px] text-slate-400 italic text-center py-2">
+                  <div className="text-[12px] text-slate-400 italic text-center py-2">
                     Aucune visite enregistrée. L'accord peut être donné sans visite.
                   </div>
                 )}
@@ -18927,36 +18927,36 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     return (
                       <div key={idx} className={`p-2 rounded-lg border-2 ${bgCls}`}>
                         <div className="flex items-center justify-between mb-1.5">
-                          <span className="text-[11px] font-bold text-slate-700">
+                          <span className="text-[12px] font-bold text-slate-700">
                             {isFirst ? '🔍 Visite initiale' : `🔄 Contre-visite n°${idx}`}
                           </span>
-                          <button type="button" onClick={removeV} className="px-2 py-1 bg-rose-100 hover:bg-rose-500 text-rose-600 hover:text-white rounded-lg text-[10px] font-bold flex items-center gap-1" title="Supprimer cette visite">
+                          <button type="button" onClick={removeV} className="px-2 py-1 bg-rose-100 hover:bg-rose-500 text-rose-600 hover:text-white rounded-lg text-[11px] font-bold flex items-center gap-1" title="Supprimer cette visite">
                             <Trash2 className="w-3 h-3" />
                             <span>Supprimer</span>
                           </button>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-2">
                           <div>
-                            <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Date visite</label>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Date visite</label>
                             <div className="flex gap-1">
                               <input type="date" min="2000-01-01" max="2100-12-31" value={v.date || ''} onChange={(e) => updateV({ date: e.target.value })} className={inputCls} />
-                              <button type="button" onClick={() => updateV({ date: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                              <button type="button" onClick={() => updateV({ date: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
                           <div>
-                            <label className="block text-[9px] font-semibold text-slate-500 mb-0.5">Résultat</label>
+                            <label className="block text-[10px] font-semibold text-slate-500 mb-0.5">Résultat</label>
                             <div className="flex gap-1">
-                              <button type="button" onClick={() => setResultat('ok')} className={`flex-1 px-2 py-1 rounded text-[10px] font-bold ${v.resultat === 'ok' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-100'}`}>✓ OK</button>
-                              <button type="button" onClick={() => setResultat('a_corriger')} className={`flex-1 px-2 py-1 rounded text-[10px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
+                              <button type="button" onClick={() => setResultat('ok')} className={`flex-1 px-2 py-1 rounded text-[11px] font-bold ${v.resultat === 'ok' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-100'}`}>✓ OK</button>
+                              <button type="button" onClick={() => setResultat('a_corriger')} className={`flex-1 px-2 py-1 rounded text-[11px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
                             </div>
                           </div>
                         </div>
-                        <input type="text" value={v.note || ''} onChange={(e) => updateV({ note: e.target.value })} placeholder="Note / remarques (ex: chemin de câble à refaire)" className={inputCls + ' text-[11px]'} />
+                        <input type="text" value={v.note || ''} onChange={(e) => updateV({ note: e.target.value })} placeholder="Note / remarques (ex: chemin de câble à refaire)" className={inputCls + ' text-[12px]'} />
                         {v.resultat === 'a_corriger' && idx === formData.visitesConsuel.length - 1 && (
                           <div className="mt-2 p-2 bg-amber-50 border border-amber-300 rounded-lg space-y-1.5">
-                            <div className="text-[10px] text-amber-800 font-bold">🔧 À corriger — fais la mise aux normes, puis programme la contre-visite à la nouvelle date communiquée par le Consuel.</div>
+                            <div className="text-[11px] text-amber-800 font-bold">🔧 À corriger — fais la mise aux normes, puis programme la contre-visite à la nouvelle date communiquée par le Consuel.</div>
                             <div>
-                              <label className="block text-[9px] font-semibold text-amber-700 mb-0.5">📅 Date de la contre-visite</label>
+                              <label className="block text-[10px] font-semibold text-amber-700 mb-0.5">📅 Date de la contre-visite</label>
                               <div className="flex gap-1">
                                 <input type="date" min="2000-01-01" max="2100-12-31" value="" onChange={(e) => {
                                   if (!e.target.value) return;
@@ -18964,7 +18964,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                                 }} className={inputCls} />
                                 <button type="button" onClick={() => {
                                   setFormData({ ...formData, visitesConsuel: [...formData.visitesConsuel, { date: '', resultat: '', note: '', type: 'contre_visite' }] });
-                                }} className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Pas encore</button>
+                                }} className="px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[10px] font-bold whitespace-nowrap">Pas encore</button>
                               </div>
                             </div>
                           </div>
@@ -18979,13 +18979,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
             {/* ============ ÉTAPE 3bis : RACCORDEMENT ENEDIS ============ */}
             <div className="bg-sky-50 border-2 border-sky-200 rounded-xl p-3 mb-3">
-              <button type="button" onClick={() => toggleStep('raccordement')} className={`w-full text-[11px] font-bold text-sky-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.raccordement ? '' : 'mb-2'}`}>
+              <button type="button" onClick={() => toggleStep('raccordement')} className={`w-full text-[12px] font-bold text-sky-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.raccordement ? '' : 'mb-2'}`}>
                 <span className="flex items-center gap-1.5">
-                  <span className="text-sky-600 text-[9px]">{foldedSteps.raccordement ? '▶' : '▼'}</span>
+                  <span className="text-sky-600 text-[10px]">{foldedSteps.raccordement ? '▶' : '▼'}</span>
                   <span>🔌 Raccordement (Enedis)</span>
                 </span>
                 {formData.statutRaccordement && (
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full ${
+                  <span className={`text-[11px] font-bold px-2 py-1 rounded-full ${
                     formData.statutRaccordement === 'accepté' ? 'bg-emerald-100 text-emerald-700' :
                     formData.statutRaccordement === 'refusé' ? 'bg-rose-100 text-rose-700' :
                     'bg-amber-100 text-amber-700'
@@ -18999,24 +18999,24 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               {!foldedSteps.raccordement && (<>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📤 Demande envoyée</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📤 Demande envoyée</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateEnvoiRaccordement || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiRaccordement: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiRaccordement: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiRaccordement: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">✅ Raccordement effectué</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">✅ Raccordement effectué</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateAccordRaccordement || ''} onChange={(e) => setFormData({ ...formData, dateAccordRaccordement: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateAccordRaccordement: new Date().toISOString().split('T')[0], statutRaccordement: 'accepté' })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateAccordRaccordement: new Date().toISOString().split('T')[0], statutRaccordement: 'accepté' })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
               </div>
 
               {formData.dateEnvoiRaccordement && (
                 <div className="mt-3">
-                  <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1.5">Statut raccordement (clique pour changer)</div>
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase mb-1.5">Statut raccordement (clique pour changer)</div>
                   <div className="grid grid-cols-3 gap-2">
                     <button type="button" onClick={() => setFormData({ ...formData, statutRaccordement: '' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${!formData.statutRaccordement || formData.statutRaccordement === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ En attente</button>
                     <button type="button" onClick={() => {
@@ -19032,30 +19032,30 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
             {/* ============ ÉTAPE 4 : SUIVI PAIEMENT ============ */}
             <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3">
-              <button type="button" onClick={() => toggleStep('paiement')} className={`w-full text-[11px] font-bold text-emerald-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.paiement ? '' : 'mb-2'}`}>
+              <button type="button" onClick={() => toggleStep('paiement')} className={`w-full text-[12px] font-bold text-emerald-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.paiement ? '' : 'mb-2'}`}>
                 <span className="flex items-center gap-1.5">
-                  <span className="text-emerald-600 text-[9px]">{foldedSteps.paiement ? '▶' : '▼'}</span>
+                  <span className="text-emerald-600 text-[10px]">{foldedSteps.paiement ? '▶' : '▼'}</span>
                   <span>5️⃣ 💰 Contrôle &amp; paiement</span>
                 </span>
                 {formData.payeClient && (
-                  <span className="text-[10px] font-bold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">✓ Payé</span>
+                  <span className="text-[11px] font-bold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">✓ Payé</span>
                 )}
               </button>
 
               {!foldedSteps.paiement && (<>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Contrôle livraison (toi → client)</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📞 Contrôle livraison (toi → client)</label>
                   {(() => {
                     const { bloque, manquants } = controleLivraisonBlocage(formData);
                     const verrou = bloque && !formData.dateControleLivraison;
                     return (<>
                       <div className="flex gap-1">
                         <input type="date" min="2000-01-01" max="2100-12-31" disabled={verrou} value={formData.dateControleLivraison || ''} onChange={(e) => setFormData({ ...formData, dateControleLivraison: e.target.value })} className={`${inputCls}${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
-                        <button type="button" disabled={verrou} onClick={() => setFormData({ ...formData, dateControleLivraison: new Date().toISOString().split('T')[0] })} className={`flex-shrink-0 px-2 py-1 rounded-xl text-[10px] font-bold whitespace-nowrap ${verrou ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'}`}>Auj.</button>
+                        <button type="button" disabled={verrou} onClick={() => setFormData({ ...formData, dateControleLivraison: new Date().toISOString().split('T')[0] })} className={`flex-shrink-0 px-2 py-1 rounded-xl text-[11px] font-bold whitespace-nowrap ${verrou ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'}`}>Auj.</button>
                       </div>
                       {verrou && (
-                        <div className="mt-1 px-2 py-1.5 bg-rose-50 border border-rose-300 rounded-lg text-[10px] text-rose-800 leading-snug">
+                        <div className="mt-1 px-2 py-1.5 bg-rose-50 border border-rose-300 rounded-lg text-[11px] text-rose-800 leading-snug">
                           🔒 <span className="font-bold">Contrôle livraison bloqué</span> — il manque : {manquants.join(' · ')}.
                         </div>
                       )}
@@ -19063,14 +19063,14 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   })()}
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">📞 Appel banque (banque → client)</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">📞 Appel banque (banque → client)</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateAppelBanque || ''} onChange={(e) => setFormData({ ...formData, dateAppelBanque: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateAppelBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    <button type="button" onClick={() => setFormData({ ...formData, dateAppelBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-600 mb-1">💰 Paiement reçu</label>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-1">💰 Paiement reçu</label>
                   <div className="flex gap-1">
                     <input type="date" min="2000-01-01" max="2100-12-31" value={formData.datePaiementBanque || ''} onChange={(e) => setFormData({ ...formData, datePaiementBanque: e.target.value })} className={inputCls} />
                     <button type="button" onClick={() => {
@@ -19082,7 +19082,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         payeClientDate: formData.payeClientDate || today,
                         statut: 'W_DOSSIER_PAYER',
                       });
-                    }} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                    }} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
               </div>
@@ -19145,7 +19145,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div className="mt-3 p-3 bg-white border-2 border-pink-200 rounded-xl">
                   <div className="text-xs font-bold text-slate-700 uppercase mb-2 flex items-center justify-between flex-wrap gap-1">
                     <span>📜 Activité du dossier</span>
-                    <span className="text-slate-500 font-normal normal-case text-[10px]">
+                    <span className="text-slate-500 font-normal normal-case text-[11px]">
                       {!editingId ? '🆕 Nouveau dossier' : `${histCount} évènement${histCount > 1 ? 's' : ''} enregistré${histCount > 1 ? 's' : ''}`}
                     </span>
                   </div>
@@ -19167,7 +19167,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
                   {/* Cas 3 : édition avec activité existante */}
                   {editingId && hasActivity && (
-                    <div className="flex items-center gap-1.5 flex-wrap text-[11px]">
+                    <div className="flex items-center gap-1.5 flex-wrap text-[12px]">
                       {formData.createdBy && (
                         <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-semibold">
                           <span className="text-base leading-none">👤</span>
@@ -19214,7 +19214,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         setFormData({ ...formData, hasLitige: false });
                       }
                     }}
-                    className="text-[10px] font-bold text-rose-600 hover:text-rose-800 bg-rose-100 hover:bg-rose-200 px-2 py-1 rounded-lg"
+                    className="text-[11px] font-bold text-rose-600 hover:text-rose-800 bg-rose-100 hover:bg-rose-200 px-2 py-1 rounded-lg"
                     title="Retirer ce litige (ex : test, erreur)"
                   >× Retirer ce litige</button>
                 </div>
@@ -19222,7 +19222,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div className={`rounded-xl border-2 p-3 ${formData.litigeTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-200'}`}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[11px] font-bold text-rose-700 uppercase mb-1">📨 Date courrier recommandé reçu</label>
+                      <label className="block text-[12px] font-bold text-rose-700 uppercase mb-1">📨 Date courrier recommandé reçu</label>
                       <div className="flex gap-1">
                         <input
                           type="date"
@@ -19232,12 +19232,12 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           onChange={(e) => setFormData({ ...formData, litigeDateCourrierRecommande: e.target.value })}
                           className={inputCls}
                         />
-                        <button type="button" onClick={() => setFormData({ ...formData, litigeDateCourrierRecommande: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                        <button type="button" onClick={() => setFormData({ ...formData, litigeDateCourrierRecommande: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
                     {formData.litigeTraite && (
                       <div>
-                        <label className="block text-[11px] font-bold text-emerald-700 uppercase mb-1">✅ Date de clôture</label>
+                        <label className="block text-[12px] font-bold text-emerald-700 uppercase mb-1">✅ Date de clôture</label>
                         <div className="flex gap-1">
                           <input
                             type="date"
@@ -19247,7 +19247,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             onChange={(e) => setFormData({ ...formData, litigeDateCloture: e.target.value })}
                             className={inputCls}
                           />
-                          <button type="button" onClick={() => setFormData({ ...formData, litigeDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                          <button type="button" onClick={() => setFormData({ ...formData, litigeDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                         </div>
                       </div>
                     )}
@@ -19341,7 +19341,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   {formData.litigeRegieRembourse && (
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">Date du remboursement</label>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">Date du remboursement</label>
                         <div className="flex gap-1">
                           <input
                             type="date"
@@ -19351,11 +19351,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             onChange={(e) => setFormData({ ...formData, litigeDateRembourse: e.target.value })}
                             className={inputCls}
                           />
-                          <button type="button" onClick={() => setFormData({ ...formData, litigeDateRembourse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                          <button type="button" onClick={() => setFormData({ ...formData, litigeDateRembourse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                         </div>
                       </div>
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">N° facture émise à la régie</label>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">N° facture émise à la régie</label>
                         <input
                           type="text"
                           value={formData.litigeFactureNo}
@@ -19401,7 +19401,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         setFormData({ ...formData, hasSav: false });
                       }
                     }}
-                    className="text-[10px] font-bold text-yellow-700 hover:text-yellow-900 bg-yellow-100 hover:bg-yellow-200 px-2 py-1 rounded-lg"
+                    className="text-[11px] font-bold text-yellow-700 hover:text-yellow-900 bg-yellow-100 hover:bg-yellow-200 px-2 py-1 rounded-lg"
                     title="Retirer ce SAV (ex : test, erreur)"
                   >× Retirer ce SAV</button>
                 </div>
@@ -19409,7 +19409,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div className={`rounded-xl border-2 p-3 ${formData.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-yellow-50 border-yellow-300'}`}>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                     <div>
-                      <label className="block text-[11px] font-bold text-yellow-700 uppercase mb-1">📅 SAV ouvert le</label>
+                      <label className="block text-[12px] font-bold text-yellow-700 uppercase mb-1">📅 SAV ouvert le</label>
                       <div className="flex gap-1">
                         <input
                           type="date"
@@ -19419,12 +19419,12 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           onChange={(e) => setFormData({ ...formData, savDateOuverture: e.target.value })}
                           className={inputCls}
                         />
-                        <button type="button" onClick={() => setFormData({ ...formData, savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                        <button type="button" onClick={() => setFormData({ ...formData, savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
                     {formData.savTraite && (
                       <div>
-                        <label className="block text-[11px] font-bold text-emerald-700 uppercase mb-1">✅ Date de clôture</label>
+                        <label className="block text-[12px] font-bold text-emerald-700 uppercase mb-1">✅ Date de clôture</label>
                         <div className="flex gap-1">
                           <input
                             type="date"
@@ -19434,7 +19434,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             onChange={(e) => setFormData({ ...formData, savDateCloture: e.target.value })}
                             className={inputCls}
                           />
-                          <button type="button" onClick={() => setFormData({ ...formData, savDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                          <button type="button" onClick={() => setFormData({ ...formData, savDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                         </div>
                       </div>
                     )}
@@ -19496,7 +19496,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         onChange={(e) => setFormData({ ...formData, savDateInterventionPrevue: e.target.value })}
                         className={inputCls}
                       />
-                      <button type="button" onClick={() => setFormData({ ...formData, savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                      <button type="button" onClick={() => setFormData({ ...formData, savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
                   <div>
@@ -19510,7 +19510,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         onChange={(e) => setFormData({ ...formData, savDateInterventionFaite: e.target.value })}
                         className={inputCls}
                       />
-                      <button type="button" onClick={() => setFormData({ ...formData, savDateInterventionFaite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                      <button type="button" onClick={() => setFormData({ ...formData, savDateInterventionFaite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
                 </div>
@@ -19608,7 +19608,7 @@ function Section({ title, color, children, collapsible = false, defaultCollapsed
         <div className="flex-1 text-left">
           <h3 className="font-semibold text-slate-700 text-sm">{title}</h3>
           {collapsed && summary && (
-            <div className="text-[11px] text-slate-500 mt-0.5">{summary}</div>
+            <div className="text-[12px] text-slate-500 mt-0.5">{summary}</div>
           )}
         </div>
         <span className="text-base text-slate-500 flex-shrink-0">
@@ -20015,7 +20015,7 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                 {headers.map((h, i) => (
                   <div key={i} className="grid grid-cols-1 md:grid-cols-3 gap-2 items-center bg-slate-50 rounded-xl p-3">
                     <div>
-                      <div className="text-[10px] font-semibold text-slate-500 uppercase">Colonne {i + 1} {hasHeaders ? '(en-tête)' : ''}</div>
+                      <div className="text-[11px] font-semibold text-slate-500 uppercase">Colonne {i + 1} {hasHeaders ? '(en-tête)' : ''}</div>
                       <div className="text-sm font-bold text-slate-800 truncate" title={h}>{h || '(vide)'}</div>
                     </div>
                     <div>
@@ -20023,7 +20023,7 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                         {IMPORT_FIELDS.map(f => <option key={f.id} value={f.id}>{f.label}</option>)}
                       </select>
                     </div>
-                    <div className="text-[10px] text-slate-500 font-mono truncate">
+                    <div className="text-[11px] text-slate-500 font-mono truncate">
                       <span className="font-semibold">Ex:</span> {[rows[0]?.[i], rows[1]?.[i]].filter(Boolean).slice(0, 2).join(' • ')}
                     </div>
                   </div>
@@ -20189,7 +20189,7 @@ function ImportDossiersJsonModal({ onClose, onImport, existingDossiers }) {
             <div className="border border-slate-200 rounded-lg overflow-hidden">
               <div className="px-3 py-2 bg-slate-50 border-b border-slate-200">
                 <div className="text-sm font-bold text-slate-800">{parsed.items.length} dossier{parsed.items.length > 1 ? 's' : ''} détecté{parsed.items.length > 1 ? 's' : ''}</div>
-                <div className="text-[11px] text-slate-600 mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5">
+                <div className="text-[12px] text-slate-600 mt-1 grid grid-cols-2 gap-x-3 gap-y-0.5">
                   <span>✨ Nouveaux : <strong className="text-emerald-700">{parsed.nouveaux}</strong></span>
                   <span>↻ Doublons (même id) : <strong className="text-amber-700">{parsed.dupes}</strong></span>
                   <span>❓ Sans id : <strong className="text-slate-700">{parsed.sansId}</strong></span>
@@ -20197,7 +20197,7 @@ function ImportDossiersJsonModal({ onClose, onImport, existingDossiers }) {
                   <span>🔧 Posés : <strong>{parsed.poses}</strong></span>
                   <span></span>
                 </div>
-                <div className="text-[11px] text-slate-600 mt-1">
+                <div className="text-[12px] text-slate-600 mt-1">
                   Sociétés : {Object.entries(parsed.bySociete).map(([k, v]) => `${k} (${v})`).join(' · ')}
                 </div>
               </div>
@@ -20205,7 +20205,7 @@ function ImportDossiersJsonModal({ onClose, onImport, existingDossiers }) {
           )}
         </div>
         <div className="px-5 py-3 border-t border-slate-200 bg-slate-50 flex items-center justify-between gap-2 flex-wrap">
-          <span className="text-[11px] text-slate-500">
+          <span className="text-[12px] text-slate-500">
             {parsed && `Pour les ${parsed.dupes} doublons :`}
           </span>
           <div className="flex items-center gap-2">
@@ -20342,7 +20342,7 @@ function HistoriqueModal({ dossier, onClose }) {
                   }`}
                 >
                   {f.label}
-                  <span className={`ml-1.5 inline-block min-w-[20px] px-1 py-0.5 rounded-full text-[10px] font-bold ${active ? 'bg-white/30 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                  <span className={`ml-1.5 inline-block min-w-[20px] px-1 py-0.5 rounded-full text-[11px] font-bold ${active ? 'bg-white/30 text-white' : 'bg-slate-100 text-slate-600'}`}>
                     {n}
                   </span>
                 </button>
@@ -20382,7 +20382,7 @@ function HistoriqueModal({ dossier, onClose }) {
                           📞
                         </div>
                         <div className={`rounded-xl p-3 border ${isCQ ? 'bg-purple-50 border-purple-200' : 'bg-emerald-50 border-emerald-200'}`}>
-                          <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                          <div className="text-[11px] font-semibold text-slate-500 uppercase mb-1">
                             📅 {formatDateTime(h.date)}
                           </div>
                           <div className={`text-sm font-bold ${isCQ ? 'text-purple-700' : 'text-emerald-700'}`}>
@@ -20404,7 +20404,7 @@ function HistoriqueModal({ dossier, onClose }) {
                           ✅
                         </div>
                         <div className="rounded-xl p-3 border bg-emerald-50 border-emerald-200">
-                          <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                          <div className="text-[11px] font-semibold text-slate-500 uppercase mb-1">
                             📅 {formatDateTime(h.date)}
                           </div>
                           <div className="text-sm font-bold text-emerald-700">
@@ -20413,7 +20413,7 @@ function HistoriqueModal({ dossier, onClose }) {
                               à 🤝 <strong>{h.cible_nom}</strong> via {channelLabel}
                             </span>
                           </div>
-                          {h.user && <div className="text-[10px] text-slate-500 mt-1">👤 par {h.user}</div>}
+                          {h.user && <div className="text-[11px] text-slate-500 mt-1">👤 par {h.user}</div>}
                         </div>
                       </div>
                     );
@@ -20428,7 +20428,7 @@ function HistoriqueModal({ dossier, onClose }) {
                           📲
                         </div>
                         <div className="rounded-xl p-3 border bg-emerald-50 border-emerald-200">
-                          <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                          <div className="text-[11px] font-semibold text-slate-500 uppercase mb-1">
                             📅 {formatDateTime(h.date)}
                           </div>
                           <div className="text-sm font-bold text-emerald-700">
@@ -20437,8 +20437,8 @@ function HistoriqueModal({ dossier, onClose }) {
                               à {kindEmoji} <strong>{h.cible_nom}</strong>{motifLabel ? ` (${motifLabel})` : ''}
                             </span>
                           </div>
-                          {h.user && <div className="text-[10px] text-slate-500 mt-1">👤 par {h.user}</div>}
-                          <div className="text-[9px] text-slate-400 italic mt-1">Le lien WhatsApp a été ouvert — la confirmation d'envoi se fait hors CRM.</div>
+                          {h.user && <div className="text-[11px] text-slate-500 mt-1">👤 par {h.user}</div>}
+                          <div className="text-[10px] text-slate-400 italic mt-1">Le lien WhatsApp a été ouvert — la confirmation d'envoi se fait hors CRM.</div>
                         </div>
                       </div>
                     );
@@ -20483,7 +20483,7 @@ function HistoriqueModal({ dossier, onClose }) {
                           ✏️
                         </div>
                         <div className="rounded-xl p-3 border bg-blue-50 border-blue-200">
-                          <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">
+                          <div className="text-[11px] font-semibold text-slate-500 uppercase mb-1">
                             📅 {formatDateTime(h.date)}
                           </div>
                           <div className="text-sm font-bold text-blue-700 mb-1.5">
@@ -20493,7 +20493,7 @@ function HistoriqueModal({ dossier, onClose }) {
                             {h.changes.map((c, j) => {
                               const label = FIELD_LABELS[c.field] || c.field;
                               return (
-                                <li key={j} className="text-[11px] flex items-center gap-1.5 flex-wrap">
+                                <li key={j} className="text-[12px] flex items-center gap-1.5 flex-wrap">
                                   <strong className="text-slate-700">{label} :</strong>
                                   <span className="text-rose-600 line-through">{fmtVal(c.from)}</span>
                                   <span className="text-slate-400">→</span>
@@ -20502,7 +20502,7 @@ function HistoriqueModal({ dossier, onClose }) {
                               );
                             })}
                           </ul>
-                          {h.user && <div className="text-[10px] text-slate-500 mt-1.5">👤 par {h.user}</div>}
+                          {h.user && <div className="text-[11px] text-slate-500 mt-1.5">👤 par {h.user}</div>}
                         </div>
                       </div>
                     );
@@ -20526,10 +20526,10 @@ function HistoriqueModal({ dossier, onClose }) {
                         {isCreation ? '✨' : (toInfo?.emoji || '🔄')}
                       </div>
                       <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
-                        <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1 flex items-center justify-between gap-2 flex-wrap">
+                        <div className="text-[11px] font-semibold text-slate-500 uppercase mb-1 flex items-center justify-between gap-2 flex-wrap">
                           <span>📅 {formatDateTime(h.date)}</span>
                           {dureeJours !== null && dureeJours !== undefined && toInfo && (
-                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${isLastStatut ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'}`} title={isLastStatut ? 'Durée écoulée dans le statut courant' : 'Durée passée dans ce statut avant le changement suivant'}>
+                            <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${isLastStatut ? 'bg-amber-100 text-amber-700' : 'bg-slate-200 text-slate-700'}`} title={isLastStatut ? 'Durée écoulée dans le statut courant' : 'Durée passée dans ce statut avant le changement suivant'}>
                               ⏱ {dureeJours}j {isLastStatut ? '(en cours)' : `dans « ${toInfo.label} »`}
                             </span>
                           )}
@@ -20558,14 +20558,14 @@ function HistoriqueModal({ dossier, onClose }) {
                             {/* Date métier du jalon (refus, accord, manque docs…)
                                 snapshotée au moment du changement de statut. */}
                             {h.bizDate && statutMilestoneLabel(h.from, h.to) && (
-                              <div className="mt-1.5 inline-block text-[11px] font-bold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1">
+                              <div className="mt-1.5 inline-block text-[12px] font-bold text-violet-700 bg-violet-50 border border-violet-200 rounded-lg px-2 py-1">
                                 {statutMilestoneLabel(h.from, h.to)}{' '}
                                 {(() => { try { return new Date(h.bizDate).toLocaleDateString('fr-FR'); } catch (e) { return h.bizDate; } })()}
                               </div>
                             )}
                           </div>
                         )}
-                        {h.user && <div className="text-[10px] text-slate-500 mt-1">👤 par {h.user}</div>}
+                        {h.user && <div className="text-[11px] text-slate-500 mt-1">👤 par {h.user}</div>}
                       </div>
                     </div>
                   );
@@ -20633,7 +20633,7 @@ function PdfGeneratorPanel({ dossier }) {
 
   return (
     <div className="mb-3">
-      <div className="text-[10px] font-bold text-purple-700 uppercase mb-1">📄 Documents à générer</div>
+      <div className="text-[11px] font-bold text-purple-700 uppercase mb-1">📄 Documents à générer</div>
       <div className="relative">
         <select
           value=""
@@ -20647,7 +20647,7 @@ function PdfGeneratorPanel({ dossier }) {
             <option key={tpl.id} value={tpl.id}>{tpl.emoji} {tpl.label}</option>
           ))}
         </select>
-        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-purple-500 text-[9px]">▼</span>
+        <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-purple-500 text-[10px]">▼</span>
       </div>
     </div>
   );
@@ -20720,11 +20720,11 @@ function PdfUploader({ storagePath, fileName, onChange, color = 'orange', placeh
       {storagePath ? (
         <div className="flex items-center gap-1">
           {pdfUrl ? (
-            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className={`flex-1 min-w-0 px-1.5 py-1 bg-white border ${palette.border} rounded text-[10px] ${palette.text} font-bold truncate ${palette.hover}`} title={fileName || 'document.pdf'}>
+            <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className={`flex-1 min-w-0 px-1.5 py-1 bg-white border ${palette.border} rounded text-[11px] ${palette.text} font-bold truncate ${palette.hover}`} title={fileName || 'document.pdf'}>
               📄 {fileName || 'document.pdf'}
             </a>
           ) : (
-            <span className={`flex-1 px-1.5 py-1 bg-white border ${palette.border} rounded text-[10px] text-slate-400 italic truncate`}>Chargement…</span>
+            <span className={`flex-1 px-1.5 py-1 bg-white border ${palette.border} rounded text-[11px] text-slate-400 italic truncate`}>Chargement…</span>
           )}
           <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} title="Remplacer le PDF" className={`flex-shrink-0 p-1 ${palette.btnBg} ${palette.btnHover} ${palette.text} rounded`}>
             <RotateCcw className="w-3 h-3" />
@@ -20734,7 +20734,7 @@ function PdfUploader({ storagePath, fileName, onChange, color = 'orange', placeh
           </button>
         </div>
       ) : (
-        <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className={`w-full flex items-center justify-center gap-1 px-1.5 py-1 bg-white ${palette.hover} border border-dashed ${palette.dash} rounded text-[10px] font-semibold ${palette.text} disabled:opacity-50`}>
+        <button type="button" onClick={() => inputRef.current?.click()} disabled={uploading} className={`w-full flex items-center justify-center gap-1 px-1.5 py-1 bg-white ${palette.hover} border border-dashed ${palette.dash} rounded text-[11px] font-semibold ${palette.text} disabled:opacity-50`}>
           {uploading ? '⏳ Upload…' : <><Upload className="w-3 h-3" /> {placeholder}</>}
         </button>
       )}
@@ -20751,7 +20751,7 @@ function BLMaterielBlock({ d, onUpdate }) {
   return (
     <div className="mt-2 p-2 bg-orange-50 border border-orange-200 rounded-lg">
       {/* BL ALLER */}
-      <label className="flex items-center gap-1.5 text-[10px] font-bold text-orange-700 cursor-pointer">
+      <label className="flex items-center gap-1.5 text-[11px] font-bold text-orange-700 cursor-pointer">
         <input
           type="checkbox"
           checked={!!d.blMaterielPoseur}
@@ -20771,11 +20771,11 @@ function BLMaterielBlock({ d, onUpdate }) {
         <div className="mt-1.5 space-y-1.5">
           <div className="grid grid-cols-2 gap-1.5">
             <div>
-              <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📅 Date du BL</label>
-              <input type="date" min="2000-01-01" max="2100-12-31" value={d.blMaterielDate || ''} onChange={(e) => onUpdate({ blMaterielDate: e.target.value })} className="w-full px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+              <label className="block text-[10px] font-semibold text-orange-600 mb-0.5">📅 Date du BL</label>
+              <input type="date" min="2000-01-01" max="2100-12-31" value={d.blMaterielDate || ''} onChange={(e) => onUpdate({ blMaterielDate: e.target.value })} className="w-full px-1.5 py-1 bg-white border border-orange-200 rounded text-[11px]" />
             </div>
             <div>
-              <label className="block text-[9px] font-semibold text-orange-600 mb-0.5">📄 PDF du BL aller</label>
+              <label className="block text-[10px] font-semibold text-orange-600 mb-0.5">📄 PDF du BL aller</label>
               <PdfUploader
                 storagePath={d.blMaterielStoragePath}
                 fileName={d.blMaterielFileName}
@@ -20792,7 +20792,7 @@ function BLMaterielBlock({ d, onUpdate }) {
               retour, même s'il n'est pas encore annulé/refusé). */}
           {!!d.blMaterielPoseur && (
             <div className={`p-1.5 rounded border-2 ${d.materielRendu ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
-              <label className="flex items-center gap-1.5 text-[10px] font-bold cursor-pointer">
+              <label className="flex items-center gap-1.5 text-[11px] font-bold cursor-pointer">
                 <input
                   type="checkbox"
                   checked={!!d.materielRendu}
@@ -20812,11 +20812,11 @@ function BLMaterielBlock({ d, onUpdate }) {
               {d.materielRendu && (
                 <div className="mt-1 grid grid-cols-2 gap-1.5">
                   <div>
-                    <label className="block text-[9px] font-semibold text-emerald-600 mb-0.5">📅 Rendu le</label>
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.materielRenduDate || ''} onChange={(e) => onUpdate({ materielRenduDate: e.target.value })} className="w-full px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
+                    <label className="block text-[10px] font-semibold text-emerald-600 mb-0.5">📅 Rendu le</label>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.materielRenduDate || ''} onChange={(e) => onUpdate({ materielRenduDate: e.target.value })} className="w-full px-1.5 py-1 bg-white border border-emerald-200 rounded text-[11px]" />
                   </div>
                   <div>
-                    <label className="block text-[9px] font-semibold text-emerald-600 mb-0.5">📄 PDF du bon de retour</label>
+                    <label className="block text-[10px] font-semibold text-emerald-600 mb-0.5">📄 PDF du bon de retour</label>
                     <PdfUploader
                       storagePath={d.materielRenduStoragePath}
                       fileName={d.materielRenduFileName}
@@ -21098,14 +21098,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             <div className="flex-1 min-w-0 pr-6">
               <h2 className="text-base font-bold truncate">{d.nom} {d.prenom}</h2>
               <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                {d.id && <span className="text-[10px] opacity-90 font-mono">#{d.id}</span>}
+                {d.id && <span className="text-[11px] opacity-90 font-mono">#{d.id}</span>}
                 {d.idChelly && (
                   <a
                     href={`https://app.chelly.net/?app=yolico&search_id=${encodeURIComponent(d.idChelly)}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     title={`Ouvrir dans Chelly (id ${d.idChelly})`}
-                    className="inline-flex items-center gap-1 text-[10px] font-bold bg-white/20 hover:bg-white/30 backdrop-blur text-white px-1.5 py-0.5 rounded-md"
+                    className="inline-flex items-center gap-1 text-[11px] font-bold bg-white/20 hover:bg-white/30 backdrop-blur text-white px-1.5 py-0.5 rounded-md"
                   >
                     🔗 Chelly #{d.idChelly}
                   </a>
@@ -21116,14 +21116,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           {/* Sélecteur de statut + verrou anti auto-statut */}
           <div className="mt-3">
             <div className="flex items-center justify-between mb-1">
-              <label className="text-[10px] font-bold uppercase opacity-80">Statut</label>
+              <label className="text-[11px] font-bold uppercase opacity-80">Statut</label>
               <button
                 onClick={() => onUpdate({ statutLocked: !d.statutLocked })}
                 title={d.statutLocked
                   ? "Statut verrouillé — l'auto-statut n'écrasera plus ton choix. Clique pour déverrouiller."
                   : "Verrouiller le statut — empêche l'auto-statut de l'écraser. Utile si tu choisis un statut manuel hors cycle."}
                 aria-label={d.statutLocked ? 'Statut verrouillé' : 'Verrouiller le statut'}
-                className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded transition ${d.statutLocked ? 'bg-amber-300 text-amber-900 hover:bg-amber-200' : 'bg-white/20 text-white/80 hover:bg-white/30'}`}
+                className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded transition ${d.statutLocked ? 'bg-amber-300 text-amber-900 hover:bg-amber-200' : 'bg-white/20 text-white/80 hover:bg-white/30'}`}
               >
                 {d.statutLocked ? '🔒 Verrouillé' : '🔓 Auto'}
               </button>
@@ -21135,7 +21135,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             {(() => {
               const idx = STATUT_ETAPE_INDEX[d.statut];
               if (idx === undefined) {
-                return <div className="mt-2 text-[10px] font-semibold opacity-80">⚠️ Statut hors parcours</div>;
+                return <div className="mt-2 text-[11px] font-semibold opacity-80">⚠️ Statut hors parcours</div>;
               }
               const refuse = d.statut === 'B3_REFUS_FINANCEMENT';
               const manque = d.statut === 'B1_MANQUE_DOC';
@@ -21152,7 +21152,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         }`} />
                     ))}
                   </div>
-                  <div className="mt-1 text-[10px] font-semibold opacity-90">
+                  <div className="mt-1 text-[11px] font-semibold opacity-90">
                     Étape {idx + 1}/{PARCOURS_ETAPES.length} — {et.emoji} {et.label}
                     {refuse && ' · refusé'}
                     {manque && ' · docs manquants'}
@@ -21163,17 +21163,17 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           </div>
           {/* Actions rapides */}
           <div className="flex gap-1.5 mt-2.5 flex-wrap">
-            <button onClick={onShowDocs} className="flex-1 min-w-[80px] bg-white/20 hover:bg-white/30 text-white px-2 py-1.5 rounded-lg font-semibold text-[10px] flex items-center justify-center gap-1 backdrop-blur">
+            <button onClick={onShowDocs} className="flex-1 min-w-[80px] bg-white/20 hover:bg-white/30 text-white px-2 py-1.5 rounded-lg font-semibold text-[11px] flex items-center justify-center gap-1 backdrop-blur">
               <Paperclip className="w-3 h-3" />Docs ({docCount})
             </button>
-            <button onClick={onShowHist} className="flex-1 min-w-[80px] bg-white/20 hover:bg-white/30 text-white px-2 py-1.5 rounded-lg font-semibold text-[10px] flex items-center justify-center gap-1 backdrop-blur">
+            <button onClick={onShowHist} className="flex-1 min-w-[80px] bg-white/20 hover:bg-white/30 text-white px-2 py-1.5 rounded-lg font-semibold text-[11px] flex items-center justify-center gap-1 backdrop-blur">
               <Activity className="w-3 h-3" />Hist. ({histCount})
             </button>
-            <button onClick={onEdit} className="flex-1 min-w-[80px] bg-white text-slate-800 px-2 py-1.5 rounded-lg font-bold text-[10px] flex items-center justify-center gap-1">
+            <button onClick={onEdit} className="flex-1 min-w-[80px] bg-white text-slate-800 px-2 py-1.5 rounded-lg font-bold text-[11px] flex items-center justify-center gap-1">
               <Edit3 className="w-3 h-3" />Tout éditer
             </button>
             {(messageTemplates || []).length > 0 && (
-              <button onClick={() => setShowMsgPicker(v => !v)} className="flex-1 min-w-[80px] bg-white/20 hover:bg-white/30 text-white px-2 py-1.5 rounded-lg font-semibold text-[10px] flex items-center justify-center gap-1 backdrop-blur" title="Copier un message pré-rempli pour ce client">
+              <button onClick={() => setShowMsgPicker(v => !v)} className="flex-1 min-w-[80px] bg-white/20 hover:bg-white/30 text-white px-2 py-1.5 rounded-lg font-semibold text-[11px] flex items-center justify-center gap-1 backdrop-blur" title="Copier un message pré-rempli pour ce client">
                 💬 Modèles
               </button>
             )}
@@ -21181,15 +21181,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           {/* 💬 Picker de modèles — copie le message rempli dans le presse-papier */}
           {showMsgPicker && (messageTemplates || []).length > 0 && (
             <div className="mt-2 p-2 bg-white/15 border border-white/30 rounded-lg backdrop-blur space-y-1">
-              <div className="text-[9px] font-bold text-white/80 uppercase mb-1">💬 Copier un message pour {d.nom} {d.prenom || ''}</div>
+              <div className="text-[10px] font-bold text-white/80 uppercase mb-1">💬 Copier un message pour {d.nom} {d.prenom || ''}</div>
               {(messageTemplates || []).map(tpl => (
                 <button
                   key={tpl.id}
                   onClick={() => copyTemplate(tpl)}
-                  className="w-full text-left px-2 py-1.5 bg-white/90 hover:bg-white text-slate-800 rounded text-[11px] font-semibold flex items-center justify-between gap-2"
+                  className="w-full text-left px-2 py-1.5 bg-white/90 hover:bg-white text-slate-800 rounded text-[12px] font-semibold flex items-center justify-between gap-2"
                 >
                   <span className="truncate">{tpl.label}</span>
-                  <span className="flex-shrink-0 text-[10px] font-bold">{copiedTplId === tpl.id ? '✓ Copié !' : '📋 Copier'}</span>
+                  <span className="flex-shrink-0 text-[11px] font-bold">{copiedTplId === tpl.id ? '✓ Copié !' : '📋 Copier'}</span>
                 </button>
               ))}
             </div>
@@ -21197,7 +21197,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           {/* 🏢 Sélecteur société — clic pour assigner sans ouvrir le form complet */}
           {societes.length > 1 && (
             <div className="mt-2 px-2 py-1.5 bg-white/15 border border-white/30 rounded-lg backdrop-blur">
-              <div className="text-[9px] font-bold text-white/80 uppercase mb-1">🏢 Société</div>
+              <div className="text-[10px] font-bold text-white/80 uppercase mb-1">🏢 Société</div>
               <div className="flex gap-1 flex-wrap">
                 {societes.map(s => {
                   const isActive = d.societe === s.id;
@@ -21205,7 +21205,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <button
                       key={s.id}
                       onClick={() => onUpdate({ societe: s.id })}
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold border flex items-center gap-1 ${isActive ? 'bg-white text-slate-800 border-white' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
+                      className={`px-2 py-0.5 rounded text-[11px] font-bold border flex items-center gap-1 ${isActive ? 'bg-white text-slate-800 border-white' : 'bg-white/10 text-white border-white/30 hover:bg-white/20'}`}
                     >
                       {s.logoUrl
                         ? <img src={s.logoUrl} alt={s.label} className="h-4 w-auto object-contain" />
@@ -21220,13 +21220,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           {/* 🆕 Créer une action (LITIGE / SAV / ANNULER) — toggle */}
           <button
             onClick={() => setShowCreerAction(v => !v)}
-            className="mt-2 w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center justify-center gap-2 bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur"
+            className="mt-2 w-full px-3 py-2 rounded-lg font-bold text-[12px] flex items-center justify-center gap-2 bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur"
           >
             {showCreerAction ? '▲ Masquer les actions' : '➕ Créer une action'}
           </button>
           {showCreerAction && (
             <div className="mt-2 p-2 bg-white/15 backdrop-blur border border-white/20 rounded-lg space-y-1.5">
-              <div className="text-[9px] font-bold uppercase opacity-70 mb-1">Actions hors-parcours</div>
+              <div className="text-[10px] font-bold uppercase opacity-70 mb-1">Actions hors-parcours</div>
               {/* Ordre demandé : 1) Rappel  2) SAV  3) Litige  4) Annuler */}
               {/* 📞 CLIENT À RAPPELER — drapeau indépendant, ne touche pas au statut */}
               <button
@@ -21241,7 +21241,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   setShowCreerAction(false);
                 }}
                 disabled={!!d.hasRappel && !d.rappelFait}
-                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${(d.hasRappel && !d.rappelFait) ? 'bg-blue-200 text-blue-500 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white border-2 border-blue-600'}`}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[12px] flex items-center gap-2 transition ${(d.hasRappel && !d.rappelFait) ? 'bg-blue-200 text-blue-500 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600 text-white border-2 border-blue-600'}`}
               >
                 <span className="text-base">📞</span>
                 <span className="flex-1 text-left">{(d.hasRappel && !d.rappelFait) ? 'Rappel déjà en attente' : (d.hasRappel && d.rappelFait) ? 'Reprogrammer un rappel' : 'Client à rappeler'}</span>
@@ -21257,7 +21257,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   setShowCreerAction(false);
                 }}
                 disabled={!!d.hasSav}
-                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.hasSav ? 'bg-yellow-100 text-yellow-500 cursor-not-allowed' : 'bg-yellow-400 hover:bg-yellow-500 text-yellow-900 border-2 border-yellow-500'}`}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[12px] flex items-center gap-2 transition ${d.hasSav ? 'bg-yellow-100 text-yellow-500 cursor-not-allowed' : 'bg-yellow-400 hover:bg-yellow-500 text-yellow-900 border-2 border-yellow-500'}`}
               >
                 <span className="text-base">🛠️</span>
                 <span className="flex-1 text-left">{d.hasSav ? 'SAV déjà ouvert' : 'Ouvrir un SAV'}</span>
@@ -21273,7 +21273,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   setShowCreerAction(false);
                 }}
                 disabled={!!d.hasRetractation}
-                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.hasRetractation ? 'bg-orange-200 text-orange-500 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white border-2 border-orange-600'}`}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[12px] flex items-center gap-2 transition ${d.hasRetractation ? 'bg-orange-200 text-orange-500 cursor-not-allowed' : 'bg-orange-500 hover:bg-orange-600 text-white border-2 border-orange-600'}`}
               >
                 <span className="text-base">📝</span>
                 <span className="flex-1 text-left">{d.hasRetractation ? `Rétractation ${d.retractationDate ? `(${new Date(d.retractationDate).toLocaleDateString('fr-FR')})` : ''}` : 'Client rétracté'}</span>
@@ -21289,7 +21289,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   setShowCreerAction(false);
                 }}
                 disabled={!!d.hasLitige}
-                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.hasLitige ? 'bg-rose-200 text-rose-500 cursor-not-allowed' : 'bg-rose-500 hover:bg-rose-600 text-white border-2 border-rose-600'}`}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[12px] flex items-center gap-2 transition ${d.hasLitige ? 'bg-rose-200 text-rose-500 cursor-not-allowed' : 'bg-rose-500 hover:bg-rose-600 text-white border-2 border-rose-600'}`}
               >
                 <span className="text-base">⚖️</span>
                 <span className="flex-1 text-left">{d.hasLitige ? 'Litige déjà ouvert' : 'Ouvrir un litige'}</span>
@@ -21302,7 +21302,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   setShowCreerAction(false);
                 }}
                 disabled={d.statut === 'W2_ANNULER'}
-                className={`w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center gap-2 transition ${d.statut === 'W2_ANNULER' ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-slate-700 hover:bg-slate-800 text-white border-2 border-slate-800'}`}
+                className={`w-full px-3 py-2 rounded-lg font-bold text-[12px] flex items-center gap-2 transition ${d.statut === 'W2_ANNULER' ? 'bg-slate-200 text-slate-500 cursor-not-allowed' : 'bg-slate-700 hover:bg-slate-800 text-white border-2 border-slate-800'}`}
               >
                 <span className="text-base">❌</span>
                 <span className="flex-1 text-left">{d.statut === 'W2_ANNULER' ? 'Déjà annulé' : 'Annuler et archiver'}</span>
@@ -21317,19 +21317,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               autoArchived: false,
               manualArchive: !d.archived ? true : false, // ⚡ flag pour distinguer archivage manuel
             })}
-            className={`mt-2 w-full px-3 py-2 rounded-lg font-bold text-[11px] flex items-center justify-center gap-2 ${d.archived ? 'bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-300' : 'bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur'}`}
+            className={`mt-2 w-full px-3 py-2 rounded-lg font-bold text-[12px] flex items-center justify-center gap-2 ${d.archived ? 'bg-amber-100 hover:bg-amber-200 text-amber-700 border border-amber-300' : 'bg-white/20 hover:bg-white/30 text-white border border-white/30 backdrop-blur'}`}
           >
             {d.archived ? '📤 Désarchiver — remettre dans les dossiers actifs' : '📦 Archiver manuellement'}
           </button>
 
           {d.archived && d.autoArchived && (
-            <div className="mt-2 px-2 py-1.5 bg-emerald-100 border border-emerald-300 rounded-lg text-[10px] text-emerald-800 font-bold flex items-center gap-1">
+            <div className="mt-2 px-2 py-1.5 bg-emerald-100 border border-emerald-300 rounded-lg text-[11px] text-emerald-800 font-bold flex items-center gap-1">
               ✅ Archivé automatiquement — tous les paiements sont OK
             </div>
           )}
 
           {d.reprisDuArchive && (
-            <div className="mt-2 px-2 py-1.5 bg-orange-100 border border-orange-300 rounded-lg text-[10px] text-orange-800 font-bold flex items-center gap-1">
+            <div className="mt-2 px-2 py-1.5 bg-orange-100 border border-orange-300 rounded-lg text-[11px] text-orange-800 font-bold flex items-center gap-1">
               ⚠️ Dossier ressorti de l'archive (passé en {STATUTS.find(s => s.id === d.statut)?.label || 'problème'})
             </div>
           )}
@@ -21340,7 +21340,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
           {/* COORDONNÉES */}
           <div>
-            <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">📞 Coordonnées</h3>
+            <h3 className="text-[11px] font-bold text-slate-500 uppercase mb-1.5">📞 Coordonnées</h3>
             <div className="bg-slate-50 rounded-xl p-2.5 space-y-1.5 text-xs">
               {d.telephone && (
                 <div className="flex items-center gap-2">
@@ -21357,14 +21357,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {(d.adresse || d.ville) && (
                 <div className="flex items-start gap-2">
                   <span className="text-slate-400">🏠</span>
-                  <div className="font-semibold text-slate-700 text-[11px]">
+                  <div className="font-semibold text-slate-700 text-[12px]">
                     {d.adresse && <div>{d.adresse}</div>}
                     {(d.codePostal || d.ville) && <div>{d.codePostal} {d.ville}</div>}
                   </div>
                 </div>
               )}
               {!d.telephone && !d.email && !d.adresse && !d.ville && (
-                <div className="text-slate-400 italic text-center py-1 text-[11px]">Aucune coordonnée</div>
+                <div className="text-slate-400 italic text-center py-1 text-[12px]">Aucune coordonnée</div>
               )}
             </div>
           </div>
@@ -21374,13 +21374,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
           {/* DATES — éditables */}
           <div>
-            <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">📅 Process du dossier</h3>
+            <h3 className="text-[11px] font-bold text-slate-500 uppercase mb-1.5">📅 Process du dossier</h3>
 
             {/* ============ ÉTAPE 1 : CONTRÔLE QUALITÉ ============ */}
             <div ref={refCQ} className={`border-2 rounded-xl p-2 mb-2 ${d.statutControleQualite === 'ok' ? 'bg-emerald-50 border-emerald-200' : d.statutControleQualite === 'pas_ok' ? 'bg-rose-50 border-rose-200' : 'bg-purple-50 border-purple-200'}`}>
-              <button onClick={() => toggleStep('cq')} className={`w-full text-[10px] font-bold text-purple-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.cq ? '' : 'mb-1.5'} hover:opacity-80`}>
+              <button onClick={() => toggleStep('cq')} className={`w-full text-[11px] font-bold text-purple-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.cq ? '' : 'mb-1.5'} hover:opacity-80`}>
                 <span className="flex items-center gap-1.5">
-                  <span className="text-purple-600 text-[9px]">{foldedSteps.cq ? '▶' : '▼'}</span>
+                  <span className="text-purple-600 text-[10px]">{foldedSteps.cq ? '▶' : '▼'}</span>
                   <span>1️⃣ 📋 Contrôle qualité</span>
                   {foldedSteps.cq && d.dateControleQualite && (
                     <span className="text-purple-500 font-normal normal-case ml-1">— {new Date(d.dateControleQualite).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
@@ -21397,22 +21397,22 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
               {!foldedSteps.cq && (<>
               <div className="flex items-center gap-1 mb-1.5">
-                <span className="text-[10px] font-semibold text-purple-600 uppercase w-16 flex-shrink-0">📞 CQ</span>
+                <span className="text-[11px] font-semibold text-purple-600 uppercase w-16 flex-shrink-0">📞 CQ</span>
                 <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateControleQualite || ''} onChange={(e) => onUpdate({ dateControleQualite: e.target.value })} className={inputCls} />
-                <button onClick={() => onUpdate({ dateControleQualite: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded text-[9px] font-bold">Auj.</button>
+                <button onClick={() => onUpdate({ dateControleQualite: new Date().toISOString().split('T')[0] })} className="px-1.5 py-1 bg-purple-100 hover:bg-purple-200 text-purple-700 rounded text-[10px] font-bold">Auj.</button>
               </div>
 
               {/* 3 boutons toggleables — toujours visibles */}
               <div className="grid grid-cols-3 gap-1">
-                <button onClick={() => onUpdate({ statutControleQualite: '' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${!d.statutControleQualite ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
+                <button onClick={() => onUpdate({ statutControleQualite: '' })} className={`px-1 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${!d.statutControleQualite ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
                 <button onClick={() => {
                   const today = new Date().toISOString().split('T')[0];
                   onUpdate({ statutControleQualite: 'ok', dateControleQualite: d.dateControleQualite || today });
-                }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutControleQualite === 'ok' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Validé</button>
+                }} className={`px-1 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${d.statutControleQualite === 'ok' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Validé</button>
                 <button onClick={() => {
                   const today = new Date().toISOString().split('T')[0];
                   onUpdate({ statutControleQualite: 'pas_ok', dateControleQualite: d.dateControleQualite || today });
-                }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutControleQualite === 'pas_ok' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
+                }} className={`px-1 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${d.statutControleQualite === 'pas_ok' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
               </div>
 
               {/* 📞 Appel ONOFF — adapté à la plateforme :
@@ -21428,7 +21428,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         recordPendingOnoffCall({ dossierLocalId: d.localId, telephone: d.telephone, type: 'cq' });
                         if (!d.dateControleQualite) onUpdate({ dateControleQualite: new Date().toISOString().split('T')[0] });
                       }}
-                      className="w-full px-3 py-2 rounded-lg text-[11px] font-bold border-2 bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm flex items-center justify-center gap-1.5 no-underline"
+                      className="w-full px-3 py-2 rounded-lg text-[12px] font-bold border-2 bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm flex items-center justify-center gap-1.5 no-underline"
                       title={`Appeler ${d.telephone} via ONOFF`}
                     >
                       📞 Appeler avec ONOFF
@@ -21442,11 +21442,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         try { await navigator.clipboard.writeText(normalizePhoneE164(d.telephone)); } catch (e) {}
                         window.open('https://phone.onoffbusiness.com/', '_blank', 'noopener,noreferrer');
                       }}
-                      className="w-full px-3 py-2 rounded-lg text-[11px] font-bold border-2 bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm flex items-center justify-center gap-1.5"
+                      className="w-full px-3 py-2 rounded-lg text-[12px] font-bold border-2 bg-gradient-to-r from-purple-500 to-violet-600 hover:from-purple-600 hover:to-violet-700 text-white border-purple-700 shadow-sm flex items-center justify-center gap-1.5"
                       title="Ouvre ONOFF Web App dans un nouvel onglet + copie le numéro dans le presse-papier. Tu n'as plus qu'à coller (Cmd+V) dans le composeur ONOFF."
                     >
                       📞 Appeler avec ONOFF
-                      <span className="text-[9px] font-normal opacity-80">(Web App)</span>
+                      <span className="text-[10px] font-normal opacity-80">(Web App)</span>
                     </button>
                   )}
                 </div>
@@ -21456,10 +21456,10 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {!d.statutControleQualite && (
                 <div className="mt-1.5 p-1.5 bg-white border border-purple-200 rounded">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-[9px] font-bold text-purple-700 uppercase">📞 Essais d'appel ({(d.tentativesCQ || []).length})</span>
+                    <span className="text-[10px] font-bold text-purple-700 uppercase">📞 Essais d'appel ({(d.tentativesCQ || []).length})</span>
                     <button
                       onClick={() => onUpdate({ tentativesCQ: [...(d.tentativesCQ || []), { datetime: new Date().toISOString() }] })}
-                      className="text-[9px] font-bold text-white bg-purple-500 hover:bg-purple-600 px-2 py-0.5 rounded"
+                      className="text-[10px] font-bold text-white bg-purple-500 hover:bg-purple-600 px-2 py-0.5 rounded"
                       title="Logger un appel sans réponse — le client ne décroche pas"
                     >
                       + Pas répondu
@@ -21471,11 +21471,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         const dt = new Date(t.datetime);
                         const fmt = dt.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
                         return (
-                          <div key={i} className="flex items-center gap-1 text-[10px] text-slate-600 px-1 py-0.5 bg-purple-50 rounded">
+                          <div key={i} className="flex items-center gap-1 text-[11px] text-slate-600 px-1 py-0.5 bg-purple-50 rounded">
                             <span className="flex-1">📞 {fmt}</span>
                             <button
                               onClick={() => onUpdate({ tentativesCQ: (d.tentativesCQ || []).filter((_, j) => j !== i) })}
-                              className="text-rose-400 hover:text-rose-600 text-[9px] px-1"
+                              className="text-rose-400 hover:text-rose-600 text-[10px] px-1"
                               title="Supprimer cet essai"
                             >✕</button>
                           </div>
@@ -21488,7 +21488,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
               {/* 💳 Crédits / leasings en cours du client (annoncés pendant l'appel CQ) */}
               <div className="mt-1.5 p-1.5 bg-white border border-purple-200 rounded">
-                <label className="block text-[9px] font-bold text-purple-700 uppercase mb-1">💳 Crédits / leasings en cours du client</label>
+                <label className="block text-[10px] font-bold text-purple-700 uppercase mb-1">💳 Crédits / leasings en cours du client</label>
                 {(d.creditsClientCQ || []).map((c, idx) => (
                   <div key={idx} className="flex items-center gap-1 mb-1">
                     <select
@@ -21498,7 +21498,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         next[idx] = { ...next[idx], type: e.target.value };
                         onUpdate({ creditsClientCQ: next });
                       }}
-                      className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-[10px]"
+                      className="flex-1 min-w-0 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-[11px]"
                     >
                       {CREDIT_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                     </select>
@@ -21514,14 +21514,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         next[idx] = { ...next[idx], montant: v };
                         return { creditsClientCQ: next };
                       })}
-                      className="flex-shrink-0 w-24 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-[10px]"
+                      className="flex-shrink-0 w-24 px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-[11px]"
                     />
                     <button
                       onClick={() => {
                         const next = (d.creditsClientCQ || []).filter((_, i) => i !== idx);
                         onUpdate({ creditsClientCQ: next });
                       }}
-                      className="flex-shrink-0 text-rose-400 hover:text-rose-600 text-[11px] px-1 font-bold"
+                      className="flex-shrink-0 text-rose-400 hover:text-rose-600 text-[12px] px-1 font-bold"
                       title="Supprimer ce crédit"
                     >✕</button>
                   </div>
@@ -21529,10 +21529,10 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <div className="flex items-center justify-between mt-1">
                   <button
                     onClick={() => onUpdate({ creditsClientCQ: [...(d.creditsClientCQ || []), { type: 'conso', montant: '' }] })}
-                    className="text-[9px] font-bold text-white bg-purple-500 hover:bg-purple-600 px-2 py-0.5 rounded"
+                    className="text-[10px] font-bold text-white bg-purple-500 hover:bg-purple-600 px-2 py-0.5 rounded"
                   >+ Ajouter un crédit</button>
                   {(d.creditsClientCQ || []).length > 0 && (
-                    <span className="text-[9px] text-purple-700 font-bold">
+                    <span className="text-[10px] text-purple-700 font-bold">
                       Total : {(d.creditsClientCQ || []).reduce((s, c) => s + (parseFloat(c.montant) || 0), 0).toLocaleString('fr-FR')} €
                     </span>
                   )}
@@ -21540,15 +21540,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               </div>
 
               {d.statutControleQualite === 'ok' && !d.dateEnvoiFin && (
-                <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ OK pour envoi banque ↓</div>
+                <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[11px] text-emerald-800 font-bold">✅ OK pour envoi banque ↓</div>
               )}
               {d.statutControleQualite === 'pas_ok' && (
-                <div className="mt-1.5 px-2 py-1 bg-rose-100 border border-rose-300 rounded text-[10px] text-rose-800 font-bold">✗ Refusé — ne pas envoyer</div>
+                <div className="mt-1.5 px-2 py-1 bg-rose-100 border border-rose-300 rounded text-[11px] text-rose-800 font-bold">✗ Refusé — ne pas envoyer</div>
               )}
 
               {/* 🎤 Vocal du contrôle qualité — fichier téléversé ou lien externe. */}
               <div className="mt-2 p-1.5 bg-white border border-purple-200 rounded">
-                <label className="block text-[9px] font-bold text-purple-700 uppercase mb-1 flex items-center justify-between flex-wrap gap-1">
+                <label className="block text-[10px] font-bold text-purple-700 uppercase mb-1 flex items-center justify-between flex-wrap gap-1">
                   <span className="flex items-center gap-1">
                     🎤 Vocal CQ
                     {d.vocalCQStoragePath && (
@@ -21559,14 +21559,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     )}
                   </span>
                   {!d.vocalCQStoragePath && d.vocalCQUrl && isSafeMediaUrl(d.vocalCQUrl) && (
-                    <a href={d.vocalCQUrl} download className="text-[9px] font-bold text-purple-600 hover:underline">⬇️</a>
+                    <a href={d.vocalCQUrl} download className="text-[10px] font-bold text-purple-600 hover:underline">⬇️</a>
                   )}
                 </label>
 
                 <VocalCqAudio storagePath={d.vocalCQStoragePath} fallbackUrl={d.vocalCQUrl} className="w-full" />
 
                 {d.vocalCQStoragePath && d.onoffCallMeta && (
-                  <div className="text-[9px] text-slate-600 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
+                  <div className="text-[10px] text-slate-600 mt-1 flex flex-wrap gap-x-2 gap-y-0.5">
                     {d.onoffCallMeta.callDuration > 0 && <span>⏱ {formatDurationMmSs(d.onoffCallMeta.callDuration)}</span>}
                     {d.onoffCallMeta.callStarted && <span>📅 {new Date(d.onoffCallMeta.callStarted).toLocaleDateString('fr-FR')}</span>}
                   </div>
@@ -21576,26 +21576,26 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   <UploadVocalCqButton
                     onUploaded={(path) => onUpdate({ vocalCQStoragePath: path, vocalCQUrl: '' })}
                     label={d.vocalCQStoragePath ? '🔄 Remplacer' : '📤 Téléverser'}
-                    className="px-2 py-0.5 bg-purple-500 hover:bg-purple-600 text-white rounded text-[9px] font-bold disabled:opacity-60"
+                    className="px-2 py-0.5 bg-purple-500 hover:bg-purple-600 text-white rounded text-[10px] font-bold disabled:opacity-60"
                   />
                   {(d.vocalCQStoragePath || d.vocalCQUrl) && (
                     <button
                       onClick={() => {
                         if (window.confirm('Supprimer le vocal ?')) onUpdate({ vocalCQStoragePath: '', vocalCQUrl: '' });
                       }}
-                      className="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded text-[9px] font-bold"
+                      className="px-2 py-0.5 bg-rose-50 hover:bg-rose-100 text-rose-600 rounded text-[10px] font-bold"
                     >🗑️</button>
                   )}
                 </div>
 
                 <details className="mt-1">
-                  <summary className="text-[9px] text-slate-500 cursor-pointer hover:text-purple-600">🔗 Coller un lien externe</summary>
+                  <summary className="text-[10px] text-slate-500 cursor-pointer hover:text-purple-600">🔗 Coller un lien externe</summary>
                   <input
                     type="url"
                     value={d.vocalCQUrl || ''}
                     onChange={(e) => onUpdate({ vocalCQUrl: e.target.value, vocalCQStoragePath: e.target.value ? '' : d.vocalCQStoragePath })}
                     placeholder="https://..."
-                    className={inputCls + ' text-[10px] mt-1'}
+                    className={inputCls + ' text-[11px] mt-1'}
                   />
                 </details>
               </div>
@@ -21604,9 +21604,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
             {/* ============ ÉTAPE 1bis : MAIRIE ============ */}
             <div ref={refMairie} className="border-2 rounded-xl p-2 mb-2 bg-indigo-50 border-indigo-200">
-              <button onClick={() => toggleStep('mairie')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.mairie ? '' : 'mb-1.5'} hover:opacity-80`}>
+              <button onClick={() => toggleStep('mairie')} className={`w-full text-[11px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.mairie ? '' : 'mb-1.5'} hover:opacity-80`}>
                 <span className="flex items-center gap-1.5 text-indigo-700">
-                  <span className="text-indigo-600 text-[9px]">{foldedSteps.mairie ? '▶' : '▼'}</span>
+                  <span className="text-indigo-600 text-[10px]">{foldedSteps.mairie ? '▶' : '▼'}</span>
                   <span>🏛️ Mairie</span>
                   {foldedSteps.mairie && d.dateEnvoiMairie && (
                     <span className="text-indigo-500 font-normal normal-case ml-1">— envoi {new Date(d.dateEnvoiMairie).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
@@ -21625,30 +21625,30 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               <div className="space-y-1.5">
                 <div className="grid grid-cols-3 gap-1.5">
                   <div>
-                    <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
                     <div className="flex gap-1">
-                      <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiMairie || ''} onChange={(e) => onUpdate({ dateEnvoiMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
-                      <button onClick={() => onUpdate({ dateEnvoiMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiMairie || ''} onChange={(e) => onUpdate({ dateEnvoiMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[11px]" />
+                      <button onClick={() => onUpdate({ dateEnvoiMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📨 Récépissé</label>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">📨 Récépissé</label>
                     <div className="flex gap-1">
-                      <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecepisseMairie || ''} onChange={(e) => onUpdate({ dateRecepisseMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
-                      <button onClick={() => onUpdate({ dateRecepisseMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecepisseMairie || ''} onChange={(e) => onUpdate({ dateRecepisseMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[11px]" />
+                      <button onClick={() => onUpdate({ dateRecepisseMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
                   <div>
-                    <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Accord</label>
+                    <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">✅ Accord</label>
                     <div className="flex gap-1">
-                      <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAccordMairie || ''} onChange={(e) => onUpdate({ dateAccordMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[10px]" />
-                      <button onClick={() => onUpdate({ dateAccordMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                      <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAccordMairie || ''} onChange={(e) => onUpdate({ dateAccordMairie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-indigo-200 rounded text-[11px]" />
+                      <button onClick={() => onUpdate({ dateAccordMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
                 </div>
                 {/* Upload PDF du dossier envoyé à la mairie */}
                 <div className="px-2 py-1.5 bg-white border border-indigo-200 rounded mb-1.5">
-                  <label className="block text-[9px] font-semibold text-indigo-700 uppercase mb-1">📤 Dossier envoyé (PDF)</label>
+                  <label className="block text-[10px] font-semibold text-indigo-700 uppercase mb-1">📤 Dossier envoyé (PDF)</label>
                   <FactureFileInput
                     fileId={d.dossierEnvoiMairieFileId || ''}
                     onChange={(id) => onUpdate({ dossierEnvoiMairieFileId: id })}
@@ -21658,7 +21658,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
                 {/* Upload PDF récépissé dans l'aperçu rapide */}
                 <div className="px-2 py-1.5 bg-white border border-indigo-200 rounded">
-                  <label className="block text-[9px] font-semibold text-indigo-700 uppercase mb-1">📎 Récépissé (PDF)</label>
+                  <label className="block text-[10px] font-semibold text-indigo-700 uppercase mb-1">📎 Récépissé (PDF)</label>
                   <FactureFileInput
                     fileId={d.recepisseMairieFileId || ''}
                     onChange={(id) => onUpdate({ recepisseMairieFileId: id })}
@@ -21668,21 +21668,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
                 {d.dateEnvoiMairie && (
                   <div className="mt-1.5 grid grid-cols-3 gap-1">
-                    <button onClick={() => onUpdate({ statutMairie: '' })} className={`px-1.5 py-1 rounded text-[10px] font-bold border ${!d.statutMairie ? 'bg-amber-500 text-white border-amber-600' : 'bg-white text-amber-600 border-amber-200'}`}>⏳ Attente</button>
+                    <button onClick={() => onUpdate({ statutMairie: '' })} className={`px-1.5 py-1 rounded text-[11px] font-bold border ${!d.statutMairie ? 'bg-amber-500 text-white border-amber-600' : 'bg-white text-amber-600 border-amber-200'}`}>⏳ Attente</button>
                     <button onClick={() => {
                       const today = new Date().toISOString().split('T')[0];
                       onUpdate({ statutMairie: 'accepté', dateAccordMairie: d.dateAccordMairie || today });
-                    }} className={`px-1.5 py-1 rounded text-[10px] font-bold border ${d.statutMairie === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-emerald-600 border-emerald-200'}`}>✓ Accepté</button>
-                    <button onClick={() => onUpdate({ statutMairie: 'refusé' })} className={`px-1.5 py-1 rounded text-[10px] font-bold border ${d.statutMairie === 'refusé' ? 'bg-rose-500 text-white border-rose-600' : 'bg-white text-rose-600 border-rose-200'}`}>✗ Refusé</button>
+                    }} className={`px-1.5 py-1 rounded text-[11px] font-bold border ${d.statutMairie === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600' : 'bg-white text-emerald-600 border-emerald-200'}`}>✓ Accepté</button>
+                    <button onClick={() => onUpdate({ statutMairie: 'refusé' })} className={`px-1.5 py-1 rounded text-[11px] font-bold border ${d.statutMairie === 'refusé' ? 'bg-rose-500 text-white border-rose-600' : 'bg-white text-rose-600 border-rose-200'}`}>✗ Refusé</button>
                   </div>
                 )}
                 {d.statutMairie === 'refusé' && (
-                  <div className="mt-1 px-2 py-1 bg-rose-50 border border-rose-200 rounded text-[10px] text-rose-700 font-semibold">
+                  <div className="mt-1 px-2 py-1 bg-rose-50 border border-rose-200 rounded text-[11px] text-rose-700 font-semibold">
                     ✗ Refusé — renvoie la déclaration après modif. Reste en alerte 🏛️ jusqu'à acceptation.
                   </div>
                 )}
                 {(d.envoisMairie || []).length > 0 && (
-                  <div className="mt-1.5 px-2 py-1 bg-white border border-indigo-200 rounded text-[10px] text-slate-600">
+                  <div className="mt-1.5 px-2 py-1 bg-white border border-indigo-200 rounded text-[11px] text-slate-600">
                     📋 {(d.envoisMairie || []).length} envoi(s) — détail dans le formulaire complet
                   </div>
                 )}
@@ -21692,9 +21692,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
             {/* ============ ÉTAPE 2 : FINANCEMENT ============ */}
             <div ref={refFinancement} className="border-2 rounded-xl p-2 mb-2 bg-blue-50 border-blue-200">
-              <button onClick={() => toggleStep('fin')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.fin ? '' : 'mb-1.5'} hover:opacity-80`}>
+              <button onClick={() => toggleStep('fin')} className={`w-full text-[11px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.fin ? '' : 'mb-1.5'} hover:opacity-80`}>
                 <span className="flex items-center gap-1.5 text-blue-700">
-                  <span className="text-blue-600 text-[9px]">{foldedSteps.fin ? '▶' : '▼'}</span>
+                  <span className="text-blue-600 text-[10px]">{foldedSteps.fin ? '▶' : '▼'}</span>
                   <span>2️⃣ 💳 Financement</span>
                   {foldedSteps.fin && d.financement && (
                     <span className="text-blue-500 font-normal normal-case ml-1">— {d.financement}{d.dateEnvoiFin ? ` · envoi ${new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}` : ''}</span>
@@ -21717,7 +21717,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {!foldedSteps.fin && (<>
               {/* Sélecteur du financeur — éditable directement (choisir COMPTANT pour un client sans banque) */}
               <div className="mb-2">
-                <label className="block text-[9px] font-semibold text-blue-600 uppercase mb-1">Financeur</label>
+                <label className="block text-[10px] font-semibold text-blue-600 uppercase mb-1">Financeur</label>
                 <select value={d.financement || ''} onChange={(e) => onUpdate({ financement: e.target.value })} className="w-full px-2 py-1.5 bg-white border border-blue-300 rounded-lg text-xs font-bold text-blue-700">
                   <option value="">— Choisir un financeur —</option>
                   {FINANCEMENTS.map(f => <option key={f} value={f}>{f}</option>)}
@@ -21726,11 +21726,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
               {d.envoisHistorique && d.envoisHistorique.length > 0 && (
                 <div className="mb-1.5 p-1.5 bg-white border border-rose-200 rounded">
-                  <div className="text-[9px] font-bold text-rose-700 uppercase mb-0.5">📜 Refus précédents ({d.envoisHistorique.length})</div>
+                  <div className="text-[10px] font-bold text-rose-700 uppercase mb-0.5">📜 Refus précédents ({d.envoisHistorique.length})</div>
                   {d.envoisHistorique.map((env, i) => {
                     const fmtD = (iso) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '?';
                     return (
-                      <div key={i} className="text-[9px] flex items-baseline gap-1 flex-wrap bg-rose-50 rounded px-1.5 py-0.5">
+                      <div key={i} className="text-[10px] flex items-baseline gap-1 flex-wrap bg-rose-50 rounded px-1.5 py-0.5">
                         <span className="font-bold text-slate-700">{i + 1}.</span>
                         <span className="font-bold text-rose-700">{env.financeur}</span>
                         <span className="text-slate-500">📤 envoi <strong className="text-slate-700">{fmtD(env.dateEnvoi)}</strong></span>
@@ -21739,7 +21739,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       </div>
                     );
                   })}
-                  <div className="mt-1 text-[9px] text-slate-500 italic">
+                  <div className="mt-1 text-[10px] text-slate-500 italic">
                     Actuel : <strong className="text-blue-700">{d.financement || 'à choisir'}</strong> {d.dateEnvoiFin && `(renvoyé ${new Date(d.dateEnvoiFin).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' })})`}
                   </div>
                 </div>
@@ -21747,24 +21747,24 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
               <div className="grid grid-cols-3 gap-1.5">
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiFin || ''} onChange={(e) => onUpdate({ dateEnvoiFin: e.target.value, statutFin: e.target.value && !d.statutFin ? 'envoyé' : d.statutFin })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateEnvoiFin: new Date().toISOString().split('T')[0], statutFin: d.statutFin || 'envoyé' })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiFin || ''} onChange={(e) => onUpdate({ dateEnvoiFin: e.target.value, statutFin: e.target.value && !d.statutFin ? 'envoyé' : d.statutFin })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[11px]" />
+                    <button onClick={() => onUpdate({ dateEnvoiFin: new Date().toISOString().split('T')[0], statutFin: d.statutFin || 'envoyé' })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📥 Retour</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">📥 Retour</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRetourFin || ''} onChange={(e) => onUpdate({ dateRetourFin: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateRetourFin: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRetourFin || ''} onChange={(e) => onUpdate({ dateRetourFin: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[11px]" />
+                    <button onClick={() => onUpdate({ dateRetourFin: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Accord</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">✅ Accord</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAccord || ''} onChange={(e) => onUpdate({ dateAccord: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateAccord: new Date().toISOString().split('T')[0], statutFin: 'accepté' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAccord || ''} onChange={(e) => onUpdate({ dateAccord: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-blue-200 rounded text-[11px]" />
+                    <button onClick={() => onUpdate({ dateAccord: new Date().toISOString().split('T')[0], statutFin: 'accepté' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
               </div>
@@ -21775,35 +21775,35 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   - ✓ Accepté : envoi+retour+accord auto à today si vides
                   - ✗ Refusé : envoi+retour auto à today si vides */}
               <div className="mt-1.5">
-                <div className="text-[9px] font-semibold text-slate-500 uppercase mb-1">Statut banque (clique pour changer)</div>
+                <div className="text-[10px] font-semibold text-slate-500 uppercase mb-1">Statut banque (clique pour changer)</div>
                 <div className="grid grid-cols-2 gap-1">
                   <button onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     onUpdate({ statutFin: 'envoyé', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: '', dateAccord: '' });
-                  }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'envoyé' || !d.statutFin ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Envoyé</button>
+                  }} className={`px-1.5 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${d.statutFin === 'envoyé' || !d.statutFin ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Envoyé</button>
                   <button onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     onUpdate({ statutFin: 'manque_doc', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: d.dateRetourFin || today });
-                  }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'manque_doc' ? 'bg-orange-500 text-white border-orange-600 shadow-md' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}>📄 Manque docs</button>
+                  }} className={`px-1.5 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${d.statutFin === 'manque_doc' ? 'bg-orange-500 text-white border-orange-600 shadow-md' : 'bg-white text-orange-600 border-orange-200 hover:bg-orange-50'}`}>📄 Manque docs</button>
                   <button onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     onUpdate({ statutFin: 'accepté', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: d.dateRetourFin || today, dateAccord: d.dateAccord || today });
-                  }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
+                  }} className={`px-1.5 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${d.statutFin === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
                   <button onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     onUpdate({ statutFin: 'refusé', dateEnvoiFin: d.dateEnvoiFin || today, dateRetourFin: d.dateRetourFin || today });
-                  }} className={`px-1.5 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
+                  }} className={`px-1.5 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${d.statutFin === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
 
                 {/* 📝 Observation banque — note libre (motif refus, remarques…) */}
                 <div className="mt-1.5">
-                  <label className="block text-[9px] font-semibold text-slate-500 uppercase mb-0.5">📝 Observation banque</label>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase mb-0.5">📝 Observation banque</label>
                   <textarea
                     value={d.observationBanque || ''}
                     onChange={(e) => onUpdate({ observationBanque: e.target.value })}
                     placeholder="Ex : refusé pour endettement / accepté sous condition / etc."
                     rows={2}
-                    className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-[10px]"
+                    className="w-full px-2 py-1.5 bg-white border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400 text-[11px]"
                   />
                 </div>
 
@@ -21811,43 +21811,43 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   <div className="mt-1.5 p-2 bg-orange-50 border-2 border-orange-300 rounded-lg space-y-2">
                     {/* 1. Demande banque */}
                     <div>
-                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">1️⃣ 📄 {d.financement || 'Banque'} demande :</div>
+                      <div className="text-[11px] font-bold text-orange-700 mb-0.5">1️⃣ 📄 {d.financement || 'Banque'} demande :</div>
                       <textarea
                         value={d.motifManqueDoc || ''}
                         onChange={(e) => onUpdate({ motifManqueDoc: e.target.value })}
                         placeholder="Ex : Bulletin de paie de mars, RIB, justif domicile…"
                         rows={2}
-                        className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[10px]"
+                        className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[11px]"
                       />
                     </div>
                     {/* 2. Régie prévenue */}
                     <div>
-                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">2️⃣ 🤝 Régie prévenue le</div>
+                      <div className="text-[11px] font-bold text-orange-700 mb-0.5">2️⃣ 🤝 Régie prévenue le</div>
                       <div className="flex gap-1">
-                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateNotifRegie || ''} onChange={(e) => onUpdate({ dateNotifRegie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
-                        <button onClick={() => onUpdate({ dateNotifRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateNotifRegie || ''} onChange={(e) => onUpdate({ dateNotifRegie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[11px]" />
+                        <button onClick={() => onUpdate({ dateNotifRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
                     {/* 3. Reçu de la régie */}
                     <div>
-                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">3️⃣ 📥 Docs reçus de la régie le</div>
+                      <div className="text-[11px] font-bold text-orange-700 mb-0.5">3️⃣ 📥 Docs reçus de la régie le</div>
                       <div className="flex gap-1">
-                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecuRegie || ''} onChange={(e) => onUpdate({ dateRecuRegie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
-                        <button onClick={() => onUpdate({ dateRecuRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecuRegie || ''} onChange={(e) => onUpdate({ dateRecuRegie: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[11px]" />
+                        <button onClick={() => onUpdate({ dateRecuRegie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
                     {/* 4. Renvoi banque */}
                     <div>
-                      <div className="text-[10px] font-bold text-orange-700 mb-0.5">4️⃣ 📤 Renvoi à {d.financement || 'la banque'} le</div>
+                      <div className="text-[11px] font-bold text-orange-700 mb-0.5">4️⃣ 📤 Renvoi à {d.financement || 'la banque'} le</div>
                       <div className="flex gap-1">
-                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRenvoiDocs || ''} onChange={(e) => onUpdate({ dateRenvoiDocs: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[10px]" />
-                        <button onClick={() => onUpdate({ dateRenvoiDocs: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRenvoiDocs || ''} onChange={(e) => onUpdate({ dateRenvoiDocs: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-orange-200 rounded text-[11px]" />
+                        <button onClick={() => onUpdate({ dateRenvoiDocs: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
                     {d.dateRenvoiDocs && (
                       <button onClick={() => {
                         onUpdate({ statutFin: 'envoyé', dateEnvoiFin: d.dateRenvoiDocs, dateRetourFin: '', dateAccord: '' });
-                      }} className="w-full px-2 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-[10px] font-bold">⏳ Repasser en "Envoyé"</button>
+                      }} className="w-full px-2 py-1.5 bg-amber-500 hover:bg-amber-600 text-white rounded text-[11px] font-bold">⏳ Repasser en "Envoyé"</button>
                     )}
                   </div>
                 )}
@@ -21855,7 +21855,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
               {d.statutFin === 'refusé' && (
                 <div className="mt-1.5 p-2 bg-rose-50 border-2 border-rose-300 rounded-lg">
-                  <div className="text-[10px] font-bold text-rose-700 mb-1.5">⚠️ Refusé par {d.financement} → renvoyer chez :</div>
+                  <div className="text-[11px] font-bold text-rose-700 mb-1.5">⚠️ Refusé par {d.financement} → renvoyer chez :</div>
                   <select onChange={(e) => {
                     const newFin = e.target.value;
                     if (!newFin) return;
@@ -21873,7 +21873,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       statutFin: 'envoyé',
                       statut: 'B1_EN_COURS_FINANCEMENT',
                     });
-                  }} defaultValue="" className="w-full px-2 py-1.5 bg-white border border-rose-300 rounded text-[11px] font-bold text-rose-700">
+                  }} defaultValue="" className="w-full px-2 py-1.5 bg-white border border-rose-300 rounded text-[12px] font-bold text-rose-700">
                     <option value="">— Choisir une autre banque —</option>
                     {FINANCEMENTS.filter(f => f !== d.financement).map(f => <option key={f} value={f}>📤 Renvoyer à {f}</option>)}
                   </select>
@@ -21938,7 +21938,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 };
                 return (
                   <div className="mt-1.5 p-2 bg-emerald-50 border-2 border-emerald-300 rounded-lg">
-                    <div className="text-[10px] font-bold text-emerald-700 mb-1.5">✅ Accord reçu → prévenir la régie pour programmer la pose</div>
+                    <div className="text-[11px] font-bold text-emerald-700 mb-1.5">✅ Accord reçu → prévenir la régie pour programmer la pose</div>
                     <div className="space-y-1.5">
                       {regiesDuDossier.map((r, idx) => {
                         const contact = (regiesContacts || {})[r.nom];
@@ -21947,7 +21947,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         const hasContact = tel || email;
                         return (
                           <div key={idx} className="bg-white border border-emerald-200 rounded p-1.5">
-                            <div className="text-[10px] font-bold text-slate-700 mb-1">🤝 {r.nom}</div>
+                            <div className="text-[11px] font-bold text-slate-700 mb-1">🤝 {r.nom}</div>
                             {hasContact ? (
                               <div className="grid grid-cols-2 gap-1">
                                 {tel ? (
@@ -21956,13 +21956,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={() => markNotified(r.nom, 'whatsapp')}
-                                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[10px] font-bold"
+                                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[11px] font-bold"
                                     title={`WhatsApp ${r.nom} (${tel})`}
                                   >
                                     📲 WhatsApp
                                   </a>
                                 ) : (
-                                  <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📲 Pas de tél.</span>
+                                  <span className="text-[10px] text-slate-400 italic px-1 py-1.5">📲 Pas de tél.</span>
                                 )}
                                 {email ? (
                                   gmailOAuth?.connected ? (
@@ -21991,7 +21991,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                           alert(`❌ Envoi email : ${e.message}`);
                                         }
                                       }}
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[11px] font-bold"
                                       title={`Envoie l'email automatiquement à ${r.nom} (${email}) depuis ${gmailOAuth.email}`}
                                     >
                                       📧 Envoyer
@@ -22023,7 +22023,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                           alert(`❌ Envoi email : ${e.message}`);
                                         }
                                       }}
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[11px] font-bold"
                                       title={`Envoie l'email via SMTP app password depuis ${emailConfig.smtpUser}`}
                                     >
                                       📧 Envoyer
@@ -22034,18 +22034,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       onClick={() => markNotified(r.nom, 'gmail_compose')}
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[11px] font-bold"
                                       title={`Ouvre Gmail (configure Réglages → Email d'envoi pour un envoi auto)`}
                                     >
                                       📧 Gmail
                                     </a>
                                   )
                                 ) : (
-                                  <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📧 Pas d'email</span>
+                                  <span className="text-[10px] text-slate-400 italic px-1 py-1.5">📧 Pas d'email</span>
                                 )}
                               </div>
                             ) : (
-                              <div className="text-[9px] text-amber-600 italic">⚠️ Ajoute le tél/email du compte rattaché à {r.nom} dans Réglages → Utilisateurs pour pouvoir prévenir en 1 clic</div>
+                              <div className="text-[10px] text-amber-600 italic">⚠️ Ajoute le tél/email du compte rattaché à {r.nom} dans Réglages → Utilisateurs pour pouvoir prévenir en 1 clic</div>
                             )}
                           </div>
                         );
@@ -22057,8 +22057,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
               {d.dateEnvoiFin && !d.dateRetourFin && d.statutFin === 'envoyé' && (() => {
                 const jours = Math.floor((new Date() - new Date(d.dateEnvoiFin)) / 86400000);
-                if (jours <= 2) return <div className="mt-1.5 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-700">⏳ {jours}j — en attente</div>;
-                return <div className="mt-1.5 px-2 py-1 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-700 font-bold">⚠️ {jours}j sans retour — relance !</div>;
+                if (jours <= 2) return <div className="mt-1.5 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[11px] text-emerald-700">⏳ {jours}j — en attente</div>;
+                return <div className="mt-1.5 px-2 py-1 bg-rose-50 border border-rose-300 rounded text-[11px] text-rose-700 font-bold">⚠️ {jours}j sans retour — relance !</div>;
               })()}
 
               {/* 🔄 Bascule banque effectuée → CTA pour prévenir la régie que
@@ -22097,7 +22097,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 };
                 return (
                   <div className="mt-1.5 p-2 bg-blue-50 border-2 border-blue-300 rounded-lg">
-                    <div className="text-[10px] font-bold text-blue-700 mb-1.5">🔄 Bascule banque effectuée → prévenir la régie</div>
+                    <div className="text-[11px] font-bold text-blue-700 mb-1.5">🔄 Bascule banque effectuée → prévenir la régie</div>
                     <div className="space-y-1.5">
                       {regiesDuDossier.map((r, idx) => {
                         const contact = (regiesContacts || {})[r.nom];
@@ -22106,7 +22106,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         const hasContact = tel || email;
                         return (
                           <div key={idx} className="bg-white border border-blue-200 rounded p-1.5">
-                            <div className="text-[10px] font-bold text-slate-700 mb-1">🤝 {r.nom}</div>
+                            <div className="text-[11px] font-bold text-slate-700 mb-1">🤝 {r.nom}</div>
                             {hasContact ? (
                               <div className="grid grid-cols-2 gap-1">
                                 {tel ? (
@@ -22114,13 +22114,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                     href={buildWhatsAppLink(tel, message)}
                                     target="_blank"
                                     rel="noopener noreferrer"
-                                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[10px] font-bold"
+                                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[11px] font-bold"
                                     title={`WhatsApp ${r.nom} (${tel})`}
                                   >
                                     📲 WhatsApp
                                   </a>
                                 ) : (
-                                  <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📲 Pas de tél.</span>
+                                  <span className="text-[10px] text-slate-400 italic px-1 py-1.5">📲 Pas de tél.</span>
                                 )}
                                 {email ? (
                                   gmailOAuth?.connected ? (
@@ -22139,7 +22139,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                           alert(`✅ Email envoyé à ${r.nom} (${email})`);
                                         } catch (e) { alert(`❌ Envoi email : ${e.message}`); }
                                       }}
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[11px] font-bold"
                                     >
                                       📧 Envoyer
                                     </button>
@@ -22159,7 +22159,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                           alert(`✅ Email envoyé à ${r.nom} (${email})`);
                                         } catch (e) { alert(`❌ Envoi email : ${e.message}`); }
                                       }}
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[11px] font-bold"
                                     >
                                       📧 Envoyer
                                     </button>
@@ -22168,18 +22168,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                       href={gmailComposeBascule(email)}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[11px] font-bold"
                                       title={`Ouvre Gmail (configure Réglages → Email d'envoi pour un envoi auto)`}
                                     >
                                       📧 Gmail
                                     </a>
                                   )
                                 ) : (
-                                  <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📧 Pas d'email</span>
+                                  <span className="text-[10px] text-slate-400 italic px-1 py-1.5">📧 Pas d'email</span>
                                 )}
                               </div>
                             ) : (
-                              <div className="text-[9px] text-amber-600 italic">⚠️ Ajoute le tél/email du compte rattaché à {r.nom} dans Réglages → Utilisateurs pour pouvoir prévenir en 1 clic</div>
+                              <div className="text-[10px] text-amber-600 italic">⚠️ Ajoute le tél/email du compte rattaché à {r.nom} dans Réglages → Utilisateurs pour pouvoir prévenir en 1 clic</div>
                             )}
                           </div>
                         );
@@ -22193,9 +22193,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
             {/* ============ ÉTAPE 2 : POSE ============ */}
             <div ref={refPose} className={`border-2 rounded-xl p-2 mb-2 ${d.statutPose === 'client_refuse' ? 'bg-rose-50 border-rose-300' : 'bg-amber-50 border-amber-200'}`}>
-              <button onClick={() => toggleStep('pose')} className={`w-full text-[10px] font-bold text-amber-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.pose ? '' : 'mb-1.5'} hover:opacity-80`}>
+              <button onClick={() => toggleStep('pose')} className={`w-full text-[11px] font-bold text-amber-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.pose ? '' : 'mb-1.5'} hover:opacity-80`}>
                 <span className="flex items-center gap-1.5">
-                  <span className="text-amber-600 text-[9px]">{foldedSteps.pose ? '▶' : '▼'}</span>
+                  <span className="text-amber-600 text-[10px]">{foldedSteps.pose ? '▶' : '▼'}</span>
                   <span>3️⃣ 🔧 Pose</span>
                   {foldedSteps.pose && d.dateInsta && d.statutPose === 'visite_ok' && (
                     <span className="text-amber-500 font-normal normal-case ml-1">— {new Date(d.dateInsta).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
@@ -22214,24 +22214,24 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {!foldedSteps.pose && (<>
               <div className="grid grid-cols-3 gap-1.5">
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📅 Date pose</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">📅 Date pose</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiPose || ''} onChange={(e) => onUpdate({ dateEnvoiPose: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: d.statutPose || 'envoyé' })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiPose || ''} onChange={(e) => onUpdate({ dateEnvoiPose: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[11px]" />
+                    <button onClick={() => onUpdate({ dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: d.statutPose || 'envoyé' })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📞 Visite</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">📞 Visite</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateVisitePose || ''} onChange={(e) => onUpdate({ dateVisitePose: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateVisitePose: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateVisitePose || ''} onChange={(e) => onUpdate({ dateVisitePose: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[11px]" />
+                    <button onClick={() => onUpdate({ dateVisitePose: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Posé le</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">✅ Posé le</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.statutPose === 'visite_ok' ? (d.dateInsta || '') : ''} onChange={(e) => onUpdate({ dateInsta: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.statutPose === 'visite_ok' ? (d.dateInsta || '') : ''} onChange={(e) => onUpdate({ dateInsta: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[11px]" />
+                    <button onClick={() => onUpdate({ dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
               </div>
@@ -22244,13 +22244,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 <button onClick={() => {
                   const reset = (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') ? { statut: 'A_EN_COURS' } : {};
                   onUpdate({ statutPose: 'envoyé', ...reset });
-                }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${!d.statutPose || d.statutPose === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
+                }} className={`px-1 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${!d.statutPose || d.statutPose === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
                 <button onClick={() => {
                   const today = new Date().toISOString().split('T')[0];
                   const reset = (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') ? { statut: 'A_EN_COURS' } : {};
                   onUpdate({ statutPose: 'visite_ok', dateEnvoiPose: d.dateEnvoiPose || today, dateInsta: d.dateInsta || today, ...reset });
-                }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutPose === 'visite_ok' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Posé</button>
-                <button onClick={() => setPoseRateeForm({ ...poseRateeForm, visible: !poseRateeForm.visible })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${poseRateeForm.visible ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
+                }} className={`px-1 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${d.statutPose === 'visite_ok' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Posé</button>
+                <button onClick={() => setPoseRateeForm({ ...poseRateeForm, visible: !poseRateeForm.visible })} className={`px-1 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${poseRateeForm.visible ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
               </div>
 
               {/* 📞 Prévenir / relancer la régie pour programmer la pose.
@@ -22296,7 +22296,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 };
                 return (
                   <div className="mt-2 p-2 bg-blue-50 border-2 border-blue-300 rounded-lg">
-                    <div className="text-[10px] font-bold text-blue-700 mb-1.5">📞 Prévenir / relancer la régie pour programmer la pose</div>
+                    <div className="text-[11px] font-bold text-blue-700 mb-1.5">📞 Prévenir / relancer la régie pour programmer la pose</div>
                     <div className="space-y-1.5">
                       {regiesDuDossier.map((r, idx) => {
                         const contact = (regiesContacts || {})[r.nom];
@@ -22305,7 +22305,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         const hasContact = tel || email;
                         return (
                           <div key={idx} className="bg-white border border-blue-200 rounded p-1.5">
-                            <div className="text-[10px] font-bold text-slate-700 mb-1">🤝 {r.nom}</div>
+                            <div className="text-[11px] font-bold text-slate-700 mb-1">🤝 {r.nom}</div>
                             {hasContact ? (
                               <div className="grid grid-cols-2 gap-1">
                                 {tel ? (
@@ -22314,13 +22314,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={() => logRelance(r.nom, 'whatsapp')}
-                                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[10px] font-bold"
+                                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[11px] font-bold"
                                     title={`WhatsApp ${r.nom} (${tel})`}
                                   >
                                     📲 WhatsApp
                                   </a>
                                 ) : (
-                                  <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📲 Pas de tél.</span>
+                                  <span className="text-[10px] text-slate-400 italic px-1 py-1.5">📲 Pas de tél.</span>
                                 )}
                                 {email ? (
                                   gmailOAuth?.connected ? (
@@ -22349,7 +22349,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                           alert(`❌ Envoi email : ${e.message}`);
                                         }
                                       }}
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[11px] font-bold"
                                       title={`Envoie l'email automatiquement à ${r.nom} (${email}) depuis ${gmailOAuth.email}`}
                                     >
                                       📧 Envoyer
@@ -22381,7 +22381,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                           alert(`❌ Envoi email : ${e.message}`);
                                         }
                                       }}
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[11px] font-bold"
                                       title={`Envoie l'email via SMTP app password depuis ${emailConfig.smtpUser}`}
                                     >
                                       📧 Envoyer
@@ -22392,18 +22392,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                       target="_blank"
                                       rel="noopener noreferrer"
                                       onClick={() => logRelance(r.nom, 'gmail_compose')}
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[11px] font-bold"
                                       title={`Ouvre Gmail (configure Réglages → Email d'envoi pour un envoi auto)`}
                                     >
                                       📧 Gmail
                                     </a>
                                   )
                                 ) : (
-                                  <span className="text-[9px] text-slate-400 italic px-1 py-1.5">📧 Pas d'email</span>
+                                  <span className="text-[10px] text-slate-400 italic px-1 py-1.5">📧 Pas d'email</span>
                                 )}
                               </div>
                             ) : (
-                              <div className="text-[9px] text-amber-600 italic">⚠️ Ajoute le tél/email du compte rattaché à {r.nom} dans Réglages → Utilisateurs pour pouvoir prévenir en 1 clic</div>
+                              <div className="text-[10px] text-amber-600 italic">⚠️ Ajoute le tél/email du compte rattaché à {r.nom} dans Réglages → Utilisateurs pour pouvoir prévenir en 1 clic</div>
                             )}
                           </div>
                         );
@@ -22415,29 +22415,29 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
               {poseRateeForm.visible && (
                 <div className="mt-2 p-2 bg-rose-50 border-2 border-rose-300 rounded-lg space-y-2">
-                  <div className="text-[10px] font-bold text-rose-700 uppercase">Pose ratée — pénalité régie</div>
+                  <div className="text-[11px] font-bold text-rose-700 uppercase">Pose ratée — pénalité régie</div>
                   <div>
-                    <label className="block text-[9px] font-semibold text-rose-600 mb-1">Motif</label>
-                    <select value={poseRateeForm.motif} onChange={(e) => setPoseRateeForm({ ...poseRateeForm, motif: e.target.value })} className="w-full px-2 py-1 bg-white border border-rose-300 rounded text-[11px] font-bold text-rose-700">
+                    <label className="block text-[10px] font-semibold text-rose-600 mb-1">Motif</label>
+                    <select value={poseRateeForm.motif} onChange={(e) => setPoseRateeForm({ ...poseRateeForm, motif: e.target.value })} className="w-full px-2 py-1 bg-white border border-rose-300 rounded text-[12px] font-bold text-rose-700">
                       <option value="client_absent">Client absent</option>
                       <option value="client_refuse">Client refuse</option>
                       <option value="autre">Autre</option>
                     </select>
                   </div>
                   <div>
-                    <label className="block text-[9px] font-semibold text-rose-600 mb-1">Pénalité régie (selon distance)</label>
+                    <label className="block text-[10px] font-semibold text-rose-600 mb-1">Pénalité régie (selon distance)</label>
                     <div className="grid grid-cols-3 gap-1">
                       {[500, 750, 1000].map(p => (
-                        <button key={p} onClick={() => setPoseRateeForm({ ...poseRateeForm, penalite: p })} className={`px-1 py-1 rounded text-[10px] font-bold border-2 ${poseRateeForm.penalite === p ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>{p} €</button>
+                        <button key={p} onClick={() => setPoseRateeForm({ ...poseRateeForm, penalite: p })} className={`px-1 py-1 rounded text-[11px] font-bold border-2 ${poseRateeForm.penalite === p ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>{p} €</button>
                       ))}
                     </div>
                   </div>
-                  <label className="flex items-center gap-1.5 text-[10px] font-semibold text-rose-700 cursor-pointer">
+                  <label className="flex items-center gap-1.5 text-[11px] font-semibold text-rose-700 cursor-pointer">
                     <input type="checkbox" checked={poseRateeForm.definitif} onChange={(e) => setPoseRateeForm({ ...poseRateeForm, definitif: e.target.checked })} className="w-3.5 h-3.5 accent-rose-600" />
                     📛 Annulation définitive (le client ne veut plus rien)
                   </label>
                   <div className="flex gap-1">
-                    <button onClick={() => setPoseRateeForm({ visible: false, motif: 'client_absent', penalite: 500, definitif: false })} className="flex-1 px-2 py-1.5 bg-white border border-slate-300 text-slate-600 rounded text-[10px] font-bold hover:bg-slate-50">Annuler</button>
+                    <button onClick={() => setPoseRateeForm({ visible: false, motif: 'client_absent', penalite: 500, definitif: false })} className="flex-1 px-2 py-1.5 bg-white border border-slate-300 text-slate-600 rounded text-[11px] font-bold hover:bg-slate-50">Annuler</button>
                     <button onClick={() => {
                       const regieNom = (d.regies && d.regies[0]?.nom) || d.regie || '';
                       const tentative = {
@@ -22466,7 +22466,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         });
                       }
                       setPoseRateeForm({ visible: false, motif: 'client_absent', penalite: 500, definitif: false });
-                    }} className={`flex-1 px-2 py-1.5 rounded text-[10px] font-bold text-white ${poseRateeForm.definitif ? 'bg-red-700 hover:bg-red-800' : 'bg-rose-500 hover:bg-rose-600'}`}>{poseRateeForm.definitif ? '📛 Annuler le dossier' : '📌 Enregistrer & repartir'}</button>
+                    }} className={`flex-1 px-2 py-1.5 rounded text-[11px] font-bold text-white ${poseRateeForm.definitif ? 'bg-red-700 hover:bg-red-800' : 'bg-rose-500 hover:bg-rose-600'}`}>{poseRateeForm.definitif ? '📛 Annuler le dossier' : '📌 Enregistrer & repartir'}</button>
                   </div>
                 </div>
               )}
@@ -22474,18 +22474,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {/* Historique des tentatives ratées */}
               {(d.tentativesPose || []).length > 0 && (
                 <div className="mt-2 p-2 bg-white border border-rose-200 rounded-lg">
-                  <div className="text-[9px] font-bold text-rose-700 uppercase mb-1">📜 Tentatives ratées ({(d.tentativesPose || []).length})</div>
+                  <div className="text-[10px] font-bold text-rose-700 uppercase mb-1">📜 Tentatives ratées ({(d.tentativesPose || []).length})</div>
                   <div className="space-y-1">
                     {(d.tentativesPose || []).map((t, i) => {
                       const fmtD = (iso) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '?';
                       const motifLabel = t.motif === 'client_absent' ? 'Client absent' : t.motif === 'client_refuse' ? 'Client refuse' : 'Autre';
                       return (
-                        <div key={i} className="text-[10px] flex items-center gap-1 flex-wrap bg-rose-50 rounded px-1.5 py-1">
+                        <div key={i} className="text-[11px] flex items-center gap-1 flex-wrap bg-rose-50 rounded px-1.5 py-1">
                           <span className="font-bold text-slate-700">{i + 1}.</span>
                           <span className="text-slate-600">{fmtD(t.date)}</span>
                           <span className="text-rose-700 font-semibold">· {motifLabel}</span>
                           {t.regie && <span className="text-slate-500">· {t.regie}</span>}
-                          {t.definitif && <span className="text-[9px] font-bold px-1 py-0.5 rounded bg-red-700 text-white">DÉFINITIF</span>}
+                          {t.definitif && <span className="text-[10px] font-bold px-1 py-0.5 rounded bg-red-700 text-white">DÉFINITIF</span>}
                           <span className="ml-auto font-bold text-rose-700">{t.penalite} €</span>
                           <button
                             onClick={() => {
@@ -22516,12 +22516,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               )}
 
               {d.statutPose === 'visite_ok' && d.dateInsta && (
-                <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ Posé le {new Date(d.dateInsta).toLocaleDateString('fr-FR')} — passe au Consuel ↓</div>
+                <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[11px] text-emerald-800 font-bold">✅ Posé le {new Date(d.dateInsta).toLocaleDateString('fr-FR')} — passe au Consuel ↓</div>
               )}
 
               {/* ✍️ PV de réception signé par le client via le lien poseur */}
               {d.poseSignature && d.poseSignature.path && (
-                <div className="mt-1.5 px-2 py-1.5 bg-violet-50 border border-violet-200 rounded text-[10px] text-violet-800 flex items-center justify-between gap-2">
+                <div className="mt-1.5 px-2 py-1.5 bg-violet-50 border border-violet-200 rounded text-[11px] text-violet-800 flex items-center justify-between gap-2">
                   <span>
                     ✍️ <strong>PV signé</strong>{d.poseSignature.signerName ? ` par ${d.poseSignature.signerName}` : ''}
                     {d.poseSignature.signedAt ? ` le ${new Date(d.poseSignature.signedAt).toLocaleDateString('fr-FR')}` : ''}
@@ -22544,9 +22544,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
             {/* ============ ÉTAPE 3 : CONSUEL ============ */}
             <div ref={refConsuel} className="bg-cyan-50 border-2 border-cyan-200 rounded-xl p-2 mb-2">
-              <button onClick={() => toggleStep('consuel')} className={`w-full text-[10px] font-bold text-cyan-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.consuel ? '' : 'mb-1.5'} hover:opacity-80`}>
+              <button onClick={() => toggleStep('consuel')} className={`w-full text-[11px] font-bold text-cyan-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.consuel ? '' : 'mb-1.5'} hover:opacity-80`}>
                 <span className="flex items-center gap-1.5">
-                  <span className="text-cyan-600 text-[9px]">{foldedSteps.consuel ? '▶' : '▼'}</span>
+                  <span className="text-cyan-600 text-[10px]">{foldedSteps.consuel ? '▶' : '▼'}</span>
                   <span>4️⃣ ⚡ Consuel</span>
                   {foldedSteps.consuel && d.dateEnvoiConsuel && (
                     <span className="text-cyan-500 font-normal normal-case ml-1">— envoi {new Date(d.dateEnvoiConsuel).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
@@ -22565,17 +22565,17 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {!foldedSteps.consuel && (<>
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">📤 Envoi</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiConsuel || ''} onChange={(e) => onUpdate({ dateEnvoiConsuel: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-cyan-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateEnvoiConsuel: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiConsuel || ''} onChange={(e) => onUpdate({ dateEnvoiConsuel: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-cyan-200 rounded text-[11px]" />
+                    <button onClick={() => onUpdate({ dateEnvoiConsuel: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Accord</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">✅ Accord</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateConsuel || ''} onChange={(e) => onUpdate({ dateConsuel: e.target.value, consuel: !!e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-cyan-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateConsuel: new Date().toISOString().split('T')[0], consuel: true })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateConsuel || ''} onChange={(e) => onUpdate({ dateConsuel: e.target.value, consuel: !!e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-cyan-200 rounded text-[11px]" />
+                    <button onClick={() => onUpdate({ dateConsuel: new Date().toISOString().split('T')[0], consuel: true })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
               </div>
@@ -22583,20 +22583,20 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {/* 3 boutons toggleables — le Consuel répond : visé OU visite demandée */}
               {d.dateEnvoiConsuel && (
                 <div className="mt-1.5 grid grid-cols-3 gap-1">
-                  <button onClick={() => onUpdate({ statutConsuel: '' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${!d.statutConsuel || d.statutConsuel === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
-                  <button onClick={() => onUpdate({ statutConsuel: 'visite' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutConsuel === 'visite' ? 'bg-sky-500 text-white border-sky-600 shadow-md' : 'bg-white text-sky-600 border-sky-200 hover:bg-sky-50'}`}>🔍 Visite</button>
+                  <button onClick={() => onUpdate({ statutConsuel: '' })} className={`px-1 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${!d.statutConsuel || d.statutConsuel === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
+                  <button onClick={() => onUpdate({ statutConsuel: 'visite' })} className={`px-1 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${d.statutConsuel === 'visite' ? 'bg-sky-500 text-white border-sky-600 shadow-md' : 'bg-white text-sky-600 border-sky-200 hover:bg-sky-50'}`}>🔍 Visite</button>
                   <button onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     onUpdate({ statutConsuel: 'accepté', dateConsuel: d.dateConsuel || today, consuel: true });
-                  }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutConsuel === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Visé</button>
+                  }} className={`px-1 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${d.statutConsuel === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Visé</button>
                 </div>
               )}
 
               {d.statutConsuel === 'accepté' && !d.dateControleLivraison && (
-                <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[10px] text-emerald-800 font-bold">✅ Consuel visé — passe au contrôle livraison ↓</div>
+                <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[11px] text-emerald-800 font-bold">✅ Consuel visé — passe au contrôle livraison ↓</div>
               )}
               {d.statutConsuel === 'visite' && (
-                <div className="mt-1.5 px-2 py-1.5 bg-sky-50 border border-sky-300 rounded text-[10px] text-sky-800">
+                <div className="mt-1.5 px-2 py-1.5 bg-sky-50 border border-sky-300 rounded text-[11px] text-sky-800">
                   🔍 <span className="font-bold">Visite demandée</span> — programme une date de visite ci-dessous et envoie le poseur vérifier les normes. Le résultat de la visite décide : conforme → accord, ou à corriger → on remet aux normes et contre-visite.
                 </div>
               )}
@@ -22604,28 +22604,28 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {/* Alerte Consuel — > 7 jours sans accord */}
               {d.dateEnvoiConsuel && !d.dateConsuel && d.statutConsuel !== 'visite' && (() => {
                 const jours = Math.floor((new Date() - new Date(d.dateEnvoiConsuel)) / 86400000);
-                if (jours < 7) return <div className="mt-1.5 px-2 py-1 bg-cyan-50 border border-cyan-200 rounded text-[10px] text-cyan-700">⏳ {jours}j — délai normal (sous 7j)</div>;
-                if (jours < 14) return <div className="mt-1.5 px-2 py-1 bg-amber-50 border border-amber-300 rounded text-[10px] text-amber-700 font-bold">⚠️ {jours}j sans accord — relance le Consuel</div>;
-                return <div className="mt-1.5 px-2 py-1 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-700 font-bold">🔴 {jours}j sans accord — urgent !</div>;
+                if (jours < 7) return <div className="mt-1.5 px-2 py-1 bg-cyan-50 border border-cyan-200 rounded text-[11px] text-cyan-700">⏳ {jours}j — délai normal (sous 7j)</div>;
+                if (jours < 14) return <div className="mt-1.5 px-2 py-1 bg-amber-50 border border-amber-300 rounded text-[11px] text-amber-700 font-bold">⚠️ {jours}j sans accord — relance le Consuel</div>;
+                return <div className="mt-1.5 px-2 py-1 bg-rose-50 border border-rose-300 rounded text-[11px] text-rose-700 font-bold">🔴 {jours}j sans accord — urgent !</div>;
               })()}
 
               {/* Visites Consuel */}
               <div className="mt-2 p-1.5 bg-white border border-cyan-200 rounded">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-[10px] font-bold text-cyan-700 uppercase">🔍 Visites ({(d.visitesConsuel || []).length})</span>
+                  <span className="text-[11px] font-bold text-cyan-700 uppercase">🔍 Visites ({(d.visitesConsuel || []).length})</span>
                   <button onClick={() => {
                     const isFirst = !d.visitesConsuel || d.visitesConsuel.length === 0;
                     onUpdate({
                       visitesConsuel: [...(d.visitesConsuel || []), { date: '', resultat: '', note: '', type: isFirst ? 'visite' : 'contre_visite' }]
                     });
-                  }} className="px-1.5 py-0.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded text-[9px] font-bold flex items-center gap-1">
+                  }} className="px-1.5 py-0.5 bg-cyan-500 hover:bg-cyan-600 text-white rounded text-[10px] font-bold flex items-center gap-1">
                     <Plus className="w-2.5 h-2.5" />
                     {(d.visitesConsuel || []).length === 0 ? 'Ajouter' : '+ Contre-visite'}
                   </button>
                 </div>
 
                 {(!d.visitesConsuel || d.visitesConsuel.length === 0) ? (
-                  <div className="text-[9px] text-slate-400 italic text-center py-1">Aucune visite — accord direct possible</div>
+                  <div className="text-[10px] text-slate-400 italic text-center py-1">Aucune visite — accord direct possible</div>
                 ) : (
                   <div className="space-y-1.5">
                     {d.visitesConsuel.map((v, idx) => {
@@ -22658,36 +22658,36 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       return (
                         <div key={idx} className={`p-1.5 rounded border ${bgCls}`}>
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-[9px] font-bold text-slate-700">
+                            <span className="text-[10px] font-bold text-slate-700">
                               {idx === 0 ? '🔍 Visite initiale' : `🔄 Contre-visite n°${idx}`}
                             </span>
-                            <button onClick={removeV} className="px-1.5 py-0.5 bg-rose-100 hover:bg-rose-500 text-rose-600 hover:text-white rounded text-[9px] font-bold flex items-center gap-0.5" title="Supprimer cette visite">
+                            <button onClick={removeV} className="px-1.5 py-0.5 bg-rose-100 hover:bg-rose-500 text-rose-600 hover:text-white rounded text-[10px] font-bold flex items-center gap-0.5" title="Supprimer cette visite">
                               <Trash2 className="w-3 h-3" />
                               <span>Suppr.</span>
                             </button>
                           </div>
                           <div className="flex items-center gap-1 mb-1">
-                            <input type="date" min="2000-01-01" max="2100-12-31" value={v.date || ''} onChange={(e) => updateV({ date: e.target.value })} className="flex-1 px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px]" />
-                            <button onClick={() => updateV({ date: new Date().toISOString().split('T')[0] })} className="px-1 py-0.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[9px] font-bold">Auj.</button>
+                            <input type="date" min="2000-01-01" max="2100-12-31" value={v.date || ''} onChange={(e) => updateV({ date: e.target.value })} className="flex-1 px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[11px]" />
+                            <button onClick={() => updateV({ date: new Date().toISOString().split('T')[0] })} className="px-1 py-0.5 bg-cyan-100 hover:bg-cyan-200 text-cyan-700 rounded text-[10px] font-bold">Auj.</button>
                           </div>
                           <div className="grid grid-cols-2 gap-1 mb-1">
-                            <button onClick={() => setResultat('ok')} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${v.resultat === 'ok' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-100'}`}>✓ OK</button>
-                            <button onClick={() => setResultat('a_corriger')} className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
+                            <button onClick={() => setResultat('ok')} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${v.resultat === 'ok' ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-emerald-100'}`}>✓ OK</button>
+                            <button onClick={() => setResultat('a_corriger')} className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${v.resultat === 'a_corriger' ? 'bg-rose-500 text-white' : 'bg-slate-100 text-slate-600 hover:bg-rose-100'}`}>✗ À corriger</button>
                           </div>
-                          <input type="text" value={v.note || ''} onChange={(e) => updateV({ note: e.target.value })} placeholder="Note..." className="w-full px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[10px]" />
+                          <input type="text" value={v.note || ''} onChange={(e) => updateV({ note: e.target.value })} placeholder="Note..." className="w-full px-1.5 py-0.5 bg-white border border-slate-200 rounded text-[11px]" />
                           {v.resultat === 'a_corriger' && idx === d.visitesConsuel.length - 1 && (
                             <div className="mt-1 p-1.5 bg-amber-50 border border-amber-300 rounded space-y-1">
-                              <div className="text-[9px] text-amber-800 font-bold">🔧 À corriger — mise aux normes puis programme la contre-visite.</div>
+                              <div className="text-[10px] text-amber-800 font-bold">🔧 À corriger — mise aux normes puis programme la contre-visite.</div>
                               <div>
                                 <label className="block text-[8px] font-semibold text-amber-700 mb-0.5">📅 Date de la contre-visite</label>
                                 <div className="flex gap-1">
                                   <input type="date" min="2000-01-01" max="2100-12-31" value="" onChange={(e) => {
                                     if (!e.target.value) return;
                                     onUpdate({ visitesConsuel: [...d.visitesConsuel, { date: e.target.value, resultat: '', note: '', type: 'contre_visite' }] });
-                                  }} className="flex-1 px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[10px]" />
+                                  }} className="flex-1 px-1.5 py-0.5 bg-white border border-amber-200 rounded text-[11px]" />
                                   <button onClick={() => {
                                     onUpdate({ visitesConsuel: [...d.visitesConsuel, { date: '', resultat: '', note: '', type: 'contre_visite' }] });
-                                  }} className="px-1 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Pas encore</button>
+                                  }} className="px-1 py-0.5 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[10px] font-bold whitespace-nowrap">Pas encore</button>
                                 </div>
                               </div>
                             </div>
@@ -22703,9 +22703,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
             {/* ============ RACCORDEMENT ENEDIS ============ */}
             <div ref={refRaccordement} className="bg-sky-50 border-2 border-sky-200 rounded-xl p-2 mb-2">
-              <button onClick={() => toggleStep('raccordement')} className={`w-full text-[10px] font-bold text-sky-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.raccordement ? '' : 'mb-1.5'} hover:opacity-80`}>
+              <button onClick={() => toggleStep('raccordement')} className={`w-full text-[11px] font-bold text-sky-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.raccordement ? '' : 'mb-1.5'} hover:opacity-80`}>
                 <span className="flex items-center gap-1.5">
-                  <span className="text-sky-600 text-[9px]">{foldedSteps.raccordement ? '▶' : '▼'}</span>
+                  <span className="text-sky-600 text-[10px]">{foldedSteps.raccordement ? '▶' : '▼'}</span>
                   <span>🔌 Raccordement</span>
                   {foldedSteps.raccordement && d.dateEnvoiRaccordement && (
                     <span className="text-sky-500 font-normal normal-case ml-1">— envoi {new Date(d.dateEnvoiRaccordement).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
@@ -22724,29 +22724,29 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {!foldedSteps.raccordement && (<>
               <div className="grid grid-cols-2 gap-1.5">
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 Demande envoyée</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">📤 Demande envoyée</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiRaccordement || ''} onChange={(e) => onUpdate({ dateEnvoiRaccordement: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-sky-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateEnvoiRaccordement: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiRaccordement || ''} onChange={(e) => onUpdate({ dateEnvoiRaccordement: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-sky-200 rounded text-[11px]" />
+                    <button onClick={() => onUpdate({ dateEnvoiRaccordement: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-sky-100 hover:bg-sky-200 text-sky-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Effectué</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">✅ Effectué</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAccordRaccordement || ''} onChange={(e) => onUpdate({ dateAccordRaccordement: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-sky-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateAccordRaccordement: new Date().toISOString().split('T')[0], statutRaccordement: 'accepté' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAccordRaccordement || ''} onChange={(e) => onUpdate({ dateAccordRaccordement: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-sky-200 rounded text-[11px]" />
+                    <button onClick={() => onUpdate({ dateAccordRaccordement: new Date().toISOString().split('T')[0], statutRaccordement: 'accepté' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
               </div>
 
               {d.dateEnvoiRaccordement && (
                 <div className="mt-1.5 grid grid-cols-3 gap-1">
-                  <button onClick={() => onUpdate({ statutRaccordement: '' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${!d.statutRaccordement || d.statutRaccordement === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
+                  <button onClick={() => onUpdate({ statutRaccordement: '' })} className={`px-1 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${!d.statutRaccordement || d.statutRaccordement === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
                   <button onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
                     onUpdate({ statutRaccordement: 'accepté', dateAccordRaccordement: d.dateAccordRaccordement || today });
-                  }} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutRaccordement === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
-                  <button onClick={() => onUpdate({ statutRaccordement: 'refusé' })} className={`px-1 py-1.5 rounded text-[10px] font-bold border-2 transition-all ${d.statutRaccordement === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
+                  }} className={`px-1 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${d.statutRaccordement === 'accepté' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Accepté</button>
+                  <button onClick={() => onUpdate({ statutRaccordement: 'refusé' })} className={`px-1 py-1.5 rounded text-[11px] font-bold border-2 transition-all ${d.statutRaccordement === 'refusé' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
                 </div>
               )}
               </>)}
@@ -22754,9 +22754,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
             {/* ============ ÉTAPE 4 : SUIVI PAIEMENT ============ */}
             <div ref={refPaiement} className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-2">
-              <button onClick={() => toggleStep('paiement')} className={`w-full text-[10px] font-bold text-emerald-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.paiement ? '' : 'mb-1.5'} hover:opacity-80`}>
+              <button onClick={() => toggleStep('paiement')} className={`w-full text-[11px] font-bold text-emerald-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.paiement ? '' : 'mb-1.5'} hover:opacity-80`}>
                 <span className="flex items-center gap-1.5">
-                  <span className="text-emerald-600 text-[9px]">{foldedSteps.paiement ? '▶' : '▼'}</span>
+                  <span className="text-emerald-600 text-[10px]">{foldedSteps.paiement ? '▶' : '▼'}</span>
                   <span>5️⃣ 💰 Contrôle &amp; paiement</span>
                   {foldedSteps.paiement && d.datePaiementBanque && (
                     <span className="text-emerald-500 font-normal normal-case ml-1">— payé {new Date(d.datePaiementBanque).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
@@ -22776,46 +22776,46 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {/* ===== Originaux signés (pré-requis pour contrôle livraison) ===== */}
               {!d.pasOriginauxRequis && (
                 <div className="mb-2 p-2 bg-white border border-amber-200 rounded-lg">
-                  <div className="text-[10px] font-bold text-amber-700 uppercase mb-1.5 flex items-center justify-between gap-1">
+                  <div className="text-[11px] font-bold text-amber-700 uppercase mb-1.5 flex items-center justify-between gap-1">
                     <span>📑 Originaux signés (pré-requis)</span>
                     {d.dateRecusOriginauxBanque && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">✓ Reçus banque</span>}
                   </div>
                   <div className="grid grid-cols-3 gap-1.5">
                     <div>
-                      <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📥 Du poseur</label>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">📥 Du poseur</label>
                       <div className="flex gap-1">
-                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecusOriginauxPoseur || ''} onChange={(e) => onUpdate({ dateRecusOriginauxPoseur: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
-                        <button onClick={() => onUpdate({ dateRecusOriginauxPoseur: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecusOriginauxPoseur || ''} onChange={(e) => onUpdate({ dateRecusOriginauxPoseur: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[11px]" />
+                        <button onClick={() => onUpdate({ dateRecusOriginauxPoseur: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
                     <div>
-                      <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">📤 → Banque</label>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">📤 → Banque</label>
                       <div className="flex gap-1">
-                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiOriginauxBanque || ''} onChange={(e) => onUpdate({ dateEnvoiOriginauxBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
-                        <button onClick={() => onUpdate({ dateEnvoiOriginauxBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiOriginauxBanque || ''} onChange={(e) => onUpdate({ dateEnvoiOriginauxBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[11px]" />
+                        <button onClick={() => onUpdate({ dateEnvoiOriginauxBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
                     <div>
-                      <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">✅ Reçus banque</label>
+                      <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">✅ Reçus banque</label>
                       <div className="flex gap-1">
-                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecusOriginauxBanque || ''} onChange={(e) => onUpdate({ dateRecusOriginauxBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[10px]" />
-                        <button onClick={() => onUpdate({ dateRecusOriginauxBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecusOriginauxBanque || ''} onChange={(e) => onUpdate({ dateRecusOriginauxBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[11px]" />
+                        <button onClick={() => onUpdate({ dateRecusOriginauxBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                       </div>
                     </div>
                   </div>
 
                   {!d.dateRecusOriginauxBanque && (
-                    <div className="mt-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[10px] text-amber-700">⏳ Attente réception banque avant contrôle livraison</div>
+                    <div className="mt-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[11px] text-amber-700">⏳ Attente réception banque avant contrôle livraison</div>
                   )}
 
-                  <button onClick={() => onUpdate({ pasOriginauxRequis: true })} className="mt-1.5 w-full text-[9px] font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-50 px-2 py-1 rounded">🚫 Pas d'originaux requis pour ce dossier</button>
+                  <button onClick={() => onUpdate({ pasOriginauxRequis: true })} className="mt-1.5 w-full text-[10px] font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-50 px-2 py-1 rounded">🚫 Pas d'originaux requis pour ce dossier</button>
                 </div>
               )}
 
               {d.pasOriginauxRequis && (
                 <div className="mb-2 p-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-2">
-                  <span className="text-[10px] text-slate-600">🚫 Pas d'originaux requis</span>
-                  <button onClick={() => onUpdate({ pasOriginauxRequis: false })} className="text-[9px] font-semibold text-violet-600 hover:bg-violet-50 px-2 py-1 rounded">↩️ Réactiver</button>
+                  <span className="text-[11px] text-slate-600">🚫 Pas d'originaux requis</span>
+                  <button onClick={() => onUpdate({ pasOriginauxRequis: false })} className="text-[10px] font-semibold text-violet-600 hover:bg-violet-50 px-2 py-1 rounded">↩️ Réactiver</button>
                 </div>
               )}
 
@@ -22825,32 +22825,32 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               return (<>
               <div className="grid grid-cols-3 gap-1.5">
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5" title="Toi qui appelles le client">📞 Ctrl liv.</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5" title="Toi qui appelles le client">📞 Ctrl liv.</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" disabled={verrou} value={d.dateControleLivraison || ''} onChange={(e) => onUpdate({ dateControleLivraison: e.target.value })} className={`flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
-                    <button disabled={verrou} onClick={() => onUpdate({ dateControleLivraison: new Date().toISOString().split('T')[0] })} className={`flex-shrink-0 px-1.5 py-1 rounded text-[9px] font-bold whitespace-nowrap ${verrou ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'}`}>Auj.</button>
+                    <input type="date" min="2000-01-01" max="2100-12-31" disabled={verrou} value={d.dateControleLivraison || ''} onChange={(e) => onUpdate({ dateControleLivraison: e.target.value })} className={`flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[11px]${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
+                    <button disabled={verrou} onClick={() => onUpdate({ dateControleLivraison: new Date().toISOString().split('T')[0] })} className={`flex-shrink-0 px-1.5 py-1 rounded text-[10px] font-bold whitespace-nowrap ${verrou ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'}`}>Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5" title="Banque appelle le client">📞 Banque</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5" title="Banque appelle le client">📞 Banque</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAppelBanque || ''} onChange={(e) => onUpdate({ dateAppelBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
-                    <button onClick={() => onUpdate({ dateAppelBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAppelBanque || ''} onChange={(e) => onUpdate({ dateAppelBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[11px]" />
+                    <button onClick={() => onUpdate({ dateAppelBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
                 <div>
-                  <label className="block text-[9px] font-semibold text-slate-600 mb-0.5">💰 Payé</label>
+                  <label className="block text-[10px] font-semibold text-slate-600 mb-0.5">💰 Payé</label>
                   <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.datePaiementBanque || ''} onChange={(e) => onUpdate({ datePaiementBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[10px]" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.datePaiementBanque || ''} onChange={(e) => onUpdate({ datePaiementBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[11px]" />
                     <button onClick={() => {
                       const today = new Date().toISOString().split('T')[0];
                       onUpdate({ datePaiementBanque: today, payeClient: true, payeClientDate: d.payeClientDate || today });
-                    }} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                    }} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
               </div>
               {verrou && (
-                <div className="mt-1.5 px-2 py-1.5 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-800 leading-snug">
+                <div className="mt-1.5 px-2 py-1.5 bg-rose-50 border border-rose-300 rounded text-[11px] text-rose-800 leading-snug">
                   🔒 <span className="font-bold">Contrôle livraison bloqué</span> — il manque : {manquants.join(' · ')}.
                 </div>
               )}
@@ -22861,10 +22861,10 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {!d.dateControleLivraison && (
                 <div className="mt-2 p-1.5 bg-white border border-emerald-200 rounded">
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-[9px] font-bold text-emerald-700 uppercase">📞 Essais d'appel ({(d.tentativesControleLivraison || []).length})</span>
+                      <span className="text-[10px] font-bold text-emerald-700 uppercase">📞 Essais d'appel ({(d.tentativesControleLivraison || []).length})</span>
                       <button
                         onClick={() => onUpdate({ tentativesControleLivraison: [...(d.tentativesControleLivraison || []), { datetime: new Date().toISOString() }] })}
-                        className="text-[9px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-2 py-0.5 rounded"
+                        className="text-[10px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-2 py-0.5 rounded"
                         title="Logger un appel sans réponse — le client ne décroche pas"
                       >
                         + Pas répondu
@@ -22876,11 +22876,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           const dt = new Date(t.datetime);
                           const fmt = dt.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
                           return (
-                            <div key={i} className="flex items-center gap-1 text-[10px] text-slate-600 px-1 py-0.5 bg-emerald-50 rounded">
+                            <div key={i} className="flex items-center gap-1 text-[11px] text-slate-600 px-1 py-0.5 bg-emerald-50 rounded">
                               <span className="flex-1">📞 {fmt}</span>
                               <button
                                 onClick={() => onUpdate({ tentativesControleLivraison: (d.tentativesControleLivraison || []).filter((_, j) => j !== i) })}
-                                className="text-rose-400 hover:text-rose-600 text-[9px] px-1"
+                                className="text-rose-400 hover:text-rose-600 text-[10px] px-1"
                                 title="Supprimer cet essai"
                               >✕</button>
                             </div>
@@ -22894,9 +22894,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {/* Alerte paiement — > 2 jours après contrôle livraison */}
               {d.dateControleLivraison && !d.datePaiementBanque && !d.payeClient && (() => {
                 const jours = Math.floor((new Date() - new Date(d.dateControleLivraison)) / 86400000);
-                if (jours < 2) return <div className="mt-1.5 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[10px] text-emerald-700">⏳ Contrôle fait il y a {jours}j — délai normal (sous 48h)</div>;
-                if (jours < 5) return <div className="mt-1.5 px-2 py-1 bg-amber-50 border border-amber-300 rounded text-[10px] text-amber-700 font-bold">⚠️ {jours}j sans paiement — relance la banque</div>;
-                return <div className="mt-1.5 px-2 py-1 bg-rose-50 border border-rose-300 rounded text-[10px] text-rose-700 font-bold">🔴 {jours}j sans paiement — urgent !</div>;
+                if (jours < 2) return <div className="mt-1.5 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[11px] text-emerald-700">⏳ Contrôle fait il y a {jours}j — délai normal (sous 48h)</div>;
+                if (jours < 5) return <div className="mt-1.5 px-2 py-1 bg-amber-50 border border-amber-300 rounded text-[11px] text-amber-700 font-bold">⚠️ {jours}j sans paiement — relance la banque</div>;
+                return <div className="mt-1.5 px-2 py-1 bg-rose-50 border border-rose-300 rounded text-[11px] text-rose-700 font-bold">🔴 {jours}j sans paiement — urgent !</div>;
               })()}
 
               {/* Bouton principal "Client a payé" — gros, bien visible */}
@@ -22936,19 +22936,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 return (
                   <div className={`mt-2 p-2 rounded-xl border-2 ${urgenceClass}`}>
                     <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[10px] font-bold uppercase">💰 Récup. TVA client</span>
-                      <span className="text-[10px] font-bold">{urgenceLabel}</span>
+                      <span className="text-[11px] font-bold uppercase">💰 Récup. TVA client</span>
+                      <span className="text-[11px] font-bold">{urgenceLabel}</span>
                     </div>
-                    <div className="text-[9px] mb-2 opacity-80">Limite légale : {limiteStr} (6 mois après paiement banque)</div>
+                    <div className="text-[10px] mb-2 opacity-80">Limite légale : {limiteStr} (6 mois après paiement banque)</div>
                     <div className="grid grid-cols-2 gap-1 mb-1">
-                      <button onClick={() => onUpdate({ tvaStatus: d.tvaStatus === 'envoyee' ? '' : 'envoyee', tvaDateDemarche: d.tvaStatus === 'envoyee' ? '' : (d.tvaDateDemarche || new Date().toISOString().split('T')[0]) })} className={`px-2 py-1 rounded text-[10px] font-bold ${d.tvaStatus === 'envoyee' ? 'bg-blue-500 text-white' : 'bg-white text-blue-600 border border-blue-200 hover:bg-blue-50'}`}>
+                      <button onClick={() => onUpdate({ tvaStatus: d.tvaStatus === 'envoyee' ? '' : 'envoyee', tvaDateDemarche: d.tvaStatus === 'envoyee' ? '' : (d.tvaDateDemarche || new Date().toISOString().split('T')[0]) })} className={`px-2 py-1 rounded text-[11px] font-bold ${d.tvaStatus === 'envoyee' ? 'bg-blue-500 text-white' : 'bg-white text-blue-600 border border-blue-200 hover:bg-blue-50'}`}>
                         📤 Envoyée
                       </button>
-                      <button onClick={() => onUpdate({ tvaStatus: d.tvaStatus === 'recuperee' ? '' : 'recuperee', tvaDateRecuperee: d.tvaStatus === 'recuperee' ? '' : (d.tvaDateRecuperee || new Date().toISOString().split('T')[0]) })} className={`px-2 py-1 rounded text-[10px] font-bold ${d.tvaStatus === 'recuperee' ? 'bg-emerald-500 text-white' : 'bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50'}`}>
+                      <button onClick={() => onUpdate({ tvaStatus: d.tvaStatus === 'recuperee' ? '' : 'recuperee', tvaDateRecuperee: d.tvaStatus === 'recuperee' ? '' : (d.tvaDateRecuperee || new Date().toISOString().split('T')[0]) })} className={`px-2 py-1 rounded text-[11px] font-bold ${d.tvaStatus === 'recuperee' ? 'bg-emerald-500 text-white' : 'bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50'}`}>
                         ✅ Récupérée
                       </button>
                     </div>
-                    <button onClick={() => onUpdate({ tvaStatus: d.tvaStatus === 'non_concerne' ? '' : 'non_concerne' })} className={`w-full px-2 py-1 rounded text-[10px] font-bold ${d.tvaStatus === 'non_concerne' ? 'bg-slate-500 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}>
+                    <button onClick={() => onUpdate({ tvaStatus: d.tvaStatus === 'non_concerne' ? '' : 'non_concerne' })} className={`w-full px-2 py-1 rounded text-[11px] font-bold ${d.tvaStatus === 'non_concerne' ? 'bg-slate-500 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}>
                       ❌ Client non concerné
                     </button>
                   </div>
@@ -22963,9 +22963,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               const joursOuvert = refDate ? Math.max(0, Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000)) : 0;
               return (
                 <div ref={refLitige} className={`border-2 rounded-xl p-2 mb-2 ${d.litigeTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
-                  <button onClick={() => toggleStep('litige')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.litige ? '' : 'mb-1.5'} hover:opacity-80`}>
+                  <button onClick={() => toggleStep('litige')} className={`w-full text-[11px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.litige ? '' : 'mb-1.5'} hover:opacity-80`}>
                     <span className="flex items-center gap-1.5 text-rose-700">
-                      <span className="text-rose-600 text-[9px]">{foldedSteps.litige ? '▶' : '▼'}</span>
+                      <span className="text-rose-600 text-[10px]">{foldedSteps.litige ? '▶' : '▼'}</span>
                       <span>⚖️ Litige client</span>
                       {!d.litigeTraite && <span className="text-rose-500 font-normal normal-case ml-1">— ouvert depuis {joursOuvert}j</span>}
                     </span>
@@ -22984,7 +22984,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               onUpdate({ hasLitige: false });
                             }
                           }}
-                          className="text-[9px] font-bold text-rose-600 hover:text-rose-800 bg-rose-100 hover:bg-rose-200 px-2 py-0.5 rounded"
+                          className="text-[10px] font-bold text-rose-600 hover:text-rose-800 bg-rose-100 hover:bg-rose-200 px-2 py-0.5 rounded"
                           title="Retirer ce litige (ex : test, erreur)"
                         >× Retirer ce litige</button>
                       </div>
@@ -22992,18 +22992,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <div className={`rounded-lg border-2 p-2 ${d.litigeTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-rose-200'}`}>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="block text-[9px] font-bold text-rose-700 uppercase mb-0.5">📨 Recommandé reçu le</label>
+                            <label className="block text-[10px] font-bold text-rose-700 uppercase mb-0.5">📨 Recommandé reçu le</label>
                             <div className="flex gap-1">
                               <input type="date" min="2000-01-01" max="2100-12-31" value={d.litigeDateCourrierRecommande || ''} onChange={(e) => onUpdate({ litigeDateCourrierRecommande: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
-                              <button type="button" onClick={() => onUpdate({ litigeDateCourrierRecommande: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                              <button type="button" onClick={() => onUpdate({ litigeDateCourrierRecommande: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
                           {d.litigeTraite && (
                             <div>
-                              <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Clos le</label>
+                              <label className="block text-[10px] font-bold text-emerald-700 uppercase mb-0.5">✅ Clos le</label>
                               <div className="flex gap-1">
                                 <input type="date" min="2000-01-01" max="2100-12-31" value={d.litigeDateCloture || ''} onChange={(e) => onUpdate({ litigeDateCloture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
-                                <button type="button" onClick={() => onUpdate({ litigeDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                                <button type="button" onClick={() => onUpdate({ litigeDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                               </div>
                             </div>
                           )}
@@ -23014,21 +23014,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             const today = new Date().toISOString().split('T')[0];
                             onUpdate({ litigeTraite: checked, litigeDateCloture: checked && !d.litigeDateCloture ? today : (checked ? d.litigeDateCloture : '') });
                           }} className="w-4 h-4 rounded accent-emerald-500" />
-                          <span className={`text-[11px] font-bold ${d.litigeTraite ? 'text-emerald-700' : 'text-rose-700'}`}>
+                          <span className={`text-[12px] font-bold ${d.litigeTraite ? 'text-emerald-700' : 'text-rose-700'}`}>
                             {d.litigeTraite ? '✅ Litige traité / clos' : '⏳ En attente de traitement'}
                           </span>
                         </label>
                       </div>
                       {/* Protocole d'accord PDF */}
                       <div>
-                        <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">📎 Protocole d'accord transactionnel (PDF)</label>
+                        <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">📎 Protocole d'accord transactionnel (PDF)</label>
                         <FactureFileInput fileId={d.litigeAccordPdfUrl} onChange={(id) => onUpdate({ litigeAccordPdfUrl: id })} color="purple" />
                       </div>
                       {/* Régie + montant à rembourser — régie = celle du dossier,
                           automatique et non modifiable. */}
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">🤝 Régie qui rembourse</label>
+                          <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">🤝 Régie qui rembourse</label>
                           {(() => {
                             const regieDossier = (d.regies || []).filter(r => r.nom).map(r => r.nom).join(', ');
                             return (
@@ -23039,7 +23039,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           })()}
                         </div>
                         <div>
-                          <label className="block text-[10px] font-bold text-slate-600 uppercase mb-1">💸 Montant à rembourser</label>
+                          <label className="block text-[11px] font-bold text-slate-600 uppercase mb-1">💸 Montant à rembourser</label>
                           <div className="relative">
                           <DebouncedInput type="number" step="0.01" value={d.litigeMontantRembourse || ''} onCommit={(v) => onUpdate({ litigeMontantRembourse: v })} placeholder="0,00" className={inputCls + ' pr-6 font-bold text-rose-700'} />
                             <span className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 text-xs">€</span>
@@ -23053,7 +23053,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           const today = new Date().toISOString().split('T')[0];
                           onUpdate({ litigeRegieRembourse: checked, litigeDateRembourse: checked && !d.litigeDateRembourse ? today : d.litigeDateRembourse });
                         }} className="w-4 h-4 rounded accent-emerald-500" />
-                        <span className={`text-[11px] font-bold ${d.litigeRegieRembourse ? 'text-emerald-700' : 'text-rose-700'}`}>
+                        <span className={`text-[12px] font-bold ${d.litigeRegieRembourse ? 'text-emerald-700' : 'text-rose-700'}`}>
                           {d.litigeRegieRembourse ? '✅ Régie remboursée' : '⏳ En attente du remboursement régie'}
                         </span>
                       </label>
@@ -23061,7 +23061,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         <div className="grid grid-cols-2 gap-2">
                           <div className="flex gap-1">
                             <input type="date" min="2000-01-01" max="2100-12-31" value={d.litigeDateRembourse || ''} onChange={(e) => onUpdate({ litigeDateRembourse: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
-                            <button type="button" onClick={() => onUpdate({ litigeDateRembourse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[10px] font-bold whitespace-nowrap">Auj.</button>
+                            <button type="button" onClick={() => onUpdate({ litigeDateRembourse: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[11px] font-bold whitespace-nowrap">Auj.</button>
                           </div>
                           <DebouncedInput type="text" value={d.litigeFactureNo || ''} onCommit={(v) => onUpdate({ litigeFactureNo: v })} placeholder="N° facture régie" className={inputCls} />
                         </div>
@@ -23080,9 +23080,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               const joursOuvert = refDate ? Math.max(0, Math.floor((Date.now() - new Date(refDate).getTime()) / 86400000)) : 0;
               return (
                 <div ref={refSav} className={`border-2 rounded-xl p-2 mb-2 ${d.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-yellow-50 border-yellow-300'}`}>
-                  <button onClick={() => toggleStep('sav')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.sav ? '' : 'mb-1.5'} hover:opacity-80`}>
+                  <button onClick={() => toggleStep('sav')} className={`w-full text-[11px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.sav ? '' : 'mb-1.5'} hover:opacity-80`}>
                     <span className="flex items-center gap-1.5 text-yellow-700">
-                      <span className="text-yellow-600 text-[9px]">{foldedSteps.sav ? '▶' : '▼'}</span>
+                      <span className="text-yellow-600 text-[10px]">{foldedSteps.sav ? '▶' : '▼'}</span>
                       <span>🛠️ SAV</span>
                       {!d.savTraite && <span className="text-yellow-500 font-normal normal-case ml-1">— ouvert depuis {joursOuvert}j</span>}
                     </span>
@@ -23100,7 +23100,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               onUpdate({ hasSav: false });
                             }
                           }}
-                          className="text-[9px] font-bold text-yellow-600 hover:text-yellow-800 bg-yellow-100 hover:bg-yellow-200 px-2 py-0.5 rounded"
+                          className="text-[10px] font-bold text-yellow-600 hover:text-yellow-800 bg-yellow-100 hover:bg-yellow-200 px-2 py-0.5 rounded"
                           title="Retirer ce SAV (ex : test, erreur)"
                         >× Retirer ce SAV</button>
                       </div>
@@ -23108,18 +23108,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <div className={`rounded-lg border-2 p-2 ${d.savTraite ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-yellow-200'}`}>
                         <div className="grid grid-cols-2 gap-2">
                           <div>
-                            <label className="block text-[9px] font-bold text-yellow-700 uppercase mb-0.5">📅 Ouvert le</label>
+                            <label className="block text-[10px] font-bold text-yellow-700 uppercase mb-0.5">📅 Ouvert le</label>
                             <div className="flex gap-1">
                               <input type="date" min="2000-01-01" max="2100-12-31" value={d.savDateOuverture || ''} onChange={(e) => onUpdate({ savDateOuverture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
-                              <button type="button" onClick={() => onUpdate({ savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                              <button type="button" onClick={() => onUpdate({ savDateOuverture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
                           {d.savTraite && (
                             <div>
-                              <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Clos le</label>
+                              <label className="block text-[10px] font-bold text-emerald-700 uppercase mb-0.5">✅ Clos le</label>
                               <div className="flex gap-1">
                                 <input type="date" min="2000-01-01" max="2100-12-31" value={d.savDateCloture || ''} onChange={(e) => onUpdate({ savDateCloture: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
-                                <button type="button" onClick={() => onUpdate({ savDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                                <button type="button" onClick={() => onUpdate({ savDateCloture: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                               </div>
                             </div>
                           )}
@@ -23130,7 +23130,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             const today = new Date().toISOString().split('T')[0];
                             onUpdate({ savTraite: checked, savDateCloture: checked && !d.savDateCloture ? today : (checked ? d.savDateCloture : '') });
                           }} className="w-4 h-4 rounded accent-emerald-500" />
-                          <span className={`text-[11px] font-bold ${d.savTraite ? 'text-emerald-700' : 'text-yellow-700'}`}>
+                          <span className={`text-[12px] font-bold ${d.savTraite ? 'text-emerald-700' : 'text-yellow-700'}`}>
                             {d.savTraite ? '✅ SAV résolu' : '⏳ SAV en cours'}
                           </span>
                         </label>
@@ -23140,11 +23140,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         <DebouncedInput type="text" value={d.savIntervenant || ''} onCommit={(v) => onUpdate({ savIntervenant: v })} placeholder="👤 Intervenant" className={inputCls} />
                         <div className="flex gap-1">
                           <input type="date" min="2000-01-01" max="2100-12-31" value={d.savDateInterventionPrevue || ''} onChange={(e) => onUpdate({ savDateInterventionPrevue: e.target.value })} title="Intervention prévue" className={inputCls + ' flex-1 min-w-0'} />
-                          <button type="button" onClick={() => onUpdate({ savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                          <button type="button" onClick={() => onUpdate({ savDateInterventionPrevue: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-yellow-100 hover:bg-yellow-200 text-yellow-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                         </div>
                         <div className="flex gap-1">
                           <input type="date" min="2000-01-01" max="2100-12-31" value={d.savDateInterventionFaite || ''} onChange={(e) => onUpdate({ savDateInterventionFaite: e.target.value })} title="Intervention faite" className={inputCls + ' flex-1 min-w-0'} />
-                          <button type="button" onClick={() => onUpdate({ savDateInterventionFaite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                          <button type="button" onClick={() => onUpdate({ savDateInterventionFaite: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                         </div>
                       </div>
                       <DebouncedTextarea value={d.savNote || ''} onCommit={(v) => onUpdate({ savNote: v })} rows={2} placeholder="📝 Note (détails techniques, échanges)…" className={inputCls + ' resize-none text-xs'} />
@@ -23166,8 +23166,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           <div className="border-2 border-amber-200 bg-amber-50 rounded-xl p-2 mb-2">
             <div className={`flex items-center justify-between ${foldedSteps.produits ? '' : 'mb-1.5'}`}>
               <button onClick={() => toggleStep('produits')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80">
-                <span className="text-amber-600 text-[9px]">{foldedSteps.produits ? '▶' : '▼'}</span>
-                <h3 className="text-[10px] font-bold text-amber-700 uppercase">🏠 Produits ({dossierProduits.length})</h3>
+                <span className="text-amber-600 text-[10px]">{foldedSteps.produits ? '▶' : '▼'}</span>
+                <h3 className="text-[11px] font-bold text-amber-700 uppercase">🏠 Produits ({dossierProduits.length})</h3>
                 {foldedSteps.produits && dossierProduits.length > 0 && (() => {
                   const totalWc = dossierProduits.reduce((s, p) => s + (parseInt(p.puissance) || 0), 0);
                   const noms = dossierProduits.slice(0, 2).map(p => {
@@ -23176,11 +23176,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   }).join(', ');
                   const reste = dossierProduits.length > 2 ? ` +${dossierProduits.length - 2}` : '';
                   return (
-                    <span className="text-[9px] text-slate-500 font-normal normal-case truncate">— {noms}{reste}{totalWc > 0 ? ` · ${totalWc} Wc` : ''}</span>
+                    <span className="text-[10px] text-slate-500 font-normal normal-case truncate">— {noms}{reste}{totalWc > 0 ? ` · ${totalWc} Wc` : ''}</span>
                   );
                 })()}
               </button>
-              <button onClick={() => { openStep('produits'); addProduit(); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('produits'); addProduit(); }} className="text-[11px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
@@ -23196,22 +23196,22 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               }) && (
               <div className="grid grid-cols-2 gap-1.5 p-2 bg-white border border-amber-200 rounded-xl">
                 <div>
-                  <label className="block text-[9px] font-bold text-amber-700 uppercase mb-1">🏠 Type de toit</label>
+                  <label className="block text-[10px] font-bold text-amber-700 uppercase mb-1">🏠 Type de toit</label>
                   <select
                     value={d.typeToit || ''}
                     onChange={(e) => onUpdate({ typeToit: e.target.value })}
-                    className="w-full px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[11px] font-semibold text-amber-800"
+                    className="w-full px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[12px] font-semibold text-amber-800"
                   >
                     <option value="">— Choisir —</option>
                     {TYPES_TOIT.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
                   </select>
                 </div>
                 <div>
-                  <label className="block text-[9px] font-bold text-amber-700 uppercase mb-1">📐 Orientation panneaux</label>
+                  <label className="block text-[10px] font-bold text-amber-700 uppercase mb-1">📐 Orientation panneaux</label>
                   <select
                     value={d.orientationPanneaux || ''}
                     onChange={(e) => onUpdate({ orientationPanneaux: e.target.value })}
-                    className="w-full px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[11px] font-semibold text-amber-800"
+                    className="w-full px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[12px] font-semibold text-amber-800"
                   >
                     <option value="">— Choisir —</option>
                     {ORIENTATIONS_PANNEAUX.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
@@ -23243,12 +23243,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       ) : 0;
                       return (
                         <>
-                          <select value={p.variantId || ''} onChange={(e) => updateProduit(i, { variantId: e.target.value })} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-semibold text-amber-700">
+                          <select value={p.variantId || ''} onChange={(e) => updateProduit(i, { variantId: e.target.value })} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[12px] font-semibold text-amber-700">
                             <option value="">— Choisir une marque/modèle —</option>
                             {variants.map(v => <option key={v.id} value={v.id}>{[v.marque, v.modele].filter(Boolean).join(' ') || '(sans nom)'}</option>)}
                           </select>
                           {hasMicro && microQty > 0 && (
-                            <div className="px-2 py-1 bg-amber-100 border border-amber-300 rounded text-[10px] text-amber-800">
+                            <div className="px-2 py-1 bg-amber-100 border border-amber-300 rounded text-[11px] text-amber-800">
                               📡 <strong>{microQty} micro-onduleur{microQty > 1 ? 's' : ''}</strong> {[picked.microMarque, picked.microModele].filter(Boolean).join(' ')} <span className="text-amber-700">(1 pour {picked.microPanneaux} panneau{picked.microPanneaux > 1 ? 'x' : ''}, inclus dans la pose)</span>
                             </div>
                           )}
@@ -23275,15 +23275,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               }}
                               placeholder="Qté"
                               title={`${wU} W par unité`}
-                              className="w-14 px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-bold text-center"
+                              className="w-14 px-2 py-1 bg-white border border-amber-200 rounded-lg text-[12px] font-bold text-center"
                             />
-                            <span className="text-[10px] text-slate-500">× {wU} W = </span>
-                            <span className="flex-1 px-2 py-1 bg-slate-50 border border-amber-200 rounded-lg text-[11px] font-bold text-amber-800">{p.puissance ? `${p.puissance} Wc` : '—'}</span>
+                            <span className="text-[11px] text-slate-500">× {wU} W = </span>
+                            <span className="flex-1 px-2 py-1 bg-slate-50 border border-amber-200 rounded-lg text-[12px] font-bold text-amber-800">{p.puissance ? `${p.puissance} Wc` : '—'}</span>
                           </div>
                         );
                       }
                       return (
-                        <select value={p.puissance || 6000} onChange={(e) => updateProduit(i, { puissance: parseInt(e.target.value) })} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-semibold">
+                        <select value={p.puissance || 6000} onChange={(e) => updateProduit(i, { puissance: parseInt(e.target.value) })} className="w-full px-2 py-1 bg-white border border-amber-200 rounded-lg text-[12px] font-semibold">
                           {PUISSANCES.map(pw => <option key={pw} value={pw}>{pw} Wc</option>)}
                         </select>
                       );
@@ -23300,16 +23300,16 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               : (parseInt(e.target.value) || 1)
                           })}
                           placeholder={p.type === 'ISOLATION' ? 'm²' : 'Qté'}
-                          className={(p.type === 'ISOLATION' ? 'w-20' : 'w-14') + ' px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-bold text-center'}
+                          className={(p.type === 'ISOLATION' ? 'w-20' : 'w-14') + ' px-2 py-1 bg-white border border-amber-200 rounded-lg text-[12px] font-bold text-center'}
                         />
-                        <input type="text" value={p.description || ''} onChange={(e) => updateProduit(i, { description: e.target.value })} placeholder="Description" className="flex-1 px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px]" />
+                        <input type="text" value={p.description || ''} onChange={(e) => updateProduit(i, { description: e.target.value })} placeholder="Description" className="flex-1 px-2 py-1 bg-white border border-amber-200 rounded-lg text-[12px]" />
                       </div>
                     )}
                   </div>
                 );
               })}
               {dossierProduits.length === 0 && (
-                <div className="text-center py-3 text-slate-400 italic text-[11px] bg-slate-50 rounded-xl">Aucun produit. Clique "Ajouter" ci-dessus.</div>
+                <div className="text-center py-3 text-slate-400 italic text-[12px] bg-slate-50 rounded-xl">Aucun produit. Clique "Ajouter" ci-dessus.</div>
               )}
             </div>
             )}
@@ -23318,15 +23318,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           {/* MONTANTS (admin only) */}
           {isAdmin && (
             <div>
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">💰 Montants</h3>
+              <h3 className="text-[11px] font-bold text-slate-500 uppercase mb-1.5">💰 Montants</h3>
               <div className="bg-gradient-to-br from-violet-50 to-pink-50 border border-violet-200 rounded-xl p-2.5 space-y-1.5">
                 <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-semibold text-slate-600 uppercase w-12 flex-shrink-0">TTC</span>
+                  <span className="text-[11px] font-semibold text-slate-600 uppercase w-12 flex-shrink-0">TTC</span>
                   <DebouncedInput type="number" step="0.01" value={d.montantTotal || ''} onCommit={(v) => onUpdate({ montantTotal: parseFloat(v) || 0 })} placeholder="0,00" className={inputCls + ' font-bold text-violet-700'} />
                   <span className="text-xs text-slate-500">€</span>
                 </div>
                 {d.margeHt !== undefined && (((d.fournisseurTtc || 0) + (d.regieTtc || 0) + (d.poseurTtc || 0)) > 0) && (
-                  <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-violet-200">
+                  <div className="flex items-center justify-between text-[12px] pt-1.5 border-t border-violet-200">
                     <span className="text-slate-600 font-semibold">Marge HT</span>
                     <span className={`font-bold ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatEuro(d.margeHt)}</span>
                   </div>
@@ -23344,8 +23344,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           <div ref={refRegie} className="border-2 border-purple-200 bg-purple-50 rounded-xl p-2 mb-2">
             <div className={`flex items-center justify-between ${foldedSteps.regies ? '' : 'mb-1.5'}`}>
               <button onClick={() => toggleStep('regies')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80 min-w-0">
-                <span className="text-purple-600 text-[9px]">{foldedSteps.regies ? '▶' : '▼'}</span>
-                <h3 className="text-[10px] font-bold text-purple-700 uppercase">🤝 Régies ({(d.regies || []).length})</h3>
+                <span className="text-purple-600 text-[10px]">{foldedSteps.regies ? '▶' : '▼'}</span>
+                <h3 className="text-[11px] font-bold text-purple-700 uppercase">🤝 Régies ({(d.regies || []).length})</h3>
                 {foldedSteps.regies && (d.regies || []).length > 0 && (() => {
                   const regies = d.regies || [];
                   const named = regies.filter(r => r.nom);
@@ -23353,14 +23353,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   const reste = named.length > 2 ? ` +${named.length - 2}` : '';
                   const allPaid = named.length > 0 && named.every(r => r.paye);
                   return (
-                    <span className="text-[9px] font-normal normal-case truncate flex items-center gap-1">
+                    <span className="text-[10px] font-normal normal-case truncate flex items-center gap-1">
                       <span className="text-slate-500">— {noms || 'à compléter'}{reste}</span>
                       <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>{allPaid ? '✓ payé' : '⏳'}</span>
                     </span>
                   );
                 })()}
               </button>
-              <button onClick={() => { openStep('regies'); onUpdate((dCurrent) => ({ regies: [...(dCurrent.regies || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] })); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('regies'); onUpdate((dCurrent) => ({ regies: [...(dCurrent.regies || []), { nom: '', htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '' }] })); }} className="text-[11px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
@@ -23406,21 +23406,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 <>
                                   <div className="grid grid-cols-[1fr_auto] gap-1 items-end">
                                     <div>
-                                      <label className="text-[9px] font-semibold text-purple-600 uppercase mb-0.5 flex items-center justify-between gap-1">
+                                      <label className="text-[10px] font-semibold text-purple-600 uppercase mb-0.5 flex items-center justify-between gap-1">
                                         <span>💰 HT (€)</span>
                                         {autoHt > 0 && (
-                                          <span className={`text-[9px] font-bold normal-case px-1 py-0.5 rounded ${usingAuto ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                          <span className={`text-[10px] font-bold normal-case px-1 py-0.5 rounded ${usingAuto ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                                             {usingAuto ? '✓ Auto' : 'Auto'} : {formatEuro(autoHt)}
                                           </span>
                                         )}
                                       </label>
-                                      <input type="number" step="0.01" value={r.htCustom || ''} onChange={(e) => updateRegie(i, { htCustom: e.target.value })} placeholder={autoHt > 0 ? `Vide → auto ${autoHt} €` : 'Saisir'} className="w-full px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
+                                      <input type="number" step="0.01" value={r.htCustom || ''} onChange={(e) => updateRegie(i, { htCustom: e.target.value })} placeholder={autoHt > 0 ? `Vide → auto ${autoHt} €` : 'Saisir'} className="w-full px-2 py-1 bg-white border border-purple-200 rounded text-[11px]" />
                                     </div>
                                     <div>
-                                      <label className="block text-[9px] font-semibold text-purple-600 uppercase mb-0.5 flex items-center justify-between gap-1">
+                                      <label className="block text-[10px] font-semibold text-purple-600 uppercase mb-0.5 flex items-center justify-between gap-1">
                                         <span>TTC{r.ttcCustom ? '' : ' (TVA 20 %)'}</span>
                                         {r.ttcCustom && (
-                                          <button type="button" onClick={() => updateRegie(i, { ttcCustom: '' })} className="text-[9px] font-bold text-purple-600 bg-purple-100 hover:bg-purple-200 rounded px-1" title="Revenir au calcul auto HT × TVA">↺ auto</button>
+                                          <button type="button" onClick={() => updateRegie(i, { ttcCustom: '' })} className="text-[10px] font-bold text-purple-600 bg-purple-100 hover:bg-purple-200 rounded px-1" title="Revenir au calcul auto HT × TVA">↺ auto</button>
                                         )}
                                       </label>
                                       <input
@@ -23429,17 +23429,17 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                         onChange={(e) => updateRegie(i, { ttcCustom: e.target.value })}
                                         placeholder={formatEuro(ttcRegie)}
                                         title="Override TTC — utile pour les factures à TVA mixte"
-                                        className={`w-full px-2 py-1 border rounded text-[10px] font-bold text-purple-800 text-right ${r.ttcCustom ? 'bg-white border-purple-400' : 'bg-purple-50 border-purple-200'}`}
+                                        className={`w-full px-2 py-1 border rounded text-[11px] font-bold text-purple-800 text-right ${r.ttcCustom ? 'bg-white border-purple-400' : 'bg-purple-50 border-purple-200'}`}
                                       />
                                     </div>
                                   </div>
                                   {autoHt === 0 && (
-                                    <div className="text-[9px] text-rose-500">⚠️ Aucun tarif défini pour {r.nom} dans Réglages → Régies</div>
+                                    <div className="text-[10px] text-rose-500">⚠️ Aucun tarif défini pour {r.nom} dans Réglages → Régies</div>
                                   )}
                                 </>
                               );
                             })()}
-                            <label className="flex items-center gap-1.5 text-[10px] font-semibold text-purple-700 cursor-pointer">
+                            <label className="flex items-center gap-1.5 text-[11px] font-semibold text-purple-700 cursor-pointer">
                               <input type="checkbox" checked={!!r.sansTva || r.tauxTva === 0 || r.tauxTva === '0'} onChange={(e) => updateRegie(i, { sansTva: e.target.checked, tauxTva: e.target.checked ? 0 : 20 })} className="w-3.5 h-3.5 accent-purple-600" />
                               Sans TVA <span className="text-purple-500 font-normal">(auto-entrepreneur / société étrangère)</span>
                             </label>
@@ -23448,8 +23448,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         {canSeeBLFactures && (
                           <>
                             <div className="grid grid-cols-2 gap-1">
-                              <input type="text" value={r.bl || ''} onChange={(e) => updateRegie(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
-                              <input type="text" value={r.factureNo || ''} onChange={(e) => updateRegie(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-purple-200 rounded text-[10px]" />
+                              <input type="text" value={r.bl || ''} onChange={(e) => updateRegie(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-purple-200 rounded text-[11px]" />
+                              <input type="text" value={r.factureNo || ''} onChange={(e) => updateRegie(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-purple-200 rounded text-[11px]" />
                             </div>
                             <FactureDupeWarning factureNo={r.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} />
                             <FactureFileInput
@@ -23496,7 +23496,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           </>
                         )}
                         {canCheckPaiements && (
-                          <button onClick={() => updateRegie(i, { paye: !r.paye, datePaye: !r.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[10px] font-bold ${r.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                          <button onClick={() => updateRegie(i, { paye: !r.paye, datePaye: !r.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[11px] font-bold ${r.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
                             {r.paye
                               ? `✓ Payée le ${r.datePaye ? new Date(r.datePaye).toLocaleDateString('fr-FR') : '—'} (${formatEuro(ttcRegie)})`
                               : `⏳ Non payée (${formatEuro(ttcRegie)})`}
@@ -23515,7 +23515,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           {/* ÉQUIPE INTERNE — éditable (admin/compta), cachée si externe avec équipe vide */}
           {(isAdmin || canCheckPaiements) && (d.typeRegie === 'interne' || ROLES_INTERNES.some(r => d[r.key])) && (
             <div ref={refEquipeInterne}>
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">👥 Équipe interne (commissions)</h3>
+              <h3 className="text-[11px] font-bold text-slate-500 uppercase mb-1.5">👥 Équipe interne (commissions)</h3>
               <div className="space-y-1.5">
                 {ROLES_INTERNES.map(role => {
                   const nomKey = role.key;
@@ -23530,7 +23530,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   const valeurDansListe = !valeurActuelle || listeNoms.includes(valeurActuelle);
                   return (
                     <div key={role.key} className="bg-fuchsia-50 border border-fuchsia-200 rounded-xl p-2 space-y-1">
-                      <div className="text-[9px] font-bold text-fuchsia-700 uppercase">{role.emoji} {role.label}</div>
+                      <div className="text-[10px] font-bold text-fuchsia-700 uppercase">{role.emoji} {role.label}</div>
                       {/* Sélecteur de nom */}
                       <select
                         value={valeurDansListe ? valeurActuelle : '__custom__'}
@@ -23566,7 +23566,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           {d[nomKey] && d[nomKey] !== '__custom__' && !listeNoms.find(n => n.toLowerCase() === d[nomKey].toLowerCase()) && setNomsInternes && (
                             <button
                               onClick={() => setNomsInternes({ ...nomsInternes, [role.key]: [...listeNoms, d[nomKey]] })}
-                              className="px-1.5 py-1 bg-fuchsia-100 hover:bg-fuchsia-200 text-fuchsia-700 rounded text-[9px] font-bold whitespace-nowrap"
+                              className="px-1.5 py-1 bg-fuchsia-100 hover:bg-fuchsia-200 text-fuchsia-700 rounded text-[10px] font-bold whitespace-nowrap"
                               title="Ajouter à la liste"
                             >
                               💾
@@ -23578,10 +23578,10 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       {d[nomKey] && d[nomKey] !== '__custom__' && (
                         <>
                           <div>
-                            <label className="block text-[9px] font-semibold text-fuchsia-600 uppercase mb-0.5">💰 Montant (€) — défaut {tarifAuto}€</label>
-                            <input type="number" step="0.01" value={d[montantKey] || ''} onChange={(e) => onUpdate({ [montantKey]: e.target.value })} placeholder={`Vide = ${tarifAuto}€`} className="w-full px-2 py-1 bg-white border border-fuchsia-200 rounded text-[10px]" />
+                            <label className="block text-[10px] font-semibold text-fuchsia-600 uppercase mb-0.5">💰 Montant (€) — défaut {tarifAuto}€</label>
+                            <input type="number" step="0.01" value={d[montantKey] || ''} onChange={(e) => onUpdate({ [montantKey]: e.target.value })} placeholder={`Vide = ${tarifAuto}€`} className="w-full px-2 py-1 bg-white border border-fuchsia-200 rounded text-[11px]" />
                           </div>
-                          <button onClick={() => onUpdate({ [payeKey]: !d[payeKey], [dateKey]: !d[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[10px] font-bold ${d[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                          <button onClick={() => onUpdate({ [payeKey]: !d[payeKey], [dateKey]: !d[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[11px] font-bold ${d[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
                             {d[payeKey] ? `✓ Payé (${montantEffectif}€)` : `⏳ À payer (${montantEffectif}€)`}
                           </button>
                         </>
@@ -23597,8 +23597,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           <div ref={refPoseurs} className="border-2 border-emerald-200 bg-emerald-50 rounded-xl p-2 mb-2">
             <div className={`flex items-center justify-between ${foldedSteps.poseurs ? '' : 'mb-1.5'}`}>
               <button onClick={() => toggleStep('poseurs')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80 min-w-0">
-                <span className="text-emerald-600 text-[9px]">{foldedSteps.poseurs ? '▶' : '▼'}</span>
-                <h3 className="text-[10px] font-bold text-emerald-700 uppercase">🔧 Poseurs ({(d.poseurs || []).length})</h3>
+                <span className="text-emerald-600 text-[10px]">{foldedSteps.poseurs ? '▶' : '▼'}</span>
+                <h3 className="text-[11px] font-bold text-emerald-700 uppercase">🔧 Poseurs ({(d.poseurs || []).length})</h3>
                 {foldedSteps.poseurs && (d.poseurs || []).length > 0 && (() => {
                   const poseurs = d.poseurs || [];
                   const named = poseurs.filter(p => p.nom);
@@ -23606,14 +23606,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   const reste = named.length > 2 ? ` +${named.length - 2}` : '';
                   const allPaid = named.length > 0 && named.every(p => p.paye);
                   return (
-                    <span className="text-[9px] font-normal normal-case truncate flex items-center gap-1">
+                    <span className="text-[10px] font-normal normal-case truncate flex items-center gap-1">
                       <span className="text-slate-500">— {noms || 'à compléter'}{reste}</span>
                       <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>{allPaid ? '✓ payé' : '⏳'}</span>
                     </span>
                   );
                 })()}
               </button>
-              <button onClick={() => { openStep('poseurs'); addPoseur(); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('poseurs'); addPoseur(); }} className="text-[11px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
@@ -23625,7 +23625,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {/* 🛠️ Instructions partagées pour la pose — incluses dans tous
                   les messages chantier (WhatsApp/email) envoyés aux poseurs. */}
               <div>
-                <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-1">
+                <label className="block text-[10px] font-bold text-emerald-700 uppercase mb-1">
                   🛠️ Instructions pour la pose (optionnel)
                 </label>
                 <textarea
@@ -23633,9 +23633,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   onChange={(e) => onUpdate({ instructionsPose: e.target.value })}
                   rows={2}
                   placeholder="Ex : accès par le portail bleu, prévoir échelle 4m, branchement Linky à droite, gravier dans la cour…"
-                  className="w-full px-2 py-1 bg-white border border-emerald-200 rounded text-[10px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400 resize-none"
+                  className="w-full px-2 py-1 bg-white border border-emerald-200 rounded text-[11px] text-slate-700 focus:outline-none focus:ring-1 focus:ring-emerald-400 resize-none"
                 />
-                <div className="text-[9px] text-emerald-600 mt-0.5">💡 Ce texte sera inclus dans le message envoyé à chaque poseur (WhatsApp + email)</div>
+                <div className="text-[10px] text-emerald-600 mt-0.5">💡 Ce texte sera inclus dans le message envoyé à chaque poseur (WhatsApp + email)</div>
               </div>
               {(d.poseurs || []).map((p, i) => {
                 // Contact poseur : compatible legacy string (juste tel) ET nouveau format { tel, email }
@@ -23697,7 +23697,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 return (
                 <div key={i} className={`rounded-xl p-2 space-y-1 border ${p.paye ? 'bg-emerald-50 border-emerald-300' : 'bg-amber-50 border-amber-200'}`}>
                   <div className="flex items-center gap-1.5">
-                    <select value={p.nom || ''} onChange={(e) => updatePoseur(i, { nom: e.target.value })} className="flex-1 min-w-0 px-2 py-1 bg-white border border-amber-200 rounded-lg text-[11px] font-bold text-amber-800">
+                    <select value={p.nom || ''} onChange={(e) => updatePoseur(i, { nom: e.target.value })} className="flex-1 min-w-0 px-2 py-1 bg-white border border-amber-200 rounded-lg text-[12px] font-bold text-amber-800">
                       <option value="">— Choisir —</option>
                       {p.nom && !POSEURS.includes(p.nom) && <option key={p.nom} value={p.nom}>{p.nom} (créé manuellement)</option>}
                           {POSEURS.map(n => <option key={n} value={n}>{n}</option>)}
@@ -23714,13 +23714,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           href={buildWhatsAppLink(poseurTel, chantierMessage)}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[10px] font-bold"
+                          className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[11px] font-bold"
                           title={`Envoyer le chantier à ${p.nom} sur WhatsApp`}
                         >
                           📲 WhatsApp
                         </a>
                       ) : (
-                        <span className="text-[9px] text-slate-400 italic px-1 py-1.5 text-center">📲 Pas de tél.</span>
+                        <span className="text-[10px] text-slate-400 italic px-1 py-1.5 text-center">📲 Pas de tél.</span>
                       )}
                       {poseurEmail ? (
                         gmailOAuth?.connected ? (
@@ -23739,7 +23739,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 alert(`✅ Email envoyé à ${p.nom} (${poseurEmail})`);
                               } catch (e) { alert(`❌ Envoi email : ${e.message}`); }
                             }}
-                            className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                            className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[11px] font-bold"
                             title={`Envoyer le chantier à ${p.nom} par email`}
                           >
                             📧 Envoyer
@@ -23760,7 +23760,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 alert(`✅ Email envoyé à ${p.nom} (${poseurEmail})`);
                               } catch (e) { alert(`❌ Envoi email : ${e.message}`); }
                             }}
-                            className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                            className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[11px] font-bold"
                           >
                             📧 Envoyer
                           </button>
@@ -23769,19 +23769,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             href={poseurGmailCompose(poseurEmail)}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[10px] font-bold"
+                            className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[11px] font-bold"
                             title={`Ouvre Gmail (configure Réglages → Email d'envoi pour un envoi auto)`}
                           >
                             📧 Gmail
                           </a>
                         )
                       ) : (
-                        <span className="text-[9px] text-slate-400 italic px-1 py-1.5 text-center">📧 Pas d'email</span>
+                        <span className="text-[10px] text-slate-400 italic px-1 py-1.5 text-center">📧 Pas d'email</span>
                       )}
                     </div>
                   )}
                   {p.nom && !poseurTel && !poseurEmail && (
-                    <div className="text-[9px] text-amber-600 italic px-1">
+                    <div className="text-[10px] text-amber-600 italic px-1">
                       ⚠️ Ajoute le tél/email de {p.nom} dans Réglages → Poseurs pour envoyer le chantier
                     </div>
                   )}
@@ -23790,10 +23790,10 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     const usingAuto = !p.htCustom && autoHt > 0;
                     return (
                       <div>
-                        <label className="text-[9px] font-semibold text-amber-600 uppercase mb-0.5 flex items-center justify-between gap-2">
+                        <label className="text-[10px] font-semibold text-amber-600 uppercase mb-0.5 flex items-center justify-between gap-2">
                           <span>💰 HT (€) <span className="text-amber-500 font-normal">— pas de TVA</span></span>
                           {autoHt > 0 && (
-                            <span className={`text-[9px] font-bold normal-case px-1.5 py-0.5 rounded ${usingAuto ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                            <span className={`text-[10px] font-bold normal-case px-1.5 py-0.5 rounded ${usingAuto ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                               {usingAuto ? '✓ Auto' : 'Auto'} : {formatEuro(autoHt)}
                             </span>
                           )}
@@ -23804,10 +23804,10 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           value={p.htCustom || ''}
                           onChange={(e) => updatePoseur(i, { htCustom: e.target.value })}
                           placeholder={autoHt > 0 ? `Vide → auto ${autoHt} €` : 'Saisir le tarif'}
-                          className="w-full px-2 py-1 bg-white border border-amber-200 rounded text-[10px]"
+                          className="w-full px-2 py-1 bg-white border border-amber-200 rounded text-[11px]"
                         />
                         {autoHt === 0 && p.nom && (
-                          <div className="text-[9px] text-rose-500 mt-0.5">⚠️ Aucun tarif défini pour {p.nom} dans Réglages → Poseurs</div>
+                          <div className="text-[10px] text-rose-500 mt-0.5">⚠️ Aucun tarif défini pour {p.nom} dans Réglages → Poseurs</div>
                         )}
                       </div>
                     );
@@ -23829,8 +23829,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   {canSeeBLFactures && (
                     <>
                       <div className="grid grid-cols-2 gap-1">
-                        <input type="text" value={p.bl || ''} onChange={(e) => updatePoseur(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-amber-200 rounded text-[10px]" />
-                        <input type="text" value={p.factureNo || ''} onChange={(e) => updatePoseur(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-amber-200 rounded text-[10px]" />
+                        <input type="text" value={p.bl || ''} onChange={(e) => updatePoseur(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-amber-200 rounded text-[11px]" />
+                        <input type="text" value={p.factureNo || ''} onChange={(e) => updatePoseur(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-amber-200 rounded text-[11px]" />
                       </div>
                       <FactureDupeWarning factureNo={p.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} />
                       <FactureFileInput
@@ -23872,7 +23872,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     </>
                   )}
                   {canCheckPaiements && p.nom && (
-                    <button onClick={() => updatePoseur(i, { paye: !p.paye, datePaye: !p.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded-lg text-[10px] font-bold ${p.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                    <button onClick={() => updatePoseur(i, { paye: !p.paye, datePaye: !p.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded-lg text-[11px] font-bold ${p.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
                       {p.paye
                         ? `✓ Payé le ${p.datePaye ? new Date(p.datePaye).toLocaleDateString('fr-FR') : '—'}`
                         : '⏳ Non payé'}
@@ -23882,7 +23882,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 );
               })}
               {(d.poseurs || []).length === 0 && (
-                <div className="text-center py-2 text-slate-400 italic text-[11px] bg-slate-50 rounded-xl">Aucun poseur</div>
+                <div className="text-center py-2 text-slate-400 italic text-[12px] bg-slate-50 rounded-xl">Aucun poseur</div>
               )}
               {/* 📦 BL matériel remis au poseur — toggle + date + PDF upload.
                   Toggle « rendu » apparaît si dossier annulé/refusé. */}
@@ -23895,8 +23895,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           <div ref={refFournisseurs} className="border-2 border-orange-200 bg-orange-50 rounded-xl p-2 mb-2">
             <div className={`flex items-center justify-between ${foldedSteps.fournisseurs ? '' : 'mb-1.5'}`}>
               <button onClick={() => toggleStep('fournisseurs')} className="flex-1 text-left flex items-center gap-1.5 hover:opacity-80 min-w-0">
-                <span className="text-orange-600 text-[9px]">{foldedSteps.fournisseurs ? '▶' : '▼'}</span>
-                <h3 className="text-[10px] font-bold text-orange-700 uppercase">📦 Fournisseurs ({(d.fournisseurs || []).length})</h3>
+                <span className="text-orange-600 text-[10px]">{foldedSteps.fournisseurs ? '▶' : '▼'}</span>
+                <h3 className="text-[11px] font-bold text-orange-700 uppercase">📦 Fournisseurs ({(d.fournisseurs || []).length})</h3>
                 {foldedSteps.fournisseurs && (d.fournisseurs || []).length > 0 && (() => {
                   const fournisseurs = d.fournisseurs || [];
                   const named = fournisseurs.filter(f => f.nom);
@@ -23904,14 +23904,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   const reste = named.length > 2 ? ` +${named.length - 2}` : '';
                   const allPaid = named.length > 0 && named.every(f => f.paye);
                   return (
-                    <span className="text-[9px] font-normal normal-case truncate flex items-center gap-1">
+                    <span className="text-[10px] font-normal normal-case truncate flex items-center gap-1">
                       <span className="text-slate-500">— {noms || 'à compléter'}{reste}</span>
                       <span className={`px-1 py-0.5 rounded text-[8px] font-bold ${allPaid ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}`}>{allPaid ? '✓ payé' : '⏳'}</span>
                     </span>
                   );
                 })()}
               </button>
-              <button onClick={() => { openStep('fournisseurs'); addFournisseur(); }} className="text-[10px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
+              <button onClick={() => { openStep('fournisseurs'); addFournisseur(); }} className="text-[11px] font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-0.5 rounded-lg flex items-center gap-1">
                 <Plus className="w-3 h-3" />Ajouter
               </button>
             </div>
@@ -23920,7 +23920,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               {(d.fournisseurs || []).map((f, i) => (
                 <div key={i} className={`rounded-xl p-2 space-y-1 border ${f.paye ? 'bg-emerald-50 border-emerald-300' : 'bg-orange-50 border-orange-200'}`}>
                   <div className="flex items-center gap-1.5">
-                    <select value={f.nom || ''} onChange={(e) => updateFournisseur(i, { nom: e.target.value })} className="flex-1 min-w-0 px-2 py-1 bg-white border border-orange-200 rounded-lg text-[11px] font-bold text-orange-800">
+                    <select value={f.nom || ''} onChange={(e) => updateFournisseur(i, { nom: e.target.value })} className="flex-1 min-w-0 px-2 py-1 bg-white border border-orange-200 rounded-lg text-[12px] font-bold text-orange-800">
                       <option value="">— Choisir —</option>
                       {f.nom && !FOURNISSEURS.includes(f.nom) && <option key={f.nom} value={f.nom}>{f.nom} (créé manuellement)</option>}
                           {FOURNISSEURS.map(n => <option key={n} value={n}>{n}</option>)}
@@ -23939,21 +23939,21 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <>
                         <div className="grid grid-cols-[1fr_auto] gap-1 items-end">
                           <div>
-                            <label className="text-[9px] font-semibold text-orange-600 uppercase mb-0.5 flex items-center justify-between gap-1">
+                            <label className="text-[10px] font-semibold text-orange-600 uppercase mb-0.5 flex items-center justify-between gap-1">
                               <span>💰 HT (€)</span>
                               {autoHt > 0 && (
-                                <span title={`Tarif : ${tarifWc} €/Wc × ${d.puissance || 0} Wc`} className={`text-[9px] font-bold normal-case px-1 py-0.5 rounded ${usingAuto ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                <span title={`Tarif : ${tarifWc} €/Wc × ${d.puissance || 0} Wc`} className={`text-[10px] font-bold normal-case px-1 py-0.5 rounded ${usingAuto ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                                   {usingAuto ? '✓ Auto' : 'Auto'} : {formatEuro(autoHt)}
                                 </span>
                               )}
                             </label>
-                            <input type="number" step="0.01" value={f.htCustom || ''} onChange={(e) => updateFournisseur(i, { htCustom: e.target.value })} placeholder={autoHt > 0 ? `Vide → auto ${autoHt.toFixed(2)} €` : 'Coût HT'} className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                            <input type="number" step="0.01" value={f.htCustom || ''} onChange={(e) => updateFournisseur(i, { htCustom: e.target.value })} placeholder={autoHt > 0 ? `Vide → auto ${autoHt.toFixed(2)} €` : 'Coût HT'} className="w-full px-2 py-1 bg-white border border-orange-200 rounded text-[11px]" />
                           </div>
                           <div>
-                            <label className="block text-[9px] font-semibold text-orange-600 uppercase mb-0.5 flex items-center justify-between gap-1">
+                            <label className="block text-[10px] font-semibold text-orange-600 uppercase mb-0.5 flex items-center justify-between gap-1">
                               <span>TTC{f.ttcCustom ? '' : ' (TVA 20 %)'}</span>
                               {f.ttcCustom && (
-                                <button type="button" onClick={() => updateFournisseur(i, { ttcCustom: '' })} className="text-[9px] font-bold text-orange-600 bg-orange-100 hover:bg-orange-200 rounded px-1" title="Revenir au calcul auto HT × TVA">↺ auto</button>
+                                <button type="button" onClick={() => updateFournisseur(i, { ttcCustom: '' })} className="text-[10px] font-bold text-orange-600 bg-orange-100 hover:bg-orange-200 rounded px-1" title="Revenir au calcul auto HT × TVA">↺ auto</button>
                               )}
                             </label>
                             <input
@@ -23962,14 +23962,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               onChange={(e) => updateFournisseur(i, { ttcCustom: e.target.value })}
                               placeholder={formatEuro(ttcF)}
                               title="Override TTC — utile pour les factures à TVA mixte (autoliquidation + 20%)"
-                              className={`w-full px-2 py-1 border rounded text-[10px] font-bold text-orange-800 text-right ${f.ttcCustom ? 'bg-white border-orange-400' : 'bg-orange-50 border-orange-200'}`}
+                              className={`w-full px-2 py-1 border rounded text-[11px] font-bold text-orange-800 text-right ${f.ttcCustom ? 'bg-white border-orange-400' : 'bg-orange-50 border-orange-200'}`}
                             />
                           </div>
                         </div>
                         {autoHt === 0 && f.nom && (
-                          <div className="text-[9px] text-rose-500">⚠️ Pas de tarif €/Wc pour {f.nom} dans Réglages → Fournisseurs</div>
+                          <div className="text-[10px] text-rose-500">⚠️ Pas de tarif €/Wc pour {f.nom} dans Réglages → Fournisseurs</div>
                         )}
-                        <label className="flex items-center gap-1.5 text-[10px] font-semibold text-orange-700 cursor-pointer">
+                        <label className="flex items-center gap-1.5 text-[11px] font-semibold text-orange-700 cursor-pointer">
                           <input type="checkbox" checked={!!f.sansTva || f.tauxTva === 0 || f.tauxTva === '0'} onChange={(e) => updateFournisseur(i, { sansTva: e.target.checked, tauxTva: e.target.checked ? 0 : 20 })} className="w-3.5 h-3.5 accent-orange-600" />
                           Sans TVA <span className="text-orange-500 font-normal">(auto-entrepreneur / société étrangère)</span>
                         </label>
@@ -23979,8 +23979,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   {canSeeBLFactures && (
                     <>
                       <div className="grid grid-cols-2 gap-1">
-                        <input type="text" value={f.bl || ''} onChange={(e) => updateFournisseur(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
-                        <input type="text" value={f.factureNo || ''} onChange={(e) => updateFournisseur(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-orange-200 rounded text-[10px]" />
+                        <input type="text" value={f.bl || ''} onChange={(e) => updateFournisseur(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-orange-200 rounded text-[11px]" />
+                        <input type="text" value={f.factureNo || ''} onChange={(e) => updateFournisseur(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-orange-200 rounded text-[11px]" />
                       </div>
                       <FactureDupeWarning factureNo={f.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} />
                       <FactureFileInput
@@ -24036,13 +24036,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         return (
                           <div className="mt-1.5 rounded-xl border-2 border-rose-300 bg-rose-50 p-2 space-y-1.5">
                             <div className="flex items-center justify-between gap-1">
-                              <span className="text-[10px] font-extrabold text-rose-700 uppercase flex items-center gap-1">🧾 Avoirs / notes de crédit{avoirsHt > 0 ? ` · −${formatEuro(avoirsHt)}` : ''}</span>
-                              <button onClick={() => addAvoirFournisseur(i)} className="text-[10px] font-extrabold text-white bg-rose-500 hover:bg-rose-600 px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm whitespace-nowrap">
+                              <span className="text-[11px] font-extrabold text-rose-700 uppercase flex items-center gap-1">🧾 Avoirs / notes de crédit{avoirsHt > 0 ? ` · −${formatEuro(avoirsHt)}` : ''}</span>
+                              <button onClick={() => addAvoirFournisseur(i)} className="text-[11px] font-extrabold text-white bg-rose-500 hover:bg-rose-600 px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm whitespace-nowrap">
                                 <Plus className="w-3 h-3" />Ajouter un avoir
                               </button>
                             </div>
                             {avoirsHt > 0 && (
-                              <div className="text-[10px] text-rose-700 font-semibold">Coût net : {formatEuro(baseHt)} − {formatEuro(avoirsHt)} = <span className="font-extrabold">{formatEuro(netHt)}</span> HT</div>
+                              <div className="text-[11px] text-rose-700 font-semibold">Coût net : {formatEuro(baseHt)} − {formatEuro(avoirsHt)} = <span className="font-extrabold">{formatEuro(netHt)}</span> HT</div>
                             )}
                             {avoirs.map((a, aIdx) => {
                               const montant = parseFloat(a.montantHt) || 0;
@@ -24050,13 +24050,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               return (
                                 <div key={aIdx} className="rounded-lg border border-rose-200 bg-white p-1.5 space-y-1">
                                   <div className="grid grid-cols-[1fr_1fr_auto] gap-1 items-center">
-                                    <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { montantHt: e.target.value })} placeholder="Montant HT" className="px-2 py-1 bg-white border border-rose-200 rounded text-[10px]" />
-                                    <input type="text" value={a.avoirNo || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { avoirNo: e.target.value })} placeholder="N° avoir" className="px-2 py-1 bg-white border border-rose-200 rounded text-[10px]" />
+                                    <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { montantHt: e.target.value })} placeholder="Montant HT" className="px-2 py-1 bg-white border border-rose-200 rounded text-[11px]" />
+                                    <input type="text" value={a.avoirNo || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { avoirNo: e.target.value })} placeholder="N° avoir" className="px-2 py-1 bg-white border border-rose-200 rounded text-[11px]" />
                                     <button onClick={() => removeAvoirFournisseur(i, aIdx)} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
                                       <Trash2 className="w-3 h-3" />
                                     </button>
                                   </div>
-                                  <input type="date" value={a.date || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { date: e.target.value })} className="w-full px-2 py-1 bg-white border border-rose-200 rounded text-[10px] text-rose-700" />
+                                  <input type="date" value={a.date || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { date: e.target.value })} className="w-full px-2 py-1 bg-white border border-rose-200 rounded text-[11px] text-rose-700" />
                                   <FactureFileInput
                                     fileId={a.file || ''}
                                     onChange={(id) => updateAvoirFournisseur(i, aIdx, { file: id })}
@@ -24092,7 +24092,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               );
                             })}
                             {avoirs.length === 0 && (
-                              <div className="text-[9px] text-rose-500 italic">Matériel rendu au fournisseur ? Clique « Ajouter un avoir » pour saisir la note de crédit (déduite du coût).</div>
+                              <div className="text-[10px] text-rose-500 italic">Matériel rendu au fournisseur ? Clique « Ajouter un avoir » pour saisir la note de crédit (déduite du coût).</div>
                             )}
                           </div>
                         );
@@ -24100,7 +24100,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     </>
                   )}
                   {canCheckPaiements && f.nom && (
-                    <button onClick={() => updateFournisseur(i, { paye: !f.paye, datePaye: !f.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded-lg text-[10px] font-bold ${f.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                    <button onClick={() => updateFournisseur(i, { paye: !f.paye, datePaye: !f.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded-lg text-[11px] font-bold ${f.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
                       {f.paye
                         ? `✓ Payé le ${f.datePaye ? new Date(f.datePaye).toLocaleDateString('fr-FR') : '—'}`
                         : '⏳ Non payé'}
@@ -24109,7 +24109,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 </div>
               ))}
               {(d.fournisseurs || []).length === 0 && (
-                <div className="text-center py-2 text-slate-400 italic text-[11px] bg-slate-50 rounded-xl">Aucun fournisseur</div>
+                <div className="text-center py-2 text-slate-400 italic text-[12px] bg-slate-50 rounded-xl">Aucun fournisseur</div>
               )}
             </div>
             )}
@@ -24123,9 +24123,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             const aujourdhui = !d.rappelFait && d.rappelDate === todayStr;
             return (
               <div ref={refRappel} className={`border-2 rounded-xl p-2 mb-2 ${d.rappelFait ? 'bg-emerald-50 border-emerald-300' : enRetard ? 'bg-rose-50 border-rose-300' : 'bg-blue-50 border-blue-300'}`}>
-                <button onClick={() => toggleStep('rappel')} className={`w-full text-[10px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.rappel ? '' : 'mb-1.5'} hover:opacity-80`}>
+                <button onClick={() => toggleStep('rappel')} className={`w-full text-[11px] font-bold uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.rappel ? '' : 'mb-1.5'} hover:opacity-80`}>
                   <span className="flex items-center gap-1.5 text-blue-700">
-                    <span className="text-blue-600 text-[9px]">{foldedSteps.rappel ? '▶' : '▼'}</span>
+                    <span className="text-blue-600 text-[10px]">{foldedSteps.rappel ? '▶' : '▼'}</span>
                     <span>📞 Client à rappeler</span>
                     {!d.rappelFait && d.rappelDate && (
                       <span className={`font-normal normal-case ml-1 ${enRetard ? 'text-rose-600' : 'text-blue-500'}`}>— {enRetard ? 'en retard depuis le' : aujourdhui ? "aujourd'hui" : 'prévu le'} {d.rappelDate !== todayStr ? new Date(d.rappelDate).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : ''}</span>
@@ -24143,25 +24143,25 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         onClick={() => {
                           if (window.confirm('Retirer ce rappel du dossier ?')) onUpdate({ hasRappel: false });
                         }}
-                        className="text-[9px] font-bold text-blue-600 hover:text-blue-800 bg-blue-100 hover:bg-blue-200 px-2 py-0.5 rounded"
+                        className="text-[10px] font-bold text-blue-600 hover:text-blue-800 bg-blue-100 hover:bg-blue-200 px-2 py-0.5 rounded"
                         title="Retirer ce rappel"
                       >× Retirer ce rappel</button>
                     </div>
                     <div className={`rounded-lg border-2 p-2 ${d.rappelFait ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-blue-200'}`}>
                       <div className="grid grid-cols-2 gap-2">
                         <div>
-                          <label className="block text-[9px] font-bold text-blue-700 uppercase mb-0.5">📅 Rappeler le</label>
+                          <label className="block text-[10px] font-bold text-blue-700 uppercase mb-0.5">📅 Rappeler le</label>
                           <div className="flex gap-1">
                             <input type="date" min="2000-01-01" max="2100-12-31" value={d.rappelDate || ''} onChange={(e) => onUpdate({ rappelDate: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
-                            <button type="button" onClick={() => onUpdate({ rappelDate: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                            <button type="button" onClick={() => onUpdate({ rappelDate: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                           </div>
                         </div>
                         {d.rappelFait && (
                           <div>
-                            <label className="block text-[9px] font-bold text-emerald-700 uppercase mb-0.5">✅ Rappelé le</label>
+                            <label className="block text-[10px] font-bold text-emerald-700 uppercase mb-0.5">✅ Rappelé le</label>
                             <div className="flex gap-1">
                               <input type="date" min="2000-01-01" max="2100-12-31" value={d.rappelDateFait || ''} onChange={(e) => onUpdate({ rappelDateFait: e.target.value })} className={inputCls + ' flex-1 min-w-0'} />
-                              <button type="button" onClick={() => onUpdate({ rappelDateFait: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[9px] font-bold whitespace-nowrap">Auj.</button>
+                              <button type="button" onClick={() => onUpdate({ rappelDateFait: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[10px] font-bold whitespace-nowrap">Auj.</button>
                             </div>
                           </div>
                         )}
@@ -24172,7 +24172,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           const today = new Date().toISOString().split('T')[0];
                           onUpdate({ rappelFait: checked, rappelDateFait: checked && !d.rappelDateFait ? today : (checked ? d.rappelDateFait : '') });
                         }} className="w-4 h-4 rounded accent-emerald-500" />
-                        <span className={`text-[11px] font-bold ${d.rappelFait ? 'text-emerald-700' : 'text-blue-700'}`}>
+                        <span className={`text-[12px] font-bold ${d.rappelFait ? 'text-emerald-700' : 'text-blue-700'}`}>
                           {d.rappelFait ? '✅ Client rappelé' : '⏳ Rappel à faire'}
                         </span>
                       </label>
@@ -24186,15 +24186,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
           {/* OBSERVATIONS — éditable */}
           <div>
-            <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">📝 Observations</h3>
+            <h3 className="text-[11px] font-bold text-slate-500 uppercase mb-1.5">📝 Observations</h3>
             <DebouncedTextarea value={d.observations || ''} onCommit={(v) => onUpdate({ observations: v })} placeholder="Notes, remarques..." rows={3} className="w-full px-2 py-1.5 bg-yellow-50 border border-yellow-200 rounded-xl text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-400" />
           </div>
 
           {/* ACTIVITÉ */}
           {(d.createdBy || d.modifiedBy || lastHist) && (
             <div>
-              <h3 className="text-[10px] font-bold text-slate-500 uppercase mb-1.5">📜 Activité</h3>
-              <div className="space-y-1 text-[10px]">
+              <h3 className="text-[11px] font-bold text-slate-500 uppercase mb-1.5">📜 Activité</h3>
+              <div className="space-y-1 text-[11px]">
                 {d.createdBy && (
                   <div className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 font-semibold">
                     <span>👤</span><span>Créé par <strong>{d.createdBy}</strong></span>
@@ -24215,7 +24215,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
         {/* FOOTER — indicateur sauvegarde auto */}
         <div className="border-t border-slate-200 p-2.5 bg-emerald-50 text-center">
-          <span className="text-[10px] font-bold text-emerald-700 flex items-center justify-center gap-1">
+          <span className="text-[11px] font-bold text-emerald-700 flex items-center justify-center gap-1">
             <Check className="w-3 h-3" />Toutes les modifications sont sauvegardées automatiquement
           </span>
         </div>
@@ -24369,7 +24369,7 @@ function AiCopilotModal({ action, dossier, currentUser, gmailOAuth, emailConfig,
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
           {/* Champ intention modifiable + bouton régénérer */}
           <div>
-            <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Intention</label>
+            <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Intention</label>
             <div className="flex gap-2">
               <input
                 type="text"
@@ -24401,7 +24401,7 @@ function AiCopilotModal({ action, dossier, currentUser, gmailOAuth, emailConfig,
           {!generating && (draft.subject || draft.body) && (
             <>
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Sujet (email)</label>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Sujet (email)</label>
                 <input
                   type="text"
                   value={editedSubject}
@@ -24410,7 +24410,7 @@ function AiCopilotModal({ action, dossier, currentUser, gmailOAuth, emailConfig,
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-bold text-slate-500 uppercase mb-1">Message</label>
+                <label className="block text-[11px] font-bold text-slate-500 uppercase mb-1">Message</label>
                 <textarea
                   value={editedBody}
                   onChange={(e) => setEditedBody(e.target.value)}
@@ -24419,7 +24419,7 @@ function AiCopilotModal({ action, dossier, currentUser, gmailOAuth, emailConfig,
                 />
               </div>
               {draft.reasoning && (
-                <div className="text-[11px] text-slate-500 italic px-1">💡 {draft.reasoning}</div>
+                <div className="text-[12px] text-slate-500 italic px-1">💡 {draft.reasoning}</div>
               )}
             </>
           )}
@@ -24658,7 +24658,7 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
                 className={`w-full px-3 py-2 bg-white border-2 rounded-xl text-sm resize-none ${isListening ? 'border-rose-400 ring-2 ring-rose-100' : 'border-slate-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100'}`}
                 autoFocus
               />
-              <div className="text-[11px] text-slate-500 flex items-center justify-between">
+              <div className="text-[12px] text-slate-500 flex items-center justify-between">
                 <span>{isListening ? '🎤 Écoute en cours…' : '💡 Ctrl/Cmd + Entrée pour envoyer'}</span>
                 <span>{command.length} caractères</span>
               </div>
@@ -24683,7 +24683,7 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
                   </div>
                 </div>
                 {draft.reasoning && (
-                  <div className="text-[10px] text-violet-600 italic mt-3 pl-9">↳ {draft.reasoning}</div>
+                  <div className="text-[11px] text-violet-600 italic mt-3 pl-9">↳ {draft.reasoning}</div>
                 )}
               </div>
               {targetDossier && onOpenDossier && (
@@ -24723,7 +24723,7 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
                     <div className="font-bold text-emerald-800">{targetDossier.nom} {targetDossier.prenom}</div>
                     <div className="text-xs text-emerald-700">✉️ {targetDossier.email || <em className="text-rose-600">PAS D'EMAIL</em>}</div>
                   </div>
-                  {draft.reasoning && <div className="text-[10px] text-emerald-600 italic max-w-[180px] text-right">{draft.reasoning}</div>}
+                  {draft.reasoning && <div className="text-[11px] text-emerald-600 italic max-w-[180px] text-right">{draft.reasoning}</div>}
                 </div>
               )}
 
@@ -24745,7 +24745,7 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
                   rows={10}
                   className="w-full px-3 py-2 bg-white border-2 border-slate-200 focus:border-violet-400 rounded-lg text-sm font-mono whitespace-pre-wrap resize-vertical"
                 />
-                <div className="text-[10px] text-slate-500 mt-1">Édite à ta sauce avant d'envoyer. Signature à compléter (remplace [Ton nom]).</div>
+                <div className="text-[11px] text-slate-500 mt-1">Édite à ta sauce avant d'envoyer. Signature à compléter (remplace [Ton nom]).</div>
               </div>
 
               {error && <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-sm text-rose-700">{error}</div>}
@@ -25091,7 +25091,7 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
                 }
                 return Object.values(byMessage).map(({ r, m, entries }) => (
                   <div key={`${r.email}|${m.messageId}`} className="px-4 py-3">
-                    <div className="text-[11px] text-slate-500 mb-1 truncate">
+                    <div className="text-[12px] text-slate-500 mb-1 truncate">
                       <span className="font-semibold text-slate-600">📧 {r.email}</span> · {m.subject} · <span className="text-slate-400">{m.from}</span>
                     </div>
                     {entries.map(({ a, key, ia }) => {
@@ -25104,7 +25104,7 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
                           <span className="text-base">{matched ? '✅' : '📎'}</span>
                           <div className="flex-1 min-w-0">
                             <div className="text-sm font-semibold text-slate-800 truncate">{a.filename}</div>
-                            <div className="text-[10px] text-slate-400 flex items-center gap-2 flex-wrap">
+                            <div className="text-[11px] text-slate-400 flex items-center gap-2 flex-wrap">
                               {a.sizeBytes ? <span>{Math.round(a.sizeBytes / 1024)} Ko</span> : null}
                               {ia?.status === 'done' && (
                                 <>
@@ -25244,7 +25244,7 @@ function GlobalSearchModal({ dossiers, STATUTS, isAdmin, onClose, onSelect }) {
             className="flex-1 text-base font-medium bg-transparent focus:outline-none"
             autoFocus
           />
-          <kbd className="text-[10px] font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">Esc</kbd>
+          <kbd className="text-[11px] font-mono bg-slate-100 px-1.5 py-0.5 rounded text-slate-500">Esc</kbd>
         </div>
 
         {/* RESULTS */}
@@ -25258,7 +25258,7 @@ function GlobalSearchModal({ dossiers, STATUTS, isAdmin, onClose, onSelect }) {
           ) : (
             <div className="py-2">
               {!query && (
-                <div className="px-4 py-1.5 text-[10px] font-bold text-slate-400 uppercase">📋 Dossiers récents</div>
+                <div className="px-4 py-1.5 text-[11px] font-bold text-slate-400 uppercase">📋 Dossiers récents</div>
               )}
               {results.map((item, idx) => {
                 const { d, matches, statut } = formatItem(item);
@@ -25276,9 +25276,9 @@ function GlobalSearchModal({ dossiers, STATUTS, isAdmin, onClose, onSelect }) {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-slate-800 text-sm">{d.nom} {d.prenom}</span>
-                        {d.id && <span className="text-[10px] font-mono text-slate-400">#{d.id}</span>}
+                        {d.id && <span className="text-[11px] font-mono text-slate-400">#{d.id}</span>}
                       </div>
-                      <div className="flex items-center gap-2 flex-wrap mt-0.5 text-[11px] text-slate-500">
+                      <div className="flex items-center gap-2 flex-wrap mt-0.5 text-[12px] text-slate-500">
                         {statut && <span>{statut.label}</span>}
                         {d.telephone && <><span>·</span><span>📞 {d.telephone}</span></>}
                         {d.ville && <><span>·</span><span>🏘️ {d.ville}</span></>}
@@ -25287,12 +25287,12 @@ function GlobalSearchModal({ dossiers, STATUTS, isAdmin, onClose, onSelect }) {
                       {matches.length > 0 && query && (
                         <div className="flex items-center gap-1 mt-1 flex-wrap">
                           {matches.slice(0, 4).map((m, i) => (
-                            <span key={i} className="text-[9px] font-semibold px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded-full">{m}</span>
+                            <span key={i} className="text-[10px] font-semibold px-1.5 py-0.5 bg-violet-100 text-violet-700 rounded-full">{m}</span>
                           ))}
                         </div>
                       )}
                     </div>
-                    {isSel && <span className="text-[10px] font-bold text-violet-500">↵</span>}
+                    {isSel && <span className="text-[11px] font-bold text-violet-500">↵</span>}
                   </button>
                 );
               })}
@@ -25301,7 +25301,7 @@ function GlobalSearchModal({ dossiers, STATUTS, isAdmin, onClose, onSelect }) {
         </div>
 
         {/* FOOTER tips */}
-        <div className="border-t border-slate-100 px-4 py-2 bg-slate-50 flex items-center justify-between text-[10px] text-slate-500">
+        <div className="border-t border-slate-100 px-4 py-2 bg-slate-50 flex items-center justify-between text-[11px] text-slate-500">
           <div className="flex items-center gap-3">
             <span className="flex items-center gap-1"><kbd className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">↑↓</kbd> naviguer</span>
             <span className="flex items-center gap-1"><kbd className="font-mono bg-white px-1.5 py-0.5 rounded border border-slate-200">↵</kbd> ouvrir</span>
@@ -25614,7 +25614,7 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
           <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
             <div className="grid grid-cols-7 border-b border-slate-200 bg-slate-50">
               {dayNames.map(d => (
-                <div key={d} className="p-2 text-center text-[10px] font-bold text-slate-500 uppercase tracking-wide">{d}</div>
+                <div key={d} className="p-2 text-center text-[11px] font-bold text-slate-500 uppercase tracking-wide">{d}</div>
               ))}
             </div>
             <div className="grid grid-cols-7 auto-rows-fr">
@@ -25629,11 +25629,11 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
                     className={`min-h-[90px] p-1.5 border-r border-b border-slate-100 ${cell.isCurrentMonth ? 'bg-white' : 'bg-slate-50/50'} ${isWeekend && cell.isCurrentMonth ? 'bg-slate-50/30' : ''}`}
                   >
                     <div className={`text-xs font-bold mb-1 flex items-center justify-between ${cell.isCurrentMonth ? (isToday ? 'text-violet-700' : 'text-slate-700') : 'text-slate-300'}`}>
-                      <span className={isToday ? 'bg-violet-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[10px]' : ''}>
+                      <span className={isToday ? 'bg-violet-500 text-white w-5 h-5 rounded-full flex items-center justify-center text-[11px]' : ''}>
                         {cell.date.getDate()}
                       </span>
                       {events.length > 0 && (
-                        <span className="text-[9px] font-semibold bg-slate-100 text-slate-600 px-1 rounded-full">{events.length}</span>
+                        <span className="text-[10px] font-semibold bg-slate-100 text-slate-600 px-1 rounded-full">{events.length}</span>
                       )}
                     </div>
                     <div className="space-y-0.5">
@@ -25643,7 +25643,7 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
                           <button
                             key={i}
                             onClick={() => onShowQuick && onShowQuick(d.localId)}
-                            className={`w-full text-left text-[9px] font-semibold px-1.5 py-0.5 rounded border ${eventTypeStyle(ev.type)} hover:shadow-sm hover:scale-[1.02] transition-all truncate flex items-center gap-1`}
+                            className={`w-full text-left text-[10px] font-semibold px-1.5 py-0.5 rounded border ${eventTypeStyle(ev.type)} hover:shadow-sm hover:scale-[1.02] transition-all truncate flex items-center gap-1`}
                             title={`${d.nom} ${d.prenom || ''} — ${ev.type}`}
                           >
                             <span>{eventTypeEmoji(ev.type)}</span>
@@ -25654,7 +25654,7 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
                       {events.length > 3 && (
                         <button
                           onClick={() => onShowQuick && events[3] && onShowQuick(events[3].dossier.localId)}
-                          className="w-full text-[9px] text-slate-500 hover:text-violet-600 font-semibold text-center"
+                          className="w-full text-[10px] text-slate-500 hover:text-violet-600 font-semibold text-center"
                         >
                           +{events.length - 3} autres
                         </button>
@@ -25693,7 +25693,7 @@ function DayView({ date, events, isToday, onShowQuick, STATUTS, isAdmin }) {
       <div className={`p-4 border-b border-slate-200 ${isToday ? 'bg-gradient-to-r from-violet-50 to-pink-50' : 'bg-slate-50'}`}>
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div className="text-sm font-bold text-slate-700">
-            {isToday && <span className="inline-block bg-violet-500 text-white text-[10px] font-bold px-2 py-0.5 rounded-full mr-2">AUJOURD'HUI</span>}
+            {isToday && <span className="inline-block bg-violet-500 text-white text-[11px] font-bold px-2 py-0.5 rounded-full mr-2">AUJOURD'HUI</span>}
             {sorted.length} évènement{sorted.length > 1 ? 's' : ''}
           </div>
           {isAdmin && ca > 0 && (
@@ -25738,13 +25738,13 @@ function DayView({ date, events, isToday, onShowQuick, STATUTS, isAdmin }) {
                 </span>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    {d.id && <span className="text-[10px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">#{d.id}</span>}
+                    {d.id && <span className="text-[11px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded">#{d.id}</span>}
                     <span className="font-bold text-sm text-slate-800 truncate">
                       {d.nom} {d.prenom && <span className="font-normal text-slate-500">{d.prenom}</span>}
                     </span>
-                    {statut && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${statut.bg} ${statut.text}`}>{statut.emoji} {statut.label}</span>}
+                    {statut && <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-semibold ${statut.bg} ${statut.text}`}>{statut.emoji} {statut.label}</span>}
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
+                  <div className="text-[12px] text-slate-500 mt-1 flex items-center gap-2 flex-wrap">
                     {d.telephone && <span>📞 {d.telephone}</span>}
                     {(d.adresse || d.ville) && <span className="truncate">📍 {d.adresse} {d.codePostal} {d.ville}</span>}
                     {isAdmin && d.montantTotal > 0 && <span className="font-bold text-violet-600">💰 {formatEuro(d.montantTotal)}</span>}
@@ -25770,7 +25770,7 @@ function WeekView({ weekGrid, eventsByDate, dateKey, todayKey, dayNamesLong, onS
           const isToday = key === todayKey;
           return (
             <div key={idx} className={`p-2 text-center ${isToday ? 'bg-violet-50' : ''}`}>
-              <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wide">{dayNamesLong[(cell.date.getDay() + 6) % 7].slice(0, 3)}</div>
+              <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wide">{dayNamesLong[(cell.date.getDay() + 6) % 7].slice(0, 3)}</div>
               <div className={`text-lg font-bold mt-0.5 ${isToday ? 'text-violet-700' : 'text-slate-700'}`}>
                 {isToday ? (
                   <span className="inline-flex items-center justify-center w-7 h-7 rounded-full bg-violet-500 text-white text-sm">
@@ -25795,7 +25795,7 @@ function WeekView({ weekGrid, eventsByDate, dateKey, todayKey, dayNamesLong, onS
               className={`p-2 border-r border-slate-100 last:border-r-0 ${isWeekend ? 'bg-slate-50/40' : ''}`}
             >
               {events.length === 0 ? (
-                <div className="text-center text-[10px] text-slate-300 italic mt-4">—</div>
+                <div className="text-center text-[11px] text-slate-300 italic mt-4">—</div>
               ) : (
                 <div className="space-y-1">
                   {events.map((ev, i) => {
@@ -25804,14 +25804,14 @@ function WeekView({ weekGrid, eventsByDate, dateKey, todayKey, dayNamesLong, onS
                       <button
                         key={i}
                         onClick={() => onShowQuick && onShowQuick(d.localId)}
-                        className={`w-full text-left text-[11px] font-semibold px-2 py-1.5 rounded-lg border ${eventTypeStyle(ev.type)} hover:shadow-md transition-all`}
+                        className={`w-full text-left text-[12px] font-semibold px-2 py-1.5 rounded-lg border ${eventTypeStyle(ev.type)} hover:shadow-md transition-all`}
                         title={`${d.nom} ${d.prenom || ''} — ${ev.type}`}
                       >
                         <div className="flex items-center gap-1 mb-0.5">
                           <span>{eventTypeEmoji(ev.type)}</span>
                           <span className="truncate">{d.nom}</span>
                         </div>
-                        {d.prenom && <div className="text-[10px] font-normal opacity-80 truncate">{d.prenom}</div>}
+                        {d.prenom && <div className="text-[11px] font-normal opacity-80 truncate">{d.prenom}</div>}
                       </button>
                     );
                   })}
@@ -26191,7 +26191,7 @@ function KanbanView({ dossiers, STATUTS, onShowQuick, isAdmin, societes = [] }) 
         <span>{emoji}</span>
         <span>{label}</span>
         {typeof count === 'number' && (
-          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${sel ? 'bg-white/25' : 'bg-slate-200'}`}>
+          <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${sel ? 'bg-white/25' : 'bg-slate-200'}`}>
             {count}
           </span>
         )}
@@ -26277,17 +26277,17 @@ function KanbanView({ dossiers, STATUTS, onShowQuick, isAdmin, societes = [] }) 
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 min-w-0">
                       <span className="text-lg leading-none">{col.emoji}</span>
-                      <span className="font-bold text-[11px] uppercase tracking-wide truncate">{col.label}</span>
+                      <span className="font-bold text-[12px] uppercase tracking-wide truncate">{col.label}</span>
                     </div>
                     <span className="bg-white/25 text-white text-xs font-bold px-2 py-0.5 rounded-full flex-shrink-0">{items.length}</span>
                   </div>
                   {isAdmin && colCA > 0 && (
-                    <div className="text-[10px] text-white/80 mt-1 font-semibold">{formatEuro(colCA)} CA</div>
+                    <div className="text-[11px] text-white/80 mt-1 font-semibold">{formatEuro(colCA)} CA</div>
                   )}
                 </div>
                 <div className="p-2 space-y-2 max-h-[70vh] overflow-y-auto flex-1">
                   {items.length === 0 ? (
-                    <div className="text-center text-[11px] text-slate-400 italic py-6">Aucun dossier</div>
+                    <div className="text-center text-[12px] text-slate-400 italic py-6">Aucun dossier</div>
                   ) : (
                     items.map(d => (
                       <KanbanCard
@@ -26306,7 +26306,7 @@ function KanbanView({ dossiers, STATUTS, onShowQuick, isAdmin, societes = [] }) 
         </div>
       </div>
 
-      <div className="text-[11px] text-center text-slate-500 italic">
+      <div className="text-[12px] text-center text-slate-500 italic">
         💡 Clique une carte pour voir le dossier. Les changements de statut se font via les actions du dossier (le Kanban n'a pas de glisser-déposer pour préserver l'auto-statut).
       </div>
     </div>
@@ -26386,27 +26386,27 @@ function KanbanCard({ d, societes = [], onShowQuick, isAdmin }) {
             {dateInfo.waitLabel && <div className="text-[8px] text-slate-400 uppercase tracking-tight">{dateInfo.waitLabel}</div>}
           </div>
         ) : d.id ? (
-          <span className="text-[9px] font-mono bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded flex-shrink-0">
+          <span className="text-[10px] font-mono bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded flex-shrink-0">
             #{d.id}
           </span>
         ) : null}
       </div>
       {isAdmin && d.montantTotal > 0 && (
-        <div className="text-[11px] font-bold text-violet-700 mb-1.5">
+        <div className="text-[12px] font-bold text-violet-700 mb-1.5">
           💰 {formatEuro(d.montantTotal)}
         </div>
       )}
       <div className="flex items-center gap-1 flex-wrap">
         {dateInfo.date && (
-          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[9px] font-semibold bg-blue-50 text-blue-700">
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-blue-50 text-blue-700">
             <Calendar className="w-2.5 h-2.5" />
             {dateInfo.label} {formatDateForSheet(dateInfo.date)}
           </span>
         )}
-        {d.hasRetractation && <span title={d.retractationDate ? `Rétracté le ${new Date(d.retractationDate).toLocaleDateString('fr-FR')}` : 'Client rétracté'} className="text-[9px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">📝 Rétracté</span>}
-        {d.hasLitige && <span className="text-[9px] font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">⚠️ Litige</span>}
-        {d.hasSav && <span className="text-[9px] font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">🛠️ SAV</span>}
-        {d.hasRappel && <span className="text-[9px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">📞 Rappel</span>}
+        {d.hasRetractation && <span title={d.retractationDate ? `Rétracté le ${new Date(d.retractationDate).toLocaleDateString('fr-FR')}` : 'Client rétracté'} className="text-[10px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">📝 Rétracté</span>}
+        {d.hasLitige && <span className="text-[10px] font-bold bg-rose-100 text-rose-700 px-1.5 py-0.5 rounded">⚠️ Litige</span>}
+        {d.hasSav && <span className="text-[10px] font-bold bg-yellow-100 text-yellow-700 px-1.5 py-0.5 rounded">🛠️ SAV</span>}
+        {d.hasRappel && <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-1.5 py-0.5 rounded">📞 Rappel</span>}
         {soc && (
           <span className="ml-auto" title={`Société : ${soc.label}`}>
             <SocieteBadge societe={soc} variant="inline" />
@@ -26455,10 +26455,10 @@ function ChantierPhotosPanel({ photos }) {
   return (
     <div className="bg-white border border-violet-200 rounded-xl p-2">
       <div className="flex items-center justify-between mb-1.5">
-        <span className="text-[10px] font-bold text-violet-700 uppercase">
+        <span className="text-[11px] font-bold text-violet-700 uppercase">
           📸 Photos du poseur ({photos.length})
         </span>
-        <span className="text-[9px] text-slate-500 italic">envoyées depuis le lien chantier</span>
+        <span className="text-[10px] text-slate-500 italic">envoyées depuis le lien chantier</span>
       </div>
       <div className="grid grid-cols-4 gap-1.5">
         {photos.map((p, i) => {
@@ -26593,14 +26593,14 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, currentUser, 
           </span>
           {count > 0 && (
             <span
-              className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center text-[11px] font-bold leading-none text-white shadow-[0_2px_4px_rgba(0,0,0,0.18)] pointer-events-none"
+              className="absolute -top-1.5 -right-1.5 min-w-[22px] h-[22px] px-1.5 rounded-full flex items-center justify-center text-[12px] font-bold leading-none text-white shadow-[0_2px_4px_rgba(0,0,0,0.18)] pointer-events-none"
               style={{ backgroundColor: 'rgb(255, 59, 48)' }}
             >
               {count > 999 ? '999+' : count}
             </span>
           )}
         </span>
-        <div className="text-[10px] font-medium text-slate-700 text-center leading-tight max-w-[72px] line-clamp-2">
+        <div className="text-[11px] font-medium text-slate-700 text-center leading-tight max-w-[72px] line-clamp-2">
           {label}
         </div>
       </button>
@@ -26638,11 +26638,11 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, currentUser, 
 
   return (
     <div className="space-y-5">
-      <div className="text-[10px] text-slate-400 text-center italic px-1">
+      <div className="text-[11px] text-slate-400 text-center italic px-1">
         💡 Glisse les icônes pour les réorganiser comme tu veux — l'ordre est sauvegardé pour ton compte.
       </div>
       <div>
-        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Vue globale</h3>
+        <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Vue globale</h3>
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-6 gap-x-4 justify-items-center">
           {orderedGlobal.map(it => (
             <Pastille key={it.id} {...it} section="global" items={orderedGlobal} />
@@ -26650,7 +26650,7 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, currentUser, 
         </div>
       </div>
       <div>
-        <h3 className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Par statut</h3>
+        <h3 className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-2 px-1">Par statut</h3>
         <div className="grid grid-cols-4 sm:grid-cols-6 md:grid-cols-8 lg:grid-cols-10 gap-y-6 gap-x-4 justify-items-center">
           {orderedStatut.map(it => (
             <Pastille key={it.id} {...it} section="byStatut" items={orderedStatut} />
@@ -27002,12 +27002,12 @@ function DoublonsModal({ groupes, STATUTS, onClose, onSelect, onDelete, isAdmin 
       nomprenom: { label: 'Même nom + prénom', color: 'bg-blue-100 text-blue-800' },
       tel: { label: 'Même téléphone', color: 'bg-amber-100 text-amber-800' },
     }[r] || { label: r, color: 'bg-slate-100 text-slate-700' };
-    return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${cfg.color}`}>{cfg.label}</span>;
+    return <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${cfg.color}`}>{cfg.label}</span>;
   };
   const statutBadge = (d) => {
     const s = STATUTS.find(x => x.id === d.statut);
     if (!s) return null;
-    return <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${s.color || 'bg-slate-100 text-slate-700'}`}>{s.label}</span>;
+    return <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded ${s.color || 'bg-slate-100 text-slate-700'}`}>{s.label}</span>;
   };
   const fmtDate = (s) => s ? new Date(s).toLocaleDateString('fr-FR') : '—';
   const handleDelete = (d) => {
@@ -27059,13 +27059,13 @@ function DoublonsModal({ groupes, STATUTS, onClose, onSelect, onDelete, isAdmin 
                         <div className="text-sm font-bold text-slate-800 truncate">
                           {d.nom || '(sans nom)'} {d.prenom || ''}
                         </div>
-                        <div className="text-[11px] text-slate-500">
+                        <div className="text-[12px] text-slate-500">
                           #{d.id || '?'} · {d.societe ? d.societe.toUpperCase() : '—'}
                         </div>
                       </div>
                       {statutBadge(d)}
                     </div>
-                    <div className="text-[11px] text-slate-600 space-y-0.5">
+                    <div className="text-[12px] text-slate-600 space-y-0.5">
                       <div>📞 {d.telephone || '—'}</div>
                       <div className="truncate">📍 {[d.adresse, d.codePostal, d.ville].filter(Boolean).join(' · ') || '—'}</div>
                       <div>📅 Créé le {fmtDate(d.createdAt)} {d.createdBy ? <span className="text-slate-400">· par {d.createdBy}</span> : null}</div>
@@ -27075,14 +27075,14 @@ function DoublonsModal({ groupes, STATUTS, onClose, onSelect, onDelete, isAdmin 
                     <div className="flex items-center gap-1.5 mt-2 flex-wrap">
                       <button
                         onClick={() => { onSelect(d.localId); onClose(); }}
-                        className="px-2 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded text-[10px] font-bold"
+                        className="px-2 py-1 bg-violet-600 hover:bg-violet-700 text-white rounded text-[11px] font-bold"
                       >
                         👁️ Ouvrir
                       </button>
                       {isAdmin && (
                         <button
                           onClick={() => handleDelete(d)}
-                          className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[10px] font-bold ml-auto"
+                          className="px-2 py-1 bg-rose-100 hover:bg-rose-200 text-rose-700 rounded text-[11px] font-bold ml-auto"
                           title="Supprimer définitivement ce dossier"
                         >
                           🗑️ Supprimer
@@ -27373,7 +27373,7 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
           return typeof c === 'string' ? c : (c.tel || '');
         };
         const renderChip = (emoji, nom, tel, kind) => {
-          if (!tel) return <span key={`${kind}:${nom}`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[10px] font-semibold">{emoji} {nom}</span>;
+          if (!tel) return <span key={`${kind}:${nom}`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 text-[11px] font-semibold">{emoji} {nom}</span>;
           const link = buildWhatsAppLink(tel, buildMsg(kind, nom));
           return (
             <a
@@ -27397,7 +27397,7 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
                 }
               }}
               title={`Relancer ${nom} sur WhatsApp (log dans l'historique du dossier)`}
-              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 text-[10px] font-semibold"
+              className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 hover:bg-emerald-200 text-[11px] font-semibold"
             >
               📲 {emoji} {nom}
             </a>
@@ -27422,7 +27422,7 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
       lineLabel: (d, r) => {
         const emojiFor = (t) => t === 'Poseur' ? '🔧' : t === 'Régie' ? '🤝' : '📦';
         const chips = (r.prestataires || []).map((p, idx) => (
-          <span key={`${p.type}:${p.nom}:${idx}`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-[10px] font-semibold">
+          <span key={`${p.type}:${p.nom}:${idx}`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 text-[11px] font-semibold">
             {emojiFor(p.type)} {p.nom}
           </span>
         ));
@@ -27520,8 +27520,8 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-bold text-slate-800 text-sm truncate">{d.nom} {d.prenom}</span>
-                        {d.id && <span className="text-[10px] font-mono text-slate-400">#{d.id}</span>}
-                        {d.telephone && <a href={`tel:${d.telephone}`} onClick={(e) => e.stopPropagation()} className="text-[10px] font-semibold text-violet-600 hover:underline">📞 {d.telephone}</a>}
+                        {d.id && <span className="text-[11px] font-mono text-slate-400">#{d.id}</span>}
+                        {d.telephone && <a href={`tel:${d.telephone}`} onClick={(e) => e.stopPropagation()} className="text-[11px] font-semibold text-violet-600 hover:underline">📞 {d.telephone}</a>}
                         {(() => {
                           // Badge "🔁 N essais" pour les alertes où on appelle le client
                           const nEssais = type === 'controleQualite' ? (d.tentativesCQ || []).length
@@ -27529,13 +27529,13 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
                             : 0;
                           if (nEssais === 0) return null;
                           return (
-                            <span title={`Tu as déjà essayé ${nEssais} fois sans réponse`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 border border-amber-300">
+                            <span title={`Tu as déjà essayé ${nEssais} fois sans réponse`} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-700 border border-amber-300">
                               🔁 {nEssais} essai{nEssais > 1 ? 's' : ''}
                             </span>
                           );
                         })()}
                       </div>
-                      <div className="text-[11px] text-slate-500 mt-0.5">
+                      <div className="text-[12px] text-slate-500 mt-0.5">
                         {cfg.lineLabel(d, r)}
                       </div>
                     </div>
@@ -27551,14 +27551,14 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
                         }}
                         onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.stopPropagation(); e.preventDefault(); const q = (d.nom || '').trim(); if (q) onOpenGmailSearch(q, `${d.nom || ''} ${d.prenom || ''}`.trim()); } }}
                         title={`Cherche les factures de ${d.nom || ''} ${d.prenom || ''} dans tes Gmail`}
-                        className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-[10px] font-bold cursor-pointer transition-colors"
+                        className="flex-shrink-0 inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-blue-100 hover:bg-blue-200 text-blue-700 text-[11px] font-bold cursor-pointer transition-colors"
                       >
                         🔍 Gmail
                       </span>
                     )}
                     <div className="flex-shrink-0 text-right">
                       <div className={`text-lg font-bold ${levelStyle}`}>{joursAffiches}j</div>
-                      <div className="text-[9px] text-slate-400">{cfg.suffixLabel}</div>
+                      <div className="text-[10px] text-slate-400">{cfg.suffixLabel}</div>
                     </div>
                   </button>
                 );
@@ -27568,7 +27568,7 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
         </div>
 
         {/* FOOTER */}
-        <div className="border-t border-slate-100 px-4 py-2.5 bg-slate-50 text-[11px] text-slate-500 flex items-center justify-between">
+        <div className="border-t border-slate-100 px-4 py-2.5 bg-slate-50 text-[12px] text-slate-500 flex items-center justify-between">
           <span>💡 Clique sur un dossier pour ouvrir l'aperçu</span>
           <span className="font-semibold">{sortedItems.length} alerte{sortedItems.length > 1 ? 's' : ''}</span>
         </div>
