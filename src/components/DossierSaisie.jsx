@@ -12849,8 +12849,21 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
     );
   };
 
-  // Cellule prestataire — chip style Linear (dot + nom + ✓×).
-  // Auto-adapte à la largeur du texte (pas de min-width forcé).
+  // 📝 Édite le N° facture d'un prestataire (saisie directe dans la chip).
+  const setFactureNoPrestataire = (localId, kind, idx, val) => {
+    const field = kindToField(kind);
+    setDossiers(prev => prev.map(d => {
+      if (d.localId !== localId) return d;
+      const list = [...(d[field] || [])];
+      if (!list[idx]) return d;
+      list[idx] = { ...list[idx], factureNo: val };
+      return { ...d, [field]: list, savedAt: new Date().toISOString(), modifiedAt: new Date().toISOString() };
+    }));
+  };
+
+  // Cellule prestataire — chip avec dot + nom + N° facture + ✓×.
+  // N° facture inline = vérif rapide avant de payer (si vide → pas de facture
+  // reçue → ne pas payer encore).
   const PrestataireCell = ({ items, kind, lid, color, options = [] }) => {
     const dotCls = (paye) => paye ? 'bg-emerald-500' : 'bg-slate-300';
     return (
@@ -12859,10 +12872,9 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
           const baseChip = it.paye
             ? 'bg-emerald-50 border-emerald-200 text-emerald-800 hover:bg-emerald-100'
             : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100';
-          // Largeur du select calée sur la longueur du texte (~6.5px par caractère)
-          // — minimum 70px pour rester cliquable.
           const labelLen = (it.nom || '— choisir —').length;
-          const selectWidth = Math.max(70, Math.min(180, labelLen * 7 + 12));
+          const selectWidth = Math.max(70, Math.min(160, labelLen * 7 + 12));
+          const hasFacture = !!(it.factureNo && String(it.factureNo).trim());
           return (
             <div key={`${kind}-${it.idx}`} className={`group inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md border transition ${baseChip}`}>
               <span className={`flex-shrink-0 w-1.5 h-1.5 rounded-full ${dotCls(it.paye)}`}></span>
@@ -12877,9 +12889,19 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                 {it.nom && !options.includes(it.nom) && <option value={it.nom}>{it.nom} (existant)</option>}
                 {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
               </select>
+              {/* N° facture inline — vérif rapide avant paiement */}
+              <input
+                type="text"
+                defaultValue={it.factureNo || ''}
+                placeholder="N° fac"
+                onBlur={(e) => { if ((e.target.value || '') !== (it.factureNo || '')) setFactureNoPrestataire(lid, kind, it.idx, e.target.value); }}
+                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                title={hasFacture ? `Facture ${it.factureNo}` : 'Aucune facture saisie — risque de payer sans justificatif'}
+                className={`flex-shrink-0 w-[72px] text-[9px] font-mono font-semibold border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400 ${hasFacture ? 'bg-white border-slate-200 text-slate-700' : 'bg-rose-50 border-rose-200 text-rose-600 placeholder-rose-400'}`}
+              />
               <button
                 onClick={() => togglePrestataire(lid, kind, it.idx)}
-                title={it.paye ? 'Marquer non payé' : 'Marquer payé'}
+                title={it.paye ? 'Marquer non payé' : (hasFacture ? 'Marquer payé' : '⚠️ Pas de facture — marquer payé quand même')}
                 className={`flex-shrink-0 w-4 h-4 rounded text-[9px] font-bold flex items-center justify-center transition ${it.paye ? 'bg-emerald-500 text-white' : 'bg-white border border-slate-300 text-slate-400 hover:border-emerald-400 hover:text-emerald-600'}`}
               >
                 {it.paye ? '✓' : '⏳'}
