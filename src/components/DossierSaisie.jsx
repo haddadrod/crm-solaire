@@ -7645,7 +7645,13 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
           }
         }
 
-        setFiles(prev => prev.map(x => x.id === it.id ? (autoSkipped ? {
+        // 🛑 On ne masque (status 'skipped') QUE si le doublon est CERTAIN
+        //    (même n° de facture + ligne déjà rattachée). Pour l'heuristique
+        //    floue (même fournisseur + même montant), on AFFICHE la carte en
+        //    'ready' avec la proposition pré-sélectionnée → l'user voit où ça
+        //    va et peut corriger. Sinon, cas régie Flex : 4 nouvelles factures
+        //    « ignorées automatiquement » sans qu'on demande rien.
+        setFiles(prev => prev.map(x => x.id === it.id ? (autoSkipCertain ? {
           ...x,
           status: 'skipped',
           skipReason: 'already_attached',
@@ -7655,16 +7661,14 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
         } : {
           ...x,
           status: 'ready',
+          // Si l'heuristique a flairé un doublon probable, on le signale sur
+          // la carte (badge) sans la cacher.
+          maybeDuplicate: autoSkipped || false,
           extracted: payload.data || {},
           matching: payload.matching || { proposals: [], notes: '' },
           pickedIdx: props.length > 0 ? 0 : null,
         }) : x));
-        // 📥 Auto-skip → marque côté serveur UNIQUEMENT si certain (factureNo
-        //    identique). L'heuristique (même fournisseur + même montant) est
-        //    trop floue : pour une régie comme Flex qui émet plein de factures
-        //    de montant identique, on marquait à tort 48 factures pour 2 vrais
-        //    imports. L'auto-skip visuel local reste OK (cache la carte cette
-        //    session) mais on ne grave pas côté serveur.
+        // 📥 Marque côté serveur UNIQUEMENT si certain (factureNo identique).
         if (autoSkipCertain) markGmailImportedSilent(it);
       } catch (e) {
         setFiles(prev => prev.map(x => x.id === it.id ? { ...x, status: 'error', error: e.message } : x));
@@ -8610,6 +8614,7 @@ function TriFactureCard({ item, dossiers, onPick, onManualPick, onCreateAndPickL
           {item.status === 'analyzing' && <span className="text-[12px] font-bold text-blue-600 animate-pulse">⏳ Analyse IA…</span>}
           {item.status === 'saving' && <span className="text-[12px] font-bold text-amber-600 animate-pulse">💾 Sauvegarde…</span>}
           {item.status === 'confirmed' && <span className="text-[12px] font-bold text-emerald-600">✅ Rattaché</span>}
+          {item.status === 'ready' && item.maybeDuplicate && <span className="text-[12px] font-bold text-amber-600" title="Une facture du même fournisseur et même montant existe déjà — à vérifier avant de rattacher.">⚠️ Doublon probable</span>}
           {item.status === 'skipped' && <span className="text-[12px] font-bold text-slate-500">⏭️ Mis de côté</span>}
           {item.status === 'error' && <span className="text-[12px] font-bold text-rose-600">⚠️ Erreur</span>}
           <button onClick={onRemove} className="text-slate-400 hover:text-rose-600" title="Retirer cette carte">
