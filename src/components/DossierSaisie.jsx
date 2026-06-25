@@ -4897,24 +4897,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsPennylaneAEnvoyer.sort((a, b) => b.jours - a.jours);
 
-    // 📦 Matériel non rendu — règle simple : BL matériel donné au poseur
-    // ET pose pas encore confirmée OK (statutPose !== 'visite_ok') ET pas
-    // marqué rendu. Couvre tous les cas où le matériel est encore dehors :
-    // dossier annulé, refusé, déplacement sec, rétractation, pose pas faite
-    // (PERCHERON-style : « le poseur a le matos mais on n'a pas posé »).
+    // 📦 Matériel non rendu — quand on a donné un BL avec récup matériel au
+    // poseur et que la pose a été annulée/refusée, il se retrouve avec du
+    // matériel à nous rapporter. Cas couverts : dossier annulé, pose ratée,
+    // statut DÉPLACEMENT, client rétracté.
     const rappelsMaterielNonRendu = [];
     dossiersDash.forEach(d => {
-      if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
-      if (!d.blMaterielPoseur) return; // pas de BL matériel → rien à tracer
-      if (d.materielRendu) return; // déjà rendu → OK
-      // Pose CONFIRMÉE faite → le matériel a été utilisé, plus à rendre.
-      if (d.statutPose === 'visite_ok') return;
-      // Sinon (annulé / refusé / déplacement / rétracté / juste pas encore posé)
-      // → le matériel est chez le poseur, il doit nous le rendre.
+      if (d.createdBy === 'import_sheet') return;
+      if (!d.blMaterielPoseur) return;
+      if (d.materielRendu) return;
       const annule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
       const tentativeRatee = Array.isArray(d.tentativesPose) && d.tentativesPose.length > 0;
-      // Référence date : annulé → archivedAt ; pose ratée → dernière tentative ;
-      // sinon → date du BL.
+      const deplacement = d.statut === 'Z_DEPLACEMENT';
+      const retracte = !!d.hasRetractation;
+      if (!annule && !tentativeRatee && !deplacement && !retracte) return;
       const ref = (annule ? (d.archivedAt || d.blMaterielDate) : (tentativeRatee ? (d.tentativesPose[d.tentativesPose.length - 1]?.date) : null)) || d.blMaterielDate || d.savedAt;
       const jours = ref ? joursEcoules(ref) : 0;
       let level = 'warn';
@@ -4924,6 +4920,44 @@ export default function DossierSaisie({ authUser, onLogout }) {
       rappelsMaterielNonRendu.push({ dossier: d, jours, level, poseurNom });
     });
     rappelsMaterielNonRendu.sort((a, b) => b.jours - a.jours);
+
+    // 📦 Matériel inséré — quand on a au moins un fournisseur (matos commandé)
+    // sur le dossier, on suit 2 cas :
+    //   • A. Aucun poseur assigné → il faut en mettre un (sinon qui pose ?)
+    //   • B. Poseur assigné MAIS sa facture (PDF) n'est pas encore dans le CRM
+    // → liste regroupée par cas pour que l'utilisateur agisse vite.
+    const hasFacturePoseur = (p) => !!(p?.factureFile || p?.facturePdfUrl || p?.factureExternalUrl);
+    const rappelsMaterielInsere = [];
+    dossiersDash.forEach(d => {
+      if (d.createdBy === 'import_sheet') return;
+      if (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') return;
+      // Matos inséré = au moins un fournisseur avec nom sur le dossier
+      const fournisseursAvecNom = (d.fournisseurs || []).filter(f => f?.nom);
+      if (fournisseursAvecNom.length === 0) return;
+      const poseursAvecNom = (d.poseurs || []).filter(p => p?.nom);
+      const sansPoseur = poseursAvecNom.length === 0;
+      const poseursSansFacture = poseursAvecNom.filter(p => !hasFacturePoseur(p)).map(p => p.nom);
+      // Skip si aucun des 2 cas — dossier OK
+      if (!sansPoseur && poseursSansFacture.length === 0) return;
+      const ref = d.dateInsta || d.savedAt;
+      const jours = ref ? joursEcoules(ref) : 0;
+      let level = 'warn';
+      if (sansPoseur && jours >= 14) level = 'high';
+      if (sansPoseur && jours >= 30) level = 'critical';
+      rappelsMaterielInsere.push({
+        dossier: d,
+        jours,
+        level,
+        cas: sansPoseur ? 'sansPoseur' : 'sansFacture',
+        fournisseurs: fournisseursAvecNom.map(f => f.nom),
+        poseursSansFacture, // [] si sansPoseur
+      });
+    });
+    rappelsMaterielInsere.sort((a, b) => {
+      // sansPoseur en premier (plus urgent), puis par ancienneté
+      if (a.cas !== b.cas) return a.cas === 'sansPoseur' ? -1 : 1;
+      return b.jours - a.jours;
+    });
 
     // 📅 Activité mensuelle — pour chaque mois on compte les ÉVÉNEMENTS qui
     // ont eu lieu ce mois-là, chacun sur sa propre date :
@@ -4966,7 +5000,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Tri du plus récent au plus ancien (mois actuel en premier).
     const activiteMois = Object.values(activiteMoisMap).sort((a, b) => b.mois.localeCompare(a.mois));
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsFournisseurs, statsCommerciaux, statsBanques, activiteMois, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsLitige, rappelsSav, rappelsClientRappel };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsFournisseurs, statsCommerciaux, statsBanques, activiteMois, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsMaterielInsere, rappelsLitige, rappelsSav, rappelsClientRappel };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -10578,6 +10612,7 @@ function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onS
     { key: 'rappelsFacturesManquantes', emoji: '🧾', label: 'Récupérer les factures prestataires',    scrollTo: 'poseurs',       cat: 'Argent', adminCompta: true },
     { key: 'rappelsPennylaneAEnvoyer',  emoji: '📤', label: 'Envoyer les factures à Pennylane (compta)', scrollTo: 'poseurs',     cat: 'Argent', adminCompta: true },
     { key: 'rappelsMaterielNonRendu',   emoji: '📦', label: 'Récupérer le matériel chez le poseur',   scrollTo: 'materielNonRendu', cat: 'Pose' },
+    { key: 'rappelsMaterielInsere',     emoji: '📦', label: 'Matériel inséré — poseur/facture manquant', scrollTo: 'poseurs',     cat: 'Pose' },
     { key: 'rappelsLitige',             emoji: '⚖️', label: 'Traiter le litige',                      scrollTo: 'litige',        cat: 'Litige' },
     { key: 'rappelsSav',                emoji: '🛠️', label: 'Traiter le SAV',                         scrollTo: 'sav',           cat: 'SAV' },
     { key: 'rappelsStagnation',         emoji: '🐌', label: 'Dossier bloqué trop longtemps — débloquer', scrollTo: null,         cat: 'Blocage' },
@@ -26971,6 +27006,25 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
         return parts.length ? parts.join(' · ') : 'BL matériel à récupérer';
       },
       suffixLabel: 'sans retour',
+    },
+    materielInsere: {
+      title: '📦 Matériel inséré — action requise',
+      subtitle: 'Dossiers avec un fournisseur de matériel mais soit pas de poseur assigné, soit pas de facture poseur. Clic = ouvre le dossier pour compléter.',
+      items: dashboard.rappelsMaterielInsere || [],
+      gradient: 'from-indigo-500 to-blue-500',
+      bgHeader: 'from-indigo-50 to-blue-50',
+      borderColor: 'border-indigo-200',
+      lineLabel: (d, r) => {
+        const parts = [];
+        if (r.fournisseurs?.length) parts.push(`📦 ${r.fournisseurs.join(', ')}`);
+        if (r.cas === 'sansPoseur') {
+          parts.push('⚠️ AUCUN POSEUR ASSIGNÉ');
+        } else if (r.cas === 'sansFacture' && r.poseursSansFacture?.length) {
+          parts.push(`🧾 Facture(s) manquante(s) : ${r.poseursSansFacture.join(', ')}`);
+        }
+        return parts.join(' · ');
+      },
+      suffixLabel: 'depuis création',
     },
     facturesManquantes: {
       title: '🧾 Factures manquantes (compta)',
