@@ -528,14 +528,32 @@ async function getMessageMeta(accessToken, messageId, ignoredSenders = [], impor
 // 🔎 Recherche Gmail par mot-clé (180j max). Utilise la syntaxe de requête
 // Gmail directement → q='MIQUEL has:attachment filename:pdf newer_than:180d'.
 async function searchMessagesWithPdf(accessToken, query, maxResults = 20) {
-  const q = encodeURIComponent(`${query} has:attachment filename:pdf newer_than:180d`);
+  // 🔍 Recherche étendue : on ne force PAS filename:pdf (les PDFs sans .pdf
+  // dans le nom étaient ratés) ni une fenêtre courte (180j → 365j). Le N°
+  // facture est souvent uniquement dans le PDF, pas dans le sujet, donc on
+  // cherche aussi par mot-clé général. has:attachment seul est plus large.
+  const q = encodeURIComponent(`${query} has:attachment newer_than:365d`);
   const r = await fetch(
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q}&maxResults=${maxResults}`,
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   const data = await r.json();
   if (!r.ok) throw new Error(data.error?.message || 'Gmail search failed');
-  return data.messages || [];
+  let msgs = data.messages || [];
+  // 🪂 Fallback : si rien trouvé, on retente SANS has:attachment (cas où la
+  // facture est en lien dans l'email, ou le filtre Gmail rate les attachments).
+  if (msgs.length === 0) {
+    const q2 = encodeURIComponent(`${query} newer_than:365d`);
+    const r2 = await fetch(
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${q2}&maxResults=${maxResults}`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (r2.ok) {
+      const d2 = await r2.json();
+      msgs = d2.messages || [];
+    }
+  }
+  return msgs;
 }
 
 // 📥 Télécharge le contenu d'une pièce jointe (Gmail renvoie en base64url
