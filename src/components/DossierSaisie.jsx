@@ -25845,14 +25845,15 @@ function CarteView({ dossiers, filterType, viewDate = null, onShowQuick }) {
   const markersRef = useRef([]);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [leafletReady, setLeafletReady] = useState(typeof window !== 'undefined' && !!window.L);
-  // 📅 Filtre date pour la carte : 3 modes (jour / mois / tout).
-  // 'mois' par défaut = mois du viewDate parent. 'jour' = aujourd'hui par défaut
-  // si pas de viewDate. 'tout' = pas de filtre (comportement historique).
+  // 📅 Filtre date pour la carte : 5 modes (jour / semaine / mois / periode / all).
+  // 'mois' par défaut. 'periode' = range custom du/au.
   const [dateMode, setDateMode] = useState('mois');
   const [pickedDate, setPickedDate] = useState(() => {
     const d = viewDate || new Date();
     return d.toISOString().slice(0, 10);
   });
+  // Date de fin (utilisée seulement en mode 'periode'). Par défaut = today.
+  const [pickedDateEnd, setPickedDateEnd] = useState(() => new Date().toISOString().slice(0, 10));
   // Sync quand le user change la date depuis le header parent
   useEffect(() => {
     if (viewDate) setPickedDate(viewDate.toISOString().slice(0, 10));
@@ -25899,14 +25900,26 @@ function CarteView({ dossiers, filterType, viewDate = null, onShowQuick }) {
       return arr.map(s => s.split('T')[0]);
     };
     let rangeStart = null, rangeEnd = null;
+    const fmtIso = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
     if (dateMode === 'jour' && pickedDate) {
       rangeStart = pickedDate; rangeEnd = pickedDate;
+    } else if (dateMode === 'semaine' && pickedDate) {
+      // Semaine = lundi → dimanche autour de la date choisie
+      const d = new Date(pickedDate);
+      const day = (d.getDay() + 6) % 7; // 0=lundi, 6=dimanche
+      const monday = new Date(d); monday.setDate(d.getDate() - day);
+      const sunday = new Date(monday); sunday.setDate(monday.getDate() + 6);
+      rangeStart = fmtIso(monday); rangeEnd = fmtIso(sunday);
     } else if (dateMode === 'mois' && pickedDate) {
       const d = new Date(pickedDate);
       const ys = d.getFullYear(); const ms = d.getMonth();
       const last = new Date(ys, ms + 1, 0);
       rangeStart = `${ys}-${String(ms + 1).padStart(2, '0')}-01`;
       rangeEnd = `${ys}-${String(ms + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+    } else if (dateMode === 'periode' && pickedDate && pickedDateEnd) {
+      // Range custom du → au. On normalise pour gérer si l'user inverse.
+      rangeStart = pickedDate <= pickedDateEnd ? pickedDate : pickedDateEnd;
+      rangeEnd = pickedDate <= pickedDateEnd ? pickedDateEnd : pickedDate;
     }
     const inRange = (d) => {
       if (!rangeStart) return true;
@@ -25923,7 +25936,7 @@ function CarteView({ dossiers, filterType, viewDate = null, onShowQuick }) {
       if (filterType === 'sav') return hasSavPertinent(d);
       return hasPosePertinente(d) || hasConsuelPertinent(d) || hasSavPertinent(d);
     });
-  }, [dossiers, filterType, dateMode, pickedDate]);
+  }, [dossiers, filterType, dateMode, pickedDate, pickedDateEnd]);
 
   // Attend Leaflet (chargé en defer dans index.html)
   useEffect(() => {
@@ -26043,10 +26056,16 @@ function CarteView({ dossiers, filterType, viewDate = null, onShowQuick }) {
 
   return (
     <div className="bg-white rounded-3xl shadow-md border border-violet-100 overflow-hidden">
-      {/* 📅 Filtre date pour la carte — défaut « mois », picker du jour, ou « tout » */}
+      {/* 📅 Filtre date pour la carte : 5 modes (jour, semaine, mois, période, tout) */}
       <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-2 flex-wrap text-xs">
         <span className="font-semibold text-slate-600 mr-1">📅 Période :</span>
-        {[{ id: 'jour', label: '📆 Jour' }, { id: 'mois', label: '🗓️ Mois' }, { id: 'all', label: '∞ Tout' }].map(opt => (
+        {[
+          { id: 'jour', label: '📆 Jour' },
+          { id: 'semaine', label: '🗓️ Semaine' },
+          { id: 'mois', label: '📅 Mois' },
+          { id: 'periode', label: '🔁 Du / Au' },
+          { id: 'all', label: '∞ Tout' },
+        ].map(opt => (
           <button
             key={opt.id}
             onClick={() => setDateMode(opt.id)}
@@ -26055,7 +26074,8 @@ function CarteView({ dossiers, filterType, viewDate = null, onShowQuick }) {
             {opt.label}
           </button>
         ))}
-        {dateMode !== 'all' && (
+        {/* Date pickers selon le mode */}
+        {(dateMode === 'jour' || dateMode === 'semaine' || dateMode === 'mois') && (
           <input
             type="date"
             value={pickedDate}
@@ -26063,7 +26083,25 @@ function CarteView({ dossiers, filterType, viewDate = null, onShowQuick }) {
             className="ml-1 px-2 py-1.5 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
           />
         )}
-        {dateMode !== 'all' && (
+        {dateMode === 'periode' && (
+          <>
+            <span className="text-slate-500 ml-1">du</span>
+            <input
+              type="date"
+              value={pickedDate}
+              onChange={(e) => setPickedDate(e.target.value)}
+              className="px-2 py-1.5 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+            />
+            <span className="text-slate-500">au</span>
+            <input
+              type="date"
+              value={pickedDateEnd}
+              onChange={(e) => setPickedDateEnd(e.target.value)}
+              className="px-2 py-1.5 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+            />
+          </>
+        )}
+        {(dateMode === 'jour' || dateMode === 'semaine' || dateMode === 'mois') && (
           <button
             onClick={() => setPickedDate(new Date().toISOString().slice(0, 10))}
             className="text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-1.5 rounded-lg font-semibold"
@@ -26072,9 +26110,23 @@ function CarteView({ dossiers, filterType, viewDate = null, onShowQuick }) {
             ⏎ Aujourd'hui
           </button>
         )}
-        <span className="ml-auto text-slate-500">
-          {dossiersToPlot.length} dossier{dossiersToPlot.length > 1 ? 's' : ''} sur la carte
-        </span>
+        {/* Compteur clair indiquant la période réelle */}
+        {(() => {
+          const fmt = (iso) => { try { return new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }); } catch { return iso; } };
+          let label = '';
+          if (dateMode === 'jour') label = `pour le ${fmt(pickedDate)}`;
+          else if (dateMode === 'semaine') label = `pour la semaine du ${fmt(pickedDate)}`;
+          else if (dateMode === 'mois') {
+            try { const d = new Date(pickedDate); label = `pour ${d.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`; } catch {}
+          }
+          else if (dateMode === 'periode') label = `du ${fmt(pickedDate)} au ${fmt(pickedDateEnd)}`;
+          else label = '(toutes périodes)';
+          return (
+            <span className="ml-auto text-slate-600 font-semibold">
+              <span className="text-violet-700">{dossiersToPlot.length}</span> dossier{dossiersToPlot.length > 1 ? 's' : ''} <span className="text-slate-400 font-normal">{label}</span>
+            </span>
+          );
+        })()}
       </div>
       {progress.total > 0 && progress.done < progress.total && (
         <div className="px-4 py-2 bg-amber-50 text-amber-800 text-xs font-semibold border-b border-amber-200">
