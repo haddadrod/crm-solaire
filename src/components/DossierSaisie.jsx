@@ -9795,9 +9795,15 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
   // Toggle pour les ré-afficher en cas de vérif / historique.
   const [showPaidPenalites, setShowPaidPenalites] = useState(false);
   // 📑 Pliage des groupes de la liste « Détail par prestataire » (Fournisseurs,
-  // Régies, Poseurs, Équipe interne) — set des labels pliés. Utile quand un
-  // groupe est très long et qu'on veut consulter les autres sans scroller.
-  const [foldedGroups, setFoldedGroups] = useState(() => new Set());
+  // Régies, Poseurs, Équipe interne) — set des labels pliés. Pliés par DÉFAUT
+  // pour ne pas avoir à scroller à chaque ouverture du rapport. L'utilisateur
+  // déplie ce qu'il veut consulter.
+  const [foldedGroups, setFoldedGroups] = useState(() => new Set([
+    '📦 Fournisseurs',
+    '🤝 Régies',
+    '🔧 Poseurs',
+    '👥 Équipe interne',
+  ]));
   const toggleGroup = (label) => {
     setFoldedGroups(prev => {
       const next = new Set(prev);
