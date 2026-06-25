@@ -25340,7 +25340,7 @@ function CalendrierView({ dossiers, STATUTS, onShowQuick, isAdmin }) {
       </div>
 
       {viewMode === 'carte' && (
-        <CarteView dossiers={dossiers} filterType={filterType} onShowQuick={onShowQuick} />
+        <CarteView dossiers={dossiers} filterType={filterType} viewDate={viewDate} onShowQuick={onShowQuick} />
       )}
 
       {viewMode === 'jour' && (
@@ -25598,12 +25598,24 @@ const saveGeocodeCache = async (cache) => {
   try { await window.storage.set('geocode-cache', JSON.stringify(cache)); } catch (e) {}
 };
 
-function CarteView({ dossiers, filterType, onShowQuick }) {
+function CarteView({ dossiers, filterType, viewDate = null, onShowQuick }) {
   const mapDivRef = useRef(null);
   const mapRef = useRef(null);
   const markersRef = useRef([]);
   const [progress, setProgress] = useState({ done: 0, total: 0 });
   const [leafletReady, setLeafletReady] = useState(typeof window !== 'undefined' && !!window.L);
+  // 📅 Filtre date pour la carte : 3 modes (jour / mois / tout).
+  // 'mois' par défaut = mois du viewDate parent. 'jour' = aujourd'hui par défaut
+  // si pas de viewDate. 'tout' = pas de filtre (comportement historique).
+  const [dateMode, setDateMode] = useState('mois');
+  const [pickedDate, setPickedDate] = useState(() => {
+    const d = viewDate || new Date();
+    return d.toISOString().slice(0, 10);
+  });
+  // Sync quand le user change la date depuis le header parent
+  useEffect(() => {
+    if (viewDate) setPickedDate(viewDate.toISOString().slice(0, 10));
+  }, [viewDate]);
 
   // Dossiers à afficher sur la carte. Doit suivre exactement la même logique
   // que CalendrierView.eventsByDate pour rester cohérent :
@@ -25634,17 +25646,43 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
     const hasSavPertinent = (d) =>
       !!d.hasSav && !!(d.savDateInterventionFaite || d.savDateInterventionPrevue);
 
+    // 📅 Filtre date : récupère TOUTES les dates pertinentes du dossier
+    // (pose, consuel, SAV) et garde si au moins une tombe dans la fenêtre.
+    const getDossierDates = (d) => {
+      const arr = [];
+      if (d.dateInsta) arr.push(d.dateInsta);
+      (d.visitesConsuel || []).forEach(v => v?.date && arr.push(v.date));
+      if (d.dateConsuel) arr.push(d.dateConsuel);
+      if (d.savDateInterventionFaite) arr.push(d.savDateInterventionFaite);
+      if (d.savDateInterventionPrevue) arr.push(d.savDateInterventionPrevue);
+      return arr.map(s => s.split('T')[0]);
+    };
+    let rangeStart = null, rangeEnd = null;
+    if (dateMode === 'jour' && pickedDate) {
+      rangeStart = pickedDate; rangeEnd = pickedDate;
+    } else if (dateMode === 'mois' && pickedDate) {
+      const d = new Date(pickedDate);
+      const ys = d.getFullYear(); const ms = d.getMonth();
+      const last = new Date(ys, ms + 1, 0);
+      rangeStart = `${ys}-${String(ms + 1).padStart(2, '0')}-01`;
+      rangeEnd = `${ys}-${String(ms + 1).padStart(2, '0')}-${String(last.getDate()).padStart(2, '0')}`;
+    }
+    const inRange = (d) => {
+      if (!rangeStart) return true;
+      return getDossierDates(d).some(dt => dt >= rangeStart && dt <= rangeEnd);
+    };
+
     return dossiers.filter(d => {
       if (d.statut === 'W2_ANNULER') return false;
       if (d.archived === true) return false;
       if (!(d.adresse || d.ville)) return false;
+      if (!inRange(d)) return false;
       if (filterType === 'pose') return hasPosePertinente(d);
       if (filterType === 'consuel') return hasConsuelPertinent(d);
       if (filterType === 'sav') return hasSavPertinent(d);
-      // 'all' : au moins un évènement pertinent
       return hasPosePertinente(d) || hasConsuelPertinent(d) || hasSavPertinent(d);
     });
-  }, [dossiers, filterType]);
+  }, [dossiers, filterType, dateMode, pickedDate]);
 
   // Attend Leaflet (chargé en defer dans index.html)
   useEffect(() => {
@@ -25764,6 +25802,39 @@ function CarteView({ dossiers, filterType, onShowQuick }) {
 
   return (
     <div className="bg-white rounded-3xl shadow-md border border-violet-100 overflow-hidden">
+      {/* 📅 Filtre date pour la carte — défaut « mois », picker du jour, ou « tout » */}
+      <div className="px-4 py-2 bg-slate-50 border-b border-slate-200 flex items-center gap-2 flex-wrap text-xs">
+        <span className="font-semibold text-slate-600 mr-1">📅 Période :</span>
+        {[{ id: 'jour', label: '📆 Jour' }, { id: 'mois', label: '🗓️ Mois' }, { id: 'all', label: '∞ Tout' }].map(opt => (
+          <button
+            key={opt.id}
+            onClick={() => setDateMode(opt.id)}
+            className={`px-3 py-1.5 rounded-lg font-semibold transition ${dateMode === opt.id ? 'bg-violet-600 text-white shadow-sm' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+          >
+            {opt.label}
+          </button>
+        ))}
+        {dateMode !== 'all' && (
+          <input
+            type="date"
+            value={pickedDate}
+            onChange={(e) => setPickedDate(e.target.value)}
+            className="ml-1 px-2 py-1.5 border border-slate-200 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+          />
+        )}
+        {dateMode !== 'all' && (
+          <button
+            onClick={() => setPickedDate(new Date().toISOString().slice(0, 10))}
+            className="text-violet-600 bg-violet-50 hover:bg-violet-100 px-2 py-1.5 rounded-lg font-semibold"
+            title="Aujourd'hui"
+          >
+            ⏎ Aujourd'hui
+          </button>
+        )}
+        <span className="ml-auto text-slate-500">
+          {dossiersToPlot.length} dossier{dossiersToPlot.length > 1 ? 's' : ''} sur la carte
+        </span>
+      </div>
       {progress.total > 0 && progress.done < progress.total && (
         <div className="px-4 py-2 bg-amber-50 text-amber-800 text-xs font-semibold border-b border-amber-200">
           ⏳ Géocodage en cours : {progress.done} / {progress.total} adresses (limité par OpenStreetMap à 1/seconde, mis en cache)
