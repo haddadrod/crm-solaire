@@ -6298,7 +6298,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
           />
         )}
 
-        {/* 📊 MODAL VUE SHEET — plein écran, accessible depuis la barre du haut */}
+        {/* 📊 MODAL VUE SHEET — plein écran, accessible depuis la barre du haut.
+            Clic sur Voir → ouvre QuickView par-dessus, MAIS la Sheet reste
+            ouverte derrière (on y revient quand on ferme le QuickView). */}
         {showSheetGlobal && (
           <div className="fixed inset-0 z-[60] bg-black/40 backdrop-blur-sm flex items-start justify-center p-4 overflow-auto" onClick={() => setShowSheetGlobal(false)}>
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-[98vw] my-2 relative" onClick={(e) => e.stopPropagation()}>
@@ -6311,7 +6313,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 POSEURS={POSEURS}
                 REGIES={REGIES}
                 FOURNISSEURS={FOURNISSEURS}
-                onShowQuick={(id) => { setShowQuickViewId(id); setShowSheetGlobal(false); }}
+                onShowQuick={(id) => setShowQuickViewId(id)}
               />
             </div>
           </div>
@@ -13082,47 +13084,47 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                 : 'bg-slate-100 text-slate-500';
               const lid = r.d.localId;
               return (
-                <tr key={lid || i} className={`hover:bg-violet-50/40 transition ${i % 2 ? 'bg-white' : 'bg-slate-50/30'}`}>
-                  <td className={`border-b border-slate-100 px-2 py-1.5 text-center sticky left-0 z-10 ${i % 2 ? 'bg-white' : 'bg-slate-50'}`}>
+                <tr key={lid || i} className={`hover:bg-violet-50/60 transition border-b-2 border-slate-200 ${i % 2 ? 'bg-white' : 'bg-slate-50'}`}>
+                  <td className={`px-2 py-2.5 text-center sticky left-0 z-10 ${i % 2 ? 'bg-white' : 'bg-slate-50'}`}>
                     <button onClick={() => onShowQuick && onShowQuick(lid)} className="text-violet-600 hover:text-white hover:bg-violet-600 px-2 py-0.5 rounded-md text-[11px] font-semibold transition">Voir</button>
                   </td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 font-mono text-slate-700 whitespace-nowrap">{r.id}</td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 whitespace-nowrap">
+                  <td className="px-2 py-2.5 font-mono text-slate-700 whitespace-nowrap">{r.id}</td>
+                  <td className="px-2 py-2.5 whitespace-nowrap">
                     <input type="date" value={r.dateInsta} onChange={(e) => updateDossier(lid, { dateInsta: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
                   </td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 whitespace-nowrap" title={s?.label || r.statut}>
+                  <td className="px-2 py-2.5 whitespace-nowrap" title={s?.label || r.statut}>
                     <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-semibold ${s?.bg || 'bg-slate-100'} ${s?.text || 'text-slate-700'}`}>
                       <span>{s?.emoji}</span>
                       <span>{s?.label || r.statut}</span>
                     </span>
                   </td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 font-semibold uppercase" style={{ minWidth: '160px' }}>
+                  <td className="px-2 py-2.5 font-semibold uppercase" style={{ minWidth: '160px' }}>
                     <EditCell value={r.nom} onCommit={(v) => updateDossier(lid, { nom: v })} />
                   </td>
-                  <td className="border-b border-slate-100 px-2 py-1.5" style={{ minWidth: '140px' }}>
+                  <td className="px-2 py-2.5" style={{ minWidth: '140px' }}>
                     <EditCell value={r.prenom} onCommit={(v) => updateDossier(lid, { prenom: v })} />
                   </td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 text-center"><SocieteAvatar societe={r.societe} /></td>
-                  <td className="border-b border-slate-100 px-2 py-1.5">{r.financement}</td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 text-right whitespace-nowrap">
+                  <td className="px-2 py-2.5 text-center"><SocieteAvatar societe={r.societe} /></td>
+                  <td className="px-2 py-2.5">{r.financement}</td>
+                  <td className="px-2 py-2.5 text-right whitespace-nowrap">
                     <EditCell value={r.montantTotal || ''} type="number" onCommit={(v) => updateDossier(lid, { montantTotal: parseFloat(v) || 0 })} className="text-right" />
                   </td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 text-right whitespace-nowrap font-mono text-slate-600 text-[11px]">{fmtEuro(r.montantHt)}</td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 whitespace-nowrap">
+                  <td className="px-2 py-2.5 text-right whitespace-nowrap font-mono text-slate-600 text-[11px]">{fmtEuro(r.montantHt)}</td>
+                  <td className="px-2 py-2.5 whitespace-nowrap">
                     <input type="date" value={r.datePaiementBanque} onChange={(e) => updateDossier(lid, { datePaiementBanque: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
                   </td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 text-center">
+                  <td className="px-2 py-2.5 text-center">
                     <input type="checkbox" checked={r.payeClient} onChange={(e) => updateDossier(lid, { payeClient: e.target.checked, payeClientDate: e.target.checked ? (r.d.payeClientDate || new Date().toISOString().split('T')[0]) : '' })} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" />
                   </td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 text-right font-semibold">{r.puissance || ''}</td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 align-top"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" options={POSEURS} /></td>
+                  <td className="px-2 py-2.5 text-right font-semibold">{r.puissance || ''}</td>
+                  <td className="px-2 py-2.5 align-top"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" options={POSEURS} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.poseurs} kind="poseur" lid={lid} color="amber" /></td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 align-top"><PrestataireCell items={r.regies} kind="regie" lid={lid} color="purple" options={REGIES} /></td>
+                  <td className="px-2 py-2.5 align-top"><PrestataireCell items={r.regies} kind="regie" lid={lid} color="purple" options={REGIES} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.regies} kind="regie" lid={lid} color="purple" /></td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 align-top"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" options={FOURNISSEURS} /></td>
+                  <td className="px-2 py-2.5 align-top"><PrestataireCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" options={FOURNISSEURS} /></td>
                   <td className="border border-slate-200 px-1 py-1 whitespace-nowrap align-top"><MontantCell items={r.fournisseurs} kind="fournisseur" lid={lid} color="orange" /></td>
-                  <td className="border-b border-slate-100 px-2 py-1.5 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
-                  <td className={`border-b border-slate-100 px-2 py-1.5 text-right whitespace-nowrap font-mono font-semibold ${r.margeHt > 0 ? 'text-emerald-700' : r.margeHt < 0 ? 'text-rose-700' : 'text-slate-500'}`}>{r.margeHt > 0 ? '+ ' : ''}{fmtEuro(r.margeHt)}</td>
+                  <td className="px-2 py-2.5 font-mono text-rose-700 bg-yellow-50">{r.factureNo}</td>
+                  <td className={`px-2 py-2.5 text-right whitespace-nowrap font-mono font-semibold ${r.margeHt > 0 ? 'text-emerald-700' : r.margeHt < 0 ? 'text-rose-700' : 'text-slate-500'}`}>{r.margeHt > 0 ? '+ ' : ''}{fmtEuro(r.margeHt)}</td>
                 </tr>
               );
             })}
@@ -20876,13 +20878,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
     <>
       {/* Overlay transparent (capture juste les clics pour fermer) */}
       <div
-        className="fixed inset-0 z-40"
+        className="fixed inset-0 z-[70]"
         onClick={onClose}
       />
 
-      {/* Panneau coulissant — étroit pour laisser voir la liste */}
+      {/* Panneau coulissant — étroit pour laisser voir la liste.
+          z-[80] : au-dessus de la Sheet modale (z-60) pour que clic « Voir »
+          depuis la Sheet ouvre le QuickView par-dessus sans fermer la Sheet. */}
       <div
-        className="fixed right-0 top-0 bottom-0 w-[92%] sm:w-[420px] bg-white shadow-[-8px_0_24px_rgba(0,0,0,0.15)] z-50 flex flex-col border-l border-slate-200"
+        className="fixed right-0 top-0 bottom-0 w-[92%] sm:w-[420px] bg-white shadow-[-8px_0_24px_rgba(0,0,0,0.15)] z-[80] flex flex-col border-l border-slate-200"
         style={{ animation: 'slideInRight 0.25s ease-out' }}
         onClick={(e) => e.stopPropagation()}
       >
