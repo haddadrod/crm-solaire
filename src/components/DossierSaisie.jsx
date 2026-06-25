@@ -26203,14 +26203,15 @@ function KanbanView({ dossiers, STATUTS, onShowQuick, isAdmin, societes = [] }) 
     const map = {};
     columns.forEach(c => { map[c.id] = []; });
     filtered.forEach(d => {
-      // Les statuts hors parcours (LITIGE, SAV, legacy) ne tombent dans
-      // aucune colonne — on les remappe sur EN COURS pour les voir quand
-      // même, sauf s'ils sont déjà placés ailleurs.
+      // Les statuts hors parcours (Z_DEPLACEMENT, LITIGE, SAV, ANNULER, etc.)
+      // ne tombent dans aucune colonne — on ne les force PLUS dans EN COURS
+      // (ça polluait le compteur EN COURS avec 200+ déplacements/litiges qui
+      // n'y appartiennent pas). Ils sont exclus du kanban tout simplement.
+      // Les vrais dossiers EN COURS ont d.statut === 'A_EN_COURS'.
       if (map[d.statut]) {
         map[d.statut].push(d);
-      } else if (map['A_EN_COURS']) {
-        map['A_EN_COURS'].push(d);
       }
+      // sinon : exclu du kanban (hors-parcours)
     });
     // Tri : plus récemment modifié en premier
     Object.keys(map).forEach(k => {
