@@ -5312,7 +5312,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
         </div>
       )}
 
-      <div className="max-w-7xl mx-auto">
+      {/* 🖥️ Plein écran : pas de max-width — le CRM utilise toute la largeur
+          dispo. Padding latéral conservé pour respirer un peu sur les bords. */}
+      <div className="w-full px-4 lg:px-6">
         {/* Header */}
         <div className="mb-6">
           <div className="flex items-center justify-between gap-3 mb-4 flex-wrap lg:flex-nowrap">
