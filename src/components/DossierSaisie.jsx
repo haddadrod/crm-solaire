@@ -4897,24 +4897,25 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsPennylaneAEnvoyer.sort((a, b) => b.jours - a.jours);
 
-    // 📦 Matériel non rendu — quand on a donné un BL avec récup matériel au
-    // poseur et que la pose ne va pas / n'a pas eu lieu, il se retrouve avec
-    // du matériel à nous rapporter. Tant qu'il ne l'a pas rendu, ça reste
-    // dans cette liste pour qu'on ne l'oublie pas.
-    // Cas couverts : dossier annulé, tentative pose ratée, statut DÉPLACEMENT
-    // (déplacement sec sans pose), client rétracté.
+    // 📦 Matériel non rendu — règle simple : BL matériel donné au poseur
+    // ET pose pas encore confirmée OK (statutPose !== 'visite_ok') ET pas
+    // marqué rendu. Couvre tous les cas où le matériel est encore dehors :
+    // dossier annulé, refusé, déplacement sec, rétractation, pose pas faite
+    // (PERCHERON-style : « le poseur a le matos mais on n'a pas posé »).
     const rappelsMaterielNonRendu = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (!d.blMaterielPoseur) return; // pas de BL matériel → rien à tracer
       if (d.materielRendu) return; // déjà rendu → OK
+      // Pose CONFIRMÉE faite → le matériel a été utilisé, plus à rendre.
+      if (d.statutPose === 'visite_ok') return;
+      // Sinon (annulé / refusé / déplacement / rétracté / juste pas encore posé)
+      // → le matériel est chez le poseur, il doit nous le rendre.
       const annule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
       const tentativeRatee = Array.isArray(d.tentativesPose) && d.tentativesPose.length > 0;
-      const deplacement = d.statut === 'Z_DEPLACEMENT';
-      const retracte = !!d.hasRetractation;
-      if (!annule && !tentativeRatee && !deplacement && !retracte) return;
-      // Combien de jours depuis l'évènement déclencheur (= date du BL à défaut).
-      const ref = (annule ? (d.archivedAt || d.blMaterielDate) : (d.tentativesPose[d.tentativesPose.length - 1]?.date)) || d.blMaterielDate || d.savedAt;
+      // Référence date : annulé → archivedAt ; pose ratée → dernière tentative ;
+      // sinon → date du BL.
+      const ref = (annule ? (d.archivedAt || d.blMaterielDate) : (tentativeRatee ? (d.tentativesPose[d.tentativesPose.length - 1]?.date) : null)) || d.blMaterielDate || d.savedAt;
       const jours = ref ? joursEcoules(ref) : 0;
       let level = 'warn';
       if (jours >= 14) level = 'critical';
