@@ -12879,6 +12879,24 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
     );
   };
 
+  // 🔄 Input contrôlé qui SYNC avec la valeur extérieure (vs defaultValue
+  // qui ne se met à jour qu'à l'initial mount). Permet d'afficher correctement
+  // les N° fac/montants qui arrivent après le 1er render (chargement Supabase
+  // async, sync Realtime, etc.). Commit au blur seulement.
+  const SyncedInput = ({ value, onCommit, ...rest }) => {
+    const [v, setV] = useState(value ?? '');
+    useEffect(() => { setV(value ?? ''); }, [value]);
+    return (
+      <input
+        {...rest}
+        value={v}
+        onChange={(e) => setV(e.target.value)}
+        onBlur={(e) => { const nv = e.target.value; if (nv !== (value ?? '')) onCommit(nv); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+      />
+    );
+  };
+
   // 📝 Édite le N° facture d'un prestataire (saisie directe dans la chip).
   const setFactureNoPrestataire = (localId, kind, idx, val) => {
     const field = kindToField(kind);
@@ -12919,15 +12937,16 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                 {it.nom && !options.includes(it.nom) && <option value={it.nom}>{it.nom} (existant)</option>}
                 {options.map(opt => <option key={opt} value={opt}>{opt}</option>)}
               </select>
-              {/* N° facture inline — vérif rapide avant paiement */}
-              <input
+              {/* N° facture inline — vérif rapide avant paiement. Input contrôlé
+                  (SyncedInput) pour que la valeur arrive bien à l'écran même
+                  si elle est chargée après le 1er render (sync Realtime). */}
+              <SyncedInput
                 type="text"
-                defaultValue={it.factureNo || ''}
+                value={it.factureNo}
+                onCommit={(v) => setFactureNoPrestataire(lid, kind, it.idx, v)}
                 placeholder="N° fac"
-                onBlur={(e) => { if ((e.target.value || '') !== (it.factureNo || '')) setFactureNoPrestataire(lid, kind, it.idx, e.target.value); }}
-                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
                 title={hasFacture ? `Facture ${it.factureNo}` : 'Aucune facture saisie — risque de payer sans justificatif'}
-                className={`flex-shrink-0 w-[72px] text-[9px] font-mono font-semibold border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400 ${hasFacture ? 'bg-white border-slate-200 text-slate-700' : 'bg-rose-50 border-rose-200 text-rose-600 placeholder-rose-400'}`}
+                className={`flex-shrink-0 w-[80px] text-[10px] font-mono font-semibold border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-violet-400 ${hasFacture ? 'bg-white border-slate-200 text-slate-700' : 'bg-rose-50 border-rose-200 text-rose-600 placeholder-rose-400'}`}
               />
               <button
                 onClick={() => togglePrestataire(lid, kind, it.idx)}
@@ -12971,16 +12990,11 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
       <div className="space-y-1 min-w-[80px]">
         {items.map((it) => (
           <div key={`${kind}-mt-${it.idx}`} style={{ height: '22px' }} className="flex items-center">
-            <input
+            <SyncedInput
               type="number"
               step="0.01"
-              defaultValue={cleanHt(it.ht)}
-              onBlur={(e) => {
-                const v = e.target.value;
-                const curNum = parseFloat(v) || 0;
-                if (curNum !== (it.ht || 0)) setHtPrestataire(lid, kind, it.idx, v);
-              }}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+              value={cleanHt(it.ht)}
+              onCommit={(v) => { const n = parseFloat(v) || 0; if (n !== (it.ht || 0)) setHtPrestataire(lid, kind, it.idx, v); }}
               placeholder="0"
               className={`w-full text-right text-[10px] font-mono font-semibold bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-1 focus:ring-yellow-400 px-1 py-0.5 rounded ${it.paye ? 'text-emerald-700 line-through' : `text-${color}-700`}`}
             />
