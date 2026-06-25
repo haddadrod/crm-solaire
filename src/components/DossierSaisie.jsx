@@ -10273,11 +10273,11 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                   <button
                     type="button"
                     onClick={() => toggleGroup(g.label)}
-                    className="w-full px-4 py-2 bg-slate-50 border-b border-slate-200 sticky top-0 z-[1] flex items-center justify-between gap-2 hover:bg-slate-100 transition"
+                    className="w-full px-5 py-4 bg-gradient-to-r from-slate-100 to-slate-50 border-y-2 border-slate-300 sticky top-0 z-[1] flex items-center justify-between gap-2 hover:from-slate-200 hover:to-slate-100 transition"
                     title={isFolded ? 'Cliquer pour déplier' : 'Cliquer pour plier'}
                   >
-                    <span className="text-[13px] font-bold text-slate-600 uppercase tracking-wide">{g.label} ({g.items.length})</span>
-                    <span className="text-slate-500 text-xs font-bold">{isFolded ? '▶' : '▼'}</span>
+                    <span className="text-xl font-extrabold text-slate-800 uppercase tracking-wide">{g.label} <span className="ml-2 px-2.5 py-0.5 bg-violet-600 text-white rounded-full text-sm align-middle">{g.items.length}</span></span>
+                    <span className="text-violet-600 text-lg font-bold">{isFolded ? '▶' : '▼'}</span>
                   </button>
                   {!isFolded && g.items.map((p, idx) => {
               const isInternal = INTERNES.includes(p.type);
