@@ -24009,7 +24009,18 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                     onChange={(id) => updateAvoirFournisseur(i, aIdx, { file: id })}
                                     color="purple"
                                     label="avoir"
-                                    autoExtract={false}
+                                    autoExtract={true}
+                                    onExtract={(data) => {
+                                      // 🤖 IA : pré-remplit N° avoir, montant HT et date.
+                                      // Pour un avoir, on stocke le HT en VALEUR ABSOLUE
+                                      // (le signe négatif est ajouté plus bas au push Pennylane).
+                                      const updIa = {};
+                                      if (data.factureNo && !a.avoirNo) updIa.avoirNo = String(data.factureNo);
+                                      const htA = htFromExtraction(data);
+                                      if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
+                                      if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
+                                      if (Object.keys(updIa).length > 0) updateAvoirFournisseur(i, aIdx, updIa);
+                                    }}
                                     pennylaneInfo={{
                                       societe: d.societe || '',
                                       supplierName: f.nom,
