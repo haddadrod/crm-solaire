@@ -7213,6 +7213,13 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
   const [gmailKnownInCrm, setGmailKnownInCrm] = useState(new Set());
   const [gmailSelection, setGmailSelection] = useState(new Set()); // Set d'attachmentKey cochés
   const [gmailImporting, setGmailImporting] = useState(false);
+  // 🪄 Enrichissement IA des résultats de scan : pour chaque PDF, on extrait
+  //    {referenceChantier, factureNo, montantHt, fournisseur} et on l'affiche
+  //    sur la carte. Permet de voir « pour qui » est chaque facture sans
+  //    avoir à ouvrir le PDF. Clé = gmailAttachmentKey, valeur = { status, ... }.
+  const [gmailIaResults, setGmailIaResults] = useState({});
+  const [gmailIaAnalyzing, setGmailIaAnalyzing] = useState(false);
+  const [gmailIaProgress, setGmailIaProgress] = useState({ done: 0, total: 0 });
   const gmailConnected = !!gmailOAuth?.connected;
   const gmailScannableInboxes = (gmailOAuth?.inboxes || []).filter(b => b.canScan);
   const gmailAttachmentKey = (inboxEmail, messageId, attachmentId) => `${inboxEmail}::${messageId}::${attachmentId}`;
@@ -7481,6 +7488,73 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
       if (next.has(key)) next.delete(key); else next.add(key);
       return next;
     });
+  };
+
+  // 🪄 Identifie le CLIENT de chaque PDF scanné via IA. Lit chaque PDF, le
+  //    passe à /api/extract-pdf, stocke {referenceChantier, factureNo,
+  //    montantHt, fournisseur} dans gmailIaResults. La carte affiche alors
+  //    le nom du client → l'user peut cocher les bonnes sans ouvrir un par un.
+  const runGmailIa = async () => {
+    if (!gmailScanResults) return;
+    const targets = [];
+    for (const r of gmailScanResults.results || []) {
+      for (const m of r.messages || []) {
+        for (const a of m.attachments || []) {
+          const key = gmailAttachmentKey(r.email, m.messageId, a.attachmentId);
+          // Skip ceux déjà analysés (cache)
+          if (gmailIaResults[key]?.status === 'done') continue;
+          targets.push({ inbox: r.email, messageId: m.messageId, attachment: a, key });
+        }
+      }
+    }
+    if (targets.length === 0) return;
+    setGmailIaAnalyzing(true);
+    setGmailIaProgress({ done: 0, total: targets.length });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      // Batch parallèle de 4 — équilibre vitesse / surcharge serveur.
+      const BATCH = 4;
+      for (let i = 0; i < targets.length; i += BATCH) {
+        const slice = targets.slice(i, i + BATCH);
+        await Promise.allSettled(slice.map(async ({ inbox, messageId, attachment, key }) => {
+          try {
+            const fr = await fetch('/api/gmail-oauth?action=fetch-attachment', {
+              method: 'POST', headers,
+              body: JSON.stringify({ email: inbox, messageId, attachmentId: attachment.attachmentId }),
+            });
+            const fp = await fr.json().catch(() => ({}));
+            if (!fr.ok) throw new Error(fp.error || `fetch ${fr.status}`);
+            const base64 = fp.data?.base64 || '';
+            if (!base64) throw new Error('PDF vide');
+            const er = await fetch('/api/extract-pdf', {
+              method: 'POST', headers,
+              body: JSON.stringify({ type: 'facture', imageBase64: base64, mediaType: 'application/pdf' }),
+            });
+            const ep = await er.json().catch(() => ({}));
+            if (!er.ok) throw new Error(ep.error || `extract ${er.status}`);
+            const data = (ep && ep.data) || {};
+            setGmailIaResults(prev => ({
+              ...prev,
+              [key]: {
+                status: 'done',
+                refChantier: String(data.referenceChantier || ''),
+                factureNo: String(data.factureNo || ''),
+                montantHt: Number(data.montantHt) || 0,
+                fournisseur: String(data.fournisseur || ''),
+              },
+            }));
+          } catch (e) {
+            setGmailIaResults(prev => ({ ...prev, [key]: { status: 'error', error: e?.message || 'IA échouée' } }));
+          } finally {
+            setGmailIaProgress(prev => ({ ...prev, done: prev.done + 1 }));
+          }
+        }));
+      }
+    } finally {
+      setGmailIaAnalyzing(false);
+    }
   };
 
   // 📥 Importe les attachments cochés : pour chacun, on télécharge le PDF
@@ -8221,6 +8295,19 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                         ✅ Marquer {gmailKnownInCrm.size} déjà-en-CRM
                       </button>
                     )}
+                    {/* 🪄 Enrichissement IA : lit chaque PDF, affiche le
+                        nom du client + n° facture + montant sur la carte.
+                        Pratique pour identifier en un coup d'œil pour qui est
+                        chaque facture (cas régie Flex avec 50 PDFs au même
+                        format de nom — impossible de savoir sans IA). */}
+                    <button
+                      onClick={runGmailIa}
+                      disabled={gmailIaAnalyzing}
+                      className="px-2 py-1 rounded-lg bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 text-white text-[12px] font-bold disabled:opacity-60"
+                      title="Lit chaque PDF avec l'IA pour afficher le nom du client + n° facture + montant sur chaque carte. Permet d'identifier les factures sans les ouvrir."
+                    >
+                      {gmailIaAnalyzing ? `🪄 Analyse… (${gmailIaProgress.done}/${gmailIaProgress.total})` : '🪄 Identifier les clients'}
+                    </button>
                     <button
                       onClick={handleIgnoreAll}
                       className="ml-auto px-2 py-1 rounded-lg bg-rose-100 hover:bg-rose-200 text-rose-700 text-[12px] font-bold"
@@ -8298,6 +8385,27 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
                                 <span className="font-normal text-slate-500">· {sizeKb} Ko</span>
                                 {alreadyInCrm && <span className="flex-shrink-0 px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-800 text-[11px] font-bold" title="Une ligne dans le CRM a déjà ce n° de facture + un PDF attaché">✅ Déjà en CRM</span>}
                               </div>
+                              {/* 🪄 Enrichissement IA : affiche le CLIENT + n° facture + montant
+                                  une fois que l'IA a tourné sur ce PDF. */}
+                              {gmailIaResults[key]?.status === 'done' && (
+                                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                                  {gmailIaResults[key].refChantier && (
+                                    <span className="px-1.5 py-0.5 rounded bg-violet-100 text-violet-800 text-[11px] font-bold">👤 {gmailIaResults[key].refChantier}</span>
+                                  )}
+                                  {gmailIaResults[key].factureNo && (
+                                    <span className="text-slate-600 text-[11px]">🧾 {gmailIaResults[key].factureNo}</span>
+                                  )}
+                                  {gmailIaResults[key].montantHt > 0 && (
+                                    <span className="text-slate-600 text-[11px]">💰 {gmailIaResults[key].montantHt.toFixed(2)} € HT</span>
+                                  )}
+                                  {gmailIaResults[key].fournisseur && (
+                                    <span className="text-slate-500 text-[11px]">🏢 {gmailIaResults[key].fournisseur}</span>
+                                  )}
+                                </div>
+                              )}
+                              {gmailIaResults[key]?.status === 'error' && (
+                                <div className="text-rose-500 text-[11px]">⚠️ IA : {gmailIaResults[key].error}</div>
+                              )}
                               <div className="text-slate-600 truncate" title={m.subject}>✉️ {m.subject || '(sans sujet)'}</div>
                               <div className="text-slate-500 truncate" title={m.from}>De {m.from || '?'} {dateLabel ? `· ${dateLabel}` : ''}</div>
                             </div>
