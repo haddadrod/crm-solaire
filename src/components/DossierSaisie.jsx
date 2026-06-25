@@ -26185,7 +26185,15 @@ function KanbanView({ dossiers, STATUTS, onShowQuick, isAdmin, societes = [] }) 
   const [flagFilter, setFlagFilter] = useState('all'); // all | litige | sav | rappel
 
   const columns = useMemo(
-    () => KANBAN_COLONNES_IDS.map(id => STATUTS.find(s => s.id === id)).filter(Boolean),
+    () => {
+      const fromStatuts = KANBAN_COLONNES_IDS.map(id => STATUTS.find(s => s.id === id)).filter(Boolean);
+      // Colonne virtuelle « Hors parcours » en fin de kanban → catch-all pour
+      // les dossiers dont le statut n'est pas dans le workflow standard
+      // (Z_DEPLACEMENT, LITIGE/SAV/RAPPEL si statut hors-parcours, etc.).
+      // Sans ça les litiges/SAV/rappels disparaissent du kanban.
+      const horsParcours = { id: '__HORS_PARCOURS__', label: 'Hors parcours', emoji: '🚨', color: 'from-rose-500 to-orange-500', bg: 'bg-rose-100', text: 'text-rose-700' };
+      return [...fromStatuts, horsParcours];
+    },
     [STATUTS]
   );
 
@@ -26203,15 +26211,15 @@ function KanbanView({ dossiers, STATUTS, onShowQuick, isAdmin, societes = [] }) 
     const map = {};
     columns.forEach(c => { map[c.id] = []; });
     filtered.forEach(d => {
-      // Les statuts hors parcours (Z_DEPLACEMENT, LITIGE, SAV, ANNULER, etc.)
-      // ne tombent dans aucune colonne — on ne les force PLUS dans EN COURS
-      // (ça polluait le compteur EN COURS avec 200+ déplacements/litiges qui
-      // n'y appartiennent pas). Ils sont exclus du kanban tout simplement.
-      // Les vrais dossiers EN COURS ont d.statut === 'A_EN_COURS'.
+      // Statuts du parcours nominal → leur colonne dédiée.
+      // Statuts hors parcours (Z_DEPLACEMENT, LITIGE, SAV, etc.) → colonne
+      // dédiée « 🚨 Hors parcours » à la fin du kanban, pour qu'on les voie
+      // sans polluer EN COURS.
       if (map[d.statut]) {
         map[d.statut].push(d);
+      } else {
+        map['__HORS_PARCOURS__'].push(d);
       }
-      // sinon : exclu du kanban (hors-parcours)
     });
     // Tri : plus récemment modifié en premier
     Object.keys(map).forEach(k => {
