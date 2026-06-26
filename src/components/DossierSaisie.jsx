@@ -3875,7 +3875,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const map = {};
     // Clé inclut la société → 'IONERGIK chez Yolico' et 'IONERGIK chez Elsun'
     // restent séparés même en vue 'Toutes'. C'est la réalité comptable.
-    const addEntry = (nom, type, ttc, paye, datePaye, dossier) => {
+    const addEntry = (nom, type, ttc, paye, datePaye, dossier, factureNo = '') => {
       if (!nom || !ttc) return;
       const soc = dossier.societe || '';
       const key = `${type}::${nom}::${soc}`;
@@ -3896,13 +3896,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (dossier.payeClient) map[key].totalAPayerMaintenant += ttc;
         else map[key].totalEnAttenteFinanceur += ttc;
       }
-      map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne, prestataireType: type, societe: soc });
+      map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne, prestataireType: type, societe: soc, factureNo });
     };
     dossiersFiltres.forEach(d => {
-      (d.fournisseursDetail || []).forEach(f => addEntry(f.nom, 'Fournisseur', f.ttc, f.paye, f.datePaye, d));
+      (d.fournisseursDetail || []).forEach(f => addEntry(f.nom, 'Fournisseur', f.ttc, f.paye, f.datePaye, d, f.factureNo || ''));
       // Multi-régies : itère sur regiesDetail
-      (d.regiesDetail || []).forEach(r => addEntry(r.nom, 'Régie', r.ttc, r.paye, r.datePaye, d));
-      (d.poseursDetail || []).forEach(p => addEntry(p.nom, 'Poseur', p.ttc, p.paye, p.datePaye, d));
+      (d.regiesDetail || []).forEach(r => addEntry(r.nom, 'Régie', r.ttc, r.paye, r.datePaye, d, r.factureNo || ''));
+      (d.poseursDetail || []).forEach(p => addEntry(p.nom, 'Poseur', p.ttc, p.paye, p.datePaye, d, p.factureNo || ''));
       // Commissions équipe interne — dès qu'un nom est rempli
       ROLES_INTERNES.forEach(role => {
         const nom = d[role.key];
@@ -10919,19 +10919,21 @@ function ExportPrestaModal({ presta, lignes, total, onClose }) {
     lines.push('');
     lignes.forEach((l, i) => {
       const num = l.dossierId && l.dossierId !== '—' ? `#${l.dossierId} ` : '';
-      lines.push(`${i + 1}. ${num}${l.client || '(sans nom)'} — ${fmt(l.ttc)} — ${l.financement || 'sans fin.'}`);
+      const fac = l.factureNo ? ` — Facture ${l.factureNo}` : '';
+      lines.push(`${i + 1}. ${num}${l.client || '(sans nom)'} — ${fmt(l.ttc)} — ${l.financement || 'sans fin.'}${fac}`);
     });
     return lines.join('\n');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [presta, lignes, total]);
   // CSV strict
   const csvOut = useMemo(() => {
-    const rows = [['N° dossier', 'Client', 'Financement', 'Montant TTC']];
+    const rows = [['N° dossier', 'Client', 'Financement', 'N° facture', 'Montant TTC']];
     lignes.forEach(l => {
       rows.push([
         l.dossierId && l.dossierId !== '—' ? l.dossierId : '',
         (l.client || '').replace(/"/g, '""'),
         (l.financement || '').replace(/"/g, '""'),
+        (l.factureNo || '').replace(/"/g, '""'),
         String(l.ttc || 0).replace('.', ','),
       ]);
     });
