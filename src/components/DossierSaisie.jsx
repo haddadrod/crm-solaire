@@ -6366,6 +6366,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             REGIES={REGIES}
             FOURNISSEURS={FOURNISSEURS}
             produits={produits}
+            societes={societes}
           />
         )}
 
@@ -21296,6 +21297,7 @@ function suggestField(header) {
     { keys: ['adresse', 'address', 'rue'], field: 'adresse' },
     { keys: ['cp', 'codepostal', 'zip', 'postal'], field: 'codePostal' },
     { keys: ['ville', 'city'], field: 'ville' },
+    { keys: ['societe', 'company', 'marque', 'entite'], field: 'societe' },
     { keys: ['statut', 'status', 'etat'], field: 'statut' },
     { keys: ['financement', 'financeur', 'finance', 'banque'], field: 'financement' },
     { keys: ['montant', 'prix', 'ttc', 'total', 'montantttc'], field: 'montantTotal' },
@@ -21316,8 +21318,14 @@ function suggestField(header) {
     { keys: ['puissance', 'wc', 'watts'], field: 'puissance' },
     { keys: ['id', 'reference', 'ref', 'numero'], field: 'id' },
   ];
+  // Passe 1 — match EXACT d'abord : évite que "prenom" (qui contient "nom")
+  // soit attrapé par la règle "nom". L'égalité stricte prime sur le includes.
   for (const m of map) {
-    if (m.keys.some(k => h === k || h.includes(k))) return m.field;
+    if (m.keys.some(k => h === k)) return m.field;
+  }
+  // Passe 2 — match partiel (includes) pour les entêtes verbeux ("n° de telephone").
+  for (const m of map) {
+    if (m.keys.some(k => h.includes(k))) return m.field;
   }
   return '';
 }
@@ -21332,6 +21340,7 @@ const IMPORT_FIELDS = [
   { id: 'adresse', label: '🏠 Adresse' },
   { id: 'codePostal', label: '📮 Code postal' },
   { id: 'ville', label: '🏘️ Ville' },
+  { id: 'societe', label: '🏢 Société (Yolico / Elsun)' },
   { id: 'statut', label: '📊 Statut' },
   { id: 'financement', label: '💳 Financement' },
   { id: 'montantTotal', label: '💰 Montant TTC (€)' },
@@ -21351,7 +21360,7 @@ const IMPORT_FIELDS = [
   { id: 'puissance', label: '⚡ Puissance (Wc)' },
 ];
 
-function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, produits }) {
+function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, produits, societes }) {
   const [step, setStep] = useState(1);
   const [rawText, setRawText] = useState('');
   const [rows, setRows] = useState([]);
@@ -21428,6 +21437,18 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
               if (!matched && val) warnings.push(`Ligne ${rIdx + 1}: produit "${val}" non reconnu, mis sur "Panneaux solaires"`);
               break;
             }
+            case 'societe': {
+              // Matching tolérant : id, label, ou préfixe (ex : "ELS" → Elsun, "YOLICO" → Yolico).
+              const v = val.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+              const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+              const matched = v.length >= 2 ? (societes || []).find(s => {
+                const sid = norm(s.id), slabel = norm(s.label);
+                return sid === v || slabel === v || slabel.startsWith(v) || sid.startsWith(v);
+              }) : null;
+              if (matched) d.societe = matched.id;
+              else if (val) warnings.push(`Ligne ${rIdx + 1}: société "${val}" non reconnue (laissée vide)`);
+              break;
+            }
             case 'poseur': d.poseur = val; break;
             case 'regie': d.regie = val; break;
             case 'fournisseur': d.fournisseur = val; break;
@@ -21448,6 +21469,7 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
           nom: d.nom || '', prenom: d.prenom || '',
           telephone: d.telephone || '', email: d.email || '',
           adresse: d.adresse || '', codePostal: d.codePostal || '', ville: d.ville || '',
+          societe: d.societe || '',
           statut: d.statut || 'M_ATT_DOSSIER',
           financement: d.financement || 'AUTRE',
           montantTotal: d.montantTotal || 0,
@@ -21640,6 +21662,7 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                       <tr>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">#</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Nom</th>
+                        <th className="px-2 py-2 text-left font-bold text-slate-600">Société</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Statut</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Financement</th>
                         <th className="px-2 py-2 text-right font-bold text-slate-600">Montant</th>
@@ -21651,6 +21674,7 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                         <tr key={i} className="border-t border-slate-100">
                           <td className="px-2 py-1.5 text-slate-500">{i + 1}</td>
                           <td className="px-2 py-1.5 font-semibold">{d.nom} {d.prenom}</td>
+                          <td className="px-2 py-1.5">{(societes || []).find(s => s.id === d.societe)?.label || (d.societe ? d.societe : <span className="text-rose-400">—</span>)}</td>
                           <td className="px-2 py-1.5">{STATUTS_ORDERED.find(s => s.id === d.statut)?.label || d.statut}</td>
                           <td className="px-2 py-1.5">{d.financement}</td>
                           <td className="px-2 py-1.5 text-right">{formatEuro(d.montantTotal)}</td>
