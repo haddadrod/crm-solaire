@@ -12850,25 +12850,40 @@ function GmailDrivePanel() {
   };
   useEffect(() => { fetchFolders(); }, []);
 
-  // 🚀 Lance le cron manuellement (= /api/cron-gmail-prefetch). Le user
-  //    doit être admin (vérifié côté serveur). Pas besoin de CRON_SECRET.
-  //    Une run analyse jusqu'à 200 PDFs sur 365j → re-cliquable pour
-  //    le backfill complet (idempotent, ne re-fait pas ce qui est en cache).
+  // 🚀 Lance le cron en BOUCLE jusqu'à ce qu'il n'y ait plus rien à traiter.
+  //    Une seule run cap à 200 PDFs (timeout Vercel). On enchaîne jusqu'à ce
+  //    que `remaining = 0` → backfill complet en 1 clic.
+  //    Le user doit être admin (vérifié côté serveur).
   const runCron = async ({ days = 365, max = 200 } = {}) => {
     setCronRunning(true); setError(''); setCronResult(null);
+    const totals = { pdfsAnalyzed: 0, pdfsAlreadyCached: 0, pdfsAlreadyInCrm: 0, pdfsErrored: 0, pdfsListed: 0, durationMs: 0, runs: 0 };
     try {
       const { data: { session } } = await supabase.auth.getSession();
       if (!session?.access_token) throw new Error('Pas de session — reconnecte-toi');
-      const url = `/api/cron-gmail-prefetch?days=${days}&max=${max}`;
-      const res = await fetch(url, {
-        method: 'GET',
-        headers: { 'Authorization': `Bearer ${session.access_token}` },
-      });
-      const payload = await res.json().catch(() => ({}));
-      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
-      setCronResult(payload.data || {});
-      // Refresh la liste après le run
-      await fetchFolders();
+      const MAX_RUNS = 30; // safety : 30 × 200 = 6000 PDFs en backfill
+      for (let i = 0; i < MAX_RUNS; i++) {
+        const url = `/api/cron-gmail-prefetch?days=${days}&max=${max}`;
+        const res = await fetch(url, {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${session.access_token}` },
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+        const d = payload.data || {};
+        totals.runs++;
+        totals.pdfsAnalyzed += d.pdfsAnalyzed || 0;
+        totals.pdfsAlreadyCached += d.pdfsAlreadyCached || 0;
+        totals.pdfsAlreadyInCrm += d.pdfsAlreadyInCrm || 0;
+        totals.pdfsErrored += d.pdfsErrored || 0;
+        totals.pdfsListed = Math.max(totals.pdfsListed, d.pdfsListed || 0);
+        totals.durationMs += d.durationMs || 0;
+        setCronResult({ ...totals, _inProgress: true });
+        // Refresh la liste à chaque run pour voir l'avancement live
+        await fetchFolders();
+        // 🛑 Stop si plus rien à faire (rien analysé ET rien dispo)
+        if ((d.pdfsAnalyzed || 0) === 0) break;
+      }
+      setCronResult({ ...totals, _inProgress: false });
     } catch (e) { setError(e?.message || 'Cron failed'); }
     setCronRunning(false);
   };
@@ -12987,14 +13002,17 @@ function GmailDrivePanel() {
             </button>
           </div>
           {cronResult && (
-            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[12px] text-emerald-800">
-              ✅ <span className="font-bold">{cronResult.pdfsAnalyzed || 0}</span> nouvelles factures analysées
-              {cronResult.pdfsAlreadyCached > 0 && <span> · {cronResult.pdfsAlreadyCached} déjà en cache (skippées)</span>}
+            <div className={`p-3 rounded-xl text-[12px] ${cronResult._inProgress ? 'bg-indigo-50 border border-indigo-200 text-indigo-800' : 'bg-emerald-50 border border-emerald-200 text-emerald-800'}`}>
+              {cronResult._inProgress ? '⏳' : '✅'}{' '}
+              <span className="font-bold">{cronResult.pdfsAnalyzed || 0}</span> nouvelles factures analysées
+              {cronResult.runs > 1 && <span> · {cronResult.runs} runs</span>}
+              {cronResult.pdfsAlreadyCached > 0 && <span> · {cronResult.pdfsAlreadyCached} déjà en cache</span>}
+              {cronResult.pdfsAlreadyInCrm > 0 && <span> · {cronResult.pdfsAlreadyInCrm} déjà dans le CRM</span>}
               {cronResult.pdfsErrored > 0 && <span> · ⚠️ {cronResult.pdfsErrored} erreurs</span>}
               <span> · {Math.round((cronResult.durationMs || 0) / 1000)}s</span>
-              {cronResult.pdfsListed > cronResult.pdfsAnalyzed + cronResult.pdfsAlreadyCached && (
-                <div className="mt-1 text-amber-700">
-                  ⏭️ Il reste des factures à traiter — re-clique « 🚀 Télécharger les factures » pour continuer.
+              {cronResult._inProgress && (
+                <div className="mt-1 text-indigo-700">
+                  🔄 Boucle en cours — j'enchaîne les runs jusqu'à ce qu'il n'y ait plus rien à télécharger.
                 </div>
               )}
             </div>
