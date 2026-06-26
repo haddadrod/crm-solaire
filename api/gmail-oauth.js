@@ -973,6 +973,73 @@ export default async function handler(req, res) {
       return json(res, 200, { data: { count: set.size } });
     }
 
+    // 🔎 Recherche LOCALE dans le cache IA (sans Gmail). Instantané, gratuit.
+    //    Match insensible casse sur refChantier + factureNo + fournisseur.
+    //    Renvoie le même shape que action=search (results[].messages[].attachments[])
+    //    pour que l'UI existante consomme les 2 sources interchangeablement.
+    //    Body : { query: 'IONERGIK', limit?: 100 }
+    if (action === 'ia-search') {
+      const query = String(body.query || '').trim();
+      if (query.length < 2) return json(res, 400, { error: 'Requête trop courte (2 caractères min).' });
+      const limit = Math.max(1, Math.min(500, parseInt(body.limit, 10) || 100));
+      // LIKE insensible casse sur le JSON sérialisé (refChantier/factureNo/
+      // fournisseur). Plus simple que des opérateurs JSONB, et suffisant.
+      const qEsc = query.replace(/[%_\\]/g, c => `\\${c}`);
+      const { data: rows, error } = await admin.from('storage')
+        .select('key, value, updated_at')
+        .like('key', `${IA_CACHE_PREFIX}%`)
+        .ilike('value', `%${qEsc}%`)
+        .limit(limit);
+      if (error) return json(res, 500, { error: error.message });
+      // Reconstruit le shape par-inbox pour réutiliser le même rendu UI.
+      const byInbox = {};
+      for (const r of rows || []) {
+        const pubKey = String(r.key || '').slice(IA_CACHE_PREFIX.length);
+        const [inboxEmail, messageId, attachmentId] = pubKey.split('|');
+        if (!inboxEmail || !messageId || !attachmentId) continue;
+        let ia;
+        try { ia = JSON.parse(r.value); } catch { continue; }
+        if (!byInbox[inboxEmail]) byInbox[inboxEmail] = { email: inboxEmail, messages: {}, method: 'cache' };
+        const slot = byInbox[inboxEmail];
+        if (!slot.messages[messageId]) {
+          slot.messages[messageId] = {
+            messageId, subject: ia.factureNo ? `Facture ${ia.factureNo}` : '(sujet inconnu — cache)',
+            from: ia.fournisseur || '', fromEmail: '', internalDate: '',
+            attachments: [],
+          };
+        }
+        slot.messages[messageId].attachments.push({
+          attachmentId,
+          filename: `${ia.factureNo || 'facture'}.pdf`,
+          sizeBytes: 0,
+          mimeType: 'application/pdf',
+          alreadyImported: false,
+          // 🪄 Pré-rempli pour l'UI : pas besoin de re-lancer l'IA
+          iaCached: {
+            refChantier: ia.refChantier || '',
+            factureNo: ia.factureNo || '',
+            montantHt: Number(ia.montantHt) || 0,
+            fournisseur: ia.fournisseur || '',
+          },
+        });
+      }
+      // Convertit la map en array et ses messages en array aussi
+      const results = Object.values(byInbox).map(slot => ({
+        ...slot,
+        messages: Object.values(slot.messages),
+        count: Object.values(slot.messages).reduce((s, m) => s + m.attachments.length, 0),
+      }));
+      return json(res, 200, {
+        data: {
+          query,
+          results,
+          errors: [],
+          source: 'cache',
+          totalMatches: (rows || []).length,
+        },
+      });
+    }
+
     // 🪄 Cache IA — lecture batch : renvoie pour chaque {inbox, messageId,
     //    attachmentId} l'extraction IA si elle existe en base. Permet à l'UI
     //    de pré-remplir les badges sans relancer l'IA (économie $$).
