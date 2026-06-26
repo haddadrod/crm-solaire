@@ -85,7 +85,7 @@ Reply ONLY with a JSON object (no markdown). Use "" for unknown strings, 0 for u
   "referenceChantier": "<END client name — the HOMEOWNER. NOT the reseller (ELSOL/YOLICO/SARL ELSOL). PRIORITY: (1) Field 'Référence Chantier' / 'Réf chantier' / 'Installateur' / 'Site' even if just last name like 'Brillard'. (2) 'Bénéficiaire' / 'Réf client final'. (3) Delivery address ≠ billing address. (4) Last resort billed client. NEVER return reseller name>",
   "factureNo": "<invoice/avoir number>",
   "dateFacture": "<YYYY-MM-DD>",
-  "fournisseur": "<supplier name>",
+  "fournisseur": "<SUPPLIER = company ISSUING the invoice (= the one being paid). Usually in the HEADER (logo top-left, émetteur top-right). ⚠️ NEVER return the BILLED company (ELSOL, YOLICO, SARL ELSOL, SAS ELSOL — these are MY companies being billed). NEVER return 'destinataire' / 'client facturé'. Real suppliers : MASTEROVIT, IONERGIK, FLEX, INNOVA, EcoNegoce, LEH HELIOVIE, etc.>",
   "montantHt": <number>,
   "montantTtc": <number>,
   "montantTva": <number>,
