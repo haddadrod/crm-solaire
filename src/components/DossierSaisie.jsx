@@ -12989,7 +12989,9 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS
       const externalUrl = String(obj.factureExternalUrl || '');
       // Priorité 1 : factureFile (KV) → dataUrl
       if (fileId && !fileId.startsWith('http')) {
-        const raw = await window.storage.get(`file:${fileId}`);
+        // window.storage.get retourne { key, value } — il faut extraire .value
+        const row = await window.storage.get(`file:${fileId}`);
+        const raw = row?.value || '';
         if (raw) {
           let parsed;
           try { parsed = JSON.parse(raw); } catch (e) { parsed = { dataUrl: raw }; }
