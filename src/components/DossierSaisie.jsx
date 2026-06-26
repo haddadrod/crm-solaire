@@ -21518,23 +21518,45 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
       }
       // 🔍 Détection des correspondances avec les dossiers déjà au CRM.
       //    1) Par ID exact (fiable quand les IDs concordent).
-      //    2) Sinon par NOM robuste : on fusionne nom + prénom, on retire
-      //       accents/ponctuation et quelques mots parasites, puis on TRIE les
-      //       mots. Ça matche même si l'ID diffère ou si le découpage
-      //       nom/prénom n'est pas le même des deux côtés (ex : un CRM qui
-      //       stocke « GÉRON / ALBITRE MICKAEL » dans le seul champ nom).
-      const NOISE = new Set(['PAC', 'ISO', 'ITE', 'PV', 'DEPOSE', 'DEPOSER', 'RAJOUT', 'PANNEAU', 'PANNEAUX', 'RECUPERER', 'MATERIEL', 'DESINSTALLATION']);
-      const nameKey = (nom, prenom) => `${nom || ''} ${prenom || ''}`
-        .toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
-        .split(/[^A-Z0-9]+/).filter(t => t.length >= 2 && !NOISE.has(t))
-        .sort().join(' ');
+      //    2) Par TÉLÉPHONE (10 chiffres normalisés) — signal le plus fiable.
+      //    3) Par EMAIL (lowercase trim) — fiable aussi.
+      //    4) Par couple (nom_de_famille, prénom) : on découpe les noms et
+      //       prénoms sur séparateurs (« / », « ET », « & », « , ») et on
+      //       génère toutes les combinaisons possibles. Un couple commun entre
+      //       CSV et CRM = doublon probable. Ça matche le cas typique d'un
+      //       CSV avec couple (VIARGUES / BOUDOU, LIONEL / MARIE-AMÉLIE)
+      //       contre un CRM avec une seule personne (VIARGUES, Lionel).
+      const NOISE = new Set(['PAC', 'ISO', 'ITE', 'PV', 'DEPOSE', 'DEPOSER', 'RAJOUT', 'PANNEAU', 'PANNEAUX', 'RECUPERER', 'MATERIEL', 'DESINSTALLATION', 'ET', 'OU', 'EPOUSE', 'EPOUX', 'MR', 'MME', 'M', 'MLLE']);
+      const norm = (s) => String(s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+      // Découpe en tokens utilisables (≥2 chars, pas dans NOISE)
+      const splitTokens = (s) => norm(s).split(/[^A-Z0-9]+/).filter(t => t.length >= 2 && !NOISE.has(t));
+      // Génère { 'NOM|PRENOM', ... } pour toutes les combinaisons possibles
+      const namePairs = (nom, prenom) => {
+        const noms = splitTokens(nom);
+        const prenoms = splitTokens(prenom);
+        const pairs = new Set();
+        if (noms.length === 0 && prenoms.length === 0) return pairs;
+        if (prenoms.length === 0) { noms.forEach(n => pairs.add(`${n}|`)); return pairs; }
+        if (noms.length === 0) { prenoms.forEach(p => pairs.add(`|${p}`)); return pairs; }
+        for (const n of noms) for (const p of prenoms) pairs.add(`${n}|${p}`);
+        return pairs;
+      };
+      const normPhone = (s) => String(s || '').replace(/\D/g, '').replace(/^0+/, '').slice(-9);
+      const normEmail = (s) => String(s || '').toLowerCase().trim();
       const existIds = new Set((existingDossiers || []).map(d => String(d.id || '').trim()).filter(Boolean));
-      const existNames = new Set((existingDossiers || []).map(d => nameKey(d.nom, d.prenom)).filter(Boolean));
+      const existPhones = new Set((existingDossiers || []).map(d => normPhone(d.telephone)).filter(p => p.length >= 9));
+      const existEmails = new Set((existingDossiers || []).map(d => normEmail(d.email)).filter(Boolean));
+      const existPairs = new Set();
+      (existingDossiers || []).forEach(d => namePairs(d.nom, d.prenom).forEach(p => existPairs.add(p)));
       const dups = result.dossiers.map(d => {
         const idKey = String(d.id || '').trim();
         if (idKey && !idKey.startsWith('IMP-') && existIds.has(idKey)) return 'id';
-        const nk = nameKey(d.nom, d.prenom);
-        if (nk && existNames.has(nk)) return 'nom';
+        const phone = normPhone(d.telephone);
+        if (phone.length >= 9 && existPhones.has(phone)) return 'tel';
+        const email = normEmail(d.email);
+        if (email && existEmails.has(email)) return 'email';
+        const pairs = namePairs(d.nom, d.prenom);
+        for (const p of pairs) if (existPairs.has(p)) return 'nom';
         return null;
       });
       // Par défaut : on coche les NOUVEAUX, on décoche les doublons.
@@ -21737,8 +21759,12 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                 const CAP = 200;
                 const presence = (dup) => dup === 'id'
                   ? <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold whitespace-nowrap">♻️ Même ID</span>
+                  : dup === 'tel'
+                  ? <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold whitespace-nowrap" title="Même numéro de téléphone qu'un dossier existant">📞 Même téléphone</span>
+                  : dup === 'email'
+                  ? <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold whitespace-nowrap" title="Même email qu'un dossier existant">✉️ Même email</span>
                   : dup === 'nom'
-                  ? <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold whitespace-nowrap">⚠️ Même nom</span>
+                  ? <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold whitespace-nowrap" title="Au moins un couple (nom de famille + prénom) en commun avec un dossier existant">⚠️ Même nom</span>
                   : <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold whitespace-nowrap">🆕 Nouveau</span>;
                 return (
                 <div className="border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
