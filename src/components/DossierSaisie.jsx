@@ -13319,6 +13319,8 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
   const [attachOpen, setAttachOpen] = useState(null); // { inv, query, picking } — modal d'attachement
   const [attachInProgress, setAttachInProgress] = useState(null); // key en cours d'attach
   const [markingNotFacture, setMarkingNotFacture] = useState(null); // key en cours de mark
+  const [reanalyzingFolder, setReanalyzingFolder] = useState(null); // fournisseur en cours de re-analyse
+  const [reanalyzeProgress, setReanalyzeProgress] = useState({ done: 0, total: 0 });
   const [folders, setFolders] = useState([]); // [{fournisseur, count, invoices: [...]}]
   const [totalInvoices, setTotalInvoices] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -13569,6 +13571,47 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
     }
   };
 
+  // 🔄 Re-analyse IA tout un dossier (fournisseur). Utile quand le prompt
+  //    a été amélioré et qu'on veut bénéficier de la nouvelle extraction
+  //    sur d'anciennes entrées (ex : EcoNegoce → Référence Chantier).
+  //    Cap 25 par appel (timeout Vercel), on chunke côté client.
+  const reanalyzeFolder = async (folder) => {
+    const invs = folder.invoices || [];
+    if (invs.length === 0) return;
+    if (!window.confirm(`Re-analyser les ${invs.length} factures de ${folder.fournisseur} ?\n\nCela ré-extraira les métadonnées (client, montants, etc.) via l'IA.\nCoût ≈ ${invs.length} appels IA Claude Haiku (~${(invs.length * 0.0005).toFixed(3)} €).\n\nConfirmer ?`)) return;
+    setReanalyzingFolder(folder.fournisseur);
+    setReanalyzeProgress({ done: 0, total: invs.length });
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const CHUNK = 10; // < cap serveur (25) + permet de voir l'avancement
+      let totalProcessed = 0;
+      const allErrors = [];
+      for (let i = 0; i < invs.length; i += CHUNK) {
+        const slice = invs.slice(i, i + CHUNK).map(inv => ({
+          inboxEmail: inv.inboxEmail, messageId: inv.messageId, attachmentId: inv.attachmentId,
+        }));
+        const r = await fetch('/api/ia-reanalyze', {
+          method: 'POST', headers,
+          body: JSON.stringify({ entries: slice }),
+        });
+        const p = await r.json().catch(() => ({}));
+        if (!r.ok) throw new Error(p.error || `Erreur ${r.status}`);
+        totalProcessed += p.data?.processed || 0;
+        if (p.data?.errors) allErrors.push(...p.data.errors);
+        setReanalyzeProgress({ done: Math.min(i + CHUNK, invs.length), total: invs.length });
+      }
+      await fetchFolders();
+      const msg = allErrors.length > 0
+        ? `✅ ${totalProcessed}/${invs.length} factures re-analysées.\n⚠ ${allErrors.length} erreurs :\n${allErrors.slice(0, 5).map(e => `· ${e.error}`).join('\n')}${allErrors.length > 5 ? '\n…' : ''}`
+        : `✅ ${totalProcessed} factures re-analysées avec succès.`;
+      alert(msg);
+    } catch (e) { alert(`Erreur re-analyse : ${e?.message || 'inconnu'}`); }
+    setReanalyzingFolder(null);
+    setReanalyzeProgress({ done: 0, total: 0 });
+  };
+
   // ❌ Marque comme « pas une facture » → exclue du Drive + jamais ré-analysée.
   const markNotFacture = async (inv, reason) => {
     const key = `${inv.inboxEmail}|${inv.messageId}|${inv.attachmentId}`;
@@ -13769,21 +13812,33 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
           {filtered.map(folder => {
             const isOpen = !!openFolders[folder.fournisseur];
             const totalHt = folder.invoices.reduce((s, i) => s + (Number(i.montantHt) || 0), 0);
+            const isReanalyzing = reanalyzingFolder === folder.fournisseur;
             return (
               <div key={folder.fournisseur} className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/30">
-                <button
-                  onClick={() => toggleFolder(folder.fournisseur)}
-                  className="w-full px-3 py-2.5 flex items-center gap-2 hover:bg-indigo-50/50 transition text-left"
-                >
-                  <span className="text-lg">{isOpen ? '📂' : '📁'}</span>
-                  <span className={`font-bold ${folder.fournisseur === '_unknown' ? 'text-amber-700 italic' : 'text-slate-800'}`}>
-                    {folder.fournisseur === '_unknown' ? '⚠️ Fournisseur non identifié' : folder.fournisseur}
-                  </span>
-                  <span className="ml-auto flex items-center gap-3 text-[12px] text-slate-600">
-                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full font-bold">{folder.invoices.length}</span>
-                    {totalHt > 0 && <span className="font-bold">{fmtEur(totalHt)} HT</span>}
-                  </span>
-                </button>
+                <div className="flex items-stretch">
+                  <button
+                    onClick={() => toggleFolder(folder.fournisseur)}
+                    className="flex-1 px-3 py-2.5 flex items-center gap-2 hover:bg-indigo-50/50 transition text-left"
+                  >
+                    <span className="text-lg">{isOpen ? '📂' : '📁'}</span>
+                    <span className={`font-bold ${folder.fournisseur === '_unknown' ? 'text-amber-700 italic' : 'text-slate-800'}`}>
+                      {folder.fournisseur === '_unknown' ? '⚠️ Fournisseur non identifié' : folder.fournisseur}
+                    </span>
+                    <span className="ml-auto flex items-center gap-3 text-[12px] text-slate-600">
+                      <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full font-bold">{folder.invoices.length}</span>
+                      {totalHt > 0 && <span className="font-bold">{fmtEur(totalHt)} HT</span>}
+                    </span>
+                  </button>
+                  {/* 🔄 Bouton re-analyser ce fournisseur */}
+                  <button
+                    onClick={(e) => { e.stopPropagation(); reanalyzeFolder(folder); }}
+                    disabled={!!reanalyzingFolder}
+                    className="px-3 border-l border-slate-200 bg-violet-50 hover:bg-violet-100 text-violet-700 text-[11px] font-bold disabled:opacity-50 flex items-center"
+                    title="Re-analyse toutes les factures de ce fournisseur via l'IA (utile quand le prompt a été amélioré)"
+                  >
+                    {isReanalyzing ? `⏳ ${reanalyzeProgress.done}/${reanalyzeProgress.total}` : '🔄 Re-analyser'}
+                  </button>
+                </div>
                 {isOpen && (
                   <div className="border-t border-slate-200 divide-y divide-slate-100 bg-white">
                     {folder.invoices.map(inv => {
