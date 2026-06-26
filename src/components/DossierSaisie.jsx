@@ -21788,6 +21788,8 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Nom</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Prénom</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Présence</th>
+                        <th className="px-2 py-2 text-left font-bold text-slate-600">📞 Contact</th>
+                        <th className="px-2 py-2 text-left font-bold text-slate-600">📍 Adresse</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Société</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Statut</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Financement</th>
@@ -21803,6 +21805,19 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                           <td className="px-2 py-1.5 font-semibold">{d.nom}</td>
                           <td className="px-2 py-1.5">{d.prenom || <span className="text-slate-300">—</span>}</td>
                           <td className="px-2 py-1.5">{presence(dup)}</td>
+                          <td className="px-2 py-1.5 text-[11px]">
+                            {d.telephone ? <div className="whitespace-nowrap">{d.telephone}</div> : null}
+                            {d.email ? <div className="text-slate-500 truncate max-w-[160px]" title={d.email}>{d.email}</div> : null}
+                            {!d.telephone && !d.email ? <span className="text-slate-300">—</span> : null}
+                          </td>
+                          <td className="px-2 py-1.5 text-[11px]">
+                            {d.adresse || d.codePostal || d.ville ? (
+                              <div className="max-w-[200px]">
+                                {d.adresse ? <div className="truncate" title={d.adresse}>{d.adresse}</div> : null}
+                                {(d.codePostal || d.ville) ? <div className="text-slate-500">{[d.codePostal, d.ville].filter(Boolean).join(' ')}</div> : null}
+                              </div>
+                            ) : <span className="text-slate-300">—</span>}
+                          </td>
                           <td className="px-2 py-1.5">{(societes || []).find(s => s.id === d.societe)?.label || (d.societe ? d.societe : <span className="text-rose-400">—</span>)}</td>
                           <td className="px-2 py-1.5">{STATUTS_ORDERED.find(s => s.id === d.statut)?.label || d.statut}</td>
                           <td className="px-2 py-1.5">{d.financement}</td>
