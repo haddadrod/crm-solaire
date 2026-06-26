@@ -2192,7 +2192,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     tvaDateDemarche: '', // date où la démarche a été envoyée
     tvaDateRecuperee: '', // date où la TVA a été récupérée
     tvaNotes: '', // notes libres sur la démarche
-    nom: '', prenom: '', telephone: '', email: '',
+    nom: '', prenom: '', telephone: '', mobile: '', email: '',
     adresse: '', codePostal: '', ville: '',
     statut: 'A_EN_COURS', statutLocked: false, financement: '',
     montantTotal: '', montantHtCustom: '', tauxTvaVente: 20, payeClient: false, payeClientDate: '',
@@ -18777,9 +18777,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <Field label="Nom *"><input type="text" value={formData.nom} onChange={(e) => setFormData({ ...formData, nom: e.target.value })} placeholder="DUPONT" className={inputCls + (formData.nom.trim() ? '' : ' border-rose-400 focus:ring-rose-400')} /></Field>
               <Field label="Prénom"><input type="text" value={formData.prenom} onChange={(e) => setFormData({ ...formData, prenom: e.target.value })} placeholder="JEAN" className={inputCls} /></Field>
               <div></div>
-              <Field label="📞 Téléphone"><input type="tel" value={formData.telephone} onChange={(e) => setFormData({ ...formData, telephone: e.target.value })} placeholder="06 12 34 56 78" className={inputCls} /></Field>
+              <Field label="📞 Téléphone"><input type="tel" value={formData.telephone} onChange={(e) => setFormData({ ...formData, telephone: e.target.value })} placeholder="01 23 45 67 89" className={inputCls} /></Field>
+              <Field label="📱 Mobile"><input type="tel" value={formData.mobile || ''} onChange={(e) => setFormData({ ...formData, mobile: e.target.value })} placeholder="06 12 34 56 78" className={inputCls} /></Field>
               <Field label="✉️ Email"><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="client@email.fr" className={inputCls} /></Field>
-              <div></div>
               <div className="md:col-span-3">
                 <Field label="📍 Adresse"><input type="text" value={formData.adresse} onChange={(e) => setFormData({ ...formData, adresse: e.target.value })} placeholder="12 rue des Lilas" className={inputCls} /></Field>
               </div>
@@ -21292,7 +21292,8 @@ function suggestField(header) {
   const map = [
     { keys: ['nom', 'lastname'], field: 'nom' },
     { keys: ['prenom', 'firstname'], field: 'prenom' },
-    { keys: ['tel', 'telephone', 'phone', 'mobile', 'portable'], field: 'telephone' },
+    { keys: ['mobile', 'portable', 'gsm', 'cellulaire', 'cell'], field: 'mobile' },
+    { keys: ['tel', 'telephone', 'phone', 'fixe', 'tel1', 'telephone1'], field: 'telephone' },
     { keys: ['email', 'mail', 'courriel'], field: 'email' },
     { keys: ['adresse', 'address', 'rue'], field: 'adresse' },
     { keys: ['cp', 'codepostal', 'zip', 'postal'], field: 'codePostal' },
@@ -21335,7 +21336,8 @@ const IMPORT_FIELDS = [
   { id: 'id', label: '🔢 Référence dossier' },
   { id: 'nom', label: '👤 Nom' },
   { id: 'prenom', label: '👤 Prénom' },
-  { id: 'telephone', label: '📞 Téléphone' },
+  { id: 'telephone', label: '📞 Téléphone (fixe)' },
+  { id: 'mobile', label: '📱 Mobile' },
   { id: 'email', label: '✉️ Email' },
   { id: 'adresse', label: '🏠 Adresse' },
   { id: 'codePostal', label: '📮 Code postal' },
@@ -21465,7 +21467,7 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
           }
         });
         // Plus tolérant : on accepte si AU MOINS un champ identifiant a une valeur
-        const hasAnyIdentifier = d.nom || d.prenom || d.id || d.telephone || d.email || d.adresse;
+        const hasAnyIdentifier = d.nom || d.prenom || d.id || d.telephone || d.mobile || d.email || d.adresse;
         if (!hasAnyIdentifier) return;
 
         const nowId = Date.now() + rIdx;
@@ -21473,7 +21475,7 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
           localId: `imp_${nowId}_${Math.random().toString(36).slice(2, 7)}`,
           id: d.id || `IMP-${nowId}`,
           nom: d.nom || '', prenom: d.prenom || '',
-          telephone: d.telephone || '', email: d.email || '',
+          telephone: d.telephone || '', mobile: d.mobile || '', email: d.email || '',
           adresse: d.adresse || '', codePostal: d.codePostal || '', ville: d.ville || '',
           societe: d.societe || '',
           statut: d.statut || 'M_ATT_DOSSIER',
@@ -21543,7 +21545,11 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
       const normPhone = (s) => String(s || '').replace(/\D/g, '').replace(/^0+/, '').slice(-9);
       const normEmail = (s) => String(s || '').toLowerCase().trim();
       const existIds = new Set((existingDossiers || []).map(d => String(d.id || '').trim()).filter(Boolean));
-      const existPhones = new Set((existingDossiers || []).map(d => normPhone(d.telephone)).filter(p => p.length >= 9));
+      const existPhones = new Set();
+      (existingDossiers || []).forEach(d => {
+        const t = normPhone(d.telephone); if (t.length >= 9) existPhones.add(t);
+        const m = normPhone(d.mobile);    if (m.length >= 9) existPhones.add(m);
+      });
       const existEmails = new Set((existingDossiers || []).map(d => normEmail(d.email)).filter(Boolean));
       // Index existant par : pairs complètes, et noms seuls (pour dossiers sans prénom)
       const existPairs = new Set();
@@ -21560,6 +21566,8 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
         if (idKey && !idKey.startsWith('IMP-') && existIds.has(idKey)) return 'id';
         const phone = normPhone(d.telephone);
         if (phone.length >= 9 && existPhones.has(phone)) return 'tel';
+        const mobile = normPhone(d.mobile);
+        if (mobile.length >= 9 && existPhones.has(mobile)) return 'tel';
         const email = normEmail(d.email);
         if (email && existEmails.has(email)) return 'email';
         const b = buildName(d.nom, d.prenom);
@@ -21806,9 +21814,10 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                           <td className="px-2 py-1.5">{d.prenom || <span className="text-slate-300">—</span>}</td>
                           <td className="px-2 py-1.5">{presence(dup)}</td>
                           <td className="px-2 py-1.5 text-[11px]">
-                            {d.telephone ? <div className="whitespace-nowrap">{d.telephone}</div> : null}
+                            {d.telephone ? <div className="whitespace-nowrap" title="Fixe">📞 {d.telephone}</div> : null}
+                            {d.mobile ? <div className="whitespace-nowrap" title="Mobile">📱 {d.mobile}</div> : null}
                             {d.email ? <div className="text-slate-500 truncate max-w-[160px]" title={d.email}>{d.email}</div> : null}
-                            {!d.telephone && !d.email ? <span className="text-slate-300">—</span> : null}
+                            {!d.telephone && !d.mobile && !d.email ? <span className="text-slate-300">—</span> : null}
                           </td>
                           <td className="px-2 py-1.5 text-[11px]">
                             {d.adresse || d.codePostal || d.ville ? (
