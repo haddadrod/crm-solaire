@@ -12828,6 +12828,8 @@ function GmailDrivePanel() {
   const [openFolders, setOpenFolders] = useState({}); // { [fournisseur]: bool }
   const [query, setQuery] = useState('');
   const [previewing, setPreviewing] = useState('');
+  const [cronRunning, setCronRunning] = useState(false);
+  const [cronResult, setCronResult] = useState(null); // dernier { pdfsAnalyzed, ... }
 
   const fetchFolders = async () => {
     setLoading(true); setError('');
@@ -12847,6 +12849,29 @@ function GmailDrivePanel() {
     setLoading(false);
   };
   useEffect(() => { fetchFolders(); }, []);
+
+  // 🚀 Lance le cron manuellement (= /api/cron-gmail-prefetch). Le user
+  //    doit être admin (vérifié côté serveur). Pas besoin de CRON_SECRET.
+  //    Une run analyse jusqu'à 200 PDFs sur 365j → re-cliquable pour
+  //    le backfill complet (idempotent, ne re-fait pas ce qui est en cache).
+  const runCron = async ({ days = 365, max = 200 } = {}) => {
+    setCronRunning(true); setError(''); setCronResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.access_token) throw new Error('Pas de session — reconnecte-toi');
+      const url = `/api/cron-gmail-prefetch?days=${days}&max=${max}`;
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      setCronResult(payload.data || {});
+      // Refresh la liste après le run
+      await fetchFolders();
+    } catch (e) { setError(e?.message || 'Cron failed'); }
+    setCronRunning(false);
+  };
 
   // 🔍 Filtre local : matche sur fournisseur, client, n° facture, ville,
   //    téléphone, n° BL, description. Tout en français case-insensitive.
@@ -12936,7 +12961,7 @@ function GmailDrivePanel() {
           </p>
         </div>
         <div className="p-4 space-y-3">
-          {/* Barre de recherche + stats + refresh */}
+          {/* Barre de recherche + stats + refresh + lancer cron */}
           <div className="flex items-center gap-2 flex-wrap">
             <input
               type="text"
@@ -12952,7 +12977,28 @@ function GmailDrivePanel() {
             >
               {loading ? '⏳ …' : '🔄 Rafraîchir'}
             </button>
+            <button
+              onClick={() => runCron({ days: 365, max: 200 })}
+              disabled={cronRunning}
+              className="px-3 py-2 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white rounded-lg text-xs font-bold disabled:opacity-60 shadow"
+              title="Télécharge + analyse jusqu'à 200 nouvelles factures (365 derniers jours). Re-cliquable plusieurs fois — idempotent."
+            >
+              {cronRunning ? '⏳ Téléchargement IA en cours…' : '🚀 Télécharger les factures'}
+            </button>
           </div>
+          {cronResult && (
+            <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-[12px] text-emerald-800">
+              ✅ <span className="font-bold">{cronResult.pdfsAnalyzed || 0}</span> nouvelles factures analysées
+              {cronResult.pdfsAlreadyCached > 0 && <span> · {cronResult.pdfsAlreadyCached} déjà en cache (skippées)</span>}
+              {cronResult.pdfsErrored > 0 && <span> · ⚠️ {cronResult.pdfsErrored} erreurs</span>}
+              <span> · {Math.round((cronResult.durationMs || 0) / 1000)}s</span>
+              {cronResult.pdfsListed > cronResult.pdfsAnalyzed + cronResult.pdfsAlreadyCached && (
+                <div className="mt-1 text-amber-700">
+                  ⏭️ Il reste des factures à traiter — re-clique « 🚀 Télécharger les factures » pour continuer.
+                </div>
+              )}
+            </div>
+          )}
           <div className="text-[12px] text-slate-500">
             {loading ? '⏳ Chargement…' : (
               <>
@@ -12971,7 +13017,13 @@ function GmailDrivePanel() {
             <div className="text-center py-12 text-sm text-slate-500">
               <div className="text-4xl mb-2">📭</div>
               <div className="font-bold text-slate-700">Le drive est vide</div>
-              <div className="text-xs mt-1">Lance le cron <code className="bg-slate-100 px-1 rounded">/api/cron-gmail-prefetch?secret=…</code> pour remplir le drive.</div>
+              <div className="text-xs mt-2 max-w-md mx-auto">
+                Clique sur <span className="font-bold text-indigo-700">« 🚀 Télécharger les factures »</span> ci-dessus pour lancer la première analyse.
+                Le bouton télécharge tes factures Gmail, les lit avec l'IA, et les range par fournisseur dans ce drive.
+              </div>
+              <div className="text-[11px] text-slate-400 mt-2">
+                Tu peux re-cliquer plusieurs fois — c'est idempotent (ne re-fait jamais ce qui est déjà fait).
+              </div>
             </div>
           )}
 
