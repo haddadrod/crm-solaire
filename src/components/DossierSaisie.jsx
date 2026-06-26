@@ -12993,7 +12993,7 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS
         if (raw) {
           let parsed;
           try { parsed = JSON.parse(raw); } catch (e) { parsed = { dataUrl: raw }; }
-          const dataUrl = parsed.dataUrl || '';
+          const dataUrl = String(parsed?.dataUrl || raw || '');
           if (dataUrl.startsWith('data:')) {
             // Convertit data:URL → blob URL pour ouvrir dans le nouvel onglet
             const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
@@ -13006,9 +13006,14 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS
             } else {
               target = dataUrl;
             }
+          } else if (dataUrl) {
+            // URL ou autre format : tente quand même d'ouvrir
+            target = dataUrl;
           }
         }
       }
+      // Fallback : si fileId est une URL (legacy) → ouvre direct
+      if (!target && fileId.startsWith('http')) target = fileId;
       // Priorité 2 : bucket path
       if (!target && bucketPath) {
         try {
