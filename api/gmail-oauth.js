@@ -997,6 +997,67 @@ export default async function handler(req, res) {
       return json(res, 200, { data: { count: set.size } });
     }
 
+    // 📦 Liste tout le drive : groupe les PDFs cachés par FOURNISSEUR
+    //    (comme un browser de dossiers). Pas de query — renvoie tout le
+    //    cache pour que l'UI affiche la structure.
+    //    Body : { limit?: 5000 } (cap total inv renvoyées)
+    if (action === 'ia-list') {
+      const limit = Math.max(1, Math.min(10000, parseInt(body.limit, 10) || 5000));
+      const { data: rows, error } = await admin.from('storage')
+        .select('key, value, updated_at')
+        .like('key', `${IA_CACHE_PREFIX}%`)
+        .order('updated_at', { ascending: false })
+        .limit(limit);
+      if (error) return json(res, 500, { error: error.message });
+      const folders = {};
+      let totalInvoices = 0;
+      for (const r of rows || []) {
+        const pubKey = String(r.key || '').slice(IA_CACHE_PREFIX.length);
+        const [inboxEmail, messageId, attachmentId] = pubKey.split('|');
+        if (!inboxEmail || !messageId || !attachmentId) continue;
+        let ia;
+        try { ia = JSON.parse(r.value); } catch { continue; }
+        const supplier = (ia.fournisseur || '_unknown').trim() || '_unknown';
+        if (!folders[supplier]) folders[supplier] = { fournisseur: supplier, count: 0, invoices: [] };
+        folders[supplier].invoices.push({
+          inboxEmail, messageId, attachmentId,
+          refChantier: ia.refChantier || '',
+          factureNo: ia.factureNo || '',
+          dateFacture: ia.dateFacture || '',
+          fournisseur: ia.fournisseur || '',
+          montantHt: Number(ia.montantHt) || 0,
+          montantTtc: Number(ia.montantTtc) || 0,
+          montantTva: Number(ia.montantTva) || 0,
+          tauxTva: Number(ia.tauxTva) || 0,
+          adresseClient: ia.adresseClient || '',
+          villeClient: ia.villeClient || '',
+          codePostalClient: ia.codePostalClient || '',
+          telephoneClient: ia.telephoneClient || '',
+          emailClient: ia.emailClient || '',
+          numeroBl: ia.numeroBl || '',
+          numeroCommande: ia.numeroCommande || '',
+          description: ia.description || '',
+          storagePath: ia.storagePath || '',
+          originalFilename: ia.originalFilename || '',
+          analyzedAt: ia.analyzedAt || r.updated_at || '',
+        });
+        folders[supplier].count++;
+        totalInvoices++;
+      }
+      // Tri : par nombre de factures DESC, puis nom A→Z. _unknown en dernier.
+      const arr = Object.values(folders).sort((a, b) => {
+        if (a.fournisseur === '_unknown') return 1;
+        if (b.fournisseur === '_unknown') return -1;
+        if (a.count !== b.count) return b.count - a.count;
+        return a.fournisseur.localeCompare(b.fournisseur);
+      });
+      // Tri interne : factures les plus récentes en premier
+      for (const f of arr) {
+        f.invoices.sort((a, b) => (b.dateFacture || b.analyzedAt || '').localeCompare(a.dateFacture || a.analyzedAt || ''));
+      }
+      return json(res, 200, { data: { folders: arr, totalSuppliers: arr.length, totalInvoices } });
+    }
+
     // 🔎 Recherche LOCALE dans le cache IA (sans Gmail). Instantané, gratuit.
     //    Match insensible casse sur refChantier + factureNo + fournisseur.
     //    Renvoie le même shape que action=search (results[].messages[].attachments[])
