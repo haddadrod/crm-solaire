@@ -1150,6 +1150,33 @@ export default async function handler(req, res) {
       });
     }
 
+    // ❌ Marque une entrée du cache comme « PAS une facture » → exclue du
+    //    Drive et plus jamais ré-analysée. Utile pour les faux positifs IA
+    //    (relances, devis avec montants, etc.).
+    //    Body : { inboxEmail, messageId, attachmentId, reason? }
+    if (action === 'ia-mark-not-facture') {
+      const { inboxEmail, messageId, attachmentId, reason } = body || {};
+      if (!inboxEmail || !messageId || !attachmentId) {
+        return json(res, 400, { error: 'inboxEmail, messageId, attachmentId requis' });
+      }
+      const key = `${IA_CACHE_PREFIX}${attachmentKey(inboxEmail, messageId, attachmentId)}`;
+      // On garde le filename pour la trace mais on flag notFacture
+      const { data: row } = await admin.from('storage').select('value').eq('key', key).maybeSingle();
+      let existing = {};
+      try { existing = row?.value ? JSON.parse(row.value) : {}; } catch {}
+      await admin.from('storage').upsert({
+        key,
+        value: JSON.stringify({
+          notFacture: true,
+          documentType: reason || 'corrected_by_user',
+          originalFilename: existing.originalFilename || '',
+          correctedAt: new Date().toISOString(),
+        }),
+        updated_at: new Date().toISOString(),
+      });
+      return json(res, 200, { data: { ok: true } });
+    }
+
     // 🪄 Cache IA — lecture batch : renvoie pour chaque {inbox, messageId,
     //    attachmentId} l'extraction IA si elle existe en base. Permet à l'UI
     //    de pré-remplir les badges sans relancer l'IA (économie $$).

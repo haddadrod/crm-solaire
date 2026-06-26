@@ -254,13 +254,26 @@ async function oauthFetchPdf(accessToken, messageId, attachmentId) {
 //    sur n'importe quel champ (ex : on cherche par téléphone ou ville).
 //    Modèle Haiku 4.5 → rapide et bon marché pour de l'extraction structurée.
 const EXTRACT_PROMPT = `Analyze this French PDF document.
-First, IDENTIFY THE DOCUMENT TYPE — be strict: only count as "facture" or "avoir" if it really is a billing document with a total amount and a supplier issuing it.
-Many PDFs received by mail are NOT invoices : courriers (letters), devis (quotes), bons de livraison (delivery notes), bons de commande (purchase orders), relevés de compte (account statements), contrats, attestations, certificats, fiches techniques, mandats, notices, etc.
+First, IDENTIFY THE DOCUMENT TYPE — be strict.
+
+⚠️ "facture" means an ORIGINAL invoice (the supplier issues it, with HIS OWN invoice number). NOT a relance/rappel/reminder that references existing invoice numbers.
+
+⚠️ "avoir" means a credit note (the supplier reduces a previous invoice).
+
+REJECT as NOT-A-FACTURE (use other types):
+- "relance" / "rappel" / "reminder" / "impayé" / "mise en demeure" → documentType = "relance"
+- "releve de compte" / "statement" → documentType = "releve"
+- "devis" / "quote" → documentType = "devis"
+- "bon de livraison" / "BL" → documentType = "bon_livraison"
+- "bon de commande" / "PO" → documentType = "bon_commande"
+- courriers, contrats, attestations, fiches techniques, mandats, notices → use the matching type or "autre"
+
+Hint: a RELANCE typically references SEVERAL other invoice numbers it is reminding about — it's not the original invoice itself. A relance often contains the word "relance", "rappel", "impayé", "merci de bien vouloir régler", "facture restée impayée".
 
 Reply ONLY with a JSON object (no markdown, no explanation). Use "" for unknown strings, 0 for unknown numbers.
 
 {
-  "documentType": "<MUST be one of: facture | avoir | devis | bon_livraison | bon_commande | courrier | releve | contrat | attestation | fiche_technique | autre>",
+  "documentType": "<MUST be one of: facture | avoir | relance | devis | bon_livraison | bon_commande | courrier | releve | contrat | attestation | fiche_technique | autre>",
   "referenceChantier": "<client name — for sub-contractor invoices, the END client (homeowner)>",
   "factureNo": "<invoice/avoir number, e.g. FAC-2026-1447 or AV26-06-00255>",
   "dateFacture": "<YYYY-MM-DD, invoice date>",

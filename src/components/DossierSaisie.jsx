@@ -13074,6 +13074,7 @@ function GmailPrefetchFloatingBanner() {
 function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickViewId = null }) {
   const [attachOpen, setAttachOpen] = useState(null); // { inv, query, picking } — modal d'attachement
   const [attachInProgress, setAttachInProgress] = useState(null); // key en cours d'attach
+  const [markingNotFacture, setMarkingNotFacture] = useState(null); // key en cours de mark
   const [folders, setFolders] = useState([]); // [{fournisseur, count, invoices: [...]}]
   const [totalInvoices, setTotalInvoices] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -13271,6 +13272,26 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
     } finally {
       setAttachInProgress('');
     }
+  };
+
+  // ❌ Marque comme « pas une facture » → exclue du Drive + jamais ré-analysée.
+  const markNotFacture = async (inv, reason) => {
+    const key = `${inv.inboxEmail}|${inv.messageId}|${inv.attachmentId}`;
+    if (!window.confirm(`Marquer cette entrée comme « pas une facture » ?\n\n${reason ? `Type : ${reason}\n` : ''}Elle sera retirée du Drive et ne sera plus jamais ré-analysée.`)) return;
+    setMarkingNotFacture(key);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const r = await fetch('/api/gmail-oauth?action=ia-mark-not-facture', {
+        method: 'POST', headers,
+        body: JSON.stringify({ inboxEmail: inv.inboxEmail, messageId: inv.messageId, attachmentId: inv.attachmentId, reason: reason || 'manual_correction' }),
+      });
+      const p = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(p.error || `Erreur ${r.status}`);
+      await fetchFolders(); // refresh
+    } catch (e) { alert(`Erreur : ${e?.message || 'inconnu'}`); }
+    setMarkingNotFacture('');
   };
 
   // 👁️ Aperçu : télécharge le PDF (bucket d'abord, Gmail fallback) et l'ouvre.
@@ -13508,14 +13529,24 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
                                 {previewing === key ? '⏳ …' : '👁️ Voir'}
                               </button>
                               {!attachedInfo && (
-                                <button
-                                  onClick={() => setAttachOpen({ inv, query: inv.refChantier || '', pickedDossier: null })}
-                                  disabled={!!attachInProgress}
-                                  className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
-                                  title="Cherche un dossier client → choisis la ligne fournisseur/poseur/régie → attache"
-                                >
-                                  🔍 Rechercher client
-                                </button>
+                                <>
+                                  <button
+                                    onClick={() => setAttachOpen({ inv, query: inv.refChantier || '', pickedDossier: null })}
+                                    disabled={!!attachInProgress}
+                                    className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
+                                    title="Cherche un dossier client → choisis la ligne fournisseur/poseur/régie → attache"
+                                  >
+                                    🔍 Rechercher client
+                                  </button>
+                                  <button
+                                    onClick={() => markNotFacture(inv, 'manual')}
+                                    disabled={markingNotFacture === key}
+                                    className="px-2 py-1.5 bg-slate-100 hover:bg-rose-100 text-slate-600 hover:text-rose-700 rounded-lg text-[11px] font-bold disabled:opacity-50"
+                                    title="Cette entrée n'est PAS une facture (c'est une relance, un devis, un courrier…). La retirer du Drive définitivement."
+                                  >
+                                    {markingNotFacture === key ? '⏳' : '❌ Pas une facture'}
+                                  </button>
+                                </>
                               )}
                             </div>
                           </div>
