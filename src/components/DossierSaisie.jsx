@@ -21528,26 +21528,33 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
       //       contre un CRM avec une seule personne (VIARGUES, Lionel).
       const NOISE = new Set(['PAC', 'ISO', 'ITE', 'PV', 'DEPOSE', 'DEPOSER', 'RAJOUT', 'PANNEAU', 'PANNEAUX', 'RECUPERER', 'MATERIEL', 'DESINSTALLATION', 'ET', 'OU', 'EPOUSE', 'EPOUX', 'MR', 'MME', 'M', 'MLLE']);
       const norm = (s) => String(s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
-      // Découpe en tokens utilisables (≥2 chars, pas dans NOISE)
       const splitTokens = (s) => norm(s).split(/[^A-Z0-9]+/).filter(t => t.length >= 2 && !NOISE.has(t));
-      // Génère { 'NOM|PRENOM', ... } pour toutes les combinaisons possibles
-      const namePairs = (nom, prenom) => {
+      // Pour chaque côté on garde 3 infos :
+      //   - pairs : { 'NOM|PRENOM' } toutes les combinaisons quand on a les 2
+      //   - nomTokens : Set des noms de famille seuls
+      //   - hasPrenom : true si au moins un prénom token
+      const buildName = (nom, prenom) => {
         const noms = splitTokens(nom);
         const prenoms = splitTokens(prenom);
         const pairs = new Set();
-        if (noms.length === 0 && prenoms.length === 0) return pairs;
-        if (prenoms.length === 0) { noms.forEach(n => pairs.add(`${n}|`)); return pairs; }
-        if (noms.length === 0) { prenoms.forEach(p => pairs.add(`|${p}`)); return pairs; }
         for (const n of noms) for (const p of prenoms) pairs.add(`${n}|${p}`);
-        return pairs;
+        return { pairs, nomTokens: new Set(noms), hasPrenom: prenoms.length > 0 };
       };
       const normPhone = (s) => String(s || '').replace(/\D/g, '').replace(/^0+/, '').slice(-9);
       const normEmail = (s) => String(s || '').toLowerCase().trim();
       const existIds = new Set((existingDossiers || []).map(d => String(d.id || '').trim()).filter(Boolean));
       const existPhones = new Set((existingDossiers || []).map(d => normPhone(d.telephone)).filter(p => p.length >= 9));
       const existEmails = new Set((existingDossiers || []).map(d => normEmail(d.email)).filter(Boolean));
+      // Index existant par : pairs complètes, et noms seuls (pour dossiers sans prénom)
       const existPairs = new Set();
-      (existingDossiers || []).forEach(d => namePairs(d.nom, d.prenom).forEach(p => existPairs.add(p)));
+      const existNomsNoPrenom = new Set();   // noms des dossiers existants SANS prénom
+      const existNomsAll = new Set();        // tous les noms (utilisé si CSV est sans prénom)
+      (existingDossiers || []).forEach(d => {
+        const b = buildName(d.nom, d.prenom);
+        b.pairs.forEach(p => existPairs.add(p));
+        b.nomTokens.forEach(n => existNomsAll.add(n));
+        if (!b.hasPrenom) b.nomTokens.forEach(n => existNomsNoPrenom.add(n));
+      });
       const dups = result.dossiers.map(d => {
         const idKey = String(d.id || '').trim();
         if (idKey && !idKey.startsWith('IMP-') && existIds.has(idKey)) return 'id';
@@ -21555,8 +21562,14 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
         if (phone.length >= 9 && existPhones.has(phone)) return 'tel';
         const email = normEmail(d.email);
         if (email && existEmails.has(email)) return 'email';
-        const pairs = namePairs(d.nom, d.prenom);
-        for (const p of pairs) if (existPairs.has(p)) return 'nom';
+        const b = buildName(d.nom, d.prenom);
+        // Match fort : un couple (nom, prénom) commun
+        for (const p of b.pairs) if (existPairs.has(p)) return 'nom';
+        // Cas asymétrique : un côté n'a pas de prénom → on tombe sur le nom seul
+        for (const n of b.nomTokens) {
+          if (existNomsNoPrenom.has(n)) return 'nom';            // CRM sans prénom
+          if (!b.hasPrenom && existNomsAll.has(n)) return 'nom'; // CSV sans prénom
+        }
         return null;
       });
       // Par défaut : on coche les NOUVEAUX, on décoche les doublons.
