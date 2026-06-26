@@ -12983,9 +12983,10 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS
       let target = null;
       // Cas avoir : on regarde dans l.avoirs[avoirIdx]
       const obj = avoirIdx !== null ? (line.avoirs?.[avoirIdx] || {}) : line;
-      const fileId = obj.file || obj.factureFile;
-      const bucketPath = obj.facturePdfUrl;
-      const externalUrl = obj.factureExternalUrl;
+      // Force String pour éviter T.startsWith is not a function sur valeurs non-string
+      const fileId = String(obj.file || obj.factureFile || '');
+      const bucketPath = String(obj.facturePdfUrl || '');
+      const externalUrl = String(obj.factureExternalUrl || '');
       // Priorité 1 : factureFile (KV) → dataUrl
       if (fileId && !fileId.startsWith('http')) {
         const raw = await window.storage.get(`file:${fileId}`);
@@ -13027,7 +13028,7 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS
         document.body.appendChild(a); a.click();
         setTimeout(() => document.body.removeChild(a), 0);
       }
-      setTimeout(() => { if (target.startsWith('blob:')) URL.revokeObjectURL(target); }, 60000);
+      setTimeout(() => { if (typeof target === 'string' && target.startsWith('blob:')) URL.revokeObjectURL(target); }, 60000);
     } catch (e) {
       if (win) try { win.close(); } catch (_) {}
       alert(`Aperçu impossible : ${e.message}`);
