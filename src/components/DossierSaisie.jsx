@@ -13512,9 +13512,9 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
                                   onClick={() => setAttachOpen({ inv, query: inv.refChantier || '', pickedDossier: null })}
                                   disabled={!!attachInProgress}
                                   className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
-                                  title="Attacher cette facture à un dossier client"
+                                  title="Cherche un dossier client → choisis la ligne fournisseur/poseur/régie → attache"
                                 >
-                                  📎 Attacher
+                                  🔍 Rechercher client
                                 </button>
                               )}
                             </div>

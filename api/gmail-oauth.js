@@ -1017,6 +1017,13 @@ export default async function handler(req, res) {
         if (!inboxEmail || !messageId || !attachmentId) continue;
         let ia;
         try { ia = JSON.parse(r.value); } catch { continue; }
+        // 🚫 Skip les PDFs identifiés comme NON-factures (courriers, devis, BL…)
+        if (ia.notFacture) continue;
+        // 🚫 Skip aussi les entrées historiques sans documentType si manifestement
+        //    pas une facture (ni n° facture, ni montant) → ancien cache pré-PR
+        if (!ia.documentType && !ia.factureNo && !(Number(ia.montantHt) > 0) && !(Number(ia.montantTtc) > 0)) continue;
+        // 🚫 documentType explicite non-billable
+        if (ia.documentType && ia.documentType !== 'facture' && ia.documentType !== 'avoir') continue;
         const supplier = (ia.fournisseur || '_unknown').trim() || '_unknown';
         if (!folders[supplier]) folders[supplier] = { fournisseur: supplier, count: 0, invoices: [] };
         folders[supplier].invoices.push({
@@ -1084,6 +1091,10 @@ export default async function handler(req, res) {
         if (!inboxEmail || !messageId || !attachmentId) continue;
         let ia;
         try { ia = JSON.parse(r.value); } catch { continue; }
+        // 🚫 Skip les PDFs identifiés comme NON-factures
+        if (ia.notFacture) continue;
+        if (!ia.documentType && !ia.factureNo && !(Number(ia.montantHt) > 0) && !(Number(ia.montantTtc) > 0)) continue;
+        if (ia.documentType && ia.documentType !== 'facture' && ia.documentType !== 'avoir') continue;
         if (!byInbox[inboxEmail]) byInbox[inboxEmail] = { email: inboxEmail, messages: {}, method: 'cache' };
         const slot = byInbox[inboxEmail];
         if (!slot.messages[messageId]) {
