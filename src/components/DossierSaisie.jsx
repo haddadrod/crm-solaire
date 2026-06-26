@@ -12556,7 +12556,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS 
         <PennylaneKeysPanel societes={societes} />
       )}
 
-      {section === 'gmaildrive' && <GmailDrivePanel />}
+      {section === 'gmaildrive' && <GmailDrivePanel dossiers={dossiers} setDossiers={setDossiers} setShowQuickViewId={setShowQuickViewId} />}
 
       {section === 'expert' && (
         <ExpertToolsPanel
@@ -12814,9 +12814,154 @@ function PennylaneKeysPanel({ societes = [] }) {
           })}
         </div>
       </div>
+
+      {/* 📎 Modal d'attachement : recherche dossier → sélection ligne → confirm */}
+      {attachOpen && (
+        <DriveAttachModal
+          inv={attachOpen.inv}
+          dossiers={dossiers}
+          onClose={() => setAttachOpen(null)}
+          onAttach={(dossier, lineType, lineIndex) => attachToLine(attachOpen.inv, dossier, lineType, lineIndex)}
+          attaching={!!attachInProgress}
+        />
+      )}
     </div>
   );
 }
+
+// 📎 Modal de sélection dossier + ligne (poseur/régie/fournisseur) pour
+//    attacher une facture du drive. Recherche fuzzy sur nom/prénom/ville/téléphone.
+function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching }) {
+  const [query, setQuery] = useState(inv?.refChantier || '');
+  const [pickedDossier, setPickedDossier] = useState(null);
+
+  // Recherche fuzzy sur les dossiers
+  const matches = useMemo(() => {
+    const q = String(query || '').trim().toLowerCase();
+    if (q.length < 2) return [];
+    const out = [];
+    for (const d of dossiers || []) {
+      const haystack = `${d.nom || ''} ${d.prenom || ''} ${d.ville || ''} ${d.telephone || ''} ${d.email || ''}`.toLowerCase();
+      if (haystack.includes(q)) {
+        out.push(d);
+        if (out.length >= 20) break;
+      }
+    }
+    return out;
+  }, [dossiers, query]);
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 pt-16" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-teal-50 flex items-start justify-between gap-3">
+          <div className="flex-1">
+            <h2 className="text-lg font-bold text-slate-800">📎 Attacher cette facture</h2>
+            <div className="text-[12px] text-slate-600 mt-1 space-x-2">
+              {inv?.fournisseur && <span className="font-bold">🏢 {inv.fournisseur}</span>}
+              {inv?.factureNo && <span className="font-mono">🧾 {inv.factureNo}</span>}
+              {inv?.montantHt > 0 && <span>💰 {inv.montantHt.toFixed(2)} € HT</span>}
+              {inv?.refChantier && <span className="text-violet-700 font-bold">→ 👤 {inv.refChantier}</span>}
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/60 rounded-lg"><X className="w-5 h-5 text-slate-600" /></button>
+        </div>
+
+        <div className="p-4 border-b border-slate-100">
+          <input
+            type="text"
+            value={query}
+            onChange={(e) => { setQuery(e.target.value); setPickedDossier(null); }}
+            placeholder="Cherche un client (nom, prénom, ville, téléphone…)"
+            className="w-full px-3 py-2 bg-white border-2 border-emerald-200 focus:border-emerald-400 rounded-lg text-sm"
+            autoFocus
+          />
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          {!pickedDossier && matches.length === 0 && query.length >= 2 && (
+            <div className="text-center text-sm text-slate-500 py-8">
+              <div className="text-3xl mb-2">🤷</div>
+              <div>Aucun dossier trouvé pour « {query} »</div>
+            </div>
+          )}
+          {!pickedDossier && matches.length > 0 && (
+            <div className="space-y-1">
+              {matches.map(d => (
+                <button
+                  key={d.localId}
+                  onClick={() => setPickedDossier(d)}
+                  className="w-full text-left p-2 hover:bg-emerald-50 rounded-lg border border-slate-200 flex items-center gap-3"
+                >
+                  <span className="text-2xl">📁</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="font-bold text-slate-800">{d.nom || ''} {d.prenom || ''}</div>
+                    <div className="text-[12px] text-slate-500">
+                      {d.ville && <span>📍 {d.ville}</span>}
+                      {d.telephone && <span> · 📞 {d.telephone}</span>}
+                    </div>
+                  </div>
+                </button>
+              ))}
+            </div>
+          )}
+          {pickedDossier && (
+            <div>
+              <div className="mb-3 p-3 bg-emerald-50 border border-emerald-200 rounded-xl">
+                <div className="text-[12px] text-emerald-700 font-bold mb-1">Dossier choisi :</div>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-bold text-slate-800">{pickedDossier.nom || ''} {pickedDossier.prenom || ''}</div>
+                  <button onClick={() => setPickedDossier(null)} className="text-[11px] text-emerald-700 hover:underline">Changer</button>
+                </div>
+              </div>
+              <div className="text-[12px] font-bold text-slate-500 uppercase mb-2">Sur quelle ligne attacher ?</div>
+              {['poseurs', 'regies', 'fournisseurs'].map(lineType => {
+                const arr = pickedDossier[lineType] || [];
+                const label = lineType === 'poseurs' ? '🔧 Poseurs' : lineType === 'regies' ? '🤝 Régies' : '📦 Fournisseurs';
+                if (arr.length === 0) return (
+                  <div key={lineType} className="mb-2">
+                    <div className="text-[12px] font-semibold text-slate-600 mb-1">{label}</div>
+                    <div className="text-[11px] italic text-slate-400 px-2">Aucune ligne sur ce dossier.</div>
+                  </div>
+                );
+                return (
+                  <div key={lineType} className="mb-2">
+                    <div className="text-[12px] font-semibold text-slate-600 mb-1">{label}</div>
+                    <div className="space-y-1">
+                      {arr.map((l, idx) => {
+                        const has = !!(l.factureFile || l.facturePdfUrl || l.factureExternalUrl);
+                        return (
+                          <button
+                            key={idx}
+                            onClick={() => onAttach(pickedDossier, lineType, idx)}
+                            disabled={attaching}
+                            className={`w-full text-left p-2 rounded-lg border flex items-center justify-between gap-2 disabled:opacity-50 ${
+                              has ? 'bg-amber-50 border-amber-300 hover:bg-amber-100' : 'bg-white border-slate-200 hover:bg-emerald-50'
+                            }`}
+                          >
+                            <div className="min-w-0 flex-1">
+                              <div className="font-semibold text-slate-800 text-[13px]">{l.nom || '(sans nom)'}</div>
+                              <div className="text-[11px] text-slate-500">
+                                {l.factureNo && <span>🧾 {l.factureNo}</span>}
+                                {l.htCustom && <span> · {l.htCustom} € HT</span>}
+                                {has && <span className="text-amber-700 font-bold"> · ⚠ Déjà un PDF</span>}
+                              </div>
+                            </div>
+                            <span className="text-emerald-700 font-bold text-[12px] shrink-0">{attaching ? '⏳' : '📎 Choisir'}</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Flag « hint » constant : on l'utilise juste pour afficher l'avertissement RLS
 // quoi qu'il arrive (impossible de détecter côté front sans tester la RLS).
 const SUPABASE_SECRETS_RLS_OK_HINT = false;
@@ -12926,7 +13071,9 @@ function GmailPrefetchFloatingBanner() {
 // 📦 Drive Factures : browse les PDFs Gmail archivés par le cron, rangés
 //    par fournisseur. Recherche locale dans tous les champs IA, prévisu PDF,
 //    téléchargement direct. Évite d'aller sur Supabase Dashboard.
-function GmailDrivePanel() {
+function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickViewId = null }) {
+  const [attachOpen, setAttachOpen] = useState(null); // { inv, query, picking } — modal d'attachement
+  const [attachInProgress, setAttachInProgress] = useState(null); // key en cours d'attach
   const [folders, setFolders] = useState([]); // [{fournisseur, count, invoices: [...]}]
   const [totalInvoices, setTotalInvoices] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -12934,8 +13081,38 @@ function GmailDrivePanel() {
   const [openFolders, setOpenFolders] = useState({}); // { [fournisseur]: bool }
   const [query, setQuery] = useState('');
   const [previewing, setPreviewing] = useState('');
+  // 🙈 Filtre : cache les factures déjà attachées à un dossier
+  const [hideAttached, setHideAttached] = useState(false);
   // 🔄 État du prefetch via le singleton — survit aux changements de page.
   const { running: cronRunning, result: cronResult, start: startPrefetch } = useGmailPrefetch();
+
+  // 🧾 Map { factureNoNormalisé → { dossier, lineType, lineIndex, clientName } }
+  //    Permet de savoir si une facture du drive est déjà attachée à un dossier
+  //    (et lequel). Affiche un badge cliquable « ✅ Attachée à X ».
+  const attachedMap = useMemo(() => {
+    const map = new Map();
+    const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    for (const d of dossiers || []) {
+      for (const lineType of ['poseurs', 'regies', 'fournisseurs']) {
+        const arr = d[lineType] || [];
+        for (let idx = 0; idx < arr.length; idx++) {
+          const l = arr[idx];
+          if (!l) continue;
+          if (!(l.factureFile || l.facturePdfUrl || l.factureExternalUrl)) continue;
+          const fn = norm(l.factureNo);
+          if (fn.length >= 5) {
+            map.set(fn, {
+              dossier: d,
+              lineType, lineIndex: idx,
+              clientName: `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)',
+              lineName: l.nom || '',
+            });
+          }
+        }
+      }
+    }
+    return map;
+  }, [dossiers]);
 
   const fetchFolders = async () => {
     setLoading(true); setError('');
@@ -12968,11 +13145,22 @@ function GmailDrivePanel() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cronResult?.runs, cronRunning]);
 
+  const normFact = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const isAttached = (inv) => attachedMap.has(normFact(inv.factureNo));
+
   // 🔍 Filtre local : matche sur fournisseur, client, n° facture, ville,
-  //    téléphone, n° BL, description. Tout en français case-insensitive.
+  //    téléphone, n° BL, description, etc. + filtre « cacher attachées ».
   const filtered = useMemo(() => {
     const q = String(query || '').trim().toLowerCase();
-    if (!q) return folders;
+    const applyHide = (invs) => hideAttached ? invs.filter(i => !isAttached(i)) : invs;
+    if (!q) {
+      const out = [];
+      for (const f of folders) {
+        const invs = applyHide(f.invoices);
+        if (invs.length > 0) out.push({ ...f, invoices: invs, count: invs.length });
+      }
+      return out;
+    }
     const out = [];
     for (const f of folders) {
       const invMatch = f.invoices.filter(inv => {
@@ -12984,11 +13172,20 @@ function GmailDrivePanel() {
       });
       // Si le nom du fournisseur lui-même matche → on garde toutes ses factures
       const folderMatch = f.fournisseur.toLowerCase().includes(q);
-      if (folderMatch) out.push(f);
-      else if (invMatch.length > 0) out.push({ ...f, invoices: invMatch, count: invMatch.length });
+      const final = applyHide(folderMatch ? f.invoices : invMatch);
+      if (final.length > 0) out.push({ ...f, invoices: final, count: final.length });
     }
     return out;
-  }, [folders, query]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folders, query, hideAttached, attachedMap]);
+
+  // 📊 Compteur : combien sont déjà attachées au CRM (sur tout le drive)
+  const attachedCount = useMemo(() => {
+    let c = 0;
+    for (const f of folders) for (const inv of f.invoices) if (isAttached(inv)) c++;
+    return c;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folders, attachedMap]);
 
   // Auto-ouvre tous les dossiers quand y a une recherche (sinon faut tout cliquer)
   useEffect(() => {
@@ -13000,6 +13197,64 @@ function GmailDrivePanel() {
   }, [query, filtered]);
 
   const toggleFolder = (name) => setOpenFolders(prev => ({ ...prev, [name]: !prev[name] }));
+
+  // 📎 Attache le PDF de la facture à une ligne précise d'un dossier.
+  //    Reproduit la logique de handleConfirm de Tri Factures (fileBase64
+  //    → window.storage `file:<id>` → ligne prestataire factureFile).
+  //    Marque ensuite l'attachment Gmail comme importé pour ne pas
+  //    le re-proposer.
+  const attachToLine = async (inv, dossier, lineType, lineIndex) => {
+    const key = `${inv.inboxEmail}|${inv.messageId}|${inv.attachmentId}`;
+    setAttachInProgress(key);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      // 1. Download PDF (bucket si dispo, Gmail fallback)
+      const r = await fetch('/api/gmail-oauth?action=fetch-attachment', {
+        method: 'POST', headers,
+        body: JSON.stringify({ email: inv.inboxEmail, messageId: inv.messageId, attachmentId: inv.attachmentId }),
+      });
+      const p = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(p.error || `Erreur ${r.status}`);
+      const base64 = p.data?.base64 || '';
+      if (!base64) throw new Error('PDF vide');
+      // 2. Store en KV au format FactureFileInput
+      const filename = inv.originalFilename || `${inv.factureNo || 'facture'}.pdf`;
+      const dataUrl = `data:application/pdf;base64,${base64}`;
+      const fileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+      const ok = await window.storage.set(`file:${fileId}`, JSON.stringify({ dataUrl, name: filename, type: 'application/pdf' }));
+      if (!ok) throw new Error('Échec du stockage du fichier (storage KV).');
+      // 3. Update le dossier ciblé
+      const now = new Date().toISOString();
+      setDossiers(prev => prev.map(d => {
+        if (d.localId !== dossier.localId) return d;
+        const arr = Array.isArray(d[lineType]) ? [...d[lineType]] : [];
+        if (!arr[lineIndex]) return d;
+        arr[lineIndex] = {
+          ...arr[lineIndex],
+          factureFile: fileId,
+          factureNo: arr[lineIndex].factureNo || inv.factureNo || '',
+          bl: arr[lineIndex].bl || inv.numeroBl || '',
+          htCustom: arr[lineIndex].htCustom || (inv.montantHt > 0 ? String(inv.montantHt) : ''),
+          dateFacture: arr[lineIndex].dateFacture || inv.dateFacture || '',
+          tauxTva: (typeof inv.tauxTva === 'number' && inv.tauxTva > 0) ? inv.tauxTva : (arr[lineIndex].tauxTva ?? undefined),
+        };
+        return { ...d, [lineType]: arr, savedAt: now, modifiedAt: now, modifiedBy: '[drive-attach]' };
+      }));
+      // 4. Mark imported côté serveur (skip aux prochains scans/cron)
+      fetch('/api/gmail-oauth?action=mark-imported', {
+        method: 'POST', headers,
+        body: JSON.stringify({ inboxEmail: inv.inboxEmail, messageId: inv.messageId, attachmentId: inv.attachmentId }),
+      }).catch(() => {});
+      setAttachOpen(null);
+      alert(`✅ Facture attachée à ${dossier.nom || ''} ${dossier.prenom || ''} (ligne ${lineType.slice(0, -1)} : ${dossier[lineType][lineIndex]?.nom || 'sans nom'})`);
+    } catch (e) {
+      alert(`Erreur attach : ${e?.message || 'inconnu'}`);
+    } finally {
+      setAttachInProgress('');
+    }
+  };
 
   // 👁️ Aperçu : télécharge le PDF (bucket d'abord, Gmail fallback) et l'ouvre.
   const handlePreview = async (inv) => {
@@ -13097,13 +13352,35 @@ function GmailDrivePanel() {
               )}
             </div>
           )}
-          <div className="text-[12px] text-slate-500">
-            {loading ? '⏳ Chargement…' : (
+          <div className="flex items-center gap-3 flex-wrap text-[12px] text-slate-500">
+            {loading ? <span>⏳ Chargement…</span> : (
               <>
-                <span className="font-bold text-slate-700">{totalInvoices}</span> facture{totalInvoices > 1 ? 's' : ''} ·{' '}
-                <span className="font-bold text-slate-700">{folders.length}</span> fournisseur{folders.length > 1 ? 's' : ''}
+                <span><span className="font-bold text-slate-700">{totalInvoices}</span> facture{totalInvoices > 1 ? 's' : ''}</span>
+                <span>·</span>
+                <span><span className="font-bold text-slate-700">{folders.length}</span> fournisseur{folders.length > 1 ? 's' : ''}</span>
+                {attachedCount > 0 && (
+                  <>
+                    <span>·</span>
+                    <span><span className="font-bold text-emerald-700">{attachedCount}</span> déjà attachée{attachedCount > 1 ? 's' : ''} au CRM</span>
+                  </>
+                )}
                 {query.trim() && filtered.length !== folders.length && (
-                  <span> · <span className="text-indigo-700 font-semibold">{filtered.reduce((s, f) => s + f.invoices.length, 0)} matches affichés</span></span>
+                  <>
+                    <span>·</span>
+                    <span className="text-indigo-700 font-semibold">{filtered.reduce((s, f) => s + f.invoices.length, 0)} matches affichés</span>
+                  </>
+                )}
+                {/* Toggle « cacher déjà attachées » */}
+                {attachedCount > 0 && (
+                  <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={hideAttached}
+                      onChange={(e) => setHideAttached(e.target.checked)}
+                      className="accent-indigo-600"
+                    />
+                    <span className="text-slate-700 font-semibold">🙈 Cacher celles déjà au CRM</span>
+                  </label>
                 )}
               </>
             )}
@@ -13154,8 +13431,9 @@ function GmailDrivePanel() {
                   <div className="border-t border-slate-200 divide-y divide-slate-100 bg-white">
                     {folder.invoices.map(inv => {
                       const key = `${inv.inboxEmail}|${inv.messageId}|${inv.attachmentId}`;
+                      const attachedInfo = attachedMap.get(normFact(inv.factureNo));
                       return (
-                        <div key={key} className="p-3 hover:bg-indigo-50/30 transition">
+                        <div key={key} className={`p-3 hover:bg-indigo-50/30 transition ${attachedInfo ? 'bg-emerald-50/40' : ''}`}>
                           <div className="flex items-start gap-3">
                             <div className="text-2xl shrink-0">📄</div>
                             <div className="flex-1 min-w-0">
@@ -13171,6 +13449,15 @@ function GmailDrivePanel() {
                                 )}
                                 {inv.storagePath && (
                                   <span className="text-emerald-600 text-[11px]" title="Archivé dans le bucket — attach instantané">📦</span>
+                                )}
+                                {attachedInfo && (
+                                  <button
+                                    onClick={() => setShowQuickViewId && setShowQuickViewId(attachedInfo.dossier.localId)}
+                                    className="px-2 py-0.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-[11px] font-bold cursor-pointer"
+                                    title={`Cliquer pour ouvrir le dossier de ${attachedInfo.clientName}`}
+                                  >
+                                    ✅ Attachée à {attachedInfo.clientName}
+                                  </button>
                                 )}
                               </div>
                               <div className="mt-1 flex items-center gap-3 text-[12px] text-slate-600 flex-wrap">
@@ -13194,14 +13481,26 @@ function GmailDrivePanel() {
                                 <div className="mt-0.5 text-[11px] text-slate-400 truncate">📍 {inv.adresseClient}</div>
                               )}
                             </div>
-                            <button
-                              onClick={() => handlePreview(inv)}
-                              disabled={!!previewing}
-                              className="shrink-0 px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
-                              title="Ouvrir le PDF dans un nouvel onglet"
-                            >
-                              {previewing === key ? '⏳ …' : '👁️ Voir'}
-                            </button>
+                            <div className="shrink-0 flex flex-col gap-1">
+                              <button
+                                onClick={() => handlePreview(inv)}
+                                disabled={!!previewing}
+                                className="px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
+                                title="Ouvrir le PDF dans un nouvel onglet"
+                              >
+                                {previewing === key ? '⏳ …' : '👁️ Voir'}
+                              </button>
+                              {!attachedInfo && (
+                                <button
+                                  onClick={() => setAttachOpen({ inv, query: inv.refChantier || '', pickedDossier: null })}
+                                  disabled={!!attachInProgress}
+                                  className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
+                                  title="Attacher cette facture à un dossier client"
+                                >
+                                  📎 Attacher
+                                </button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       );
