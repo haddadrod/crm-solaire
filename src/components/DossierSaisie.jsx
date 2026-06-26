@@ -13576,9 +13576,17 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
   //    sur d'anciennes entrées (ex : EcoNegoce → Référence Chantier).
   //    Cap 25 par appel (timeout Vercel), on chunke côté client.
   const reanalyzeFolder = async (folder) => {
-    const invs = folder.invoices || [];
-    if (invs.length === 0) return;
-    if (!window.confirm(`Re-analyser les ${invs.length} factures de ${folder.fournisseur} ?\n\nCela ré-extraira les métadonnées (client, montants, etc.) via l'IA.\nCoût ≈ ${invs.length} appels IA Claude Haiku (~${(invs.length * 0.0005).toFixed(3)} €).\n\nConfirmer ?`)) return;
+    // 🚫 On filtre les factures DÉJÀ attachées à un dossier CRM — aucun
+    //    intérêt de re-payer l'IA sur quelque chose qui est déjà validé.
+    const allInvs = folder.invoices || [];
+    const invs = allInvs.filter(inv => !attachedMap.has(normFact(inv.factureNo)));
+    const skipped = allInvs.length - invs.length;
+    if (invs.length === 0) {
+      alert(`Toutes les factures de ${folder.fournisseur} (${allInvs.length}) sont déjà attachées au CRM — rien à re-analyser.`);
+      return;
+    }
+    const skippedMsg = skipped > 0 ? `\n(${skipped} déjà attachées au CRM seront skippées — économie IA)` : '';
+    if (!window.confirm(`Re-analyser les ${invs.length} factures non-attachées de ${folder.fournisseur} ?${skippedMsg}\n\nCela ré-extraira les métadonnées (client, montants, etc.) via l'IA.\nCoût ≈ ${invs.length} appels IA Claude Haiku (~${(invs.length * 0.0005).toFixed(3)} €).\n\nConfirmer ?`)) return;
     setReanalyzingFolder(folder.fournisseur);
     setReanalyzeProgress({ done: 0, total: invs.length });
     try {
@@ -13829,15 +13837,23 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
                       {totalHt > 0 && <span className="font-bold">{fmtEur(totalHt)} HT</span>}
                     </span>
                   </button>
-                  {/* 🔄 Bouton re-analyser ce fournisseur */}
-                  <button
-                    onClick={(e) => { e.stopPropagation(); reanalyzeFolder(folder); }}
-                    disabled={!!reanalyzingFolder}
-                    className="px-3 border-l border-slate-200 bg-violet-50 hover:bg-violet-100 text-violet-700 text-[11px] font-bold disabled:opacity-50 flex items-center"
-                    title="Re-analyse toutes les factures de ce fournisseur via l'IA (utile quand le prompt a été amélioré)"
-                  >
-                    {isReanalyzing ? `⏳ ${reanalyzeProgress.done}/${reanalyzeProgress.total}` : '🔄 Re-analyser'}
-                  </button>
+                  {/* 🔄 Bouton re-analyser ce fournisseur — seulement les
+                      factures NON-attachées au CRM (pas d'intérêt de re-faire
+                      l'IA sur du déjà validé). */}
+                  {(() => {
+                    const toReanalyze = folder.invoices.filter(inv => !attachedMap.has(normFact(inv.factureNo))).length;
+                    if (toReanalyze === 0) return null;
+                    return (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); reanalyzeFolder(folder); }}
+                        disabled={!!reanalyzingFolder}
+                        className="px-3 border-l border-slate-200 bg-violet-50 hover:bg-violet-100 text-violet-700 text-[11px] font-bold disabled:opacity-50 flex items-center"
+                        title="Re-analyse les factures non-attachées de ce fournisseur (skip celles déjà au CRM)"
+                      >
+                        {isReanalyzing ? `⏳ ${reanalyzeProgress.done}/${reanalyzeProgress.total}` : `🔄 Re-analyser (${toReanalyze})`}
+                      </button>
+                    );
+                  })()}
                 </div>
                 {isOpen && (
                   <div className="border-t border-slate-200 divide-y divide-slate-100 bg-white">
