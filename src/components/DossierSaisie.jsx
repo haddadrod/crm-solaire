@@ -12970,6 +12970,69 @@ function PennylaneKeysPanel({ societes = [] }) {
 function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS = [], REGIES = [], FOURNISSEURS = [] }) {
   const [query, setQuery] = useState(inv?.refChantier || '');
   const [pickedDossier, setPickedDossier] = useState(null);
+  const [previewingLine, setPreviewingLine] = useState(null); // key 'lineType-idx' ou 'lineType-idx-avoir-N'
+
+  // 👁️ Ouvre dans un nouvel onglet le PDF déjà attaché sur une ligne.
+  //    Supporte 3 sources : factureFile (KV) / facturePdfUrl (bucket) /
+  //    factureExternalUrl (URL externe).
+  const previewExistingFacture = async (line, lineType, lineIdx, avoirIdx = null) => {
+    const win = window.open('about:blank', '_blank');
+    if (win) { try { win.document.write('<title>Chargement…</title><p style="font-family:sans-serif;padding:24px;color:#666">Chargement du PDF…</p>'); } catch (_) {} }
+    setPreviewingLine(`${lineType}-${lineIdx}${avoirIdx !== null ? `-av-${avoirIdx}` : ''}`);
+    try {
+      let target = null;
+      // Cas avoir : on regarde dans l.avoirs[avoirIdx]
+      const obj = avoirIdx !== null ? (line.avoirs?.[avoirIdx] || {}) : line;
+      const fileId = obj.file || obj.factureFile;
+      const bucketPath = obj.facturePdfUrl;
+      const externalUrl = obj.factureExternalUrl;
+      // Priorité 1 : factureFile (KV) → dataUrl
+      if (fileId && !fileId.startsWith('http')) {
+        const raw = await window.storage.get(`file:${fileId}`);
+        if (raw) {
+          let parsed;
+          try { parsed = JSON.parse(raw); } catch (e) { parsed = { dataUrl: raw }; }
+          const dataUrl = parsed.dataUrl || '';
+          if (dataUrl.startsWith('data:')) {
+            // Convertit data:URL → blob URL pour ouvrir dans le nouvel onglet
+            const m = dataUrl.match(/^data:([^;]+);base64,(.+)$/);
+            if (m) {
+              const bin = atob(m[2]);
+              const bytes = new Uint8Array(bin.length);
+              for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+              const blob = new Blob([bytes], { type: m[1] });
+              target = URL.createObjectURL(blob);
+            } else {
+              target = dataUrl;
+            }
+          }
+        }
+      }
+      // Priorité 2 : bucket path
+      if (!target && bucketPath) {
+        try {
+          const url = await getSignedUrl(bucketPath);
+          target = url;
+        } catch (e) { /* fallback */ }
+      }
+      // Priorité 3 : URL externe
+      if (!target && externalUrl) target = externalUrl;
+      if (!target) throw new Error('Aucun PDF trouvé sur cette ligne.');
+      if (win && !win.closed) {
+        win.location.href = target;
+      } else {
+        // Popup bloqué → téléchargement de secours
+        const a = document.createElement('a');
+        a.href = target; a.download = `facture-${line.nom || 'existante'}.pdf`;
+        document.body.appendChild(a); a.click();
+        setTimeout(() => document.body.removeChild(a), 0);
+      }
+      setTimeout(() => { if (target.startsWith('blob:')) URL.revokeObjectURL(target); }, 60000);
+    } catch (e) {
+      if (win) try { win.close(); } catch (_) {}
+      alert(`Aperçu impossible : ${e.message}`);
+    } finally { setPreviewingLine(null); }
+  };
   // Mode par défaut : si l'IA a dit avoir, on propose avoir par défaut sur les clics.
   // L'user peut quand même choisir l'autre via le 2e bouton de chaque ligne.
   const iaIsAvoir = (inv?.documentType || inv?.iaCached?.documentType) === 'avoir';
@@ -13081,7 +13144,7 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS
                         return (
                           <div
                             key={idx}
-                            className={`p-2 rounded-lg border flex items-center justify-between gap-2 ${
+                            className={`p-2 rounded-lg border flex items-center justify-between gap-2 flex-wrap ${
                               has ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'
                             }`}
                           >
@@ -13095,6 +13158,17 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS
                               </div>
                             </div>
                             <div className="shrink-0 flex gap-1">
+                              {/* 👁️ Voir la facture existante (si déjà un PDF) */}
+                              {has && (
+                                <button
+                                  onClick={() => previewExistingFacture(l, lineType, idx)}
+                                  disabled={!!previewingLine}
+                                  className="px-2 py-1 rounded text-[11px] font-bold bg-white border border-amber-300 hover:bg-amber-50 text-amber-700 disabled:opacity-50"
+                                  title="Voir la facture déjà attachée"
+                                >
+                                  {previewingLine === `${lineType}-${idx}` ? '⏳' : '👁️'}
+                                </button>
+                              )}
                               <button
                                 onClick={() => onAttach({ dossier: pickedDossier, lineType, lineIndex: idx, kind: 'facture' })}
                                 disabled={attaching}
@@ -13112,6 +13186,23 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS
                                 🔄 Avoir
                               </button>
                             </div>
+                            {/* Liste des avoirs existants avec aperçu */}
+                            {avoirs > 0 && (
+                              <div className="w-full mt-1 pt-1 border-t border-slate-100 flex flex-wrap gap-1 items-center">
+                                <span className="text-[11px] text-rose-600 font-semibold">Avoirs :</span>
+                                {l.avoirs.map((av, ai) => av?.file ? (
+                                  <button
+                                    key={ai}
+                                    onClick={() => previewExistingFacture(l, lineType, idx, ai)}
+                                    disabled={!!previewingLine}
+                                    className="px-2 py-0.5 rounded text-[11px] font-bold bg-white border border-rose-300 hover:bg-rose-50 text-rose-700 disabled:opacity-50"
+                                    title={`Voir l'avoir ${av.avoirNo || ai + 1}`}
+                                  >
+                                    👁️ {av.avoirNo || `avoir ${ai + 1}`}
+                                  </button>
+                                ) : null)}
+                              </div>
+                            )}
                           </div>
                         );
                       })}
