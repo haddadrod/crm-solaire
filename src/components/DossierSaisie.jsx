@@ -12700,7 +12700,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS 
         <PennylaneKeysPanel societes={societes} />
       )}
 
-      {section === 'gmaildrive' && <GmailDrivePanel dossiers={dossiers} setDossiers={setDossiers} setShowQuickViewId={setShowQuickViewId} />}
+      {section === 'gmaildrive' && <GmailDrivePanel dossiers={dossiers} setDossiers={setDossiers} setShowQuickViewId={setShowQuickViewId} POSEURS={POSEURS} REGIES={REGIES} FOURNISSEURS={FOURNISSEURS} />}
 
       {section === 'expert' && (
         <ExpertToolsPanel
@@ -12965,7 +12965,7 @@ function PennylaneKeysPanel({ societes = [] }) {
 
 // 📎 Modal de sélection dossier + ligne (poseur/régie/fournisseur) pour
 //    attacher une facture du drive. Recherche fuzzy sur nom/prénom/ville/téléphone.
-function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching }) {
+function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS = [], REGIES = [], FOURNISSEURS = [] }) {
   const [query, setQuery] = useState(inv?.refChantier || '');
   const [pickedDossier, setPickedDossier] = useState(null);
   // Mode par défaut : si l'IA a dit avoir, on propose avoir par défaut sur les clics.
@@ -12974,6 +12974,12 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching }) {
   // Création d'une nouvelle ligne par type : { poseurs: 'NOM', regies: '', ... }
   const [newLineNames, setNewLineNames] = useState({ poseurs: '', regies: '', fournisseurs: '' });
   const setNewLineName = (type, val) => setNewLineNames(prev => ({ ...prev, [type]: val }));
+  // 🎯 Liste de référence selon le type — pour l'autocomplete dropdown.
+  //    L'user pioche dans CES listes (configurées dans Réglages) au lieu de
+  //    saisir librement (et risquer un typo qui crée un nouveau fournisseur).
+  const refList = (type) => type === 'poseurs' ? POSEURS : type === 'regies' ? REGIES : FOURNISSEURS;
+  // Focus state pour savoir quand afficher le dropdown (sinon il est tjs là)
+  const [focusedInput, setFocusedInput] = useState(null);
 
   // Recherche fuzzy sur les dossiers
   const matches = useMemo(() => {
@@ -13108,34 +13114,86 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching }) {
                         );
                       })}
                     </div>
-                    {/* ➕ Créer une nouvelle ligne de ce type */}
-                    <div className="mt-1.5 flex items-center gap-1.5">
-                      <input
-                        type="text"
-                        value={newLineNames[lineType] || ''}
-                        onChange={(e) => setNewLineName(lineType, e.target.value)}
-                        placeholder={`➕ Créer un ${lineType === 'poseurs' ? 'poseur' : lineType === 'regies' ? 'régie' : 'fournisseur'}…`}
-                        className="flex-1 px-2 py-1 text-[12px] border border-slate-300 rounded-lg bg-white"
-                      />
-                      {(newLineNames[lineType] || '').trim() && (
-                        <>
-                          <button
-                            onClick={() => onAttach({ dossier: pickedDossier, lineType, kind: 'facture', newLineName: newLineNames[lineType].trim() })}
-                            disabled={attaching}
-                            className={`px-2 py-1 rounded text-[11px] font-bold disabled:opacity-50 ${iaIsAvoir ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
-                          >
-                            📎 + Facture
-                          </button>
-                          <button
-                            onClick={() => onAttach({ dossier: pickedDossier, lineType, kind: 'avoir', newLineName: newLineNames[lineType].trim() })}
-                            disabled={attaching}
-                            className={`px-2 py-1 rounded text-[11px] font-bold disabled:opacity-50 ${iaIsAvoir ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-rose-100 hover:bg-rose-200 text-rose-700'}`}
-                          >
-                            🔄 + Avoir
-                          </button>
-                        </>
-                      )}
-                    </div>
+                    {/* ➕ Ajouter une ligne — autocomplete sur la liste configurée
+                        dans Réglages (évite les fautes de frappe qui créent des
+                        doublons). L'user peut quand même forcer un nouveau nom. */}
+                    {(() => {
+                      const all = refList(lineType) || [];
+                      const existingNoms = new Set((arr || []).map(l => (l.nom || '').toUpperCase().trim()));
+                      // Filtre + retire ceux déjà sur le dossier
+                      const typed = (newLineNames[lineType] || '').trim().toLowerCase();
+                      const suggestions = all
+                        .filter(n => !existingNoms.has(String(n).toUpperCase().trim()))
+                        .filter(n => !typed || String(n).toLowerCase().includes(typed))
+                        .slice(0, 12);
+                      const exactMatch = all.some(n => String(n).toLowerCase() === typed) && typed.length > 0;
+                      const isFocused = focusedInput === lineType;
+                      const typeLabel = lineType === 'poseurs' ? 'poseur' : lineType === 'regies' ? 'régie' : 'fournisseur';
+                      return (
+                        <div className="mt-1.5 relative">
+                          <div className="flex items-center gap-1.5">
+                            <input
+                              type="text"
+                              value={newLineNames[lineType] || ''}
+                              onChange={(e) => setNewLineName(lineType, e.target.value)}
+                              onFocus={() => setFocusedInput(lineType)}
+                              onBlur={() => setTimeout(() => setFocusedInput(prev => prev === lineType ? null : prev), 200)}
+                              placeholder={`➕ Ajouter un ${typeLabel} (tape pour filtrer)…`}
+                              className="flex-1 px-2 py-1 text-[12px] border border-slate-300 rounded-lg bg-white"
+                            />
+                            {(newLineNames[lineType] || '').trim() && (
+                              <>
+                                <button
+                                  onClick={() => onAttach({ dossier: pickedDossier, lineType, kind: 'facture', newLineName: newLineNames[lineType].trim() })}
+                                  disabled={attaching}
+                                  className={`px-2 py-1 rounded text-[11px] font-bold disabled:opacity-50 ${iaIsAvoir ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
+                                  title={exactMatch ? `Attacher la facture sur le ${typeLabel} ${newLineNames[lineType]}` : `⚠ Aucun ${typeLabel} existant ne matche — créera un nouveau`}
+                                >
+                                  📎 + Facture
+                                </button>
+                                <button
+                                  onClick={() => onAttach({ dossier: pickedDossier, lineType, kind: 'avoir', newLineName: newLineNames[lineType].trim() })}
+                                  disabled={attaching}
+                                  className={`px-2 py-1 rounded text-[11px] font-bold disabled:opacity-50 ${iaIsAvoir ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-rose-100 hover:bg-rose-200 text-rose-700'}`}
+                                >
+                                  🔄 + Avoir
+                                </button>
+                              </>
+                            )}
+                          </div>
+                          {/* Warning si typed n'existe pas dans la liste */}
+                          {(newLineNames[lineType] || '').trim() && !exactMatch && all.length > 0 && (
+                            <div className="mt-1 text-[11px] text-amber-700 italic">
+                              ⚠ « {newLineNames[lineType]} » n'est pas dans tes {typeLabel}s configurés. Si tu attaches quand même, ce sera un nouveau nom (pas dans tes tarifs).
+                            </div>
+                          )}
+                          {/* Dropdown des suggestions (visible au focus + au moins 1 result) */}
+                          {isFocused && suggestions.length > 0 && (
+                            <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-slate-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
+                              {suggestions.map(name => (
+                                <button
+                                  key={name}
+                                  type="button"
+                                  onMouseDown={(e) => { e.preventDefault(); setNewLineName(lineType, name); setFocusedInput(null); }}
+                                  className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-emerald-50 border-b border-slate-100 last:border-b-0"
+                                >
+                                  {name}
+                                </button>
+                              ))}
+                              {all.length > suggestions.length && (
+                                <div className="px-3 py-1 text-[11px] italic text-slate-500 bg-slate-50">Affine ta recherche pour voir les autres…</div>
+                              )}
+                            </div>
+                          )}
+                          {/* Liste vide : pas de fournisseurs configurés */}
+                          {isFocused && all.length === 0 && (
+                            <div className="mt-1 text-[11px] text-slate-500 italic">
+                              Aucun {typeLabel} configuré dans Réglages → {typeLabel === 'poseur' ? 'Poseurs' : typeLabel === 'régie' ? 'Régies' : 'Fournisseurs'}.
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
@@ -13257,7 +13315,7 @@ function GmailPrefetchFloatingBanner() {
 // 📦 Drive Factures : browse les PDFs Gmail archivés par le cron, rangés
 //    par fournisseur. Recherche locale dans tous les champs IA, prévisu PDF,
 //    téléchargement direct. Évite d'aller sur Supabase Dashboard.
-function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickViewId = null }) {
+function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickViewId = null, POSEURS = [], REGIES = [], FOURNISSEURS = [] }) {
   const [attachOpen, setAttachOpen] = useState(null); // { inv, query, picking } — modal d'attachement
   const [attachInProgress, setAttachInProgress] = useState(null); // key en cours d'attach
   const [markingNotFacture, setMarkingNotFacture] = useState(null); // key en cours de mark
@@ -13827,6 +13885,9 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
         <DriveAttachModal
           inv={attachOpen.inv}
           dossiers={dossiers}
+          POSEURS={POSEURS}
+          REGIES={REGIES}
+          FOURNISSEURS={FOURNISSEURS}
           onClose={() => setAttachOpen(null)}
           onAttach={(op) => attachToLine(attachOpen.inv, op)}
           attaching={!!attachInProgress}
