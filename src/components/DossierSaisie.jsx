@@ -21428,8 +21428,12 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
               break;
             }
             case 'financement': {
-              const matched = FINANCEMENTS.find(f => f && f.id && (String(f.id).toLowerCase() === val.toLowerCase() || (f.label && String(f.label).toLowerCase().includes(val.toLowerCase()))));
-              d.financement = matched ? matched.id : 'AUTRE';
+              // FINANCEMENTS est une liste de CHAÎNES (['SOFINCO', ...]), pas
+              // d'objets : on matche directement la valeur (exact, puis inclusion).
+              const v = val.toLowerCase().trim();
+              const matched = FINANCEMENTS.find(f => String(f).toLowerCase() === v)
+                || FINANCEMENTS.find(f => { const fl = String(f).toLowerCase(); return fl.includes(v) || v.includes(fl); });
+              d.financement = matched || 'AUTRE';
               if (!matched && val) warnings.push(`Ligne ${rIdx + 1}: financement "${val}" non reconnu, mis sur "AUTRE"`);
               break;
             }
