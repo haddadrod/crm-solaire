@@ -256,40 +256,56 @@ async function oauthFetchPdf(accessToken, messageId, attachmentId) {
 const EXTRACT_PROMPT = `Analyze this French PDF document.
 First, IDENTIFY THE DOCUMENT TYPE — be strict.
 
-⚠️ "facture" means an ORIGINAL invoice (the supplier issues it, with HIS OWN invoice number). NOT a relance/rappel/reminder that references existing invoice numbers.
+═══ FACTURE vs AVOIR ═══
+"facture" = original invoice (supplier issues it, positive amount due).
+"avoir" = credit note (supplier reduces a previous invoice).
 
-⚠️ "avoir" means a credit note (the supplier reduces a previous invoice).
+⚠️ THE NUMBER FORMAT IS NOT RELIABLE — many suppliers use the same prefix (F-, FV-, FAC-) for both factures AND avoirs. ALWAYS look at the actual document content:
+  - Title/header contains "AVOIR", "NOTE DE CRÉDIT", "CREDIT NOTE", "AVOIR-FACTURE" → avoir
+  - Description/object/subject mentions "Avoir" (e.g. "Avoir - Commission client...") → avoir
+  - Total amount is NEGATIVE → avoir
+  - References "facture initiale" / "facture rectifiée" → likely avoir
+  - Otherwise → facture
 
-REJECT as NOT-A-FACTURE (use other types):
-- "relance" / "rappel" / "reminder" / "impayé" / "mise en demeure" → documentType = "relance"
-- "releve de compte" / "statement" → documentType = "releve"
-- "devis" / "quote" → documentType = "devis"
-- "bon de livraison" / "BL" → documentType = "bon_livraison"
-- "bon de commande" / "PO" → documentType = "bon_commande"
-- courriers, contrats, attestations, fiches techniques, mandats, notices → use the matching type or "autre"
+═══ NOT-A-FACTURE (other types) ═══
+- "relance" / "rappel" / "reminder" / "impayé" / "mise en demeure" → relance
+- "releve de compte" / "statement" → releve
+- "devis" / "quote" → devis
+- "bon de livraison" / "BL" → bon_livraison
+- "bon de commande" / "PO" → bon_commande
+- courriers, contrats, attestations, fiches techniques, mandats, notices → matching type or "autre"
 
-Hint: a RELANCE typically references SEVERAL other invoice numbers it is reminding about — it's not the original invoice itself. A relance often contains the word "relance", "rappel", "impayé", "merci de bien vouloir régler", "facture restée impayée".
+Hint for relance: typically references SEVERAL other invoice numbers it's reminding about, contains "relance", "rappel", "impayé", "merci de régler", "facture restée impayée".
 
+═══ MONTANTS — ALWAYS EXTRACT ═══
+- montantHt = total HT (excl. VAT)
+- montantTtc = total TTC (incl. VAT)
+- montantTva = total VAT amount
+- Look in: footer table, "Total HT" / "Total TTC" / "Net à payer" / "Montant TVA" lines, or compute from line items if footer is missing
+- For AVOIRS: use POSITIVE numbers (absolute values) — sign is implicit from documentType
+- If TVA 20% and only one amount is given, derive: TTC = HT × 1.20, HT = TTC ÷ 1.20
+
+═══ OUTPUT ═══
 Reply ONLY with a JSON object (no markdown, no explanation). Use "" for unknown strings, 0 for unknown numbers.
 
 {
   "documentType": "<MUST be one of: facture | avoir | relance | devis | bon_livraison | bon_commande | courrier | releve | contrat | attestation | fiche_technique | autre>",
   "referenceChantier": "<client name — for sub-contractor invoices, the END client (homeowner)>",
-  "factureNo": "<invoice/avoir number, e.g. FAC-2026-1447 or AV26-06-00255>",
-  "dateFacture": "<YYYY-MM-DD, invoice date>",
-  "fournisseur": "<supplier name (the one issuing the invoice)>",
-  "montantHt": <number, total HT excluding VAT, in euros>,
-  "montantTtc": <number, total TTC including VAT, in euros>,
-  "montantTva": <number, total VAT amount, in euros>,
+  "factureNo": "<invoice/avoir number, e.g. FAC-2026-1447 or AV26-06-00255 or F-2026-0512848>",
+  "dateFacture": "<YYYY-MM-DD>",
+  "fournisseur": "<supplier name (the one issuing the document)>",
+  "montantHt": <number, total HT, ALWAYS extract if available>,
+  "montantTtc": <number, total TTC, ALWAYS extract if available>,
+  "montantTva": <number, total VAT amount>,
   "tauxTva": <number, VAT rate as percent (20, 10, 5.5, 2.1 or 0)>,
-  "adresseClient": "<street address of the client / chantier>",
-  "villeClient": "<city of the client / chantier>",
-  "codePostalClient": "<postal code of the client / chantier>",
-  "telephoneClient": "<phone of the client if mentioned>",
-  "emailClient": "<email of the client if mentioned>",
-  "numeroBl": "<delivery note number / BL if mentioned>",
-  "numeroCommande": "<purchase order number if mentioned>",
-  "description": "<short 1-line description, e.g. 'Installation panneaux solaires 6kW'>"
+  "adresseClient": "<street address>",
+  "villeClient": "<city>",
+  "codePostalClient": "<postal code>",
+  "telephoneClient": "<phone if mentioned>",
+  "emailClient": "<email if mentioned>",
+  "numeroBl": "<BL / delivery note number>",
+  "numeroCommande": "<PO / purchase order number>",
+  "description": "<short 1-line description, e.g. 'Installation panneaux 6kW' or 'Avoir - Commission client concernant facture F-2026-0512841'>"
 }`;
 
 async function extractFromPdf(base64) {
@@ -319,16 +335,39 @@ async function extractFromPdf(base64) {
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) throw new Error('Pas de JSON dans la réponse Claude');
   const parsed = JSON.parse(m[0]);
+  let documentType = String(parsed.documentType || 'autre').toLowerCase().trim();
+  const description = String(parsed.description || '');
+  // 🛡️ Override : si la description parle d'avoir alors que l'IA a dit
+  //    facture, on force avoir (cas N° commençant par F- mais contenu avoir).
+  if (documentType === 'facture' && /\bavoir\b|note\s+de\s+cr[eé]dit|credit\s+note/i.test(description)) {
+    documentType = 'avoir';
+  }
+  // 🧮 Si HT manque mais TTC + tauxTva connus → dérive (et inversement)
+  let montantHt = Number(parsed.montantHt) || 0;
+  let montantTtc = Number(parsed.montantTtc) || 0;
+  const tauxTva = Number(parsed.tauxTva) || 0;
+  if (montantHt === 0 && montantTtc > 0 && tauxTva > 0) {
+    montantHt = Math.round((montantTtc / (1 + tauxTva / 100)) * 100) / 100;
+  } else if (montantTtc === 0 && montantHt > 0 && tauxTva > 0) {
+    montantTtc = Math.round((montantHt * (1 + tauxTva / 100)) * 100) / 100;
+  } else if (montantTtc === 0 && montantHt > 0 && tauxTva === 0) {
+    montantTtc = montantHt; // sans TVA → TTC = HT
+  }
+  let montantTva = Number(parsed.montantTva) || 0;
+  if (montantTva === 0 && montantHt > 0 && montantTtc > 0) {
+    montantTva = Math.round((montantTtc - montantHt) * 100) / 100;
+  }
+  // Valeurs absolues pour les avoirs (sign implicite via documentType)
   return {
-    documentType: String(parsed.documentType || 'autre').toLowerCase().trim(),
+    documentType,
     refChantier: String(parsed.referenceChantier || ''),
     factureNo: String(parsed.factureNo || ''),
     dateFacture: String(parsed.dateFacture || ''),
     fournisseur: String(parsed.fournisseur || ''),
-    montantHt: Number(parsed.montantHt) || 0,
-    montantTtc: Number(parsed.montantTtc) || 0,
-    montantTva: Number(parsed.montantTva) || 0,
-    tauxTva: Number(parsed.tauxTva) || 0,
+    montantHt: Math.abs(montantHt),
+    montantTtc: Math.abs(montantTtc),
+    montantTva: Math.abs(montantTva),
+    tauxTva,
     adresseClient: String(parsed.adresseClient || ''),
     villeClient: String(parsed.villeClient || ''),
     codePostalClient: String(parsed.codePostalClient || ''),
@@ -336,7 +375,7 @@ async function extractFromPdf(base64) {
     emailClient: String(parsed.emailClient || ''),
     numeroBl: String(parsed.numeroBl || ''),
     numeroCommande: String(parsed.numeroCommande || ''),
-    description: String(parsed.description || ''),
+    description,
   };
 }
 
