@@ -21517,14 +21517,24 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
         return;
       }
       // 🔍 Détection des correspondances avec les dossiers déjà au CRM.
-      //    Par ID exact d'abord (fiable), sinon par nom+prénom normalisés.
-      const normN = (s) => String(s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, '');
+      //    1) Par ID exact (fiable quand les IDs concordent).
+      //    2) Sinon par NOM robuste : on fusionne nom + prénom, on retire
+      //       accents/ponctuation et quelques mots parasites, puis on TRIE les
+      //       mots. Ça matche même si l'ID diffère ou si le découpage
+      //       nom/prénom n'est pas le même des deux côtés (ex : un CRM qui
+      //       stocke « GÉRON / ALBITRE MICKAEL » dans le seul champ nom).
+      const NOISE = new Set(['PAC', 'ISO', 'ITE', 'PV', 'DEPOSE', 'DEPOSER', 'RAJOUT', 'PANNEAU', 'PANNEAUX', 'RECUPERER', 'MATERIEL', 'DESINSTALLATION']);
+      const nameKey = (nom, prenom) => `${nom || ''} ${prenom || ''}`
+        .toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '')
+        .split(/[^A-Z0-9]+/).filter(t => t.length >= 2 && !NOISE.has(t))
+        .sort().join(' ');
       const existIds = new Set((existingDossiers || []).map(d => String(d.id || '').trim()).filter(Boolean));
-      const existNames = new Set((existingDossiers || []).map(d => `${normN(d.nom)}|${normN(d.prenom)}`).filter(k => k !== '|'));
+      const existNames = new Set((existingDossiers || []).map(d => nameKey(d.nom, d.prenom)).filter(Boolean));
       const dups = result.dossiers.map(d => {
         const idKey = String(d.id || '').trim();
         if (idKey && !idKey.startsWith('IMP-') && existIds.has(idKey)) return 'id';
-        if (normN(d.nom) && existNames.has(`${normN(d.nom)}|${normN(d.prenom)}`)) return 'nom';
+        const nk = nameKey(d.nom, d.prenom);
+        if (nk && existNames.has(nk)) return 'nom';
         return null;
       });
       // Par défaut : on coche les NOUVEAUX, on décoche les doublons.
