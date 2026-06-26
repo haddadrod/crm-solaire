@@ -177,9 +177,33 @@ async function oauthFetchPdf(accessToken, messageId, attachmentId) {
   return String(d.data || '').replace(/-/g, '+').replace(/_/g, '/');
 }
 
-// 🤖 Appel direct à Claude pour extraire {referenceChantier, factureNo,
-//    montantHt, fournisseur} d'un PDF facture. Évite de passer par
-//    /api/extract-pdf (qui exigerait un JWT user, qu'on n'a pas en cron).
+// 🤖 Appel direct à Claude pour extraire un MAX d'infos utiles : client,
+//    n° facture, montants (HT/TTC/TVA), date, adresse, téléphone, BL,
+//    description. Cette richesse permet à la recherche locale de matcher
+//    sur n'importe quel champ (ex : on cherche par téléphone ou ville).
+//    Modèle Haiku 4.5 → rapide et bon marché pour de l'extraction structurée.
+const EXTRACT_PROMPT = `Extract structured data from this French invoice/facture PDF.
+Reply ONLY with a JSON object (no markdown, no explanation). Use "" for unknown strings, 0 for unknown numbers.
+
+{
+  "referenceChantier": "<client name on whom the invoice is — for sub-contractor invoices, this is the END client (the homeowner), not the company being invoiced>",
+  "factureNo": "<invoice number, e.g. FAC-2026-1447>",
+  "dateFacture": "<YYYY-MM-DD, invoice date>",
+  "fournisseur": "<supplier name (the one issuing the invoice)>",
+  "montantHt": <number, total HT excluding VAT, in euros>,
+  "montantTtc": <number, total TTC including VAT, in euros>,
+  "montantTva": <number, total VAT amount, in euros>,
+  "tauxTva": <number, VAT rate as percent (20, 10, 5.5, 2.1 or 0)>,
+  "adresseClient": "<street address of the client / chantier>",
+  "villeClient": "<city of the client / chantier>",
+  "codePostalClient": "<postal code of the client / chantier>",
+  "telephoneClient": "<phone of the client if mentioned>",
+  "emailClient": "<email of the client if mentioned>",
+  "numeroBl": "<delivery note number / BL if mentioned>",
+  "numeroCommande": "<purchase order number if mentioned>",
+  "description": "<short 1-line description of what is billed, e.g. 'Installation panneaux solaires 6kW + onduleur'>"
+}`;
+
 async function extractFromPdf(base64) {
   if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY manquant');
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -190,13 +214,13 @@ async function extractFromPdf(base64) {
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001', // Haiku 4.5 — rapide & pas cher pour ce job
-      max_tokens: 400,
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 1200,
       messages: [{
         role: 'user',
         content: [
           { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
-          { type: 'text', text: 'Extract from this invoice. Reply ONLY with a JSON object: {"referenceChantier": "client name", "factureNo": "invoice number", "montantHt": number_in_euros_excluding_tax, "fournisseur": "supplier name"}. Use empty string or 0 if unknown. NO other text.' },
+          { type: 'text', text: EXTRACT_PROMPT },
         ],
       }],
     }),
@@ -210,9 +234,73 @@ async function extractFromPdf(base64) {
   return {
     refChantier: String(parsed.referenceChantier || ''),
     factureNo: String(parsed.factureNo || ''),
-    montantHt: Number(parsed.montantHt) || 0,
+    dateFacture: String(parsed.dateFacture || ''),
     fournisseur: String(parsed.fournisseur || ''),
+    montantHt: Number(parsed.montantHt) || 0,
+    montantTtc: Number(parsed.montantTtc) || 0,
+    montantTva: Number(parsed.montantTva) || 0,
+    tauxTva: Number(parsed.tauxTva) || 0,
+    adresseClient: String(parsed.adresseClient || ''),
+    villeClient: String(parsed.villeClient || ''),
+    codePostalClient: String(parsed.codePostalClient || ''),
+    telephoneClient: String(parsed.telephoneClient || ''),
+    emailClient: String(parsed.emailClient || ''),
+    numeroBl: String(parsed.numeroBl || ''),
+    numeroCommande: String(parsed.numeroCommande || ''),
+    description: String(parsed.description || ''),
   };
+}
+
+// 📦 Upload du PDF brut dans le bucket Supabase Storage `gmail-archive`.
+//    Rangé PAR FOURNISSEUR pour browse facile (comme un drive) :
+//      gmail-archive/IONERGIK/FAC-2026-1447__msg123__att456.pdf
+//      gmail-archive/FLEX/F-2026-0625917__msg789__att012.pdf
+//    Si pas de fournisseur extrait → ranger dans _unknown.
+const ARCHIVE_BUCKET = 'gmail-archive';
+
+// Normalise un nom (fournisseur, n° facture) en segment de path sûr et lisible.
+function sanitizeSegment(s, fallback) {
+  let out = String(s || '').trim();
+  if (!out) return fallback;
+  // Enlève accents, met en majuscules pour groupement (FLEX == flex == Flex)
+  out = out.normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+  // Garde uniquement alphanum, espaces → _, et quelques séparateurs OK
+  out = out.replace(/[^A-Z0-9._\- ]/g, '').replace(/\s+/g, '_').replace(/_+/g, '_');
+  out = out.replace(/^[_.-]+|[_.-]+$/g, '');
+  return out.slice(0, 60) || fallback;
+}
+
+function archivePath(fournisseur, factureNo, messageId, attachmentId) {
+  const supplier = sanitizeSegment(fournisseur, '_unknown');
+  const inv = sanitizeSegment(factureNo, '_no_facno');
+  const msg = String(messageId).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 30);
+  const att = String(attachmentId).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 30);
+  return `${supplier}/${inv}__${msg}__${att}.pdf`;
+}
+
+async function uploadToArchive(admin, path, base64) {
+  try {
+    const buf = Buffer.from(base64, 'base64');
+    const { error } = await admin.storage.from(ARCHIVE_BUCKET).upload(path, buf, {
+      contentType: 'application/pdf',
+      upsert: true,
+    });
+    if (error) {
+      // Si le bucket n'existe pas, on tente de le créer (idempotent).
+      if (/not found|does not exist/i.test(error.message)) {
+        await admin.storage.createBucket(ARCHIVE_BUCKET, { public: false }).catch(() => {});
+        const retry = await admin.storage.from(ARCHIVE_BUCKET).upload(path, buf, {
+          contentType: 'application/pdf', upsert: true,
+        });
+        if (retry.error) return null;
+        return path;
+      }
+      return null;
+    }
+    return path;
+  } catch (e) {
+    return null;
+  }
 }
 
 export default async function handler(req, res) {
@@ -300,11 +388,20 @@ export default async function handler(req, res) {
             stats.errors.push({ email: inbox.email, filename: pdf.filename, error: 'PDF trop volumineux (skip)' });
             return;
           }
+          // IA d'abord → on apprend le fournisseur → on peut ranger le PDF
+          //    dans le bon dossier du bucket (gmail-archive/IONERGIK/…).
           const ia = await extractFromPdf(base64);
+          const path = archivePath(ia.fournisseur, ia.factureNo, pdf.uid, pdf.attachmentId);
+          const storagePath = await uploadToArchive(admin, path, base64);
           const k = iaCacheKey(inbox.email, pdf.uid, pdf.attachmentId);
           await admin.from('storage').upsert({
             key: k,
-            value: JSON.stringify({ ...ia, analyzedAt: new Date().toISOString() }),
+            value: JSON.stringify({
+              ...ia,
+              storagePath: storagePath || '',
+              originalFilename: pdf.filename || '',
+              analyzedAt: new Date().toISOString(),
+            }),
             updated_at: new Date().toISOString(),
           });
           stats.pdfsAnalyzed++;

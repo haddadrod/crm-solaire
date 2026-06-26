@@ -910,6 +910,30 @@ export default async function handler(req, res) {
       if (!inboxEmail || !messageId || !attachmentId) {
         return json(res, 400, { error: 'email, messageId, attachmentId requis.' });
       }
+      // 📦 Optimisation : si le PDF est déjà dans le bucket archive (uploadé
+      //    par le cron), on le sert depuis là — instantané, pas besoin de
+      //    re-toucher Gmail. On lit le storagePath depuis la row de cache IA
+      //    (le path est rangé par fournisseur, donc on ne peut pas le deviner
+      //    sans regarder le cache). Fallback sur Gmail si pas en cache ou
+      //    upload échoué.
+      try {
+        const cacheKey = `${IA_CACHE_PREFIX}${attachmentKey(inboxEmail, messageId, attachmentId)}`;
+        const { data: cacheRow } = await admin.from('storage').select('value').eq('key', cacheKey).maybeSingle();
+        if (cacheRow?.value) {
+          let cached;
+          try { cached = JSON.parse(cacheRow.value); } catch {}
+          const sp = cached?.storagePath;
+          if (sp) {
+            const { data: blob, error: dlErr } = await admin.storage.from('gmail-archive').download(sp);
+            if (!dlErr && blob) {
+              const ab = await blob.arrayBuffer();
+              const base64 = Buffer.from(ab).toString('base64');
+              return json(res, 200, { data: { base64, sizeBytes: ab.byteLength, mimeType: 'application/pdf', source: 'archive', storagePath: sp } });
+            }
+          }
+        }
+      } catch (e) { /* fallback vers Gmail */ }
+
       const inboxes = await readAllReadableInboxes(admin, userId);
       const inbox = inboxes.find(b => (b.email || '').toLowerCase() === String(inboxEmail).toLowerCase());
       if (!inbox) return json(res, 404, { error: 'Boîte Gmail non trouvée.' });
@@ -917,7 +941,7 @@ export default async function handler(req, res) {
       // ── IMAP : download par UID (messageId) + numéro de part (attachmentId) ──
       if (method === 'imap') {
         const { base64, sizeBytes } = await imapFetchAttachment(inbox, parseInt(messageId, 10), attachmentId);
-        return json(res, 200, { data: { base64, sizeBytes, mimeType: 'application/pdf' } });
+        return json(res, 200, { data: { base64, sizeBytes, mimeType: 'application/pdf', source: 'gmail' } });
       }
       // ── OAuth ──
       if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET) {
@@ -925,7 +949,7 @@ export default async function handler(req, res) {
       }
       const accessToken = await ensureAccessToken(admin, userId, inbox);
       const { base64, sizeBytes } = await getAttachment(accessToken, messageId, attachmentId);
-      return json(res, 200, { data: { base64, sizeBytes, mimeType: 'application/pdf' } });
+      return json(res, 200, { data: { base64, sizeBytes, mimeType: 'application/pdf', source: 'gmail' } });
     }
 
     // 🚫 GET de la liste noire (pour l'UI Réglages)
@@ -1010,16 +1034,30 @@ export default async function handler(req, res) {
         }
         slot.messages[messageId].attachments.push({
           attachmentId,
-          filename: `${ia.factureNo || 'facture'}.pdf`,
+          filename: ia.originalFilename || `${ia.factureNo || 'facture'}.pdf`,
           sizeBytes: 0,
           mimeType: 'application/pdf',
           alreadyImported: false,
-          // 🪄 Pré-rempli pour l'UI : pas besoin de re-lancer l'IA
+          // 📦 Si stocké en bucket, on le signale → l'UI évite Gmail à l'attach
+          storagePath: ia.storagePath || '',
+          // 🪄 Pré-rempli pour l'UI : tous les champs IA (riches)
           iaCached: {
             refChantier: ia.refChantier || '',
             factureNo: ia.factureNo || '',
-            montantHt: Number(ia.montantHt) || 0,
+            dateFacture: ia.dateFacture || '',
             fournisseur: ia.fournisseur || '',
+            montantHt: Number(ia.montantHt) || 0,
+            montantTtc: Number(ia.montantTtc) || 0,
+            montantTva: Number(ia.montantTva) || 0,
+            tauxTva: Number(ia.tauxTva) || 0,
+            adresseClient: ia.adresseClient || '',
+            villeClient: ia.villeClient || '',
+            codePostalClient: ia.codePostalClient || '',
+            telephoneClient: ia.telephoneClient || '',
+            emailClient: ia.emailClient || '',
+            numeroBl: ia.numeroBl || '',
+            numeroCommande: ia.numeroCommande || '',
+            description: ia.description || '',
           },
         });
       }

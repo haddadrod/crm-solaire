@@ -25531,12 +25531,20 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
                             </div>
                             <div className="text-[12px] text-slate-400 flex items-center gap-2 flex-wrap">
                               {a.sizeBytes ? <span>{Math.round(a.sizeBytes / 1024)} Ko</span> : null}
+                              {a.storagePath && <span className="text-emerald-600" title="PDF archivé dans le bucket (attach instantané)">📦</span>}
                               {ia?.status === 'done' && (
                                 <>
                                   {ia.refChantier && <span className={matched ? 'text-emerald-700 font-bold' : ''}>👤 {ia.refChantier}</span>}
                                   {ia.factureNo && <span>🧾 {ia.factureNo}</span>}
-                                  {ia.montantHt > 0 && <span>💰 {ia.montantHt} € HT</span>}
+                                  {ia.dateFacture && <span>📅 {ia.dateFacture}</span>}
+                                  {ia.montantHt > 0 && <span>💰 {ia.montantHt.toFixed(2)} € HT</span>}
+                                  {ia.montantTtc > 0 && ia.montantTtc !== ia.montantHt && <span>💶 {ia.montantTtc.toFixed(2)} € TTC</span>}
+                                  {ia.tauxTva > 0 && <span>TVA {ia.tauxTva}%</span>}
                                   {ia.fournisseur && <span>🏢 {ia.fournisseur}</span>}
+                                  {ia.villeClient && <span>📍 {ia.villeClient}</span>}
+                                  {ia.telephoneClient && <span>📞 {ia.telephoneClient}</span>}
+                                  {ia.numeroBl && <span>🚚 BL {ia.numeroBl}</span>}
+                                  {ia.description && <span className="italic text-slate-500">— {ia.description}</span>}
                                 </>
                               )}
                               {ia?.status === 'error' && <span className="text-rose-500">⚠️ IA : {ia.error}</span>}
