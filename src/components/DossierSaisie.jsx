@@ -21368,6 +21368,8 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
   const [mapping, setMapping] = useState({});
   const [hasHeaders, setHasHeaders] = useState(true);
   const [dryRun, setDryRun] = useState({});
+  const [selected, setSelected] = useState(() => new Set()); // indices cochés (à importer)
+  const [showOnly, setShowOnly] = useState('tous'); // 'tous' | 'nouveaux' | 'doublons'
   const [errorMsg, setErrorMsg] = useState('');
 
   const parsed = useMemo(() => parseDelimited(rawText), [rawText]);
@@ -21510,18 +21512,44 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
         setErrorMsg('⚠️ Tu n\'as mappé aucune colonne. Choisis au moins un champ (Nom, Prénom, ou Téléphone) dans les dropdowns ci-dessus.');
         return;
       }
-      setDryRun(result);
+      // 🔍 Détection des correspondances avec les dossiers déjà au CRM.
+      //    Par ID exact d'abord (fiable), sinon par nom+prénom normalisés.
+      const normN = (s) => String(s || '').toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^A-Z0-9]/g, '');
+      const existIds = new Set((existingDossiers || []).map(d => String(d.id || '').trim()).filter(Boolean));
+      const existNames = new Set((existingDossiers || []).map(d => `${normN(d.nom)}|${normN(d.prenom)}`).filter(k => k !== '|'));
+      const dups = result.dossiers.map(d => {
+        const idKey = String(d.id || '').trim();
+        if (idKey && !idKey.startsWith('IMP-') && existIds.has(idKey)) return 'id';
+        if (normN(d.nom) && existNames.has(`${normN(d.nom)}|${normN(d.prenom)}`)) return 'nom';
+        return null;
+      });
+      // Par défaut : on coche les NOUVEAUX, on décoche les doublons.
+      const initSel = new Set();
+      result.dossiers.forEach((_, i) => { if (!dups[i]) initSel.add(i); });
+      setSelected(initSel);
+      setShowOnly('tous');
+      setDryRun({ ...result, dups });
       setStep(3);
     } catch (e) {
       setErrorMsg(`⚠️ Erreur lors de l'analyse : ${e.message}. Réessaie ou contacte le support.`);
     }
   };
 
+  const toggleSel = (i) => setSelected(prev => {
+    const next = new Set(prev);
+    if (next.has(i)) next.delete(i); else next.add(i);
+    return next;
+  });
+  const selectAll = () => setSelected(new Set((dryRun.dossiers || []).map((_, i) => i)));
+  const deselectDups = () => setSelected(new Set((dryRun.dossiers || []).map((_, i) => i).filter(i => !dryRun.dups?.[i])));
+
   const doImport = () => {
     setErrorMsg('');
     if (!dryRun.dossiers || dryRun.dossiers.length === 0) { setErrorMsg('Aucun dossier à importer.'); return; }
+    const toImport = dryRun.dossiers.filter((_, i) => selected.has(i));
+    if (toImport.length === 0) { setErrorMsg('Aucune ligne cochée — coche au moins un dossier à importer.'); return; }
     try {
-      onImport(dryRun.dossiers);
+      onImport(toImport);
     } catch (e) {
       setErrorMsg(`Erreur lors de l'import : ${e.message}`);
     }
@@ -21643,11 +21671,44 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                     Reviens à l'étape précédente pour corriger le mapping.
                   </div>
                 </div>
-              ) : (
-                <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-2xl text-sm text-emerald-800">
-                  ✓ <strong>{dryRun.dossiers.length} dossier{dryRun.dossiers.length > 1 ? 's' : ''} prêt{dryRun.dossiers.length > 1 ? 's' : ''} à importer</strong>
-                </div>
-              )}
+              ) : (() => {
+                const total = dryRun.dossiers.length;
+                const dupCount = (dryRun.dups || []).filter(Boolean).length;
+                const newCount = total - dupCount;
+                const selCount = selected.size;
+                return (
+                  <div className="space-y-3">
+                    <div className="grid grid-cols-3 gap-2 text-center">
+                      <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-xl">
+                        <div className="text-lg font-bold text-emerald-700">🆕 {newCount}</div>
+                        <div className="text-[11px] text-emerald-600 font-semibold">nouveaux</div>
+                      </div>
+                      <div className="p-2.5 bg-rose-50 border border-rose-200 rounded-xl">
+                        <div className="text-lg font-bold text-rose-700">♻️ {dupCount}</div>
+                        <div className="text-[11px] text-rose-600 font-semibold">déjà au CRM</div>
+                      </div>
+                      <div className="p-2.5 bg-violet-50 border border-violet-200 rounded-xl">
+                        <div className="text-lg font-bold text-violet-700">✓ {selCount}</div>
+                        <div className="text-[11px] text-violet-600 font-semibold">cochés à importer</div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-wrap text-xs">
+                      <span className="text-slate-500 font-semibold">Filtrer :</span>
+                      {[['tous', 'Tous'], ['nouveaux', '🆕 Nouveaux'], ['doublons', '♻️ Doublons']].map(([k, lbl]) => (
+                        <button key={k} onClick={() => setShowOnly(k)} className={`px-2.5 py-1 rounded-lg font-semibold ${showOnly === k ? 'bg-violet-500 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'}`}>{lbl}</button>
+                      ))}
+                      <span className="mx-1 text-slate-300">|</span>
+                      <button onClick={deselectDups} className="px-2.5 py-1 rounded-lg font-semibold bg-rose-100 text-rose-700 hover:bg-rose-200">Décocher les doublons</button>
+                      <button onClick={selectAll} className="px-2.5 py-1 rounded-lg font-semibold bg-white border border-slate-200 text-slate-600 hover:bg-slate-50">Tout cocher</button>
+                    </div>
+                    {dupCount > 0 && (
+                      <div className="p-2.5 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-700">
+                        💡 Les <strong>{dupCount}</strong> dossiers déjà présents au CRM (par ID ou nom) sont <strong>décochés par défaut</strong> pour éviter les doublons. Recoche-les si tu veux quand même les ré-importer.
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
               {dryRun.warnings && dryRun.warnings.length > 0 && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-700 max-h-32 overflow-y-auto">
                   <div className="font-semibold mb-1">⚠️ {dryRun.warnings.length} avertissement{dryRun.warnings.length > 1 ? 's' : ''} :</div>
@@ -21655,37 +21716,49 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                   {dryRun.warnings.length > 10 && <div className="italic">... et {dryRun.warnings.length - 10} autre{dryRun.warnings.length - 10 > 1 ? 's' : ''}</div>}
                 </div>
               )}
-              {dryRun.dossiers.length > 0 && (
+              {dryRun.dossiers.length > 0 && (() => {
+                const rowsToShow = dryRun.dossiers
+                  .map((d, i) => ({ d, i, dup: dryRun.dups?.[i] }))
+                  .filter(r => showOnly === 'tous' || (showOnly === 'nouveaux' ? !r.dup : !!r.dup));
+                const CAP = 200;
+                const presence = (dup) => dup === 'id'
+                  ? <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold whitespace-nowrap">♻️ Même ID</span>
+                  : dup === 'nom'
+                  ? <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold whitespace-nowrap">⚠️ Même nom</span>
+                  : <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold whitespace-nowrap">🆕 Nouveau</span>;
+                return (
                 <div className="border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
                   <table className="w-full text-xs">
                     <thead className="bg-slate-50 sticky top-0">
                       <tr>
-                        <th className="px-2 py-2 text-left font-bold text-slate-600">#</th>
+                        <th className="px-2 py-2 text-center font-bold text-slate-600">✓</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Nom</th>
+                        <th className="px-2 py-2 text-left font-bold text-slate-600">Présence</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Société</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Statut</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Financement</th>
                         <th className="px-2 py-2 text-right font-bold text-slate-600">Montant</th>
-                        <th className="px-2 py-2 text-left font-bold text-slate-600">Poseur</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {dryRun.dossiers.slice(0, 50).map((d, i) => (
-                        <tr key={i} className="border-t border-slate-100">
-                          <td className="px-2 py-1.5 text-slate-500">{i + 1}</td>
+                      {rowsToShow.slice(0, CAP).map(({ d, i, dup }) => (
+                        <tr key={i} className={`border-t border-slate-100 ${dup ? 'bg-rose-50/40' : ''} ${!selected.has(i) ? 'opacity-50' : ''}`}>
+                          <td className="px-2 py-1.5 text-center"><input type="checkbox" checked={selected.has(i)} onChange={() => toggleSel(i)} className="w-4 h-4 accent-violet-500 cursor-pointer" /></td>
                           <td className="px-2 py-1.5 font-semibold">{d.nom} {d.prenom}</td>
+                          <td className="px-2 py-1.5">{presence(dup)}</td>
                           <td className="px-2 py-1.5">{(societes || []).find(s => s.id === d.societe)?.label || (d.societe ? d.societe : <span className="text-rose-400">—</span>)}</td>
                           <td className="px-2 py-1.5">{STATUTS_ORDERED.find(s => s.id === d.statut)?.label || d.statut}</td>
                           <td className="px-2 py-1.5">{d.financement}</td>
                           <td className="px-2 py-1.5 text-right">{formatEuro(d.montantTotal)}</td>
-                          <td className="px-2 py-1.5">{d.poseurs[0]?.nom || '—'}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                  {dryRun.dossiers.length > 50 && <div className="p-2 text-center text-xs text-slate-500 bg-slate-50">... et {dryRun.dossiers.length - 50} autre{dryRun.dossiers.length - 50 > 1 ? 's' : ''}</div>}
+                  {rowsToShow.length > CAP && <div className="p-2 text-center text-xs text-slate-500 bg-slate-50">... et {rowsToShow.length - CAP} autre{rowsToShow.length - CAP > 1 ? 's' : ''} (sélection en masse via les boutons ci-dessus)</div>}
+                  {rowsToShow.length === 0 && <div className="p-4 text-center text-xs text-slate-400">Aucune ligne dans ce filtre.</div>}
                 </div>
-              )}
+                );
+              })()}
             </div>
           )}
         </div>
@@ -21699,7 +21772,7 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
               const mappedCount = Object.values(mapping).filter(Boolean).length;
               return <button onClick={enterPreview} disabled={mappedCount === 0} className="px-5 py-2 bg-violet-500 hover:bg-violet-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold">Aperçu →</button>;
             })()}
-            {step === 3 && <button onClick={doImport} disabled={!dryRun.dossiers || dryRun.dossiers.length === 0} className="px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold flex items-center gap-2"><Check className="w-4 h-4" />Importer {dryRun.dossiers?.length || 0} dossier{(dryRun.dossiers?.length || 0) > 1 ? 's' : ''}</button>}
+            {step === 3 && <button onClick={doImport} disabled={selected.size === 0} className="px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold flex items-center gap-2"><Check className="w-4 h-4" />Importer {selected.size} dossier{selected.size > 1 ? 's' : ''}</button>}
           </div>
         </div>
       </div>
