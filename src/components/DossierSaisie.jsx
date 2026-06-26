@@ -12815,16 +12815,6 @@ function PennylaneKeysPanel({ societes = [] }) {
         </div>
       </div>
 
-      {/* 📎 Modal d'attachement : recherche dossier → sélection ligne → confirm */}
-      {attachOpen && (
-        <DriveAttachModal
-          inv={attachOpen.inv}
-          dossiers={dossiers}
-          onClose={() => setAttachOpen(null)}
-          onAttach={(dossier, lineType, lineIndex) => attachToLine(attachOpen.inv, dossier, lineType, lineIndex)}
-          attaching={!!attachInProgress}
-        />
-      )}
     </div>
   );
 }
@@ -13603,6 +13593,17 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
           })}
         </div>
       </div>
+
+      {/* 📎 Modal d'attachement : recherche dossier → sélection ligne → confirm */}
+      {attachOpen && (
+        <DriveAttachModal
+          inv={attachOpen.inv}
+          dossiers={dossiers}
+          onClose={() => setAttachOpen(null)}
+          onAttach={(dossier, lineType, lineIndex) => attachToLine(attachOpen.inv, dossier, lineType, lineIndex)}
+          attaching={!!attachInProgress}
+        />
+      )}
     </div>
   );
 }
