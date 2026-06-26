@@ -71,6 +71,53 @@ async function readImportedAttachmentsSet(admin) {
   } catch (e) {}
   return new Set();
 }
+async function writeImportedAttachmentsSet(admin, set) {
+  const arr = Array.from(set).slice(-5000); // cap
+  await admin.from('storage').upsert({
+    key: 'gmail-imported-attachments',
+    value: JSON.stringify(arr),
+    updated_at: new Date().toISOString(),
+  });
+}
+
+// 🧾 Set des n° facture / BL qui sont DÉJÀ attachés à une ligne de dossier
+//    (poseur, régie, fournisseur) avec un PDF (factureFile || facturePdfUrl
+//    || factureExternalUrl). Permet de skip côté cron quand l'user a
+//    attaché manuellement un PDF via le dossier (= pas dans importedSet).
+async function readCrmFactureRefs(admin) {
+  const refs = new Set();
+  try {
+    const { data } = await admin.from('storage').select('value').eq('key', 'dossiers-data').maybeSingle();
+    if (!data?.value) return refs;
+    const dossiers = JSON.parse(data.value);
+    const normalize = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const arrs = ['poseurs', 'regies', 'fournisseurs'];
+    for (const d of dossiers || []) {
+      for (const k of arrs) {
+        for (const l of (d[k] || [])) {
+          if (!l) continue;
+          // Ligne doit avoir un PDF attaché (sinon factureNo seul = pas de doublon réel)
+          if (!(l.factureFile || l.facturePdfUrl || l.factureExternalUrl)) continue;
+          const fn = normalize(l.factureNo);
+          if (fn.length >= 5) refs.add(fn);
+          const bl = normalize(l.bl);
+          if (bl.length >= 5) refs.add(bl);
+        }
+      }
+    }
+  } catch (e) { /* dossiers indisponibles → on continue sans pré-skip */ }
+  return refs;
+}
+
+function filenameMatchesCrmRef(filename, refs) {
+  if (!refs || refs.size === 0) return false;
+  const norm = String(filename || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (!norm) return false;
+  for (const r of refs) {
+    if (norm.includes(r)) return true;
+  }
+  return false;
+}
 
 function boxMethod(b) {
   return b?.appPassword ? 'imap' : (b?.refreshToken ? 'oauth' : 'imap');
@@ -369,7 +416,14 @@ export default async function handler(req, res) {
     // Set des attachments déjà ATTACHÉS à un dossier CRM. On les skip aussi
     // (en plus du cache IA) pour ne pas re-payer Claude pour rien.
     const importedSet = await readImportedAttachmentsSet(admin);
+    // 🧾 N° de facture/BL qui sont DÉJÀ liés à un dossier (avec PDF). Couvre
+    //    le cas où l'user a attaché un PDF manuellement via le dossier
+    //    (sans passer par Tri Factures, donc pas dans importedSet).
+    const crmRefs = await readCrmFactureRefs(admin);
     stats.pdfsAlreadyInCrm = 0;
+    stats.pdfsMatchedByFilename = 0;
+    // Set in-memory des clés à ajouter à importedSet à la fin (post-IA matches).
+    const toMarkImported = new Set();
 
     for (const inbox of shared) {
       if (stats.pdfsAnalyzed >= cap) break;
@@ -401,11 +455,19 @@ export default async function handler(req, res) {
       stats.pdfsAlreadyCached += cached.size;
       // Filtre 1 : skip ce qui est déjà en cache IA
       // Filtre 2 : skip ce qui est déjà attaché à un dossier (importedSet)
+      // Filtre 3 : skip si nom du PDF contient un n° facture/BL déjà en CRM
+      //           (match filename — couvre le cas attach manuel sans Gmail)
       const todo = pdfs.filter(p => {
         const cacheK = iaCacheKey(inbox.email, p.uid, p.attachmentId);
         if (cached.has(cacheK)) return false;
         const importedK = `${(inbox.email || '').toLowerCase()}|${p.uid}|${p.attachmentId}`;
         if (importedSet.has(importedK)) { stats.pdfsAlreadyInCrm++; return false; }
+        // Match du filename Gmail contre les n° de facture du CRM
+        if (filenameMatchesCrmRef(p.filename, crmRefs)) {
+          stats.pdfsMatchedByFilename++;
+          toMarkImported.add(importedK); // sera persisté en fin de run
+          return false;
+        }
         return true;
       });
 
@@ -444,6 +506,13 @@ export default async function handler(req, res) {
             updated_at: new Date().toISOString(),
           });
           stats.pdfsAnalyzed++;
+          // 🧾 Post-IA : si le factureNo extrait matche une ligne CRM qui a
+          //    déjà un PDF → on marque importé (pour skip aux prochains runs).
+          const normFn = String(ia.factureNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+          if (normFn.length >= 5 && crmRefs.has(normFn)) {
+            const importedK = `${(inbox.email || '').toLowerCase()}|${pdf.uid}|${pdf.attachmentId}`;
+            toMarkImported.add(importedK);
+          }
         } catch (e) {
           stats.pdfsErrored++;
           if (stats.errors.length < 20) {
@@ -460,6 +529,18 @@ export default async function handler(req, res) {
     }
   } catch (e) {
     stats.errors.push({ global: e?.message || 'unknown' });
+  }
+
+  // 💾 Persiste les nouvelles entrées « imported » détectées en post-filtre
+  //    (match filename OU match factureNo après IA). Au prochain run, ces
+  //    PDFs seront skippés en filtre 2.
+  if (toMarkImported.size > 0) {
+    try {
+      const fresh = await readImportedAttachmentsSet(admin);
+      toMarkImported.forEach(k => fresh.add(k));
+      await writeImportedAttachmentsSet(admin, fresh);
+      stats.markedImported = toMarkImported.size;
+    } catch (e) { stats.errors.push({ global: `markImported: ${e?.message}` }); }
   }
 
   const durationMs = Date.now() - startedAt;
