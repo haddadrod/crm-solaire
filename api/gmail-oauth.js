@@ -95,6 +95,17 @@ const IGNORED_SENDERS_KEY = 'gmail-ignored-senders';
 // direct côté IA (ex : "27", "8", refusés par findByFactureNo).
 const IMPORTED_ATTS_KEY = 'gmail-imported-attachments';
 
+// 🪄 Cache IA des PDFs scannés. Une clé par PDF :
+//   `gmail-ia:<inboxEmail>|<messageId>|<attachmentId>` → JSON {
+//     refChantier, factureNo, montantHt, fournisseur, analyzedAt
+//   }
+// Évite de relancer l'IA (coût $$) à chaque scan/search. L'IA tourne 1×
+// par PDF, le résultat est gardé pour toute l'équipe.
+const IA_CACHE_PREFIX = 'gmail-ia:';
+function iaCacheKey(inboxEmail, messageId, attachmentId) {
+  return `${IA_CACHE_PREFIX}${attachmentKey(inboxEmail, messageId, attachmentId)}`;
+}
+
 async function readImportedAttachments(admin) {
   const { data: row } = await admin.from('storage')
     .select('value')
@@ -960,6 +971,60 @@ export default async function handler(req, res) {
       }
       await writeImportedAttachments(admin, set);
       return json(res, 200, { data: { count: set.size } });
+    }
+
+    // 🪄 Cache IA — lecture batch : renvoie pour chaque {inbox, messageId,
+    //    attachmentId} l'extraction IA si elle existe en base. Permet à l'UI
+    //    de pré-remplir les badges sans relancer l'IA (économie $$).
+    //    Body : { entries: [{inboxEmail, messageId, attachmentId}, ...] }
+    //    → { data: { cached: { [key]: { refChantier, factureNo, ... } } } }
+    if (action === 'ia-cache-get') {
+      const entries = Array.isArray(body.entries) ? body.entries : [];
+      if (entries.length === 0) return json(res, 200, { data: { cached: {} } });
+      const keys = entries
+        .filter(e => e?.inboxEmail && e?.messageId && e?.attachmentId)
+        .map(e => iaCacheKey(e.inboxEmail, e.messageId, e.attachmentId));
+      if (keys.length === 0) return json(res, 200, { data: { cached: {} } });
+      // Supabase `.in()` cap soft à ~1000 — on chunke par sécurité.
+      const cached = {};
+      const CHUNK = 500;
+      for (let i = 0; i < keys.length; i += CHUNK) {
+        const slice = keys.slice(i, i + CHUNK);
+        const { data: rows } = await admin.from('storage').select('key, value').in('key', slice);
+        for (const r of rows || []) {
+          // Re-mappe la clé Supabase → clé attachment publique attendue par l'UI
+          const pubKey = String(r.key || '').slice(IA_CACHE_PREFIX.length);
+          try { cached[pubKey] = JSON.parse(r.value); } catch (e) {}
+        }
+      }
+      return json(res, 200, { data: { cached } });
+    }
+
+    // 🪄 Cache IA — écriture : upsert l'extraction IA pour un PDF donné.
+    //    Body : { inboxEmail, messageId, attachmentId, ia: { refChantier,
+    //            factureNo, montantHt, fournisseur } }
+    //    Possibilité de batcher : { entries: [{...}, ...] }
+    if (action === 'ia-cache-set') {
+      const single = (body.inboxEmail && body.messageId && body.attachmentId)
+        ? [{ inboxEmail: body.inboxEmail, messageId: body.messageId, attachmentId: body.attachmentId, ia: body.ia || {} }]
+        : [];
+      const batch = Array.isArray(body.entries) ? body.entries : [];
+      const all = [...single, ...batch].filter(e => e?.inboxEmail && e?.messageId && e?.attachmentId);
+      if (all.length === 0) return json(res, 400, { error: 'entries (ou inboxEmail/messageId/attachmentId/ia) requis' });
+      const rows = all.map(e => ({
+        key: iaCacheKey(e.inboxEmail, e.messageId, e.attachmentId),
+        value: JSON.stringify({
+          refChantier: String(e.ia?.refChantier || ''),
+          factureNo: String(e.ia?.factureNo || ''),
+          montantHt: Number(e.ia?.montantHt) || 0,
+          fournisseur: String(e.ia?.fournisseur || ''),
+          analyzedAt: new Date().toISOString(),
+        }),
+        updated_at: new Date().toISOString(),
+      }));
+      const { error } = await admin.from('storage').upsert(rows);
+      if (error) return json(res, 500, { error: error.message });
+      return json(res, 200, { data: { count: rows.length } });
     }
 
     // 🔓 Démarque (un, plusieurs, ou TOUT). Utile quand des factures ont été

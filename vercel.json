@@ -1,0 +1,13 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron-gmail-prefetch",
+      "schedule": "0 5 * * *"
+    }
+  ],
+  "functions": {
+    "api/cron-gmail-prefetch.js": {
+      "maxDuration": 300
+    }
+  }
+}

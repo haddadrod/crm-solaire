@@ -7490,10 +7490,64 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
     });
   };
 
+  // 🪄 Auto-load du cache IA dès qu'un scan revient : on évite de relancer
+  //    l'IA (payante) sur ce qu'on a déjà analysé. Pré-remplit gmailIaResults.
+  useEffect(() => {
+    if (!gmailScanResults) return;
+    const entries = [];
+    for (const r of gmailScanResults.results || []) {
+      for (const m of r.messages || []) {
+        for (const a of m.attachments || []) {
+          const key = gmailAttachmentKey(r.email, m.messageId, a.attachmentId);
+          // Skip ceux déjà en state (cache local plus frais)
+          if (gmailIaResults[key]?.status === 'done') continue;
+          entries.push({ inboxEmail: r.email, messageId: m.messageId, attachmentId: a.attachmentId, key });
+        }
+      }
+    }
+    if (entries.length === 0) return;
+    (async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        const headers = { 'Content-Type': 'application/json' };
+        if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+        const res = await fetch('/api/gmail-oauth?action=ia-cache-get', {
+          method: 'POST', headers,
+          body: JSON.stringify({ entries: entries.map(({ inboxEmail, messageId, attachmentId }) => ({ inboxEmail, messageId, attachmentId })) }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) return;
+        const cached = payload.data?.cached || {};
+        // Clé Supabase = inbox|msg|att → mais notre clé UI = inbox::msg::att.
+        // On reconstruit la clé UI pour chaque entrée matchée.
+        const merged = {};
+        for (const e of entries) {
+          // Le serveur renvoie la clé sous le format `inbox|msg|att` (lowercased).
+          const serverKey = `${e.inboxEmail.toLowerCase()}|${e.messageId}|${e.attachmentId}`;
+          const hit = cached[serverKey];
+          if (hit) {
+            merged[e.key] = {
+              status: 'done',
+              refChantier: hit.refChantier || '',
+              factureNo: hit.factureNo || '',
+              montantHt: hit.montantHt || 0,
+              fournisseur: hit.fournisseur || '',
+              fromCache: true, // permet l'UI de montrer un badge « cache »
+            };
+          }
+        }
+        if (Object.keys(merged).length > 0) {
+          setGmailIaResults(prev => ({ ...merged, ...prev }));
+        }
+      } catch (e) { /* best-effort */ }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [gmailScanResults]);
+
   // 🪄 Identifie le CLIENT de chaque PDF scanné via IA. Lit chaque PDF, le
   //    passe à /api/extract-pdf, stocke {referenceChantier, factureNo,
-  //    montantHt, fournisseur} dans gmailIaResults. La carte affiche alors
-  //    le nom du client → l'user peut cocher les bonnes sans ouvrir un par un.
+  //    montantHt, fournisseur} dans gmailIaResults ET en cache Supabase
+  //    (pour ne pas re-payer l'IA lors d'un futur scan/search).
   const runGmailIa = async () => {
     if (!gmailScanResults) return;
     const targets = [];
@@ -7501,7 +7555,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
       for (const m of r.messages || []) {
         for (const a of m.attachments || []) {
           const key = gmailAttachmentKey(r.email, m.messageId, a.attachmentId);
-          // Skip ceux déjà analysés (cache)
+          // Skip ceux déjà analysés (cache local OU serveur)
           if (gmailIaResults[key]?.status === 'done') continue;
           targets.push({ inbox: r.email, messageId: m.messageId, attachment: a, key });
         }
@@ -7535,16 +7589,18 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
             const ep = await er.json().catch(() => ({}));
             if (!er.ok) throw new Error(ep.error || `extract ${er.status}`);
             const data = (ep && ep.data) || {};
-            setGmailIaResults(prev => ({
-              ...prev,
-              [key]: {
-                status: 'done',
-                refChantier: String(data.referenceChantier || ''),
-                factureNo: String(data.factureNo || ''),
-                montantHt: Number(data.montantHt) || 0,
-                fournisseur: String(data.fournisseur || ''),
-              },
-            }));
+            const iaOut = {
+              refChantier: String(data.referenceChantier || ''),
+              factureNo: String(data.factureNo || ''),
+              montantHt: Number(data.montantHt) || 0,
+              fournisseur: String(data.fournisseur || ''),
+            };
+            setGmailIaResults(prev => ({ ...prev, [key]: { status: 'done', ...iaOut } }));
+            // 💾 Cache serveur : fire & forget — ne bloque pas le pipeline.
+            fetch('/api/gmail-oauth?action=ia-cache-set', {
+              method: 'POST', headers,
+              body: JSON.stringify({ inboxEmail: inbox, messageId, attachmentId: attachment.attachmentId, ia: iaOut }),
+            }).catch(() => {});
           } catch (e) {
             setGmailIaResults(prev => ({ ...prev, [key]: { status: 'error', error: e?.message || 'IA échouée' } }));
           } finally {
@@ -25184,14 +25240,19 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
             const data = (ep && ep.data) || {};
             const refClient = normalizeForMatch(data.referenceChantier);
             const matched = !!(refClient && hint && (refClient.includes(hint) || hint.includes(refClient)));
-            setOne(key, {
-              status: 'done',
+            const iaOut = {
               refChantier: String(data.referenceChantier || ''),
               factureNo: String(data.factureNo || ''),
               montantHt: Number(data.montantHt) || 0,
               fournisseur: String(data.fournisseur || ''),
-              matched,
-            });
+            };
+            setOne(key, { status: 'done', ...iaOut, matched });
+            // 💾 Cache serveur (fire & forget) : ne sera pas re-payé au
+            //    prochain scan/search.
+            fetch('/api/gmail-oauth?action=ia-cache-set', {
+              method: 'POST', headers,
+              body: JSON.stringify({ inboxEmail: inbox, messageId, attachmentId: attachment.attachmentId, ia: iaOut }),
+            }).catch(() => {});
           } catch (e) {
             setOne(key, { status: 'error', error: (e && e.message) || 'IA échouée' });
           } finally {
