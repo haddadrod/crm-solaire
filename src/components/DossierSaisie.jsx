@@ -10128,6 +10128,22 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
   const clearSelection = (key) => {
     setSelectedByKey(prev => { const next = { ...prev }; delete next[key]; return next; });
   };
+  // ☑ Coche TOUS les dossiers « à payer » visibles d'un prestataire
+  //    (ignore les déjà payés / bloqués financeur).
+  const selectAllAPayer = (key, lignes) => {
+    setSelectedByKey(prev => {
+      const next = { ...prev };
+      const set = new Set();
+      lignes.forEach(l => {
+        if (!l.paye && l.financeurPaye && l.dossierLocalId) set.add(l.dossierLocalId);
+      });
+      if (set.size === 0) { delete next[key]; return next; }
+      next[key] = set;
+      return next;
+    });
+  };
+  // 📤 Export prestataire — modal d'envoi avec texte formaté + copier/email/csv
+  const [exportPresta, setExportPresta] = useState(null); // { p, lignes, total }
   // 'Poseur'/'Régie'/'Fournisseur' → 'poseur'/'regie'/'fournisseur' (kind du callback).
   const kindFromType = (type) => {
     if (type === 'Poseur') return 'poseur';
@@ -10531,13 +10547,13 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                   <div className="bg-slate-50 px-4 py-3 space-y-1.5">
                     {/* 🔍 Recherche dossier dans ce prestataire — utile dès 10+ lignes */}
                     {lignesFiltrees.length > 5 && (
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <input
                           type="text"
                           value={searchByPresta[prestaKey] || ''}
                           onChange={(e) => setSearchByPresta(prev => ({ ...prev, [prestaKey]: e.target.value }))}
                           placeholder={`🔍 Filtrer parmi les ${lignesFiltrees.length} dossiers de ${p.nom}…`}
-                          className="flex-1 px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
+                          className="flex-1 min-w-[200px] px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
                         />
                         {(searchByPresta[prestaKey] || '').length > 0 && (
                           <button
@@ -10548,6 +10564,36 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                         <span className="text-[12px] text-slate-500 font-semibold">
                           {lignesAffichees.length}/{lignesFiltrees.length}
                         </span>
+                        {/* ☑ Tout cocher / décocher d'un coup */}
+                        {kind && onMarkPrestaPaye && (() => {
+                          const aPayer = lignesAffichees.filter(l => !l.paye && l.financeurPaye && l.dossierLocalId);
+                          if (aPayer.length === 0) return null;
+                          const allChecked = aPayer.every(l => selSet.has(l.dossierLocalId));
+                          return (
+                            <button
+                              onClick={() => allChecked ? clearSelection(prestaKey) : selectAllAPayer(prestaKey, lignesAffichees)}
+                              className="px-2 py-1.5 text-xs font-bold text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg"
+                              title="Coche/décoche tous les dossiers à payer visibles"
+                            >
+                              {allChecked ? '☐ Tout décocher' : `☑ Tout cocher (${aPayer.length})`}
+                            </button>
+                          );
+                        })()}
+                        {/* 📤 Export liste vers fournisseur */}
+                        {(() => {
+                          const aPayer = lignesAffichees.filter(l => !l.paye && l.financeurPaye);
+                          if (aPayer.length === 0) return null;
+                          const total = aPayer.reduce((s, l) => s + (l.ttc || 0), 0);
+                          return (
+                            <button
+                              onClick={() => setExportPresta({ p, lignes: aPayer, total })}
+                              className="px-2 py-1.5 text-xs font-bold text-violet-700 bg-violet-50 hover:bg-violet-100 rounded-lg"
+                              title="Génère un récap à envoyer au fournisseur (copier, email, CSV)"
+                            >
+                              📤 Envoyer au fournisseur
+                            </button>
+                          );
+                        })()}
                       </div>
                     )}
                     {/* 💰 Barre virement groupé — STICKY EN HAUT pour voir le total
@@ -10844,6 +10890,104 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
             ))}
           </div>
         )}
+      </div>
+
+      {/* 📤 Modal export prestataire — copier, email, CSV */}
+      {exportPresta && (
+        <ExportPrestaModal
+          presta={exportPresta.p}
+          lignes={exportPresta.lignes}
+          total={exportPresta.total}
+          onClose={() => setExportPresta(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// 📤 Modal d'export d'une liste de dossiers à payer pour un prestataire :
+//    génère un texte formaté + actions copier/email/CSV.
+function ExportPrestaModal({ presta, lignes, total, onClose }) {
+  const fmt = (n) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n || 0);
+  const today = new Date().toLocaleDateString('fr-FR');
+  // Texte joli pour mail / message
+  const textOut = useMemo(() => {
+    const lines = [];
+    lines.push(`Liste des dossiers à payer — ${presta.nom}${presta.societe ? ` (${presta.societe})` : ''}`);
+    lines.push(`Date : ${today}`);
+    lines.push(`Total : ${fmt(total)} (${lignes.length} dossier${lignes.length > 1 ? 's' : ''})`);
+    lines.push('');
+    lignes.forEach((l, i) => {
+      const num = l.dossierId && l.dossierId !== '—' ? `#${l.dossierId} ` : '';
+      lines.push(`${i + 1}. ${num}${l.client || '(sans nom)'} — ${fmt(l.ttc)} — ${l.financement || 'sans fin.'}`);
+    });
+    return lines.join('\n');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [presta, lignes, total]);
+  // CSV strict
+  const csvOut = useMemo(() => {
+    const rows = [['N° dossier', 'Client', 'Financement', 'Montant TTC']];
+    lignes.forEach(l => {
+      rows.push([
+        l.dossierId && l.dossierId !== '—' ? l.dossierId : '',
+        (l.client || '').replace(/"/g, '""'),
+        (l.financement || '').replace(/"/g, '""'),
+        String(l.ttc || 0).replace('.', ','),
+      ]);
+    });
+    return rows.map(r => r.map(c => `"${c}"`).join(';')).join('\r\n');
+  }, [lignes]);
+
+  const [copied, setCopied] = useState(false);
+  const handleCopy = async () => {
+    try { await navigator.clipboard.writeText(textOut); setCopied(true); setTimeout(() => setCopied(false), 2000); }
+    catch (e) { alert('Copie impossible : ' + e.message); }
+  };
+  const handleCsv = () => {
+    const blob = new Blob(['﻿' + csvOut], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const safeNom = String(presta.nom).replace(/[^a-zA-Z0-9]+/g, '_');
+    a.href = url; a.download = `a-payer-${safeNom}-${today.replace(/\//g, '-')}.csv`;
+    document.body.appendChild(a); a.click();
+    setTimeout(() => { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+  };
+  const handleEmail = () => {
+    const subject = encodeURIComponent(`Dossiers à payer — ${presta.nom} — ${fmt(total)}`);
+    const body = encodeURIComponent(textOut);
+    window.open(`mailto:?subject=${subject}&body=${body}`, '_blank');
+  };
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 pt-12" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-violet-50 to-fuchsia-50 flex items-start justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-bold text-slate-800">📤 Envoyer la liste à {presta.nom}</h2>
+            <div className="text-[12px] text-slate-600 mt-1">
+              <span className="font-bold">{fmt(total)}</span> · {lignes.length} dossier{lignes.length > 1 ? 's' : ''}{presta.societe ? ` · ${presta.societe}` : ''}
+            </div>
+          </div>
+          <button onClick={onClose} className="p-2 hover:bg-white/60 rounded-lg"><X className="w-5 h-5 text-slate-600" /></button>
+        </div>
+        <div className="p-4 flex items-center gap-2 flex-wrap border-b border-slate-100">
+          <button onClick={handleCopy} className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-lg text-xs font-bold">
+            {copied ? '✅ Copié !' : '📋 Copier le texte'}
+          </button>
+          <button onClick={handleEmail} className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold">
+            ✉️ Ouvrir dans un email
+          </button>
+          <button onClick={handleCsv} className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold">
+            📥 Télécharger CSV (Excel)
+          </button>
+        </div>
+        <div className="flex-1 overflow-y-auto p-4">
+          <textarea
+            value={textOut}
+            readOnly
+            className="w-full h-72 p-3 text-[12px] font-mono bg-slate-50 border border-slate-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-violet-400"
+          />
+        </div>
       </div>
     </div>
   );
@@ -13022,8 +13166,8 @@ function useGmailPrefetch() {
 //    de naviguer librement.
 function GmailPrefetchFloatingBanner() {
   const { running, result } = useGmailPrefetch();
-  if (!running && !result) return null;
-  // Le résultat « completed » reste 30s puis disparaît
+  // ⚠️ Tous les hooks DOIVENT être appelés AVANT tout return conditionnel
+  //    (sinon « Rendered fewer hooks than expected » → crash blanc).
   const [autoHide, setAutoHide] = useState(false);
   useEffect(() => {
     if (!running && result && !result._inProgress) {
@@ -13033,6 +13177,7 @@ function GmailPrefetchFloatingBanner() {
       setAutoHide(false);
     }
   }, [running, result]);
+  if (!running && !result) return null;
   if (autoHide) return null;
   const inProgress = running || result?._inProgress;
   return (
