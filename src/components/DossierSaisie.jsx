@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useReducer } from 'react';
 import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, LayoutGrid, MessageCircle, Home, ArrowLeft } from 'lucide-react';
 import { supabase, uploadFileToBucket, getSignedUrl, deleteFileFromBucket } from '../supabase.js';
 import { TEMPLATES_CATALOG } from '../pdfTemplates.js';
@@ -5360,6 +5360,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
           </div>
         </div>
       )}
+
+      {/* 📦 Banner flottant global du prefetch Gmail — visible partout dans
+          le CRM tant que le téléchargement IA tourne en arrière-plan. */}
+      <GmailPrefetchFloatingBanner />
 
       {/* Toast léger pour feedback succès/info/erreur (auto-disparait en 2,5s) */}
       {toast && (
@@ -12817,6 +12821,108 @@ function PennylaneKeysPanel({ societes = [] }) {
 // quoi qu'il arrive (impossible de détecter côté front sans tester la RLS).
 const SUPABASE_SECRETS_RLS_OK_HINT = false;
 
+// 📦 Singleton de prefetch Gmail — survit aux changements de panneau /
+//    navigation pour que l'user puisse travailler ailleurs dans le CRM
+//    pendant que la boucle tourne. Les composants s'abonnent via le hook
+//    useGmailPrefetch() ; le banner global s'affiche tant que running=true.
+const _gmailPrefetch = {
+  running: false,
+  result: null,
+  listeners: new Set(),
+};
+const _notifyPrefetch = () => { _gmailPrefetch.listeners.forEach(cb => cb()); };
+
+async function startGmailPrefetch({ days = 365, max = 200 } = {}) {
+  if (_gmailPrefetch.running) return; // déjà en cours
+  _gmailPrefetch.running = true;
+  _gmailPrefetch.result = null;
+  _notifyPrefetch();
+  const totals = { pdfsAnalyzed: 0, pdfsAlreadyCached: 0, pdfsAlreadyInCrm: 0, pdfsErrored: 0, pdfsListed: 0, durationMs: 0, runs: 0 };
+  try {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Pas de session — reconnecte-toi');
+    const MAX_RUNS = 30;
+    for (let i = 0; i < MAX_RUNS; i++) {
+      const res = await fetch(`/api/cron-gmail-prefetch?days=${days}&max=${max}`, {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${session.access_token}` },
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      const d = payload.data || {};
+      totals.runs++;
+      totals.pdfsAnalyzed += d.pdfsAnalyzed || 0;
+      totals.pdfsAlreadyCached += d.pdfsAlreadyCached || 0;
+      totals.pdfsAlreadyInCrm += d.pdfsAlreadyInCrm || 0;
+      totals.pdfsErrored += d.pdfsErrored || 0;
+      totals.pdfsListed = Math.max(totals.pdfsListed, d.pdfsListed || 0);
+      totals.durationMs += d.durationMs || 0;
+      _gmailPrefetch.result = { ...totals, _inProgress: true };
+      _notifyPrefetch();
+      if ((d.pdfsAnalyzed || 0) === 0) break;
+    }
+    _gmailPrefetch.result = { ...totals, _inProgress: false };
+  } catch (e) {
+    _gmailPrefetch.result = { ...totals, _inProgress: false, error: e?.message || 'Cron failed' };
+  }
+  _gmailPrefetch.running = false;
+  _notifyPrefetch();
+}
+
+function useGmailPrefetch() {
+  const [, force] = useReducer(x => x + 1, 0);
+  useEffect(() => {
+    _gmailPrefetch.listeners.add(force);
+    return () => _gmailPrefetch.listeners.delete(force);
+  }, []);
+  return {
+    running: _gmailPrefetch.running,
+    result: _gmailPrefetch.result,
+    start: startGmailPrefetch,
+  };
+}
+
+// 🛎️ Banner flottant global : visible sur TOUTES les pages du CRM tant
+//    que le téléchargement IA tourne en arrière-plan. Permet à l'user
+//    de naviguer librement.
+function GmailPrefetchFloatingBanner() {
+  const { running, result } = useGmailPrefetch();
+  if (!running && !result) return null;
+  // Le résultat « completed » reste 30s puis disparaît
+  const [autoHide, setAutoHide] = useState(false);
+  useEffect(() => {
+    if (!running && result && !result._inProgress) {
+      const t = setTimeout(() => setAutoHide(true), 30000);
+      return () => clearTimeout(t);
+    } else {
+      setAutoHide(false);
+    }
+  }, [running, result]);
+  if (autoHide) return null;
+  const inProgress = running || result?._inProgress;
+  return (
+    <div className="fixed top-3 left-1/2 -translate-x-1/2 z-[60] max-w-[90vw]">
+      <div className={`px-4 py-2.5 rounded-full shadow-2xl border-2 flex items-center gap-3 text-[13px] font-bold ${
+        inProgress ? 'bg-indigo-600 border-indigo-300 text-white' :
+        result?.error ? 'bg-rose-600 border-rose-300 text-white' :
+        'bg-emerald-600 border-emerald-300 text-white'
+      }`}>
+        <span className="text-base">{inProgress ? '⏳' : (result?.error ? '⚠️' : '✅')}</span>
+        <span>
+          {inProgress
+            ? <>Téléchargement IA en cours · <span className="font-bold">{result?.pdfsAnalyzed || 0}</span> nouvelles · run {result?.runs || 1}</>
+            : (result?.error
+              ? <>Erreur : {result.error}</>
+              : <>Drive synchronisé · <span className="font-bold">{result?.pdfsAnalyzed || 0}</span> nouvelles factures · {Math.round((result?.durationMs || 0) / 1000)}s</>)}
+        </span>
+        {!inProgress && (
+          <button onClick={() => setAutoHide(true)} className="ml-2 px-1.5 hover:bg-black/20 rounded" title="Fermer">✕</button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // 📦 Drive Factures : browse les PDFs Gmail archivés par le cron, rangés
 //    par fournisseur. Recherche locale dans tous les champs IA, prévisu PDF,
 //    téléchargement direct. Évite d'aller sur Supabase Dashboard.
@@ -12828,8 +12934,8 @@ function GmailDrivePanel() {
   const [openFolders, setOpenFolders] = useState({}); // { [fournisseur]: bool }
   const [query, setQuery] = useState('');
   const [previewing, setPreviewing] = useState('');
-  const [cronRunning, setCronRunning] = useState(false);
-  const [cronResult, setCronResult] = useState(null); // dernier { pdfsAnalyzed, ... }
+  // 🔄 État du prefetch via le singleton — survit aux changements de page.
+  const { running: cronRunning, result: cronResult, start: startPrefetch } = useGmailPrefetch();
 
   const fetchFolders = async () => {
     setLoading(true); setError('');
@@ -12850,43 +12956,17 @@ function GmailDrivePanel() {
   };
   useEffect(() => { fetchFolders(); }, []);
 
-  // 🚀 Lance le cron en BOUCLE jusqu'à ce qu'il n'y ait plus rien à traiter.
-  //    Une seule run cap à 200 PDFs (timeout Vercel). On enchaîne jusqu'à ce
-  //    que `remaining = 0` → backfill complet en 1 clic.
-  //    Le user doit être admin (vérifié côté serveur).
-  const runCron = async ({ days = 365, max = 200 } = {}) => {
-    setCronRunning(true); setError(''); setCronResult(null);
-    const totals = { pdfsAnalyzed: 0, pdfsAlreadyCached: 0, pdfsAlreadyInCrm: 0, pdfsErrored: 0, pdfsListed: 0, durationMs: 0, runs: 0 };
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session?.access_token) throw new Error('Pas de session — reconnecte-toi');
-      const MAX_RUNS = 30; // safety : 30 × 200 = 6000 PDFs en backfill
-      for (let i = 0; i < MAX_RUNS; i++) {
-        const url = `/api/cron-gmail-prefetch?days=${days}&max=${max}`;
-        const res = await fetch(url, {
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${session.access_token}` },
-        });
-        const payload = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
-        const d = payload.data || {};
-        totals.runs++;
-        totals.pdfsAnalyzed += d.pdfsAnalyzed || 0;
-        totals.pdfsAlreadyCached += d.pdfsAlreadyCached || 0;
-        totals.pdfsAlreadyInCrm += d.pdfsAlreadyInCrm || 0;
-        totals.pdfsErrored += d.pdfsErrored || 0;
-        totals.pdfsListed = Math.max(totals.pdfsListed, d.pdfsListed || 0);
-        totals.durationMs += d.durationMs || 0;
-        setCronResult({ ...totals, _inProgress: true });
-        // Refresh la liste à chaque run pour voir l'avancement live
-        await fetchFolders();
-        // 🛑 Stop si plus rien à faire (rien analysé ET rien dispo)
-        if ((d.pdfsAnalyzed || 0) === 0) break;
-      }
-      setCronResult({ ...totals, _inProgress: false });
-    } catch (e) { setError(e?.message || 'Cron failed'); }
-    setCronRunning(false);
-  };
+  // 🚀 Lance le prefetch via le singleton (tourne en arrière-plan, survit
+  //    aux changements de panneau). Au moindre changement d'état, on
+  //    refresh la liste pour voir l'avancement live.
+  const runCron = () => startPrefetch({ days: 365, max: 200 });
+  // Refresh la liste à chaque update du prefetch (live)
+  useEffect(() => {
+    if (cronRunning || cronResult?._inProgress) {
+      fetchFolders();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cronResult?.runs, cronRunning]);
 
   // 🔍 Filtre local : matche sur fournisseur, client, n° facture, ville,
   //    téléphone, n° BL, description. Tout en français case-insensitive.
@@ -12993,7 +13073,7 @@ function GmailDrivePanel() {
               {loading ? '⏳ …' : '🔄 Rafraîchir'}
             </button>
             <button
-              onClick={() => runCron({ days: 365, max: 200 })}
+              onClick={() => runCron()}
               disabled={cronRunning}
               className="px-3 py-2 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white rounded-lg text-xs font-bold disabled:opacity-60 shadow"
               title="Télécharge + analyse jusqu'à 200 nouvelles factures (365 derniers jours). Re-cliquable plusieurs fois — idempotent."
