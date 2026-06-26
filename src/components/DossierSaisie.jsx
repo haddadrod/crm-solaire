@@ -12419,6 +12419,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS 
     { id: 'messages',     label: 'Modèles messages', emoji: '💬', color: 'from-cyan-500 to-blue-500' },
     { id: 'onoff',        label: 'ONOFF (CQ)',   emoji: '📞', color: 'from-purple-500 to-violet-500' },
     { id: 'pennylane',    label: 'Clés Pennylane', emoji: '🔐', color: 'from-emerald-600 to-teal-700' },
+    { id: 'gmaildrive',   label: 'Drive Factures', emoji: '📦', color: 'from-indigo-500 to-violet-600' },
     { id: 'expert',       label: 'Outils experts', emoji: '🛠', color: 'from-slate-600 to-slate-800' },
   ];
 
@@ -12550,6 +12551,8 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS 
       {section === 'pennylane' && (
         <PennylaneKeysPanel societes={societes} />
       )}
+
+      {section === 'gmaildrive' && <GmailDrivePanel />}
 
       {section === 'expert' && (
         <ExpertToolsPanel
@@ -12813,6 +12816,256 @@ function PennylaneKeysPanel({ societes = [] }) {
 // Flag « hint » constant : on l'utilise juste pour afficher l'avertissement RLS
 // quoi qu'il arrive (impossible de détecter côté front sans tester la RLS).
 const SUPABASE_SECRETS_RLS_OK_HINT = false;
+
+// 📦 Drive Factures : browse les PDFs Gmail archivés par le cron, rangés
+//    par fournisseur. Recherche locale dans tous les champs IA, prévisu PDF,
+//    téléchargement direct. Évite d'aller sur Supabase Dashboard.
+function GmailDrivePanel() {
+  const [folders, setFolders] = useState([]); // [{fournisseur, count, invoices: [...]}]
+  const [totalInvoices, setTotalInvoices] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [openFolders, setOpenFolders] = useState({}); // { [fournisseur]: bool }
+  const [query, setQuery] = useState('');
+  const [previewing, setPreviewing] = useState('');
+
+  const fetchFolders = async () => {
+    setLoading(true); setError('');
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/gmail-oauth?action=ia-list', {
+        method: 'POST', headers,
+        body: JSON.stringify({ limit: 5000 }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      setFolders(payload.data?.folders || []);
+      setTotalInvoices(payload.data?.totalInvoices || 0);
+    } catch (e) { setError(e?.message || 'Erreur'); }
+    setLoading(false);
+  };
+  useEffect(() => { fetchFolders(); }, []);
+
+  // 🔍 Filtre local : matche sur fournisseur, client, n° facture, ville,
+  //    téléphone, n° BL, description. Tout en français case-insensitive.
+  const filtered = useMemo(() => {
+    const q = String(query || '').trim().toLowerCase();
+    if (!q) return folders;
+    const out = [];
+    for (const f of folders) {
+      const invMatch = f.invoices.filter(inv => {
+        return [
+          inv.refChantier, inv.factureNo, inv.fournisseur, inv.dateFacture,
+          inv.villeClient, inv.codePostalClient, inv.telephoneClient, inv.emailClient,
+          inv.numeroBl, inv.numeroCommande, inv.description, inv.adresseClient,
+        ].some(v => String(v || '').toLowerCase().includes(q));
+      });
+      // Si le nom du fournisseur lui-même matche → on garde toutes ses factures
+      const folderMatch = f.fournisseur.toLowerCase().includes(q);
+      if (folderMatch) out.push(f);
+      else if (invMatch.length > 0) out.push({ ...f, invoices: invMatch, count: invMatch.length });
+    }
+    return out;
+  }, [folders, query]);
+
+  // Auto-ouvre tous les dossiers quand y a une recherche (sinon faut tout cliquer)
+  useEffect(() => {
+    if (query.trim()) {
+      const next = {};
+      filtered.forEach(f => { next[f.fournisseur] = true; });
+      setOpenFolders(next);
+    }
+  }, [query, filtered]);
+
+  const toggleFolder = (name) => setOpenFolders(prev => ({ ...prev, [name]: !prev[name] }));
+
+  // 👁️ Aperçu : télécharge le PDF (bucket d'abord, Gmail fallback) et l'ouvre.
+  const handlePreview = async (inv) => {
+    const key = `${inv.inboxEmail}|${inv.messageId}|${inv.attachmentId}`;
+    const win = window.open('about:blank', '_blank');
+    if (win) {
+      try { win.document.write('<title>Chargement…</title><p style="font-family:sans-serif;padding:24px;color:#666">Chargement du PDF…</p>'); } catch (_) {}
+    }
+    setPreviewing(key);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const resp = await fetch('/api/gmail-oauth?action=fetch-attachment', {
+        method: 'POST', headers,
+        body: JSON.stringify({ email: inv.inboxEmail, messageId: inv.messageId, attachmentId: inv.attachmentId }),
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(payload.error || `Erreur ${resp.status}`);
+      const base64 = payload.data?.base64 || '';
+      if (!base64) throw new Error('PDF vide');
+      const bin = atob(base64);
+      const bytes = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      const blob = new Blob([bytes], { type: 'application/pdf' });
+      const url = URL.createObjectURL(blob);
+      if (win && !win.closed) {
+        win.location.href = url;
+      } else {
+        const a = document.createElement('a');
+        a.href = url; a.download = `${inv.factureNo || 'facture'}.pdf`;
+        document.body.appendChild(a); a.click();
+        setTimeout(() => document.body.removeChild(a), 0);
+      }
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch (_) {} }, 60000);
+    } catch (e) {
+      if (win) try { win.close(); } catch (_) {}
+      alert(`Aperçu impossible : ${e.message}`);
+    } finally {
+      setPreviewing('');
+    }
+  };
+
+  const fmtEur = (n) => Number(n).toFixed(2).replace(/\.00$/, '') + ' €';
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-3xl shadow-md border border-slate-200 overflow-hidden">
+        <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-indigo-50 to-violet-50">
+          <h2 className="text-lg font-bold text-slate-800">📦 Drive Factures</h2>
+          <p className="text-xs text-slate-500 mt-1">
+            Toutes les factures Gmail téléchargées + analysées par le cron quotidien, rangées par fournisseur.
+            Recherche par <span className="font-semibold">client, n°, ville, tél, BL, description, montant…</span> — instantanée et gratuite.
+          </p>
+        </div>
+        <div className="p-4 space-y-3">
+          {/* Barre de recherche + stats + refresh */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <input
+              type="text"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="🔍 Cherche un client, un n°, une ville, un téléphone…"
+              className="flex-1 min-w-[200px] px-3 py-2 bg-white border-2 border-slate-200 focus:border-indigo-400 rounded-lg text-sm"
+            />
+            <button
+              onClick={fetchFolders}
+              disabled={loading}
+              className="px-3 py-2 bg-indigo-100 hover:bg-indigo-200 text-indigo-700 rounded-lg text-xs font-bold disabled:opacity-50"
+            >
+              {loading ? '⏳ …' : '🔄 Rafraîchir'}
+            </button>
+          </div>
+          <div className="text-[12px] text-slate-500">
+            {loading ? '⏳ Chargement…' : (
+              <>
+                <span className="font-bold text-slate-700">{totalInvoices}</span> facture{totalInvoices > 1 ? 's' : ''} ·{' '}
+                <span className="font-bold text-slate-700">{folders.length}</span> fournisseur{folders.length > 1 ? 's' : ''}
+                {query.trim() && filtered.length !== folders.length && (
+                  <span> · <span className="text-indigo-700 font-semibold">{filtered.reduce((s, f) => s + f.invoices.length, 0)} matches affichés</span></span>
+                )}
+              </>
+            )}
+          </div>
+          {error && <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-sm text-rose-700">{error}</div>}
+
+          {/* Liste des fournisseurs (accordion) */}
+          {!loading && folders.length === 0 && (
+            <div className="text-center py-12 text-sm text-slate-500">
+              <div className="text-4xl mb-2">📭</div>
+              <div className="font-bold text-slate-700">Le drive est vide</div>
+              <div className="text-xs mt-1">Lance le cron <code className="bg-slate-100 px-1 rounded">/api/cron-gmail-prefetch?secret=…</code> pour remplir le drive.</div>
+            </div>
+          )}
+
+          {!loading && filtered.length === 0 && folders.length > 0 && query.trim() && (
+            <div className="text-center py-8 text-sm text-slate-500">
+              <div className="text-3xl mb-2">🤷</div>
+              <div>Aucune facture ne matche « <span className="font-mono font-bold">{query}</span> »</div>
+            </div>
+          )}
+
+          {filtered.map(folder => {
+            const isOpen = !!openFolders[folder.fournisseur];
+            const totalHt = folder.invoices.reduce((s, i) => s + (Number(i.montantHt) || 0), 0);
+            return (
+              <div key={folder.fournisseur} className="border border-slate-200 rounded-xl overflow-hidden bg-slate-50/30">
+                <button
+                  onClick={() => toggleFolder(folder.fournisseur)}
+                  className="w-full px-3 py-2.5 flex items-center gap-2 hover:bg-indigo-50/50 transition text-left"
+                >
+                  <span className="text-lg">{isOpen ? '📂' : '📁'}</span>
+                  <span className={`font-bold ${folder.fournisseur === '_unknown' ? 'text-amber-700 italic' : 'text-slate-800'}`}>
+                    {folder.fournisseur === '_unknown' ? '⚠️ Fournisseur non identifié' : folder.fournisseur}
+                  </span>
+                  <span className="ml-auto flex items-center gap-3 text-[12px] text-slate-600">
+                    <span className="px-2 py-0.5 bg-indigo-100 text-indigo-800 rounded-full font-bold">{folder.invoices.length}</span>
+                    {totalHt > 0 && <span className="font-bold">{fmtEur(totalHt)} HT</span>}
+                  </span>
+                </button>
+                {isOpen && (
+                  <div className="border-t border-slate-200 divide-y divide-slate-100 bg-white">
+                    {folder.invoices.map(inv => {
+                      const key = `${inv.inboxEmail}|${inv.messageId}|${inv.attachmentId}`;
+                      return (
+                        <div key={key} className="p-3 hover:bg-indigo-50/30 transition">
+                          <div className="flex items-start gap-3">
+                            <div className="text-2xl shrink-0">📄</div>
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-baseline gap-2 flex-wrap">
+                                {inv.refChantier && (
+                                  <span className="font-bold text-violet-800 text-[14px]">👤 {inv.refChantier}</span>
+                                )}
+                                {inv.factureNo && (
+                                  <span className="px-1.5 py-0.5 bg-slate-100 text-slate-700 rounded text-[11px] font-mono font-bold">{inv.factureNo}</span>
+                                )}
+                                {inv.dateFacture && (
+                                  <span className="text-[12px] text-slate-500">📅 {inv.dateFacture}</span>
+                                )}
+                                {inv.storagePath && (
+                                  <span className="text-emerald-600 text-[11px]" title="Archivé dans le bucket — attach instantané">📦</span>
+                                )}
+                              </div>
+                              <div className="mt-1 flex items-center gap-3 text-[12px] text-slate-600 flex-wrap">
+                                {inv.montantHt > 0 && (
+                                  <span><span className="font-bold">{fmtEur(inv.montantHt)}</span> HT</span>
+                                )}
+                                {inv.montantTtc > 0 && inv.montantTtc !== inv.montantHt && (
+                                  <span><span className="font-bold">{fmtEur(inv.montantTtc)}</span> TTC</span>
+                                )}
+                                {inv.tauxTva > 0 && <span className="text-slate-400">TVA {inv.tauxTva}%</span>}
+                                {inv.villeClient && <span>📍 {inv.villeClient}{inv.codePostalClient ? ` (${inv.codePostalClient})` : ''}</span>}
+                                {inv.telephoneClient && <span>📞 {inv.telephoneClient}</span>}
+                                {inv.emailClient && <span>✉️ {inv.emailClient}</span>}
+                                {inv.numeroBl && <span>🚚 BL {inv.numeroBl}</span>}
+                                {inv.numeroCommande && <span>📝 CMD {inv.numeroCommande}</span>}
+                              </div>
+                              {inv.description && (
+                                <div className="mt-1 text-[12px] text-slate-500 italic truncate">— {inv.description}</div>
+                              )}
+                              {inv.adresseClient && (
+                                <div className="mt-0.5 text-[11px] text-slate-400 truncate">📍 {inv.adresseClient}</div>
+                              )}
+                            </div>
+                            <button
+                              onClick={() => handlePreview(inv)}
+                              disabled={!!previewing}
+                              className="shrink-0 px-3 py-1.5 bg-indigo-500 hover:bg-indigo-600 text-white rounded-lg text-xs font-bold disabled:opacity-50"
+                              title="Ouvrir le PDF dans un nouvel onglet"
+                            >
+                              {previewing === key ? '⏳ …' : '👁️ Voir'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 // 🛠 Outils experts : opérations en masse (import/sauvegarde JSON,
 // suppression d'import sheet, validation CQ massive, sync paiement client).
