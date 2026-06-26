@@ -6360,6 +6360,19 @@ export default function DossierSaisie({ authUser, onLogout }) {
               setDossiers([...dossiers, ...newDossiers]);
               setShowImport(false);
             }}
+            onUpdateExisting={(updates) => {
+              // updates = [{ localId, patch }, ...]
+              const byLocal = new Map(updates.map(u => [u.localId, u.patch]));
+              const next = dossiers.map(d => {
+                const key = d.localId || d.id;
+                const patch = byLocal.get(key);
+                if (!patch) return d;
+                const merged = { ...d, ...patch };
+                return typeof applyAutoStatut === 'function' ? applyAutoStatut(merged) : merged;
+              });
+              setDossiers(next);
+              setShowImport(false);
+            }}
             existingDossiers={dossiers}
             STATUTS_ORDERED={STATUTS_ORDERED}
             POSEURS={POSEURS}
@@ -21362,7 +21375,7 @@ const IMPORT_FIELDS = [
   { id: 'puissance', label: '⚡ Puissance (Wc)' },
 ];
 
-function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, produits, societes }) {
+function ImportDossiersModal({ onClose, onImport, onUpdateExisting, existingDossiers, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, produits, societes }) {
   const [step, setStep] = useState(1);
   const [rawText, setRawText] = useState('');
   const [rows, setRows] = useState([]);
@@ -21544,39 +21557,40 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
       };
       const normPhone = (s) => String(s || '').replace(/\D/g, '').replace(/^0+/, '').slice(-9);
       const normEmail = (s) => String(s || '').toLowerCase().trim();
-      const existIds = new Set((existingDossiers || []).map(d => String(d.id || '').trim()).filter(Boolean));
-      const existPhones = new Set();
+      // On mémorise quel dossier existant matche chaque clé, pour pouvoir
+      // ensuite mettre à jour ce dossier (« Marquer comme POSÉ », par exemple).
+      const idToLocal = new Map();   // ID dossier → localId du CRM
+      const phoneToLocal = new Map();
+      const emailToLocal = new Map();
+      const pairToLocal = new Map();
+      const nomNoPrenomToLocal = new Map();
+      const nomAllToLocal = new Map();
       (existingDossiers || []).forEach(d => {
-        const t = normPhone(d.telephone); if (t.length >= 9) existPhones.add(t);
-        const m = normPhone(d.mobile);    if (m.length >= 9) existPhones.add(m);
-      });
-      const existEmails = new Set((existingDossiers || []).map(d => normEmail(d.email)).filter(Boolean));
-      // Index existant par : pairs complètes, et noms seuls (pour dossiers sans prénom)
-      const existPairs = new Set();
-      const existNomsNoPrenom = new Set();   // noms des dossiers existants SANS prénom
-      const existNomsAll = new Set();        // tous les noms (utilisé si CSV est sans prénom)
-      (existingDossiers || []).forEach(d => {
+        const lid = d.localId || d.id;
+        const idK = String(d.id || '').trim();
+        if (idK && !idToLocal.has(idK)) idToLocal.set(idK, lid);
+        const tel = normPhone(d.telephone); if (tel.length >= 9 && !phoneToLocal.has(tel)) phoneToLocal.set(tel, lid);
+        const mob = normPhone(d.mobile);    if (mob.length >= 9 && !phoneToLocal.has(mob)) phoneToLocal.set(mob, lid);
+        const em = normEmail(d.email);      if (em && !emailToLocal.has(em)) emailToLocal.set(em, lid);
         const b = buildName(d.nom, d.prenom);
-        b.pairs.forEach(p => existPairs.add(p));
-        b.nomTokens.forEach(n => existNomsAll.add(n));
-        if (!b.hasPrenom) b.nomTokens.forEach(n => existNomsNoPrenom.add(n));
+        b.pairs.forEach(p => { if (!pairToLocal.has(p)) pairToLocal.set(p, lid); });
+        b.nomTokens.forEach(n => { if (!nomAllToLocal.has(n)) nomAllToLocal.set(n, lid); });
+        if (!b.hasPrenom) b.nomTokens.forEach(n => { if (!nomNoPrenomToLocal.has(n)) nomNoPrenomToLocal.set(n, lid); });
       });
       const dups = result.dossiers.map(d => {
         const idKey = String(d.id || '').trim();
-        if (idKey && !idKey.startsWith('IMP-') && existIds.has(idKey)) return 'id';
+        if (idKey && !idKey.startsWith('IMP-') && idToLocal.has(idKey)) return { type: 'id', matchedLocal: idToLocal.get(idKey) };
         const phone = normPhone(d.telephone);
-        if (phone.length >= 9 && existPhones.has(phone)) return 'tel';
+        if (phone.length >= 9 && phoneToLocal.has(phone)) return { type: 'tel', matchedLocal: phoneToLocal.get(phone) };
         const mobile = normPhone(d.mobile);
-        if (mobile.length >= 9 && existPhones.has(mobile)) return 'tel';
+        if (mobile.length >= 9 && phoneToLocal.has(mobile)) return { type: 'tel', matchedLocal: phoneToLocal.get(mobile) };
         const email = normEmail(d.email);
-        if (email && existEmails.has(email)) return 'email';
+        if (email && emailToLocal.has(email)) return { type: 'email', matchedLocal: emailToLocal.get(email) };
         const b = buildName(d.nom, d.prenom);
-        // Match fort : un couple (nom, prénom) commun
-        for (const p of b.pairs) if (existPairs.has(p)) return 'nom';
-        // Cas asymétrique : un côté n'a pas de prénom → on tombe sur le nom seul
+        for (const p of b.pairs) if (pairToLocal.has(p)) return { type: 'nom', matchedLocal: pairToLocal.get(p) };
         for (const n of b.nomTokens) {
-          if (existNomsNoPrenom.has(n)) return 'nom';            // CRM sans prénom
-          if (!b.hasPrenom && existNomsAll.has(n)) return 'nom'; // CSV sans prénom
+          if (nomNoPrenomToLocal.has(n)) return { type: 'nom', matchedLocal: nomNoPrenomToLocal.get(n) };
+          if (!b.hasPrenom && nomAllToLocal.has(n)) return { type: 'nom', matchedLocal: nomAllToLocal.get(n) };
         }
         return null;
       });
@@ -21599,16 +21613,47 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
   });
   const selectAll = () => setSelected(new Set((dryRun.dossiers || []).map((_, i) => i)));
   const deselectDups = () => setSelected(new Set((dryRun.dossiers || []).map((_, i) => i).filter(i => !dryRun.dups?.[i])));
+  const selectDups = () => setSelected(new Set((dryRun.dossiers || []).map((_, i) => i).filter(i => !!dryRun.dups?.[i])));
 
   const doImport = () => {
     setErrorMsg('');
     if (!dryRun.dossiers || dryRun.dossiers.length === 0) { setErrorMsg('Aucun dossier à importer.'); return; }
-    const toImport = dryRun.dossiers.filter((_, i) => selected.has(i));
-    if (toImport.length === 0) { setErrorMsg('Aucune ligne cochée — coche au moins un dossier à importer.'); return; }
+    // N'importe QUE les nouveaux. Les doublons cochés sont gérés via le
+    // bouton « Marquer comme POSÉ » (qui met à jour les dossiers existants).
+    const toImport = dryRun.dossiers.filter((_, i) => selected.has(i) && !dryRun.dups?.[i]);
+    if (toImport.length === 0) { setErrorMsg('Aucun nouveau dossier coché. Pour mettre à jour les doublons (date pose + statut), utilise le bouton « Marquer comme POSÉ ».'); return; }
     try {
       onImport(toImport);
     } catch (e) {
       setErrorMsg(`Erreur lors de l'import : ${e.message}`);
+    }
+  };
+
+  // 📅 Met à jour les dossiers existants matchés par les doublons cochés :
+  //    dateInsta = date du CSV (= « ✅ Posé le »)
+  //    statutPose = 'visite_ok' (= bouton vert « ✓ Posé »)
+  //    L'auto-statut basculera ensuite vers ATTENTE ACCORD DÉFINITIF.
+  const markDupsAsPosed = () => {
+    setErrorMsg('');
+    if (!onUpdateExisting) { setErrorMsg('Mise à jour non disponible dans ce contexte.'); return; }
+    const updates = [];
+    (dryRun.dossiers || []).forEach((d, i) => {
+      const dup = dryRun.dups?.[i];
+      if (!selected.has(i) || !dup || !dup.matchedLocal) return;
+      const patch = { statutPose: 'visite_ok' };
+      // Pose en 1 jour : « Date pose » (programmée) = « Posé le » (réalisée).
+      if (d.dateInsta) {
+        patch.dateInsta = d.dateInsta;
+        patch.dateEnvoiPose = d.dateInsta;
+      }
+      updates.push({ localId: dup.matchedLocal, patch });
+    });
+    if (updates.length === 0) { setErrorMsg('Aucun doublon coché — coche les doublons que tu veux marquer comme posés.'); return; }
+    if (!window.confirm(`Marquer ${updates.length} dossier${updates.length > 1 ? 's' : ''} existant${updates.length > 1 ? 's' : ''} comme POSÉ ${updates.some(u => u.patch.dateInsta) ? '(avec la date du CSV)' : ''} ?`)) return;
+    try {
+      onUpdateExisting(updates);
+    } catch (e) {
+      setErrorMsg(`Erreur lors de la mise à jour : ${e.message}`);
     }
   };
 
@@ -21756,6 +21801,7 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                       ))}
                       <span className="mx-1 text-slate-300">|</span>
                       <button onClick={deselectDups} className="px-2.5 py-1 rounded-lg font-semibold bg-rose-100 text-rose-700 hover:bg-rose-200">Décocher les doublons</button>
+                      <button onClick={selectDups} className="px-2.5 py-1 rounded-lg font-semibold bg-amber-100 text-amber-700 hover:bg-amber-200">Cocher les doublons</button>
                       <button onClick={selectAll} className="px-2.5 py-1 rounded-lg font-semibold bg-white border border-slate-200 text-slate-600 hover:bg-slate-50">Tout cocher</button>
                     </div>
                     {dupCount > 0 && (
@@ -21778,15 +21824,18 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                   .map((d, i) => ({ d, i, dup: dryRun.dups?.[i] }))
                   .filter(r => showOnly === 'tous' || (showOnly === 'nouveaux' ? !r.dup : !!r.dup));
                 const CAP = 200;
-                const presence = (dup) => dup === 'id'
+                const presence = (dup) => {
+                  const type = dup && typeof dup === 'object' ? dup.type : dup;
+                  return type === 'id'
                   ? <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold whitespace-nowrap">♻️ Même ID</span>
-                  : dup === 'tel'
+                  : type === 'tel'
                   ? <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold whitespace-nowrap" title="Même numéro de téléphone qu'un dossier existant">📞 Même téléphone</span>
-                  : dup === 'email'
+                  : type === 'email'
                   ? <span className="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-semibold whitespace-nowrap" title="Même email qu'un dossier existant">✉️ Même email</span>
-                  : dup === 'nom'
+                  : type === 'nom'
                   ? <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-semibold whitespace-nowrap" title="Au moins un couple (nom de famille + prénom) en commun avec un dossier existant">⚠️ Même nom</span>
                   : <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-semibold whitespace-nowrap">🆕 Nouveau</span>;
+                };
                 return (
                 <div className="border border-slate-200 rounded-xl overflow-hidden max-h-96 overflow-y-auto">
                   <table className="w-full text-xs">
@@ -21855,7 +21904,20 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
               const mappedCount = Object.values(mapping).filter(Boolean).length;
               return <button onClick={enterPreview} disabled={mappedCount === 0} className="px-5 py-2 bg-violet-500 hover:bg-violet-600 disabled:bg-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold">Aperçu →</button>;
             })()}
-            {step === 3 && <button onClick={doImport} disabled={selected.size === 0} className="px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold flex items-center gap-2"><Check className="w-4 h-4" />Importer {selected.size} dossier{selected.size > 1 ? 's' : ''}</button>}
+            {step === 3 && (() => {
+              const selectedDupsCount = (dryRun.dossiers || []).reduce((n, _, i) => n + (selected.has(i) && dryRun.dups?.[i]?.matchedLocal ? 1 : 0), 0);
+              const selectedNewCount = selected.size - selectedDupsCount;
+              return (
+                <>
+                  {selectedDupsCount > 0 && onUpdateExisting && (
+                    <button onClick={markDupsAsPosed} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl text-sm font-semibold flex items-center gap-2" title="Pour les doublons cochés : met le statut « ✓ Posé » + la date « Posé le » du CSV sur le dossier déjà au CRM (sans créer de nouveau dossier)">
+                      📅 Marquer {selectedDupsCount} doublon{selectedDupsCount > 1 ? 's' : ''} comme POSÉ
+                    </button>
+                  )}
+                  <button onClick={doImport} disabled={selectedNewCount === 0} className="px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold flex items-center gap-2" title="Importe les NOUVEAUX dossiers cochés (ignore les doublons même cochés)"><Check className="w-4 h-4" />Importer {selectedNewCount} nouveau{selectedNewCount > 1 ? 'x' : ''}</button>
+                </>
+              );
+            })()}
           </div>
         </div>
       </div>
