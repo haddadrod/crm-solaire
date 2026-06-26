@@ -13084,6 +13084,9 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
   const [previewing, setPreviewing] = useState('');
   // 🙈 Filtre : cache les factures déjà attachées à un dossier
   const [hideAttached, setHideAttached] = useState(false);
+  // 📅 Filtre par année : null = toutes, sinon string '2026', '2025'…
+  //     Défaut : année courante pour ne voir que les factures de l'année.
+  const [yearFilter, setYearFilter] = useState(String(new Date().getFullYear()));
   // 🔄 État du prefetch via le singleton — survit aux changements de page.
   const { running: cronRunning, result: cronResult, start: startPrefetch } = useGmailPrefetch();
 
@@ -13165,16 +13168,32 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
 
   const normFact = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const isAttached = (inv) => attachedMap.has(normFact(inv.factureNo));
+  // Extrait l'année de la date facture (format YYYY-MM-DD). Si vide → '' (= inconnu).
+  const yearOf = (inv) => String(inv.dateFacture || '').slice(0, 4);
+
+  // 📊 Années disponibles dans les données — pour afficher les pills filtres
+  const availableYears = useMemo(() => {
+    const years = new Set();
+    for (const f of folders) for (const inv of f.invoices) {
+      const y = yearOf(inv);
+      if (/^\d{4}$/.test(y)) years.add(y);
+    }
+    return Array.from(years).sort((a, b) => b.localeCompare(a)); // récent en premier
+  }, [folders]);
 
   // 🔍 Filtre local : matche sur fournisseur, client, n° facture, ville,
-  //    téléphone, n° BL, description, etc. + filtre « cacher attachées ».
+  //    téléphone, n° BL, description, etc. + filtre attachées + filtre année.
   const filtered = useMemo(() => {
     const q = String(query || '').trim().toLowerCase();
-    const applyHide = (invs) => hideAttached ? invs.filter(i => !isAttached(i)) : invs;
+    const applyFilters = (invs) => invs.filter(i => {
+      if (hideAttached && isAttached(i)) return false;
+      if (yearFilter && yearOf(i) !== yearFilter) return false;
+      return true;
+    });
     if (!q) {
       const out = [];
       for (const f of folders) {
-        const invs = applyHide(f.invoices);
+        const invs = applyFilters(f.invoices);
         if (invs.length > 0) out.push({ ...f, invoices: invs, count: invs.length });
       }
       return out;
@@ -13190,12 +13209,12 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
       });
       // Si le nom du fournisseur lui-même matche → on garde toutes ses factures
       const folderMatch = f.fournisseur.toLowerCase().includes(q);
-      const final = applyHide(folderMatch ? f.invoices : invMatch);
+      const final = applyFilters(folderMatch ? f.invoices : invMatch);
       if (final.length > 0) out.push({ ...f, invoices: final, count: final.length });
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [folders, query, hideAttached, attachedMap]);
+  }, [folders, query, hideAttached, yearFilter, attachedMap]);
 
   // 📊 Compteur : combien sont déjà attachées au CRM (sur tout le drive)
   const attachedCount = useMemo(() => {
@@ -13423,6 +13442,30 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
               </>
             )}
           </div>
+          {/* 📅 Filtre année — pills avec compteurs */}
+          {availableYears.length > 1 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[12px] text-slate-500">📅 Année :</span>
+              <button
+                onClick={() => setYearFilter(null)}
+                className={`px-2.5 py-1 rounded-full text-[12px] font-bold transition ${yearFilter === null ? 'bg-indigo-600 text-white shadow' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+              >
+                Toutes
+              </button>
+              {availableYears.map(y => {
+                const count = folders.reduce((s, f) => s + f.invoices.filter(i => yearOf(i) === y).length, 0);
+                return (
+                  <button
+                    key={y}
+                    onClick={() => setYearFilter(y)}
+                    className={`px-2.5 py-1 rounded-full text-[12px] font-bold transition ${yearFilter === y ? 'bg-indigo-600 text-white shadow' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'}`}
+                  >
+                    {y} <span className={yearFilter === y ? 'text-indigo-200' : 'text-slate-500'}>· {count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
           {error && <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl text-sm text-rose-700">{error}</div>}
 
           {/* Liste des fournisseurs (accordion) */}
