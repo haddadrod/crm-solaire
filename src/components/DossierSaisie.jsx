@@ -13236,11 +13236,14 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS
                     {(() => {
                       const all = refList(lineType) || [];
                       const existingNoms = new Set((arr || []).map(l => (l.nom || '').toUpperCase().trim()));
-                      // Filtre + retire ceux déjà sur le dossier
+                      // 📌 On garde TOUS les noms dans les suggestions, même
+                      //    ceux déjà sur le dossier (cas : 2 factures distinctes
+                      //    du même fournisseur → besoin d'une 2e ligne). On
+                      //    juste indique « déjà sur ce dossier » pour info.
                       const typed = (newLineNames[lineType] || '').trim().toLowerCase();
                       const suggestions = all
-                        .filter(n => !existingNoms.has(String(n).toUpperCase().trim()))
                         .filter(n => !typed || String(n).toLowerCase().includes(typed))
+                        .map(n => ({ name: n, already: existingNoms.has(String(n).toUpperCase().trim()) }))
                         .slice(0, 12);
                       const exactMatch = all.some(n => String(n).toLowerCase() === typed) && typed.length > 0;
                       const isFocused = focusedInput === lineType;
@@ -13286,14 +13289,20 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS
                           {/* Dropdown des suggestions (visible au focus + au moins 1 result) */}
                           {isFocused && suggestions.length > 0 && (
                             <div className="absolute left-0 right-0 top-full mt-1 z-10 bg-white border border-slate-300 rounded-lg shadow-xl max-h-48 overflow-y-auto">
-                              {suggestions.map(name => (
+                              {suggestions.map(s => (
                                 <button
-                                  key={name}
+                                  key={s.name}
                                   type="button"
-                                  onMouseDown={(e) => { e.preventDefault(); setNewLineName(lineType, name); setFocusedInput(null); }}
-                                  className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-emerald-50 border-b border-slate-100 last:border-b-0"
+                                  onMouseDown={(e) => { e.preventDefault(); setNewLineName(lineType, s.name); setFocusedInput(null); }}
+                                  className="w-full text-left px-3 py-1.5 text-[12px] hover:bg-emerald-50 border-b border-slate-100 last:border-b-0 flex items-center justify-between gap-2"
+                                  title={s.already ? `${s.name} est déjà sur ce dossier — créera une 2e ligne (pour une 2e facture/avoir)` : `Ajouter ${s.name}`}
                                 >
-                                  {name}
+                                  <span>{s.name}</span>
+                                  {s.already && (
+                                    <span className="text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded font-bold whitespace-nowrap">
+                                      déjà 1 ligne
+                                    </span>
+                                  )}
                                 </button>
                               ))}
                               {all.length > suggestions.length && (
