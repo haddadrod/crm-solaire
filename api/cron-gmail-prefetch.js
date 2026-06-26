@@ -292,7 +292,7 @@ Reply ONLY with a JSON object (no markdown, no explanation). Use "" for unknown 
   "referenceChantier": "<END client name — the HOMEOWNER whose installation is being equipped. NOT the reseller / billed company (typically ELSOL, YOLICO, SARL ELSOL, etc.). PRIORITY ORDER for finding it: (1) Look for a labeled field 'Référence Chantier' / 'Réf. chantier' / 'Chantier' / 'Reference Chantier' / 'Installateur' / 'Site' — often in a footer table or right column, even if it's just a last name like 'Brillard' or 'DUPONT'. (2) Look for 'Référence' / 'Réf client final' / 'Bénéficiaire'. (3) Fall back to address-of-delivery if it differs from billing address. (4) Last resort = billed client name. ⚠️ NEVER return the reseller name (ELSOL/YOLICO/SARL ELSOL) unless it's truly the end client>",
   "factureNo": "<invoice/avoir number, e.g. FAC-2026-1447 or AV26-06-00255 or F-2026-0512848>",
   "dateFacture": "<YYYY-MM-DD>",
-  "fournisseur": "<supplier name (the one issuing the document)>",
+  "fournisseur": "<SUPPLIER = the company ISSUING the invoice (= the one being paid). Usually in the HEADER : top-left logo or top-right « émetteur/vendeur/expéditeur » block. ⚠️ NEVER return the BILLED company (typically ELSOL, YOLICO, SARL ELSOL, SAS ELSOL, EcoNegoce when EcoNegoce is shown as 'facturé à' — these are MY companies being billed, NOT the supplier). NEVER return 'votre client' / 'client facturé' / 'destinataire'. Examples of real suppliers : MASTEROVIT, IONERGIK, FLEX, INNOVA, LEH HELIOVIE, SYNEXIUM, etc.>",
   "montantHt": <number, total HT, ALWAYS extract if available>,
   "montantTtc": <number, total TTC, ALWAYS extract if available>,
   "montantTva": <number, total VAT amount>,
