@@ -307,6 +307,36 @@ Reply ONLY with a JSON object (no markdown, no explanation). Use "" for unknown 
   "description": "<short 1-line description, e.g. 'Installation panneaux 6kW' or 'Avoir - Commission client concernant facture F-2026-0512841'>"
 }`;
 
+// 🚫 Sociétés du client (= « facturé à »), JAMAIS un vrai fournisseur.
+//    Si l'IA renvoie l'un de ces noms, on relance pour corriger.
+const SUPPLIER_BLACKLIST = /^(elsol|sarl\s*elsol|sas\s*elsol|yolico|sas\s*yolico|sarl\s*yolico)\b/i;
+
+async function correctSupplier(base64, wrongSupplier) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 80,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+          { type: 'text', text: `Your previous analysis returned "${wrongSupplier}" as the supplier — this is WRONG. "${wrongSupplier}" is the BILLED company (= MY company being charged, shown as « facturé à » / « destinataire » / « client »). I need the company that ISSUED this invoice (= the one being PAID). Look at the HEADER : the logo top-left, or the « émetteur / vendeur / expéditeur » block top-right. Real suppliers we work with include : MASTEROVIT, IONERGIK, FLEX, INNOVA, LEH HELIOVIE, SYNEXIUM, EcoNegoce. Reply with ONLY the supplier name on a single line — no quotes, no punctuation, no explanation.` },
+        ],
+      }],
+    }),
+  });
+  const d = await r.json();
+  if (!r.ok) return wrongSupplier;
+  const corrected = (d.content?.[0]?.text || '').trim().split('\n')[0].replace(/^["']|["']$/g, '').trim();
+  return corrected || wrongSupplier;
+}
+
 async function extractFromPdf(base64) {
   if (!ANTHROPIC_API_KEY) throw new Error('ANTHROPIC_API_KEY manquant');
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -334,6 +364,12 @@ async function extractFromPdf(base64) {
   const m = text.match(/\{[\s\S]*\}/);
   if (!m) throw new Error('Pas de JSON dans la réponse Claude');
   const parsed = JSON.parse(m[0]);
+  // 🛡️ Si l'IA renvoie un nom blacklisté (ELSOL/YOLICO), on relance une
+  //    requête correctrice pour récupérer le vrai émetteur.
+  let fournisseur = String(parsed.fournisseur || '');
+  if (SUPPLIER_BLACKLIST.test(fournisseur)) {
+    try { fournisseur = await correctSupplier(base64, fournisseur); } catch (e) { /* on garde l'ancien */ }
+  }
   let documentType = String(parsed.documentType || 'autre').toLowerCase().trim();
   const description = String(parsed.description || '');
   // 🛡️ Override : si la description parle d'avoir alors que l'IA a dit
@@ -362,7 +398,7 @@ async function extractFromPdf(base64) {
     refChantier: String(parsed.referenceChantier || ''),
     factureNo: String(parsed.factureNo || ''),
     dateFacture: String(parsed.dateFacture || ''),
-    fournisseur: String(parsed.fournisseur || ''),
+    fournisseur,
     montantHt: Math.abs(montantHt),
     montantTtc: Math.abs(montantTtc),
     montantTva: Math.abs(montantTva),
