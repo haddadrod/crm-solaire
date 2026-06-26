@@ -304,14 +304,27 @@ async function uploadToArchive(admin, path, base64) {
 }
 
 export default async function handler(req, res) {
-  // Auth cron Vercel : vérifie le header CRON_SECRET. Accepte aussi GET
-  // manuel avec ?secret=... pour pouvoir tester depuis le navigateur.
+  // Auth — 3 chemins acceptés :
+  //   1. Header `Authorization: Bearer <CRON_SECRET>` (Vercel cron auto)
+  //   2. ?secret=<CRON_SECRET> dans l'URL (test manuel)
+  //   3. Bearer <supabase JWT> d'un user ADMIN (bouton « Lancer » dans le CRM)
   const authHeader = req.headers['authorization'] || '';
   const expected = CRON_SECRET ? `Bearer ${CRON_SECRET}` : '';
   const secretQuery = req.query?.secret || '';
   const okHeader = expected && authHeader === expected;
   const okQuery = CRON_SECRET && secretQuery === CRON_SECRET;
-  if (!okHeader && !okQuery) return json(res, 401, { error: 'Unauthorized' });
+
+  let okAdmin = false;
+  if (!okHeader && !okQuery && authHeader.startsWith('Bearer ') && SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+    try {
+      const adm = makeAdmin();
+      const token = authHeader.slice('Bearer '.length).trim();
+      const { data } = await adm.auth.getUser(token);
+      if (data?.user?.user_metadata?.role === 'admin') okAdmin = true;
+    } catch (e) { /* unauthorized */ }
+  }
+
+  if (!okHeader && !okQuery && !okAdmin) return json(res, 401, { error: 'Unauthorized' });
 
   if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) {
     return json(res, 500, { error: 'SUPABASE_URL/SUPABASE_SERVICE_KEY manquants' });
