@@ -290,7 +290,7 @@ Reply ONLY with a JSON object (no markdown, no explanation). Use "" for unknown 
 
 {
   "documentType": "<MUST be one of: facture | avoir | relance | devis | bon_livraison | bon_commande | courrier | releve | contrat | attestation | fiche_technique | autre>",
-  "referenceChantier": "<client name — for sub-contractor invoices, the END client (homeowner)>",
+  "referenceChantier": "<END client name — the HOMEOWNER whose installation is being equipped. NOT the reseller / billed company (typically ELSOL, YOLICO, SARL ELSOL, etc.). PRIORITY ORDER for finding it: (1) Look for a labeled field 'Référence Chantier' / 'Réf. chantier' / 'Chantier' / 'Reference Chantier' / 'Installateur' / 'Site' — often in a footer table or right column, even if it's just a last name like 'Brillard' or 'DUPONT'. (2) Look for 'Référence' / 'Réf client final' / 'Bénéficiaire'. (3) Fall back to address-of-delivery if it differs from billing address. (4) Last resort = billed client name. ⚠️ NEVER return the reseller name (ELSOL/YOLICO/SARL ELSOL) unless it's truly the end client>",
   "factureNo": "<invoice/avoir number, e.g. FAC-2026-1447 or AV26-06-00255 or F-2026-0512848>",
   "dateFacture": "<YYYY-MM-DD>",
   "fournisseur": "<supplier name (the one issuing the document)>",
