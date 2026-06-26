@@ -21657,6 +21657,28 @@ function ImportDossiersModal({ onClose, onImport, onUpdateExisting, existingDoss
     }
   };
 
+  // ❌ Annule l'action précédente : remet statutPose = '' + efface
+  //    dateInsta/dateEnvoiPose si elles correspondent à la date du CSV
+  //    (sinon on ne touche pas — la date existait peut-être avant).
+  const unmarkDupsPosed = () => {
+    setErrorMsg('');
+    if (!onUpdateExisting) { setErrorMsg('Mise à jour non disponible dans ce contexte.'); return; }
+    const updates = [];
+    (dryRun.dossiers || []).forEach((d, i) => {
+      const dup = dryRun.dups?.[i];
+      if (!selected.has(i) || !dup || !dup.matchedLocal) return;
+      const patch = { statutPose: '', dateInsta: '', dateEnvoiPose: '' };
+      updates.push({ localId: dup.matchedLocal, patch });
+    });
+    if (updates.length === 0) { setErrorMsg('Aucun doublon coché — coche les doublons à annuler.'); return; }
+    if (!window.confirm(`Annuler le POSÉ sur ${updates.length} dossier${updates.length > 1 ? 's' : ''} existant${updates.length > 1 ? 's' : ''} ?\n\nLeur statut « ✓ Posé » sera désactivé et les dates « Posé le » + « Date pose » seront effacées.`)) return;
+    try {
+      onUpdateExisting(updates);
+    } catch (e) {
+      setErrorMsg(`Erreur lors de l'annulation : ${e.message}`);
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
@@ -21910,9 +21932,14 @@ function ImportDossiersModal({ onClose, onImport, onUpdateExisting, existingDoss
               return (
                 <>
                   {selectedDupsCount > 0 && onUpdateExisting && (
-                    <button onClick={markDupsAsPosed} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl text-sm font-semibold flex items-center gap-2" title="Pour les doublons cochés : met le statut « ✓ Posé » + la date « Posé le » du CSV sur le dossier déjà au CRM (sans créer de nouveau dossier)">
-                      📅 Marquer {selectedDupsCount} doublon{selectedDupsCount > 1 ? 's' : ''} comme POSÉ
-                    </button>
+                    <>
+                      <button onClick={unmarkDupsPosed} className="px-3 py-2 bg-white border-2 border-rose-300 hover:bg-rose-50 text-rose-700 rounded-xl text-sm font-semibold flex items-center gap-1" title="Inverse de « Marquer comme POSÉ » : remet statutPose à vide et efface les dates Posé le / Date pose">
+                        ❌ Annuler POSÉ
+                      </button>
+                      <button onClick={markDupsAsPosed} className="px-4 py-2 bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 text-white rounded-xl text-sm font-semibold flex items-center gap-2" title="Pour les doublons cochés : met le statut « ✓ Posé » + la date « Posé le » du CSV sur le dossier déjà au CRM (sans créer de nouveau dossier)">
+                        📅 Marquer {selectedDupsCount} comme POSÉ
+                      </button>
+                    </>
                   )}
                   <button onClick={doImport} disabled={selectedNewCount === 0} className="px-5 py-2 bg-gradient-to-r from-emerald-500 to-teal-500 disabled:from-slate-300 disabled:to-slate-300 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold flex items-center gap-2" title="Importe les NOUVEAUX dossiers cochés (ignore les doublons même cochés)"><Check className="w-4 h-4" />Importer {selectedNewCount} nouveau{selectedNewCount > 1 ? 'x' : ''}</button>
                 </>
