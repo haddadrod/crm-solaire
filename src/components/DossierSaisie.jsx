@@ -13164,17 +13164,34 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS
                               </div>
                             </div>
                             <div className="shrink-0 flex gap-1">
-                              {/* 👁️ Voir la facture existante (si déjà un PDF) */}
-                              {has && (
-                                <button
-                                  onClick={() => previewExistingFacture(l, lineType, idx)}
-                                  disabled={!!previewingLine}
-                                  className="px-2 py-1 rounded text-[11px] font-bold bg-white border border-amber-300 hover:bg-amber-50 text-amber-700 disabled:opacity-50"
-                                  title="Voir la facture déjà attachée"
-                                >
-                                  {previewingLine === `${lineType}-${idx}` ? '⏳' : '👁️'}
-                                </button>
-                              )}
+                              {/* 👁️ Voir le contenu de la ligne — TOUJOURS visible.
+                                  Si PDF → preview. Sinon → résumé des infos saisies. */}
+                              <button
+                                onClick={() => {
+                                  if (has) {
+                                    previewExistingFacture(l, lineType, idx);
+                                  } else {
+                                    // Pas de PDF → affiche un résumé des champs saisis
+                                    const lines = [];
+                                    lines.push(`Ligne ${lineType === 'poseurs' ? 'Poseur' : lineType === 'regies' ? 'Régie' : 'Fournisseur'} : ${l.nom || '(sans nom)'}`);
+                                    if (l.factureNo) lines.push(`N° facture : ${l.factureNo}`);
+                                    if (l.bl) lines.push(`BL : ${l.bl}`);
+                                    if (l.htCustom) lines.push(`HT : ${l.htCustom} €`);
+                                    if (l.dateFacture) lines.push(`Date : ${l.dateFacture}`);
+                                    if (l.paye) lines.push(`✅ Payé${l.datePaye ? ` le ${l.datePaye}` : ''}`);
+                                    if (lines.length === 1) lines.push('(aucune autre info saisie sur cette ligne)');
+                                    lines.push('');
+                                    lines.push('⚠ Aucun PDF attaché à cette ligne.');
+                                    alert(lines.join('\n'));
+                                  }
+                                }}
+                                disabled={!!previewingLine}
+                                className={`px-2 py-1 rounded text-[11px] font-bold disabled:opacity-50 ${has ? 'bg-white border border-amber-300 hover:bg-amber-50 text-amber-700' : 'bg-slate-50 border border-slate-300 hover:bg-slate-100 text-slate-600'}`}
+                                title={has ? 'Voir la facture déjà attachée' : 'Voir le contenu saisi sur cette ligne (pas de PDF)'}
+                              >
+                                {previewingLine === `${lineType}-${idx}` ? '⏳' : '👁️'}
+                              </button>
+                              {has && null}
                               <button
                                 onClick={() => onAttach({ dossier: pickedDossier, lineType, lineIndex: idx, kind: 'facture' })}
                                 disabled={attaching}
