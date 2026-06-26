@@ -21753,6 +21753,8 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Statut</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Financement</th>
                         <th className="px-2 py-2 text-right font-bold text-slate-600">Montant</th>
+                        <th className="px-2 py-2 text-right font-bold text-slate-600">Puissance</th>
+                        <th className="px-2 py-2 text-left font-bold text-slate-600">Date pose</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -21766,6 +21768,8 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                           <td className="px-2 py-1.5">{STATUTS_ORDERED.find(s => s.id === d.statut)?.label || d.statut}</td>
                           <td className="px-2 py-1.5">{d.financement}</td>
                           <td className="px-2 py-1.5 text-right">{formatEuro(d.montantTotal)}</td>
+                          <td className="px-2 py-1.5 text-right">{d.puissance ? `${d.puissance} Wc` : <span className="text-slate-300">—</span>}</td>
+                          <td className="px-2 py-1.5 whitespace-nowrap">{d.dateInsta ? d.dateInsta.split('-').reverse().join('/') : <span className="text-slate-300">—</span>}</td>
                         </tr>
                       ))}
                     </tbody>
