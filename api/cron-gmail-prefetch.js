@@ -59,6 +59,19 @@ async function readSharedInboxes(admin) {
   try { const arr = JSON.parse(data.value); return Array.isArray(arr) ? arr : []; } catch { return []; }
 }
 
+// 📥 Set des attachments déjà rattachés à un dossier dans le CRM. On les
+//    skip aussi (en plus du cache IA) — pas la peine de payer Claude pour
+//    re-analyser une facture qui est déjà liée à un dossier.
+async function readImportedAttachmentsSet(admin) {
+  const { data } = await admin.from('storage').select('value').eq('key', 'gmail-imported-attachments').maybeSingle();
+  if (!data?.value) return new Set();
+  try {
+    const arr = JSON.parse(data.value);
+    if (Array.isArray(arr)) return new Set(arr.map(String));
+  } catch (e) {}
+  return new Set();
+}
+
 function boxMethod(b) {
   return b?.appPassword ? 'imap' : (b?.refreshToken ? 'oauth' : 'imap');
 }
@@ -353,6 +366,11 @@ export default async function handler(req, res) {
     const shared = await readSharedInboxes(admin);
     stats.inboxes = shared.length;
 
+    // Set des attachments déjà ATTACHÉS à un dossier CRM. On les skip aussi
+    // (en plus du cache IA) pour ne pas re-payer Claude pour rien.
+    const importedSet = await readImportedAttachmentsSet(admin);
+    stats.pdfsAlreadyInCrm = 0;
+
     for (const inbox of shared) {
       if (stats.pdfsAnalyzed >= cap) break;
       const method = boxMethod(inbox);
@@ -381,7 +399,15 @@ export default async function handler(req, res) {
         for (const r of rows || []) cached.add(r.key);
       }
       stats.pdfsAlreadyCached += cached.size;
-      const todo = pdfs.filter(p => !cached.has(iaCacheKey(inbox.email, p.uid, p.attachmentId)));
+      // Filtre 1 : skip ce qui est déjà en cache IA
+      // Filtre 2 : skip ce qui est déjà attaché à un dossier (importedSet)
+      const todo = pdfs.filter(p => {
+        const cacheK = iaCacheKey(inbox.email, p.uid, p.attachmentId);
+        if (cached.has(cacheK)) return false;
+        const importedK = `${(inbox.email || '').toLowerCase()}|${p.uid}|${p.attachmentId}`;
+        if (importedSet.has(importedK)) { stats.pdfsAlreadyInCrm++; return false; }
+        return true;
+      });
 
       // 🤖 Analyse parallèle (PARALLEL en concurrence, Anthropic rate-limit safe).
       let accessToken = null; // refresh une seule fois si OAuth
