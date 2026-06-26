@@ -13652,10 +13652,13 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
         }
         return { ...d, [lineType]: arr, savedAt: now, modifiedAt: now, modifiedBy: `[drive-attach-${usedKind}]` };
       }));
-      // 4. Mark imported côté serveur (skip aux prochains scans/cron)
+      // 4. Mark imported côté serveur — inclut les COPIES (même n° reçu
+      //    plusieurs fois) pour qu'elles disparaissent toutes du Drive.
+      const entriesToMark = [{ inboxEmail: inv.inboxEmail, messageId: inv.messageId, attachmentId: inv.attachmentId }];
+      if (Array.isArray(inv.copyKeys)) entriesToMark.push(...inv.copyKeys);
       fetch('/api/gmail-oauth?action=mark-imported', {
         method: 'POST', headers,
-        body: JSON.stringify({ inboxEmail: inv.inboxEmail, messageId: inv.messageId, attachmentId: inv.attachmentId }),
+        body: JSON.stringify({ entries: entriesToMark }),
       }).catch(() => {});
       setAttachOpen(null);
       const lineName = createdLineName || dossier[lineType]?.[lineIndex]?.nom || 'sans nom';
@@ -13974,6 +13977,11 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
                                 )}
                                 {inv.storagePath && (
                                   <span className="text-emerald-600 text-[11px]" title="Archivé dans le bucket — attach instantané">📦</span>
+                                )}
+                                {inv.copies > 1 && (
+                                  <span className="px-1.5 py-0.5 bg-amber-100 text-amber-800 rounded text-[11px] font-bold" title={`${inv.copies} copies reçues (même n° + même montant). En attachant, toutes seront marquées importées.`}>
+                                    ×{inv.copies} doublons
+                                  </span>
                                 )}
                                 {attachedInfo && (
                                   <button

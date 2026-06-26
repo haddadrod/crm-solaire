@@ -1058,11 +1058,38 @@ export default async function handler(req, res) {
         if (a.count !== b.count) return b.count - a.count;
         return a.fournisseur.localeCompare(b.fournisseur);
       });
+      // 🔂 Dédup par (factureNo + montantHt) à l'intérieur de chaque dossier
+      //    fournisseur : si même n° et même montant → c'est la même facture
+      //    reçue plusieurs fois (2 boîtes, renvoi, etc.). On garde la 1re
+      //    et on track les copies (otherKeys) pour pouvoir tout marquer importé
+      //    quand l'user attache.
+      let dedupedTotal = 0;
+      for (const f of arr) {
+        const seen = new Map(); // key → first invoice
+        const out = [];
+        for (const inv of f.invoices) {
+          const dedupKey = `${(inv.factureNo || '').toUpperCase().trim()}|${Number(inv.montantHt) || 0}`;
+          // Si factureNo vide → pas de dédup (chaque entrée reste séparée)
+          if (!inv.factureNo || !inv.factureNo.trim()) { out.push(inv); continue; }
+          if (seen.has(dedupKey)) {
+            const first = seen.get(dedupKey);
+            first.copies = (first.copies || 1) + 1;
+            first.copyKeys = first.copyKeys || [];
+            first.copyKeys.push({ inboxEmail: inv.inboxEmail, messageId: inv.messageId, attachmentId: inv.attachmentId });
+          } else {
+            seen.set(dedupKey, inv);
+            out.push(inv);
+          }
+        }
+        f.invoices = out;
+        f.count = out.length;
+        dedupedTotal += out.length;
+      }
       // Tri interne : factures les plus récentes en premier
       for (const f of arr) {
         f.invoices.sort((a, b) => (b.dateFacture || b.analyzedAt || '').localeCompare(a.dateFacture || a.analyzedAt || ''));
       }
-      return json(res, 200, { data: { folders: arr, totalSuppliers: arr.length, totalInvoices } });
+      return json(res, 200, { data: { folders: arr, totalSuppliers: arr.length, totalInvoices: dedupedTotal, totalInvoicesAvantDedup: totalInvoices } });
     }
 
     // 🔎 Recherche LOCALE dans le cache IA (sans Gmail). Instantané, gratuit.
