@@ -13086,27 +13086,44 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
   // 🔄 État du prefetch via le singleton — survit aux changements de page.
   const { running: cronRunning, result: cronResult, start: startPrefetch } = useGmailPrefetch();
 
-  // 🧾 Map { factureNoNormalisé → { dossier, lineType, lineIndex, clientName } }
-  //    Permet de savoir si une facture du drive est déjà attachée à un dossier
-  //    (et lequel). Affiche un badge cliquable « ✅ Attachée à X ».
+  // 🧾 Map { numéroNormalisé → { dossier, lineType, lineIndex, clientName, kind } }
+  //    Permet de savoir si une facture OU UN AVOIR du drive est déjà attaché
+  //    à un dossier. Couvre :
+  //      - l.factureNo + (l.factureFile || facturePdfUrl || factureExternalUrl)
+  //      - l.avoirs[].avoirNo + l.avoirs[].file  (avoirs / notes de crédit)
   const attachedMap = useMemo(() => {
     const map = new Map();
     const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     for (const d of dossiers || []) {
+      const clientName = `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)';
       for (const lineType of ['poseurs', 'regies', 'fournisseurs']) {
         const arr = d[lineType] || [];
         for (let idx = 0; idx < arr.length; idx++) {
           const l = arr[idx];
           if (!l) continue;
-          if (!(l.factureFile || l.facturePdfUrl || l.factureExternalUrl)) continue;
-          const fn = norm(l.factureNo);
-          if (fn.length >= 5) {
-            map.set(fn, {
-              dossier: d,
-              lineType, lineIndex: idx,
-              clientName: `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)',
-              lineName: l.nom || '',
-            });
+          // Facture principale (avec PDF)
+          if (l.factureFile || l.facturePdfUrl || l.factureExternalUrl) {
+            const fn = norm(l.factureNo);
+            if (fn.length >= 5) {
+              map.set(fn, {
+                dossier: d, lineType, lineIndex: idx, clientName,
+                lineName: l.nom || '', kind: 'facture',
+              });
+            }
+          }
+          // Avoirs (chaque avoir avec un PDF)
+          if (Array.isArray(l.avoirs)) {
+            for (let ai = 0; ai < l.avoirs.length; ai++) {
+              const av = l.avoirs[ai];
+              if (!av || !av.file) continue;
+              const an = norm(av.avoirNo);
+              if (an.length >= 5) {
+                map.set(an, {
+                  dossier: d, lineType, lineIndex: idx, avoirIndex: ai, clientName,
+                  lineName: l.nom || '', kind: 'avoir',
+                });
+              }
+            }
           }
         }
       }
@@ -13456,7 +13473,7 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
                                     className="px-2 py-0.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-800 rounded text-[11px] font-bold cursor-pointer"
                                     title={`Cliquer pour ouvrir le dossier de ${attachedInfo.clientName}`}
                                   >
-                                    ✅ Attachée à {attachedInfo.clientName}
+                                    ✅ {attachedInfo.kind === 'avoir' ? 'Avoir attaché' : 'Attachée'} à {attachedInfo.clientName}
                                   </button>
                                 )}
                               </div>

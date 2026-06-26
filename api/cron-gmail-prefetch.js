@@ -80,10 +80,12 @@ async function writeImportedAttachmentsSet(admin, set) {
   });
 }
 
-// 🧾 Set des n° facture / BL qui sont DÉJÀ attachés à une ligne de dossier
-//    (poseur, régie, fournisseur) avec un PDF (factureFile || facturePdfUrl
-//    || factureExternalUrl). Permet de skip côté cron quand l'user a
-//    attaché manuellement un PDF via le dossier (= pas dans importedSet).
+// 🧾 Set des n° (facture, BL, OU avoir) qui sont DÉJÀ attachés à une ligne
+//    de dossier. Couvre 2 cas :
+//      - facture principale (factureFile/facturePdfUrl/factureExternalUrl)
+//      - avoirs : l.avoirs[].avoirNo si l.avoirs[].file (= PDF attaché)
+//    Permet de skip côté cron quand l'user a attaché manuellement un PDF
+//    via le dossier (= pas dans importedSet).
 async function readCrmFactureRefs(admin) {
   const refs = new Set();
   try {
@@ -96,12 +98,21 @@ async function readCrmFactureRefs(admin) {
       for (const k of arrs) {
         for (const l of (d[k] || [])) {
           if (!l) continue;
-          // Ligne doit avoir un PDF attaché (sinon factureNo seul = pas de doublon réel)
-          if (!(l.factureFile || l.facturePdfUrl || l.factureExternalUrl)) continue;
-          const fn = normalize(l.factureNo);
-          if (fn.length >= 5) refs.add(fn);
-          const bl = normalize(l.bl);
-          if (bl.length >= 5) refs.add(bl);
+          // Facture principale (avec PDF)
+          if (l.factureFile || l.facturePdfUrl || l.factureExternalUrl) {
+            const fn = normalize(l.factureNo);
+            if (fn.length >= 5) refs.add(fn);
+            const bl = normalize(l.bl);
+            if (bl.length >= 5) refs.add(bl);
+          }
+          // Avoirs (chaque avoir avec un PDF)
+          if (Array.isArray(l.avoirs)) {
+            for (const av of l.avoirs) {
+              if (!av || !av.file) continue;
+              const an = normalize(av.avoirNo);
+              if (an.length >= 5) refs.add(an);
+            }
+          }
         }
       }
     }
