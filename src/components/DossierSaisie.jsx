@@ -12968,6 +12968,12 @@ function PennylaneKeysPanel({ societes = [] }) {
 function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching }) {
   const [query, setQuery] = useState(inv?.refChantier || '');
   const [pickedDossier, setPickedDossier] = useState(null);
+  // Mode par défaut : si l'IA a dit avoir, on propose avoir par défaut sur les clics.
+  // L'user peut quand même choisir l'autre via le 2e bouton de chaque ligne.
+  const iaIsAvoir = (inv?.documentType || inv?.iaCached?.documentType) === 'avoir';
+  // Création d'une nouvelle ligne par type : { poseurs: 'NOM', regies: '', ... }
+  const [newLineNames, setNewLineNames] = useState({ poseurs: '', regies: '', fournisseurs: '' });
+  const setNewLineName = (type, val) => setNewLineNames(prev => ({ ...prev, [type]: val }));
 
   // Recherche fuzzy sur les dossiers
   const matches = useMemo(() => {
@@ -13047,29 +13053,28 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching }) {
                   <button onClick={() => setPickedDossier(null)} className="text-[11px] text-emerald-700 hover:underline">Changer</button>
                 </div>
               </div>
-              <div className="text-[12px] font-bold text-slate-500 uppercase mb-2">Sur quelle ligne attacher ?</div>
+              <div className="text-[12px] font-bold text-slate-500 uppercase mb-2">
+                Sur quelle ligne attacher ?
+                {iaIsAvoir && <span className="ml-2 px-1.5 py-0.5 bg-rose-100 text-rose-700 rounded text-[10px]">L'IA dit : AVOIR</span>}
+              </div>
               {['poseurs', 'regies', 'fournisseurs'].map(lineType => {
                 const arr = pickedDossier[lineType] || [];
                 const label = lineType === 'poseurs' ? '🔧 Poseurs' : lineType === 'regies' ? '🤝 Régies' : '📦 Fournisseurs';
-                if (arr.length === 0) return (
-                  <div key={lineType} className="mb-2">
-                    <div className="text-[12px] font-semibold text-slate-600 mb-1">{label}</div>
-                    <div className="text-[11px] italic text-slate-400 px-2">Aucune ligne sur ce dossier.</div>
-                  </div>
-                );
                 return (
-                  <div key={lineType} className="mb-2">
+                  <div key={lineType} className="mb-3">
                     <div className="text-[12px] font-semibold text-slate-600 mb-1">{label}</div>
+                    {arr.length === 0 && (
+                      <div className="text-[11px] italic text-slate-400 px-2 mb-1.5">Aucune ligne — utilise « ➕ Créer » ci-dessous.</div>
+                    )}
                     <div className="space-y-1">
                       {arr.map((l, idx) => {
                         const has = !!(l.factureFile || l.facturePdfUrl || l.factureExternalUrl);
+                        const avoirs = Array.isArray(l.avoirs) ? l.avoirs.length : 0;
                         return (
-                          <button
+                          <div
                             key={idx}
-                            onClick={() => onAttach(pickedDossier, lineType, idx)}
-                            disabled={attaching}
-                            className={`w-full text-left p-2 rounded-lg border flex items-center justify-between gap-2 disabled:opacity-50 ${
-                              has ? 'bg-amber-50 border-amber-300 hover:bg-amber-100' : 'bg-white border-slate-200 hover:bg-emerald-50'
+                            className={`p-2 rounded-lg border flex items-center justify-between gap-2 ${
+                              has ? 'bg-amber-50 border-amber-300' : 'bg-white border-slate-200'
                             }`}
                           >
                             <div className="min-w-0 flex-1">
@@ -13078,12 +13083,58 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching }) {
                                 {l.factureNo && <span>🧾 {l.factureNo}</span>}
                                 {l.htCustom && <span> · {l.htCustom} € HT</span>}
                                 {has && <span className="text-amber-700 font-bold"> · ⚠ Déjà un PDF</span>}
+                                {avoirs > 0 && <span className="text-rose-600 font-bold"> · 🔄 {avoirs} avoir{avoirs > 1 ? 's' : ''}</span>}
                               </div>
                             </div>
-                            <span className="text-emerald-700 font-bold text-[12px] shrink-0">{attaching ? '⏳' : '📎 Choisir'}</span>
-                          </button>
+                            <div className="shrink-0 flex gap-1">
+                              <button
+                                onClick={() => onAttach({ dossier: pickedDossier, lineType, lineIndex: idx, kind: 'facture' })}
+                                disabled={attaching}
+                                className={`px-2 py-1 rounded text-[11px] font-bold disabled:opacity-50 ${iaIsAvoir ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
+                                title={has ? 'Remplace le PDF actuel' : 'Attacher comme facture'}
+                              >
+                                📎 Facture
+                              </button>
+                              <button
+                                onClick={() => onAttach({ dossier: pickedDossier, lineType, lineIndex: idx, kind: 'avoir' })}
+                                disabled={attaching}
+                                className={`px-2 py-1 rounded text-[11px] font-bold disabled:opacity-50 ${iaIsAvoir ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-rose-100 hover:bg-rose-200 text-rose-700'}`}
+                                title="Ajouter comme avoir (push dans avoirs[])"
+                              >
+                                🔄 Avoir
+                              </button>
+                            </div>
+                          </div>
                         );
                       })}
+                    </div>
+                    {/* ➕ Créer une nouvelle ligne de ce type */}
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <input
+                        type="text"
+                        value={newLineNames[lineType] || ''}
+                        onChange={(e) => setNewLineName(lineType, e.target.value)}
+                        placeholder={`➕ Créer un ${lineType === 'poseurs' ? 'poseur' : lineType === 'regies' ? 'régie' : 'fournisseur'}…`}
+                        className="flex-1 px-2 py-1 text-[12px] border border-slate-300 rounded-lg bg-white"
+                      />
+                      {(newLineNames[lineType] || '').trim() && (
+                        <>
+                          <button
+                            onClick={() => onAttach({ dossier: pickedDossier, lineType, kind: 'facture', newLineName: newLineNames[lineType].trim() })}
+                            disabled={attaching}
+                            className={`px-2 py-1 rounded text-[11px] font-bold disabled:opacity-50 ${iaIsAvoir ? 'bg-slate-100 hover:bg-slate-200 text-slate-700' : 'bg-emerald-600 hover:bg-emerald-700 text-white'}`}
+                          >
+                            📎 + Facture
+                          </button>
+                          <button
+                            onClick={() => onAttach({ dossier: pickedDossier, lineType, kind: 'avoir', newLineName: newLineNames[lineType].trim() })}
+                            disabled={attaching}
+                            className={`px-2 py-1 rounded text-[11px] font-bold disabled:opacity-50 ${iaIsAvoir ? 'bg-rose-600 hover:bg-rose-700 text-white' : 'bg-rose-100 hover:bg-rose-200 text-rose-700'}`}
+                          >
+                            🔄 + Avoir
+                          </button>
+                        </>
+                      )}
                     </div>
                   </div>
                 );
@@ -13375,7 +13426,12 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
   //    → window.storage `file:<id>` → ligne prestataire factureFile).
   //    Marque ensuite l'attachment Gmail comme importé pour ne pas
   //    le re-proposer.
-  const attachToLine = async (inv, dossier, lineType, lineIndex) => {
+  // op = { dossier, lineType, lineIndex?, kind: 'facture'|'avoir', newLineName? }
+  //   - newLineName : si défini, on crée une nouvelle ligne avec ce nom
+  //   - kind=avoir  : push dans l.avoirs[] au lieu de remplacer l.factureFile
+  const attachToLine = async (inv, op) => {
+    const { dossier, lineType, kind = 'facture', newLineName } = op || {};
+    let { lineIndex } = op || {};
     const key = `${inv.inboxEmail}|${inv.messageId}|${inv.attachmentId}`;
     setAttachInProgress(key);
     try {
@@ -13399,20 +13455,45 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
       if (!ok) throw new Error('Échec du stockage du fichier (storage KV).');
       // 3. Update le dossier ciblé
       const now = new Date().toISOString();
+      let createdLineName = '';
+      let usedKind = kind;
       setDossiers(prev => prev.map(d => {
         if (d.localId !== dossier.localId) return d;
         const arr = Array.isArray(d[lineType]) ? [...d[lineType]] : [];
+        // Création d'une nouvelle ligne si demandé
+        if (newLineName && newLineName.trim()) {
+          arr.push({
+            nom: newLineName.trim(),
+            htCustom: '', paye: false, datePaye: '',
+            bl: '', factureNo: '', facturePdfUrl: '',
+          });
+          lineIndex = arr.length - 1;
+          createdLineName = newLineName.trim();
+        }
         if (!arr[lineIndex]) return d;
-        arr[lineIndex] = {
-          ...arr[lineIndex],
-          factureFile: fileId,
-          factureNo: arr[lineIndex].factureNo || inv.factureNo || '',
-          bl: arr[lineIndex].bl || inv.numeroBl || '',
-          htCustom: arr[lineIndex].htCustom || (inv.montantHt > 0 ? String(inv.montantHt) : ''),
-          dateFacture: arr[lineIndex].dateFacture || inv.dateFacture || '',
-          tauxTva: (typeof inv.tauxTva === 'number' && inv.tauxTva > 0) ? inv.tauxTva : (arr[lineIndex].tauxTva ?? undefined),
-        };
-        return { ...d, [lineType]: arr, savedAt: now, modifiedAt: now, modifiedBy: '[drive-attach]' };
+        if (usedKind === 'avoir') {
+          // Push dans l.avoirs[] sans toucher factureFile
+          const avoirs = Array.isArray(arr[lineIndex].avoirs) ? [...arr[lineIndex].avoirs] : [];
+          const montantAbs = Math.abs(Number(inv.montantHt) || 0);
+          avoirs.push({
+            montantHt: montantAbs > 0 ? String(montantAbs) : '',
+            avoirNo: String(inv.factureNo || ''),
+            date: String(inv.dateFacture || now.slice(0, 10)),
+            file: fileId,
+          });
+          arr[lineIndex] = { ...arr[lineIndex], avoirs };
+        } else {
+          arr[lineIndex] = {
+            ...arr[lineIndex],
+            factureFile: fileId,
+            factureNo: arr[lineIndex].factureNo || inv.factureNo || '',
+            bl: arr[lineIndex].bl || inv.numeroBl || '',
+            htCustom: arr[lineIndex].htCustom || (inv.montantHt > 0 ? String(inv.montantHt) : ''),
+            dateFacture: arr[lineIndex].dateFacture || inv.dateFacture || '',
+            tauxTva: (typeof inv.tauxTva === 'number' && inv.tauxTva > 0) ? inv.tauxTva : (arr[lineIndex].tauxTva ?? undefined),
+          };
+        }
+        return { ...d, [lineType]: arr, savedAt: now, modifiedAt: now, modifiedBy: `[drive-attach-${usedKind}]` };
       }));
       // 4. Mark imported côté serveur (skip aux prochains scans/cron)
       fetch('/api/gmail-oauth?action=mark-imported', {
@@ -13420,7 +13501,9 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
         body: JSON.stringify({ inboxEmail: inv.inboxEmail, messageId: inv.messageId, attachmentId: inv.attachmentId }),
       }).catch(() => {});
       setAttachOpen(null);
-      alert(`✅ Facture attachée à ${dossier.nom || ''} ${dossier.prenom || ''} (ligne ${lineType.slice(0, -1)} : ${dossier[lineType][lineIndex]?.nom || 'sans nom'})`);
+      const lineName = createdLineName || dossier[lineType]?.[lineIndex]?.nom || 'sans nom';
+      const kindLabel = usedKind === 'avoir' ? 'Avoir' : 'Facture';
+      alert(`✅ ${kindLabel} attaché${usedKind === 'avoir' ? '' : 'e'} à ${dossier.nom || ''} ${dossier.prenom || ''} (${lineType.slice(0, -1)} : ${lineName})`);
     } catch (e) {
       alert(`Erreur attach : ${e?.message || 'inconnu'}`);
     } finally {
@@ -13745,7 +13828,7 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
           inv={attachOpen.inv}
           dossiers={dossiers}
           onClose={() => setAttachOpen(null)}
-          onAttach={(dossier, lineType, lineIndex) => attachToLine(attachOpen.inv, dossier, lineType, lineIndex)}
+          onAttach={(op) => attachToLine(attachOpen.inv, op)}
           attaching={!!attachInProgress}
         />
       )}
