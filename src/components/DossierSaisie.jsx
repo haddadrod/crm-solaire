@@ -21747,6 +21747,7 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                       <tr>
                         <th className="px-2 py-2 text-center font-bold text-slate-600">✓</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Nom</th>
+                        <th className="px-2 py-2 text-left font-bold text-slate-600">Prénom</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Présence</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Société</th>
                         <th className="px-2 py-2 text-left font-bold text-slate-600">Statut</th>
@@ -21758,7 +21759,8 @@ function ImportDossiersModal({ onClose, onImport, existingDossiers, STATUTS_ORDE
                       {rowsToShow.slice(0, CAP).map(({ d, i, dup }) => (
                         <tr key={i} className={`border-t border-slate-100 ${dup ? 'bg-rose-50/40' : ''} ${!selected.has(i) ? 'opacity-50' : ''}`}>
                           <td className="px-2 py-1.5 text-center"><input type="checkbox" checked={selected.has(i)} onChange={() => toggleSel(i)} className="w-4 h-4 accent-violet-500 cursor-pointer" /></td>
-                          <td className="px-2 py-1.5 font-semibold">{d.nom} {d.prenom}</td>
+                          <td className="px-2 py-1.5 font-semibold">{d.nom}</td>
+                          <td className="px-2 py-1.5">{d.prenom || <span className="text-slate-300">—</span>}</td>
                           <td className="px-2 py-1.5">{presence(dup)}</td>
                           <td className="px-2 py-1.5">{(societes || []).find(s => s.id === d.societe)?.label || (d.societe ? d.societe : <span className="text-rose-400">—</span>)}</td>
                           <td className="px-2 py-1.5">{STATUTS_ORDERED.find(s => s.id === d.statut)?.label || d.statut}</td>
