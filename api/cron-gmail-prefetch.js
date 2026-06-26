@@ -80,51 +80,50 @@ async function writeImportedAttachmentsSet(admin, set) {
   });
 }
 
-// 🧾 Set des n° (facture, BL, OU avoir) qui sont DÉJÀ attachés à une ligne
-//    de dossier. Couvre 2 cas :
-//      - facture principale (factureFile/facturePdfUrl/factureExternalUrl)
-//      - avoirs : l.avoirs[].avoirNo si l.avoirs[].file (= PDF attaché)
-//    Permet de skip côté cron quand l'user a attaché manuellement un PDF
-//    via le dossier (= pas dans importedSet).
+// 🧾 Sets des n° (facture, BL, OU avoir) qui sont DÉJÀ attachés à une ligne
+//    de dossier. Renvoie { exact, substring } :
+//      - exact   : tous les refs ≥3 chars → match EXACT (.has) safe
+//      - substring : refs ≥5 chars → safe pour .includes() (substring match)
+//    Couvre facture principale + avoirs avec PDF attaché.
 async function readCrmFactureRefs(admin) {
-  const refs = new Set();
+  const exact = new Set();
+  const substring = new Set();
   try {
     const { data } = await admin.from('storage').select('value').eq('key', 'dossiers-data').maybeSingle();
-    if (!data?.value) return refs;
+    if (!data?.value) return { exact, substring };
     const dossiers = JSON.parse(data.value);
     const normalize = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
     const arrs = ['poseurs', 'regies', 'fournisseurs'];
+    const addRef = (r) => {
+      if (r.length >= 3) exact.add(r);
+      if (r.length >= 5) substring.add(r);
+    };
     for (const d of dossiers || []) {
       for (const k of arrs) {
         for (const l of (d[k] || [])) {
           if (!l) continue;
-          // Facture principale (avec PDF)
           if (l.factureFile || l.facturePdfUrl || l.factureExternalUrl) {
-            const fn = normalize(l.factureNo);
-            if (fn.length >= 5) refs.add(fn);
-            const bl = normalize(l.bl);
-            if (bl.length >= 5) refs.add(bl);
+            addRef(normalize(l.factureNo));
+            addRef(normalize(l.bl));
           }
-          // Avoirs (chaque avoir avec un PDF)
           if (Array.isArray(l.avoirs)) {
             for (const av of l.avoirs) {
               if (!av || !av.file) continue;
-              const an = normalize(av.avoirNo);
-              if (an.length >= 5) refs.add(an);
+              addRef(normalize(av.avoirNo));
             }
           }
         }
       }
     }
   } catch (e) { /* dossiers indisponibles → on continue sans pré-skip */ }
-  return refs;
+  return { exact, substring };
 }
 
-function filenameMatchesCrmRef(filename, refs) {
-  if (!refs || refs.size === 0) return false;
+function filenameMatchesCrmRef(filename, substringRefs) {
+  if (!substringRefs || substringRefs.size === 0) return false;
   const norm = String(filename || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   if (!norm) return false;
-  for (const r of refs) {
+  for (const r of substringRefs) {
     if (norm.includes(r)) return true;
   }
   return false;
@@ -533,7 +532,7 @@ export default async function handler(req, res) {
         const importedK = `${(inbox.email || '').toLowerCase()}|${p.uid}|${p.attachmentId}`;
         if (importedSet.has(importedK)) { stats.pdfsAlreadyInCrm++; return false; }
         // Match du filename Gmail contre les n° de facture du CRM
-        if (filenameMatchesCrmRef(p.filename, crmRefs)) {
+        if (filenameMatchesCrmRef(p.filename, crmRefs.substring)) {
           stats.pdfsMatchedByFilename++;
           toMarkImported.add(importedK); // sera persisté en fin de run
           return false;
@@ -596,7 +595,7 @@ export default async function handler(req, res) {
           // 🧾 Post-IA : si le factureNo extrait matche une ligne CRM qui a
           //    déjà un PDF → on marque importé (pour skip aux prochains runs).
           const normFn = String(ia.factureNo || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
-          if (normFn.length >= 5 && crmRefs.has(normFn)) {
+          if (normFn.length >= 3 && crmRefs.exact.has(normFn)) {
             const importedK = `${(inbox.email || '').toLowerCase()}|${pdf.uid}|${pdf.attachmentId}`;
             toMarkImported.add(importedK);
           }

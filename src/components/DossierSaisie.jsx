@@ -13445,9 +13445,13 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
           const l = arr[idx];
           if (!l) continue;
           // Facture principale (avec PDF)
+          // Seuil 3 chars : match EXACT (pas substring) donc safe pour les
+          // N° courts comme "4965" (MASTEROVIT) qui passaient à travers
+          // avant. Cap inférieur protège quand même contre N° absurdement
+          // courts (ex : "1").
           if (l.factureFile || l.facturePdfUrl || l.factureExternalUrl) {
             const fn = norm(l.factureNo);
-            if (fn.length >= 5) {
+            if (fn.length >= 3) {
               map.set(fn, {
                 dossier: d, lineType, lineIndex: idx, clientName,
                 lineName: l.nom || '', kind: 'facture',
@@ -13460,7 +13464,7 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
               const av = l.avoirs[ai];
               if (!av || !av.file) continue;
               const an = norm(av.avoirNo);
-              if (an.length >= 5) {
+              if (an.length >= 3) {
                 map.set(an, {
                   dossier: d, lineType, lineIndex: idx, avoirIndex: ai, clientName,
                   lineName: l.nom || '', kind: 'avoir',
