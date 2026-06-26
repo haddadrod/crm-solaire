@@ -253,12 +253,16 @@ async function oauthFetchPdf(accessToken, messageId, attachmentId) {
 //    description. Cette richesse permet à la recherche locale de matcher
 //    sur n'importe quel champ (ex : on cherche par téléphone ou ville).
 //    Modèle Haiku 4.5 → rapide et bon marché pour de l'extraction structurée.
-const EXTRACT_PROMPT = `Extract structured data from this French invoice/facture PDF.
+const EXTRACT_PROMPT = `Analyze this French PDF document.
+First, IDENTIFY THE DOCUMENT TYPE — be strict: only count as "facture" or "avoir" if it really is a billing document with a total amount and a supplier issuing it.
+Many PDFs received by mail are NOT invoices : courriers (letters), devis (quotes), bons de livraison (delivery notes), bons de commande (purchase orders), relevés de compte (account statements), contrats, attestations, certificats, fiches techniques, mandats, notices, etc.
+
 Reply ONLY with a JSON object (no markdown, no explanation). Use "" for unknown strings, 0 for unknown numbers.
 
 {
-  "referenceChantier": "<client name on whom the invoice is — for sub-contractor invoices, this is the END client (the homeowner), not the company being invoiced>",
-  "factureNo": "<invoice number, e.g. FAC-2026-1447>",
+  "documentType": "<MUST be one of: facture | avoir | devis | bon_livraison | bon_commande | courrier | releve | contrat | attestation | fiche_technique | autre>",
+  "referenceChantier": "<client name — for sub-contractor invoices, the END client (homeowner)>",
+  "factureNo": "<invoice/avoir number, e.g. FAC-2026-1447 or AV26-06-00255>",
   "dateFacture": "<YYYY-MM-DD, invoice date>",
   "fournisseur": "<supplier name (the one issuing the invoice)>",
   "montantHt": <number, total HT excluding VAT, in euros>,
@@ -272,7 +276,7 @@ Reply ONLY with a JSON object (no markdown, no explanation). Use "" for unknown 
   "emailClient": "<email of the client if mentioned>",
   "numeroBl": "<delivery note number / BL if mentioned>",
   "numeroCommande": "<purchase order number if mentioned>",
-  "description": "<short 1-line description of what is billed, e.g. 'Installation panneaux solaires 6kW + onduleur'>"
+  "description": "<short 1-line description, e.g. 'Installation panneaux solaires 6kW'>"
 }`;
 
 async function extractFromPdf(base64) {
@@ -303,6 +307,7 @@ async function extractFromPdf(base64) {
   if (!m) throw new Error('Pas de JSON dans la réponse Claude');
   const parsed = JSON.parse(m[0]);
   return {
+    documentType: String(parsed.documentType || 'autre').toLowerCase().trim(),
     refChantier: String(parsed.referenceChantier || ''),
     factureNo: String(parsed.factureNo || ''),
     dateFacture: String(parsed.dateFacture || ''),
@@ -321,6 +326,8 @@ async function extractFromPdf(base64) {
     description: String(parsed.description || ''),
   };
 }
+
+const IS_BILLABLE_DOC = (t) => t === 'facture' || t === 'avoir';
 
 // 📦 Upload du PDF brut dans le bucket Supabase Storage `gmail-archive`.
 //    Rangé PAR FOURNISSEUR pour browse facile (comme un drive) :
@@ -500,12 +507,29 @@ export default async function handler(req, res) {
             stats.errors.push({ email: inbox.email, filename: pdf.filename, error: 'PDF trop volumineux (skip)' });
             return;
           }
-          // IA d'abord → on apprend le fournisseur → on peut ranger le PDF
-          //    dans le bon dossier du bucket (gmail-archive/IONERGIK/…).
+          // IA d'abord → on apprend le type de document.
           const ia = await extractFromPdf(base64);
+          const k = iaCacheKey(inbox.email, pdf.uid, pdf.attachmentId);
+          // 🚫 Pas une facture/avoir → on cache le verdict pour ne pas re-payer
+          //    Claude au prochain run, mais on ne stocke ni le PDF, ni les
+          //    métadonnées. Le drive n'affichera pas ces entrées.
+          if (!IS_BILLABLE_DOC(ia.documentType)) {
+            await admin.from('storage').upsert({
+              key: k,
+              value: JSON.stringify({
+                notFacture: true,
+                documentType: ia.documentType,
+                originalFilename: pdf.filename || '',
+                analyzedAt: new Date().toISOString(),
+              }),
+              updated_at: new Date().toISOString(),
+            });
+            stats.pdfsNotFacture = (stats.pdfsNotFacture || 0) + 1;
+            return;
+          }
+          // ✅ C'est bien une facture ou un avoir → upload bucket + cache complet
           const path = archivePath(ia.fournisseur, ia.factureNo, pdf.uid, pdf.attachmentId);
           const storagePath = await uploadToArchive(admin, path, base64);
-          const k = iaCacheKey(inbox.email, pdf.uid, pdf.attachmentId);
           await admin.from('storage').upsert({
             key: k,
             value: JSON.stringify({
