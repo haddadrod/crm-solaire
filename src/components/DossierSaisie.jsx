@@ -25096,9 +25096,52 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
     return { base64, headers };
   };
 
+  // 🔎 Recherche en 2 temps :
+  //   1. ia-search : cache Supabase (instantané, gratuit). Couvre tout ce
+  //      que le cron a déjà indexé. C'est l'écrasante majorité des cas.
+  //   2. search Gmail : seulement si l'user clique « chercher aussi dans
+  //      Gmail » (pour les factures arrivées entre 2 runs du cron).
   const runSearch = async (q) => {
     if (!q || q.trim().length < 2) return;
     setLoading(true); setError(''); setResults(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/gmail-oauth?action=ia-search', {
+        method: 'POST', headers,
+        body: JSON.stringify({ query: q.trim(), limit: 100 }),
+      });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      const data = payload.data || { results: [], errors: [] };
+      // 🪄 Pré-remplit iaResults depuis le cache → badges client/n°/montant
+      //    s'affichent directement sans relancer l'IA.
+      const preIa = {};
+      for (const r of data.results || []) {
+        for (const m of r.messages || []) {
+          for (const a of m.attachments || []) {
+            if (a.iaCached) {
+              const key = `${r.email}|${m.messageId}|${a.attachmentId}`;
+              preIa[key] = { status: 'done', ...a.iaCached, fromCache: true };
+            }
+          }
+        }
+      }
+      if (Object.keys(preIa).length > 0) setIaResults(prev => ({ ...preIa, ...prev }));
+      setResults(data);
+    } catch (e) {
+      setError(e?.message || 'Erreur recherche');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // 🌐 Recherche complémentaire dans Gmail (lente — appelée à la demande
+  //    uniquement, quand le cache n'a rien donné ou en complément).
+  const runGmailSearch = async (q) => {
+    if (!q || q.trim().length < 2) return;
+    setLoading(true); setError('');
     try {
       const { data: { session } } = await supabase.auth.getSession();
       const headers = { 'Content-Type': 'application/json' };
@@ -25109,12 +25152,49 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
       });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
-      setResults(payload.data || { results: [], errors: [] });
+      // Merge avec les résultats cache existants (dédup par clé)
+      const cacheData = results || { results: [], errors: [] };
+      const gmailData = payload.data || { results: [], errors: [] };
+      const merged = mergeSearchResults(cacheData, gmailData);
+      setResults(merged);
     } catch (e) {
-      setError(e?.message || 'Erreur recherche');
+      setError(e?.message || 'Erreur recherche Gmail');
     } finally {
       setLoading(false);
     }
+  };
+
+  // Dédup par clé (email|messageId|attachmentId) — sources cache et Gmail
+  // peuvent retourner le même PDF (cas frais).
+  const mergeSearchResults = (cacheData, gmailData) => {
+    const seen = new Set();
+    const byInbox = {};
+    const addInbox = (r) => {
+      if (!byInbox[r.email]) byInbox[r.email] = { ...r, messages: {} };
+      for (const m of r.messages || []) {
+        if (!byInbox[r.email].messages[m.messageId]) {
+          byInbox[r.email].messages[m.messageId] = { ...m, attachments: [] };
+        }
+        for (const a of m.attachments || []) {
+          const k = `${r.email}|${m.messageId}|${a.attachmentId}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          byInbox[r.email].messages[m.messageId].attachments.push(a);
+        }
+      }
+    };
+    (cacheData.results || []).forEach(addInbox);
+    (gmailData.results || []).forEach(addInbox);
+    return {
+      query: cacheData.query || gmailData.query,
+      results: Object.values(byInbox).map(s => ({
+        ...s,
+        messages: Object.values(s.messages),
+        count: Object.values(s.messages).reduce((sum, m) => sum + m.attachments.length, 0),
+      })),
+      errors: [...(cacheData.errors || []), ...(gmailData.errors || [])],
+      source: 'cache+gmail',
+    };
   };
 
   // Auto-recherche dès l'ouverture si une query est fournie
@@ -25335,8 +25415,17 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
           {!loading && results && totalCount === 0 && (
             <div className="p-8 text-center text-sm text-slate-500">
               <div className="text-4xl mb-2">🤷</div>
-              <div className="font-bold text-slate-700">Aucune facture trouvée</div>
-              <div className="text-xs mt-1">Essaie un autre mot-clé (autre nom, n° de chantier, etc.).</div>
+              <div className="font-bold text-slate-700">Aucune facture trouvée dans le cache</div>
+              <div className="text-xs mt-1">Le cron quotidien indexe automatiquement les factures.</div>
+              {results.source !== 'cache+gmail' && (
+                <button
+                  onClick={() => runGmailSearch(query)}
+                  className="mt-4 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-bold"
+                  title="Cherche aussi dans Gmail (plus lent, pour les factures pas encore indexées par le cron)"
+                >
+                  🌐 Chercher aussi dans Gmail
+                </button>
+              )}
               {/* 🔍 Diagnostic : si le serveur a envoyé debug{} on l'affiche. */}
               {(results.results || []).some(r => r.debug) && (
                 <div className="mt-4 mx-4 text-left bg-slate-50 border border-slate-200 rounded-lg p-3 text-[11px] font-mono text-slate-700">
@@ -25368,6 +25457,27 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
               {(results.errors || []).map((er, idx) => (
                 <div key={idx}>• <span className="font-mono">{er.email}</span> : {er.error}</div>
               ))}
+            </div>
+          )}
+          {/* 📊 Bandeau source + bouton « aussi dans Gmail » quand on a déjà des résultats cache */}
+          {!loading && results && totalCount > 0 && (
+            <div className="m-3 flex items-center justify-between gap-2 p-2 bg-slate-50 border border-slate-200 rounded-lg text-[12px]">
+              <div className="text-slate-700">
+                {results.source === 'cache+gmail' ? (
+                  <span><span className="font-bold text-emerald-700">⚡ Cache + 🌐 Gmail</span> · {totalCount} résultat{totalCount > 1 ? 's' : ''}</span>
+                ) : (
+                  <span><span className="font-bold text-emerald-700">⚡ Cache local</span> · {totalCount} résultat{totalCount > 1 ? 's' : ''} (gratuit, instantané)</span>
+                )}
+              </div>
+              {results.source !== 'cache+gmail' && (
+                <button
+                  onClick={() => runGmailSearch(query)}
+                  className="px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded text-[11px] font-bold"
+                  title="Ajoute aussi les factures qui ne sont pas encore dans le cache (arrivées entre 2 runs du cron)"
+                >
+                  🌐 Aussi dans Gmail
+                </button>
+              )}
             </div>
           )}
           {!loading && results && totalCount > 0 && (
