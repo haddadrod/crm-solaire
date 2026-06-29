@@ -4499,6 +4499,21 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsManqueDoc.sort((a, b) => b.jours - a.jours);
 
+    // 🚨 Rappels FRAUDE — dossiers dont au moins un document scanné a été
+    // flaggé par l'IA (fraudRisk high/medium). Surtout utile pour que
+    // l'équipe financement ne valide pas un dossier suspect sans le voir.
+    const rappelsFraude = [];
+    dossiersDash.forEach(d => {
+      const docsFraude = (d.documents || []).filter(doc => doc && (doc.fraudRisk === 'high' || doc.fraudRisk === 'medium'));
+      if (docsFraude.length === 0) return;
+      const hasHigh = docsFraude.some(doc => doc.fraudRisk === 'high');
+      const flags = [];
+      docsFraude.forEach(doc => { (Array.isArray(doc.fraudFlags) ? doc.fraudFlags : []).forEach(f => { if (f && !flags.includes(f)) flags.push(f); }); });
+      rappelsFraude.push({ dossier: d, risk: hasHigh ? 'high' : 'medium', level: hasHigh ? 'critical' : 'high', flags, nbDocs: docsFraude.length });
+    });
+    // Forte suspicion d'abord
+    rappelsFraude.sort((a, b) => (a.risk === 'high' ? 0 : 1) - (b.risk === 'high' ? 0 : 1));
+
     // ⚖️ Rappels Litige — flag hasLitige + courrier reçu + pas encore traité.
     // Le délai légal classique pour répondre à une mise en demeure est de 15 jours.
     //   warn     : 0-4 jours après réception
@@ -5046,7 +5061,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Tri du plus récent au plus ancien (mois actuel en premier).
     const activiteMois = Object.values(activiteMoisMap).sort((a, b) => b.mois.localeCompare(a.mois));
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsFournisseurs, statsCommerciaux, statsBanques, activiteMois, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsMaterielInsere, rappelsPoseSansRegie, rappelsLitige, rappelsSav, rappelsClientRappel };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsFournisseurs, statsCommerciaux, statsBanques, activiteMois, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsMaterielInsere, rappelsPoseSansRegie, rappelsLitige, rappelsSav, rappelsClientRappel, rappelsFraude };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -5582,6 +5597,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             rappelsLitige={dashboard.rappelsLitige || []}
             rappelsSav={dashboard.rappelsSav || []}
             rappelsClientRappel={dashboard.rappelsClientRappel || []}
+            rappelsFraude={dashboard.rappelsFraude || []}
             nbDoublons={nbDoublons}
             isAdmin={isAdmin}
             currentUserRole={currentUserRole}
@@ -28546,8 +28562,8 @@ function KanbanCard({ d, societes = [], onShowQuick, isAdmin }) {
 // de badges affichés. Un rôle absent de cette map voit toutes les alertes
 // non adminOnly (comportement par défaut).
 const ALERTES_PAR_ROLE = {
-  envoi_finance: ['controleQualite', 'aEnvoyerBanque', 'financement', 'manqueDoc', 'originaux'],
-  compta: ['facturesManquantes', 'pennylaneAEnvoyer'], // factures à récupérer + à pousser sur Pennylane
+  envoi_finance: ['fraude', 'controleQualite', 'aEnvoyerBanque', 'financement', 'manqueDoc', 'originaux'],
+  compta: ['fraude', 'facturesManquantes', 'pennylaneAEnvoyer'], // factures à récupérer + à pousser sur Pennylane
   // l'administratif suit les démarches : mairie, Consuel, raccordement, récup. TVA
   administratif: ['aEnvoyerMairie', 'aEnvoyerConsuel', 'aEnvoyerRaccordement', 'recup_tva'],
   poseur: [], // le poseur ne voit aucune alerte
@@ -28784,11 +28800,23 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, currentUser, 
   );
 }
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer = [], rappelsMaterielNonRendu = [], rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], nbDoublons = 0, isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer = [], rappelsMaterielNonRendu = [], rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], rappelsFraude = [], nbDoublons = 0, isAdmin, currentUserRole, onClick }) {
   // showAll : si true, on affiche aussi les alertes à 0 (déplié via la flèche).
   const [showAll, setShowAll] = useState(false);
   // Définition des badges
   const badges = [
+    {
+      type: 'fraude',
+      label: 'Fraude',
+      emoji: '🚨',
+      count: (rappelsFraude || []).length,
+      adminOnly: false,
+      color: 'from-rose-600 to-red-600',
+      colorBg: 'bg-rose-50',
+      colorBorder: 'border-rose-300',
+      colorText: 'text-rose-700',
+      tooltip: 'Documents scannés suspects (fraude détectée par l\'IA) — à vérifier AVANT de valider le financement',
+    },
     {
       type: 'controleQualite',
       label: 'Contrôle qualité',
@@ -29239,6 +29267,21 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
         return `Pas encore de contrôle qualité`;
       },
       suffixLabel: 'depuis création',
+    },
+    fraude: {
+      title: '🚨 Fraude — documents suspects',
+      subtitle: 'L\'IA a flaggé un risque de fraude au scan du dossier. À VÉRIFIER avant de valider le financement.',
+      items: dashboard.rappelsFraude || [],
+      gradient: 'from-rose-600 to-red-600',
+      bgHeader: 'from-rose-50 to-red-50',
+      borderColor: 'border-rose-300',
+      lineLabel: (d) => {
+        const r = (dashboard.rappelsFraude || []).find(x => x.dossier && x.dossier.localId === d.localId);
+        if (!r) return '🚨 Document suspect';
+        const f = (r.flags || []).slice(0, 2).join(' · ');
+        return `${r.risk === 'high' ? '🚨 Forte suspicion' : '⚠️ À vérifier'}${r.nbDocs > 1 ? ` (${r.nbDocs} docs)` : ''}${f ? ' — ' + f : ''}`;
+      },
+      suffixLabel: '',
     },
     aEnvoyerBanque: {
       title: '🏦 Dossiers à envoyer en banque',
