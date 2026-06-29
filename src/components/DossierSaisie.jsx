@@ -6596,6 +6596,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
             }}
             onClose={() => setShowAlertesType(null)}
             onSelect={(localId) => {
+              // 🚨 Fraude : on ouvre DIRECTEMENT la modale Documents (pour voir
+              // les scans suspects), pas le panneau aperçu rapide.
+              if (showAlertesType === 'fraude') {
+                setShowAlertesType(null);
+                setShowDocsForId(localId);
+                return;
+              }
               // Mappe le type d'alerte vers la section à scroller / déplier
               // dans le panneau aperçu rapide.
               const scrollMap = {
