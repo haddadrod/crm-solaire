@@ -13174,8 +13174,8 @@ function DriveAttachModal({ inv, dossiers, onClose, onAttach, attaching, POSEURS
   }, [dossiers, query]);
 
   return (
-    <div className="fixed inset-0 z-[80] bg-black/60 backdrop-blur-sm flex items-start justify-center p-4 pt-16" onClick={onClose}>
-      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 z-[80] bg-black/20 flex items-start justify-center p-4 pt-16" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl ring-1 ring-black/10 w-full max-w-2xl max-h-[80vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="p-5 border-b border-slate-100 bg-gradient-to-r from-emerald-50 to-teal-50 flex items-start justify-between gap-3">
           <div className="flex-1">
             <h2 className="text-lg font-bold text-slate-800">📎 Attacher cette facture</h2>
