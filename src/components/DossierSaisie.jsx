@@ -10322,7 +10322,16 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
           <div className="p-2 grid grid-cols-1 md:grid-cols-3 gap-2">
             {rapportPaiements.encaissList.map((e, idx) => {
               const restant = e.totalRestant > 0;
-              const dossiersAttente = e.lignes.filter(l => !l.paye);
+              // Tri du plus VIEUX (date de pose la plus ancienne = le plus de
+              // jours d'attente) au plus récent. Les sans-date vont à la fin.
+              const dossiersAttente = e.lignes.filter(l => !l.paye).slice().sort((a, b) => {
+                const ta = a.date ? new Date(a.date).getTime() : NaN;
+                const tb = b.date ? new Date(b.date).getTime() : NaN;
+                if (isNaN(ta) && isNaN(tb)) return 0;
+                if (isNaN(ta)) return 1;
+                if (isNaN(tb)) return -1;
+                return ta - tb; // ancien d'abord
+              });
               const dossiersPayes = e.lignes.filter(l => l.paye);
               const progress = e.totalAttendu > 0 ? (e.totalRecu / e.totalAttendu) * 100 : 0;
               const finKey = `${e.nom}::${e.societe || ''}`;
