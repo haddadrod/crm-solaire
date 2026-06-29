@@ -3882,7 +3882,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (!map[key]) map[key] = { nom, type, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, totalAPayerMaintenant: 0, totalEnAttenteFinanceur: 0, totalPayeAvance: 0, lignes: [] };
       map[key].totalDu += ttc;
       const isInterne = ROLES_INTERNES_LABELS.includes(type);
-      const payeAvance = paye && !dossier.payeClient;
+      // ⚠️ Un montant NÉGATIF marqué payé = remboursement de pénalité (la régie
+      // t'a rendu de l'argent via HT négatif), ce n'est PAS une avance. On
+      // l'exclut donc du « payé d'avance ».
+      const payeAvance = paye && !dossier.payeClient && ttc > 0;
       if (paye) {
         map[key].totalPaye += ttc;
         if (payeAvance) map[key].totalPayeAvance += ttc;
@@ -10566,7 +10569,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
               // 🏷️ Filtre par ÉTAT (chips). Si un état est choisi, on part de
               // TOUTES les lignes du prestataire (pas du sous-ensemble
               // « à payer »), pour pouvoir voir aussi les payés / payés d'avance.
-              const etatOf = (l) => l.paye ? (l.payeAvance ? 'paye_avance' : 'paye') : l.financeurPaye ? 'a_payer' : 'bloque';
+              const etatOf = (l) => (l.ttc < 0) ? 'rembourse' : l.paye ? (l.payeAvance ? 'paye_avance' : 'paye') : l.financeurPaye ? 'a_payer' : 'bloque';
               const etatSel = etatByPresta[prestaKey] || '';
               const baseAffichage = etatSel ? p.lignes.filter(l => etatOf(l) === etatSel) : lignesFiltrees;
               // 🔍 Filtre par recherche client (sur la base déjà filtrée par état)
@@ -10597,11 +10600,12 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                     {/* 🏷️ Filtre par état — voir d'un coup les « à payer », « payés
                         d'avance », « bloqués », etc. parmi tous les dossiers. */}
                     {(() => {
-                      const counts = { a_payer: 0, paye_avance: 0, bloque: 0, paye: 0 };
+                      const counts = { a_payer: 0, paye_avance: 0, rembourse: 0, bloque: 0, paye: 0 };
                       p.lignes.forEach(l => { counts[etatOf(l)] = (counts[etatOf(l)] || 0) + 1; });
                       const chips = [
                         { id: 'a_payer', label: '🔥 À payer', cls: 'bg-orange-100 text-orange-700 border-orange-300' },
                         { id: 'paye_avance', label: '💜 Avance', cls: 'bg-purple-100 text-purple-700 border-purple-300' },
+                        { id: 'rembourse', label: '🔻 Rembours. pénalité', cls: 'bg-rose-100 text-rose-700 border-rose-300' },
                         { id: 'bloque', label: '⏸️ Bloqué', cls: 'bg-slate-200 text-slate-700 border-slate-300' },
                         { id: 'paye', label: '✓ Payé', cls: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
                       ].filter(c => counts[c.id] > 0);
@@ -10712,10 +10716,11 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                       );
                     })()}
                     {lignesAffichees.map((l, i) => {
-                      const etat = l.paye ? (l.payeAvance ? 'paye_avance' : 'paye') : l.financeurPaye ? 'a_payer' : 'bloque';
+                      const etat = etatOf(l);
                       const styles = {
                         paye: { bg: 'bg-emerald-50 border-emerald-200', icon: 'bg-emerald-500', label: '✓ Payé', labelBg: 'bg-emerald-200 text-emerald-800', amount: 'text-emerald-700' },
                         paye_avance: { bg: 'bg-purple-50 border-purple-300', icon: 'bg-purple-500', label: '💜 Payé d\'avance', labelBg: 'bg-purple-200 text-purple-800', amount: 'text-purple-700' },
+                        rembourse: { bg: 'bg-rose-50 border-rose-300', icon: 'bg-rose-500', label: '🔻 Remboursement pénalité', labelBg: 'bg-rose-200 text-rose-800', amount: 'text-rose-700' },
                         a_payer: { bg: 'bg-orange-50 border-orange-300', icon: 'bg-orange-500', label: '🔥 À payer', labelBg: 'bg-orange-200 text-orange-800', amount: 'text-orange-700' },
                         bloque: { bg: 'bg-slate-100 border-slate-300', icon: 'bg-slate-400', label: '⏸️ Bloqué financeur', labelBg: 'bg-slate-200 text-slate-700', amount: 'text-slate-500' },
                       }[etat];
