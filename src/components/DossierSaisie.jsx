@@ -10091,6 +10091,10 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
   // valeur = string saisie. Filtre les lignes dossier pour trouver vite un
   // client précis quand un prestataire a 100+ dossiers.
   const [searchByPresta, setSearchByPresta] = useState({});
+  // Filtre par état dans le détail d'un prestataire : '' = tous, ou
+  // 'a_payer' | 'paye_avance' | 'bloque' | 'paye'. Permet de voir d'un coup
+  // p.ex. tous les dossiers « payés d'avance » d'un fournisseur.
+  const [etatByPresta, setEtatByPresta] = useState({});
   const toggleGroup = (label) => {
     setFoldedGroups(prev => {
       const next = new Set(prev);
@@ -10559,11 +10563,17 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
               const prestaKey = `${p.type}::${p.nom}::${p.societe || ''}`;
               const kind = kindFromType(p.type);
               const selSet = selectedByKey[prestaKey] || new Set();
-              // 🔍 Filtre par recherche client (sur lignesFiltrees)
+              // 🏷️ Filtre par ÉTAT (chips). Si un état est choisi, on part de
+              // TOUTES les lignes du prestataire (pas du sous-ensemble
+              // « à payer »), pour pouvoir voir aussi les payés / payés d'avance.
+              const etatOf = (l) => l.paye ? (l.payeAvance ? 'paye_avance' : 'paye') : l.financeurPaye ? 'a_payer' : 'bloque';
+              const etatSel = etatByPresta[prestaKey] || '';
+              const baseAffichage = etatSel ? p.lignes.filter(l => etatOf(l) === etatSel) : lignesFiltrees;
+              // 🔍 Filtre par recherche client (sur la base déjà filtrée par état)
               const prestaSearch = (searchByPresta[prestaKey] || '').trim().toLowerCase();
               const lignesAffichees = prestaSearch
-                ? lignesFiltrees.filter(l => (l.client || '').toLowerCase().includes(prestaSearch))
-                : lignesFiltrees;
+                ? baseAffichage.filter(l => (l.client || '').toLowerCase().includes(prestaSearch))
+                : baseAffichage;
               return (
                 <details key={idx} className="group">
                   <summary className="p-4 hover:bg-slate-50 cursor-pointer flex items-center justify-between gap-3 list-none flex-wrap">
@@ -10584,14 +10594,37 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                     </div>
                   </summary>
                   <div className="bg-slate-50 px-4 py-3 space-y-1.5">
+                    {/* 🏷️ Filtre par état — voir d'un coup les « à payer », « payés
+                        d'avance », « bloqués », etc. parmi tous les dossiers. */}
+                    {(() => {
+                      const counts = { a_payer: 0, paye_avance: 0, bloque: 0, paye: 0 };
+                      p.lignes.forEach(l => { counts[etatOf(l)] = (counts[etatOf(l)] || 0) + 1; });
+                      const chips = [
+                        { id: 'a_payer', label: '🔥 À payer', cls: 'bg-orange-100 text-orange-700 border-orange-300' },
+                        { id: 'paye_avance', label: '💜 Avance', cls: 'bg-purple-100 text-purple-700 border-purple-300' },
+                        { id: 'bloque', label: '⏸️ Bloqué', cls: 'bg-slate-200 text-slate-700 border-slate-300' },
+                        { id: 'paye', label: '✓ Payé', cls: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
+                      ].filter(c => counts[c.id] > 0);
+                      if (chips.length < 2) return null;
+                      const setEtat = (id) => setEtatByPresta(prev => ({ ...prev, [prestaKey]: prev[prestaKey] === id ? '' : id }));
+                      return (
+                        <div className="flex items-center gap-1.5 flex-wrap pb-1">
+                          <span className="text-[12px] font-semibold text-slate-400">État :</span>
+                          <button onClick={() => setEtat('')} className={`px-2 py-1 rounded-lg text-[12px] font-bold border ${!etatSel ? 'bg-violet-500 text-white border-violet-500' : 'bg-white text-slate-600 border-slate-200'}`}>Tous ({p.lignes.length})</button>
+                          {chips.map(c => (
+                            <button key={c.id} onClick={() => setEtat(c.id)} className={`px-2 py-1 rounded-lg text-[12px] font-bold border ${etatSel === c.id ? c.cls + ' ring-2 ring-offset-1 ring-violet-300' : 'bg-white text-slate-600 border-slate-200'}`}>{c.label} ({counts[c.id]})</button>
+                          ))}
+                        </div>
+                      );
+                    })()}
                     {/* 🔍 Recherche dossier dans ce prestataire — utile dès 10+ lignes */}
-                    {lignesFiltrees.length > 5 && (
+                    {baseAffichage.length > 5 && (
                       <div className="flex items-center gap-2 flex-wrap">
                         <input
                           type="text"
                           value={searchByPresta[prestaKey] || ''}
                           onChange={(e) => setSearchByPresta(prev => ({ ...prev, [prestaKey]: e.target.value }))}
-                          placeholder={`🔍 Filtrer parmi les ${lignesFiltrees.length} dossiers de ${p.nom}…`}
+                          placeholder={`🔍 Filtrer parmi les ${baseAffichage.length} dossiers de ${p.nom}…`}
                           className="flex-1 min-w-[200px] px-3 py-1.5 text-xs border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-violet-400"
                         />
                         {(searchByPresta[prestaKey] || '').length > 0 && (
@@ -10601,7 +10634,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                           >× Effacer</button>
                         )}
                         <span className="text-[12px] text-slate-500 font-semibold">
-                          {lignesAffichees.length}/{lignesFiltrees.length}
+                          {lignesAffichees.length}/{baseAffichage.length}
                         </span>
                         {/* ☑ Tout cocher / décocher d'un coup */}
                         {kind && onMarkPrestaPaye && (() => {
