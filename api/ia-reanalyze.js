@@ -101,6 +101,34 @@ Reply ONLY with a JSON object (no markdown). Use "" for unknown strings, 0 for u
 }`;
 
 const SUPPLIER_BLACKLIST = /^(elsol|sarl\s*elsol|sas\s*elsol|yolico|sas\s*yolico|sarl\s*yolico)\b/i;
+const CLIENT_BLACKLIST = /^(el\s*sol|sarl\s*el\s*sol|sas\s*el\s*sol|yolico|sas\s*yolico|sarl\s*yolico)\b/i;
+
+async function correctClient(base64, wrongClient) {
+  const r = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': ANTHROPIC_API_KEY,
+      'anthropic-version': '2023-06-01',
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 80,
+      messages: [{
+        role: 'user',
+        content: [
+          { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: base64 } },
+          { type: 'text', text: `Your previous analysis returned "${wrongClient}" as the end client / chantier reference — this is WRONG. "${wrongClient}" is MY OWN company (the reseller being billed : ELSOL / EL SOL / YOLICO), NOT the end client. I need the REAL end client — the homeowner / chantier whose installation this material is for. Look in the BODY of the invoice for : a section title or block naming a person or company (e.g. « LAUDET MATERIEL » → LAUDET), a field labeled « Référence Chantier / Chantier / Installateur / Bénéficiaire / Client final », or a delivery name different from the billing name (EL SOL). Reply with ONLY the end client name on a single line — no quotes, no punctuation, no explanation. If there is truly none, reply NONE.` },
+        ],
+      }],
+    }),
+  });
+  const d = await r.json();
+  if (!r.ok) return wrongClient;
+  const corrected = (d.content?.[0]?.text || '').trim().split('\n')[0].replace(/^["']|["']$/g, '').trim();
+  if (!corrected || /^none$/i.test(corrected)) return '';
+  return corrected;
+}
 
 async function correctSupplier(base64, wrongSupplier) {
   const r = await fetch('https://api.anthropic.com/v1/messages', {
@@ -158,6 +186,12 @@ async function extractFromPdf(base64) {
   if (SUPPLIER_BLACKLIST.test(fournisseur)) {
     try { fournisseur = await correctSupplier(base64, fournisseur); } catch (e) { /* on garde l'ancien */ }
   }
+  // 🛡️ Idem client : MA société (EL SOL/ELSOL/YOLICO) en client = faux → on
+  //    relance pour récupérer le vrai chantier.
+  let refChantierCorr = String(parsed.referenceChantier || '');
+  if (CLIENT_BLACKLIST.test(refChantierCorr)) {
+    try { refChantierCorr = await correctClient(base64, refChantierCorr); } catch (e) { /* on garde l'ancien */ }
+  }
   let documentType = String(parsed.documentType || 'autre').toLowerCase().trim();
   const description = String(parsed.description || '');
   if (documentType === 'facture' && /\bavoir\b|note\s+de\s+cr[eé]dit|credit\s+note/i.test(description)) {
@@ -179,7 +213,7 @@ async function extractFromPdf(base64) {
   }
   return {
     documentType,
-    refChantier: String(parsed.referenceChantier || ''),
+    refChantier: refChantierCorr,
     factureNo: String(parsed.factureNo || ''),
     dateFacture: String(parsed.dateFacture || ''),
     fournisseur,
