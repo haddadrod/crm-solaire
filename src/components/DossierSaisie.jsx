@@ -5990,6 +5990,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     </button>
                   </div>
 
+                  {/* 📊 Compteur de résultats affichés (tient compte de TOUS les
+                      filtres actifs : statut, date de pose, poseur, recherche…) */}
+                  <span className="px-3 py-2 bg-violet-50 text-violet-700 rounded-lg text-xs font-bold whitespace-nowrap" title="Nombre de dossiers correspondant aux filtres actifs">
+                    📊 {filteredDossiers.length} dossier{filteredDossiers.length > 1 ? 's' : ''}
+                  </span>
+
                   {filterStatut !== 'all' && (
                     <button onClick={() => setFilterStatut('all')} className="text-xs font-semibold text-rose-600 bg-rose-50 px-3 py-2 rounded-lg flex items-center gap-1">
                       <X className="w-3 h-3" />Effacer le filtre
