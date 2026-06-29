@@ -11617,43 +11617,19 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
         </div>
       )}
 
-      {(dashboard.rappelsClient.length > 0 || dashboard.rappelsPrestataires.length > 0) && (
+      {/* 🔕 Bloc « Financeurs en retard » retiré : doublon du Rapport de
+          paiement (vue Argent à recevoir par financeur, avec badge ⏱️ jours).
+          On garde uniquement les prestataires à payer (ce que NOUS devons). */}
+      {dashboard.rappelsPrestataires.length > 0 && (
         <div className="bg-white rounded-3xl shadow-md border border-amber-200 overflow-hidden">
           <div className="p-5 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50">
             <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <Bell className="w-5 h-5 text-amber-500" />Rappels de paiement (+30 jours)
+              <Bell className="w-5 h-5 text-amber-500" />Prestataires à payer (+30 jours)
             </h2>
           </div>
-          {dashboard.rappelsClient.length > 0 && (
-            <div className="p-4 border-b border-slate-100">
-              <h3 className="text-sm font-bold text-rose-600 mb-2 flex items-center gap-1">
-                <AlertTriangle className="w-4 h-4" />Financeurs en retard ({dashboard.rappelsClient.length})
-              </h3>
-              <div className="space-y-1.5">
-                {dashboard.rappelsClient.slice(0, 20).map(d => (
-                  <button
-                    key={d.localId}
-                    onClick={() => onShowQuick && onShowQuick(d.localId, 'paiement')}
-                    className="w-full bg-rose-50 hover:bg-rose-100 border border-rose-200 rounded-lg px-3 py-2 flex items-center justify-between gap-2 flex-wrap text-left transition-colors"
-                  >
-                    <div className="flex items-center gap-2 flex-1 min-w-0">
-                      <span className="font-semibold text-slate-700 truncate">{d.nom} {d.prenom}</span>
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-violet-100 text-violet-700">💳 {d.financement}</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs px-2 py-0.5 rounded-full bg-rose-200 text-rose-800 font-bold">{d.joursAttente}j</span>
-                      <span className="font-bold text-rose-700">{formatEuro(d.montantTotal)}</span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-          {dashboard.rappelsPrestataires.length > 0 && (
-            <div className="p-4">
-              <PrestatairesPayerSection rappels={dashboard.rappelsPrestataires} onShowQuick={onShowQuick} />
-            </div>
-          )}
+          <div className="p-4">
+            <PrestatairesPayerSection rappels={dashboard.rappelsPrestataires} onShowQuick={onShowQuick} />
+          </div>
         </div>
       )}
 
