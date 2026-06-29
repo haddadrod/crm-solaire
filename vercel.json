@@ -11,6 +11,13 @@
     },
     "api/gmail-oauth.js": {
       "maxDuration": 60
+    },
+    "api/classify-dossier.js": {
+      "maxDuration": 300,
+      "memory": 3009
+    },
+    "api/extract-pdf.js": {
+      "maxDuration": 120
     }
   }
 }
