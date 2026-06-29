@@ -10605,7 +10605,11 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                         { id: 'bloque', label: '⏸️ Bloqué', cls: 'bg-slate-200 text-slate-700 border-slate-300' },
                         { id: 'paye', label: '✓ Payé', cls: 'bg-emerald-100 text-emerald-700 border-emerald-300' },
                       ].filter(c => counts[c.id] > 0);
-                      if (chips.length < 2) return null;
+                      // On affiche les chips dès qu'il y a ≥2 dossiers et au moins
+                      // un état — vaut aussi pour poseurs / équipe interne (avant,
+                      // le garde « ≥2 états » les masquait quand tout était au même
+                      // état, p.ex. un poseur entièrement « à payer »).
+                      if (chips.length === 0 || p.lignes.length < 2) return null;
                       const setEtat = (id) => setEtatByPresta(prev => ({ ...prev, [prestaKey]: prev[prestaKey] === id ? '' : id }));
                       return (
                         <div className="flex items-center gap-1.5 flex-wrap pb-1">
