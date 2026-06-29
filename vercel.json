@@ -8,6 +8,9 @@
   "functions": {
     "api/cron-gmail-prefetch.js": {
       "maxDuration": 300
+    },
+    "api/gmail-oauth.js": {
+      "maxDuration": 60
     }
   }
 }

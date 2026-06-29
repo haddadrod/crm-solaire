@@ -1003,12 +1003,26 @@ export default async function handler(req, res) {
     //    Body : { limit?: 5000 } (cap total inv renvoyées)
     if (action === 'ia-list') {
       const limit = Math.max(1, Math.min(10000, parseInt(body.limit, 10) || 5000));
-      const { data: rows, error } = await admin.from('storage')
-        .select('key, value, updated_at')
-        .like('key', `${IA_CACHE_PREFIX}%`)
-        .order('updated_at', { ascending: false })
-        .limit(limit);
-      if (error) return json(res, 500, { error: error.message });
+      // 🧱 Pagination par pages de 1000 : une seule requête `.limit(5000)` peut
+      //    dépasser le cap de taille de réponse PostgREST/Supabase quand il y a
+      //    beaucoup de factures en cache (→ 500). On lit page par page jusqu'à
+      //    atteindre `limit` ou épuiser les lignes.
+      const PAGE = 1000;
+      const rows = [];
+      let pageErr = null;
+      for (let from = 0; from < limit; from += PAGE) {
+        const to = Math.min(from + PAGE, limit) - 1;
+        const { data: pageRows, error } = await admin.from('storage')
+          .select('key, value, updated_at')
+          .like('key', `${IA_CACHE_PREFIX}%`)
+          .order('updated_at', { ascending: false })
+          .range(from, to);
+        if (error) { pageErr = error; break; }
+        if (!pageRows || pageRows.length === 0) break;
+        rows.push(...pageRows);
+        if (pageRows.length < (to - from + 1)) break; // dernière page
+      }
+      if (pageErr) return json(res, 500, { error: pageErr.message || 'Erreur lecture cache IA' });
       const folders = {};
       let totalInvoices = 0;
       for (const r of rows || []) {
