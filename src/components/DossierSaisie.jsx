@@ -29107,6 +29107,7 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
             disabled={!hasAlerts}
             title={b.tooltip}
             className={`flex items-center gap-2 px-3 py-2 rounded-xl border-2 font-semibold text-xs transition-all ${
+              b.type === 'fraude' && hasAlerts ? 'fraude-blink hover:scale-105 cursor-pointer' :
               hasAlerts
                 ? `${b.colorBg} ${b.colorBorder} ${b.colorText} hover:scale-105 hover:shadow-md cursor-pointer`
                 : 'bg-slate-50 border-slate-200 text-slate-400 cursor-default'
