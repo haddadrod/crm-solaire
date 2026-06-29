@@ -14132,13 +14132,26 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
                                 )}
                               </div>
                               <div className="mt-1 flex items-center gap-3 text-[12px] text-slate-600 flex-wrap">
-                                {inv.montantHt > 0 && (
-                                  <span><span className="font-bold">{fmtEur(inv.montantHt)}</span> HT</span>
-                                )}
-                                {inv.montantTtc > 0 && inv.montantTtc !== inv.montantHt && (
-                                  <span><span className="font-bold">{fmtEur(inv.montantTtc)}</span> TTC</span>
-                                )}
-                                {inv.tauxTva > 0 && <span className="text-slate-400">TVA {inv.tauxTva}%</span>}
+                                {(() => {
+                                  const ht = Number(inv.montantHt) || 0;
+                                  const taux = Number(inv.tauxTva) || 0;
+                                  let ttc = Number(inv.montantTtc) || 0;
+                                  // TTC connu si lu directement, ou déductible via un taux explicite (y compris 0).
+                                  const ttcConnu = ttc > 0 || (ht > 0 && (taux > 0 || inv.tauxTva === 0));
+                                  if (ttc === 0 && ht > 0) ttc = taux > 0 ? Math.round(ht * (1 + taux / 100) * 100) / 100 : ht;
+                                  const sansTva = ttcConnu && ht > 0 && Math.abs(ttc - ht) < 0.5;
+                                  return (
+                                    <>
+                                      {ht > 0 && <span><span className="font-bold">{fmtEur(ht)}</span> HT</span>}
+                                      {ttc > 0 && <span><span className="font-bold">{fmtEur(ttc)}</span> TTC</span>}
+                                      {ht > 0 && ttcConnu && (sansTva
+                                        ? <span className="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 font-bold">∅ sans TVA · poseur&nbsp;?</span>
+                                        : <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 font-bold">🧾 TVA{taux > 0 ? ` ${taux}%` : ''} · fournisseur&nbsp;?</span>
+                                      )}
+                                      {ht > 0 && !ttcConnu && <span className="text-slate-400 italic">TTC non lu</span>}
+                                    </>
+                                  );
+                                })()}
                                 {inv.villeClient && <span>📍 {inv.villeClient}{inv.codePostalClient ? ` (${inv.codePostalClient})` : ''}</span>}
                                 {inv.telephoneClient && <span>📞 {inv.telephoneClient}</span>}
                                 {inv.emailClient && <span>✉️ {inv.emailClient}</span>}
