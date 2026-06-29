@@ -10407,6 +10407,16 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                                   {l.dossierId !== '—' && <span className="text-[11px] font-mono bg-slate-100 text-slate-600 px-0.5 rounded">#{l.dossierId}</span>}
                                   <span className="font-semibold text-slate-700 truncate text-[13px]">{l.client}</span>
                                 </div>
+                                {(() => {
+                                  // ⏱️ Jours écoulés depuis la pose (= attente de paiement financeur).
+                                  if (!l.date) return null;
+                                  const t = new Date(l.date).getTime();
+                                  if (isNaN(t)) return null;
+                                  const jours = Math.floor((Date.now() - t) / 86400000);
+                                  if (jours < 0) return null;
+                                  const cls = jours > 60 ? 'bg-rose-100 text-rose-700' : jours > 30 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700';
+                                  return <span className={`text-[11px] font-bold px-1 py-0.5 rounded whitespace-nowrap ${cls}`} title={`Posé le ${new Date(l.date).toLocaleDateString('fr-FR')} — ${jours} jour${jours > 1 ? 's' : ''} sans paiement`}>⏱️ {jours}j</span>;
+                                })()}
                                 <span className="font-bold text-amber-700 text-[13px] whitespace-nowrap">{formatEuro(l.ttc)}</span>
                                 {canOpen && <span className="text-slate-400 text-[12px]">›</span>}
                               </div>
