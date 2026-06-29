@@ -5105,6 +5105,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const byId = new Map();         // id Chelly → [localId, …]
     const byNomPrenom = new Map();  // "dupont|jean" → [localId, …]
     const byTel = new Map();        // chiffres tel → [localId, …]
+    const byEmail = new Map();      // email normalisé → [localId, …]
+    const byAdresse = new Map();    // adresse+CP normalisés → [localId, …]
     dossiersVisibles.forEach(d => {
       if (d.id) {
         const k = String(d.id).trim();
@@ -5125,6 +5127,26 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (!byTel.has(tel)) byTel.set(tel, []);
         byTel.get(tel).push(d.localId);
       }
+      // 📱 Mobile aussi (certains dossiers ont le n° dans « mobile » et pas « telephone »)
+      const mob = String(d.mobile || '').replace(/\D/g, '');
+      if (mob.length >= 6 && mob !== tel) {
+        if (!byTel.has(mob)) byTel.set(mob, []);
+        byTel.get(mob).push(d.localId);
+      }
+      const email = stripAccents(d.email);
+      if (email && email.includes('@')) {
+        if (!byEmail.has(email)) byEmail.set(email, []);
+        byEmail.get(email).push(d.localId);
+      }
+      // Adresse : on normalise (sans accents/ponctuation) et on combine au code
+      // postal pour éviter les faux positifs (même rue dans 2 villes ≠ doublon).
+      const adr = stripAccents(d.adresse).replace(/[^a-z0-9]/g, '');
+      const cp = String(d.codePostal || '').replace(/\D/g, '');
+      if (adr.length >= 6) {
+        const k = `${adr}|${cp}`;
+        if (!byAdresse.has(k)) byAdresse.set(k, []);
+        byAdresse.get(k).push(d.localId);
+      }
     });
     // Par localId : { reasons: Set<'id'|'nomprenom'|'tel'>, others: Set<localId> }
     const result = new Map();
@@ -5140,6 +5162,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     byId.forEach(g => mark(g, 'id'));
     byNomPrenom.forEach(g => mark(g, 'nomprenom'));
     byTel.forEach(g => mark(g, 'tel'));
+    byEmail.forEach(g => mark(g, 'email'));
+    byAdresse.forEach(g => mark(g, 'adresse'));
     return result;
   }, [dossiersVisibles]);
   const nbDoublons = doublonsIndex.size;
@@ -6683,7 +6707,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
   // 🔍 Doublon : libellé compact des raisons + nombre d'autres dossiers similaires.
   const doublonBadge = (() => {
     if (!doublonInfo) return null;
-    const reasonLabels = { id: 'même #id', nomprenom: 'même nom', tel: 'même tél' };
+    const reasonLabels = { id: 'même #id', nomprenom: 'même nom', tel: 'même tél', email: 'même email', adresse: 'même adresse' };
     const reasons = [...doublonInfo.reasons].map(r => reasonLabels[r] || r).join(' · ');
     const n = doublonInfo.others.size;
     return { reasons, n };
@@ -29100,6 +29124,8 @@ function DoublonsModal({ groupes, STATUTS, onClose, onSelect, onDelete, isAdmin 
       id: { label: 'Même n° Chelly', color: 'bg-violet-100 text-violet-800' },
       nomprenom: { label: 'Même nom + prénom', color: 'bg-blue-100 text-blue-800' },
       tel: { label: 'Même téléphone', color: 'bg-amber-100 text-amber-800' },
+      email: { label: 'Même email', color: 'bg-emerald-100 text-emerald-800' },
+      adresse: { label: 'Même adresse', color: 'bg-rose-100 text-rose-800' },
     }[r] || { label: r, color: 'bg-slate-100 text-slate-700' };
     return <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded ${cfg.color}`}>{cfg.label}</span>;
   };
