@@ -701,6 +701,21 @@ export default async function handler(req, res) {
     } catch (e) { stats.errors.push({ global: `markImported: ${e?.message}` }); }
   }
 
+  // 🕐 Horodatage du dernier run (cron OU bouton manuel) → affiché dans Drive
+  //    Factures (« Dernière récupération : … »). Best-effort, n'échoue jamais.
+  try {
+    await admin.from('storage').upsert({
+      key: 'gmail-prefetch-last-run',
+      value: JSON.stringify({
+        at: new Date().toISOString(),
+        pdfsAnalyzed: stats.pdfsAnalyzed,
+        inboxes: stats.inboxes,
+        pdfsListed: stats.pdfsListed,
+      }),
+      updated_at: new Date().toISOString(),
+    });
+  } catch { /* ignore */ }
+
   const durationMs = Date.now() - startedAt;
   return json(res, 200, { data: { ...stats, durationMs } });
 }

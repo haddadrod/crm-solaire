@@ -13580,6 +13580,8 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
   const [totalInvoices, setTotalInvoices] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // 🕐 Dernière récupération (horodatage écrit par le cron/bouton dans Supabase).
+  const [lastRun, setLastRun] = useState(null); // { at, pdfsAnalyzed, inboxes, pdfsListed }
   const [openFolders, setOpenFolders] = useState({}); // { [fournisseur]: bool }
   const [query, setQuery] = useState('');
   const [previewing, setPreviewing] = useState('');
@@ -13654,6 +13656,11 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
       setFolders(payload.data?.folders || []);
       setTotalInvoices(payload.data?.totalInvoices || 0);
+      // 🕐 Lit l'horodatage du dernier téléchargement (cron ou bouton manuel).
+      try {
+        const row = await window.storage.get('gmail-prefetch-last-run');
+        if (row?.value) setLastRun(JSON.parse(row.value));
+      } catch { /* ignore */ }
     } catch (e) { setError(e?.message || 'Erreur'); }
     setLoading(false);
   };
@@ -13982,6 +13989,20 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
               {cronRunning ? '⏳ Téléchargement IA en cours…' : '🚀 Télécharger les factures'}
             </button>
           </div>
+          {/* 🕐 Dernière récupération automatique (cron toutes les 15 min) ou
+              manuelle. Rassure l'user que ça tourne, et quand pour la dernière fois. */}
+          {lastRun?.at && (
+            <div className="text-[12px] text-slate-500">
+              🕐 Dernière récupération : <span className="font-bold text-slate-700">{(() => {
+                const d = new Date(lastRun.at);
+                const date = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                const heure = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h');
+                return `${date} à ${heure}`;
+              })()}</span>
+              {typeof lastRun.inboxes === 'number' && <span> · {lastRun.inboxes} boîte{lastRun.inboxes > 1 ? 's' : ''}</span>}
+              {typeof lastRun.pdfsAnalyzed === 'number' && lastRun.pdfsAnalyzed > 0 && <span> · {lastRun.pdfsAnalyzed} nouvelle{lastRun.pdfsAnalyzed > 1 ? 's' : ''}</span>}
+            </div>
+          )}
           {cronResult && (
             <div className={`p-3 rounded-xl text-[12px] ${cronResult._inProgress ? 'bg-indigo-50 border border-indigo-200 text-indigo-800' : 'bg-emerald-50 border border-emerald-200 text-emerald-800'}`}>
               {cronResult._inProgress ? '⏳' : '✅'}{' '}
