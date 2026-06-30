@@ -19,6 +19,7 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-06-30
+- ✅ **Activité par utilisateur — noms complets + tous les utilisateurs** : affiche désormais l'emoji + le **nom complet** (prénom + nom) au lieu du seul nom d'affichage enregistré dans les actions (ex actions sous « Fitoussi » → « 🚀 Leanah Fitoussi »). + inclut TOUS les utilisateurs enregistrés (même à 0 action). Résout « je ne vois pas Léana » (= Leanah Fitoussi).
 - ✅ **Panneaux « Performance des … » repliés par défaut** (poseurs, régies, fournisseurs, commerciaux, banques) → plus besoin de scroller tout en bas / fermer à chaque fois. Clic sur l'en-tête pour déplier.
 - ✅ **Bouton « retour » du navigateur** : ouvrir un dossier (QuickView) empile une entrée d'historique → « retour » FERME le dossier au lieu de quitter le CRM.
 - ✅ **Tableau de bord nettoyé** : panneau « Prestataires à payer (+30 jours) » RETIRÉ (doublon du Rapport de paiement) + retiré du comptage du badge 🔔.
