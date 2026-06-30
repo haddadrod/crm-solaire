@@ -19,6 +19,7 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-06-30
+- ✅ **Drive Factures — choix de période** (30j / 60j / 6 mois / 1 an) pour la détection ET le téléchargement. Défaut 60 j (routine). Évite de scanner 1 an à chaque fois. — #581
 - 🟢 **FIX CRITIQUE — récupération factures réparée** : le cron crashait à CHAQUE run (`toMarkImported is not defined`, variable déclarée dans le try mais utilisée après → ReferenceError → 500). C'était LA cause des factures qui n'augmentaient plus / « jamais enregistrée ». La connexion Gmail n'a jamais été en cause. Déclaration déplacée avant le try. + wrapper global qui remonte le vrai message d'erreur (#578). — #579
 - ✅ **Drive Factures — « 👀 Voir les nouvelles » (gratuit)** : mode `countOnly` sur le cron → compte les nouvelles factures Gmail SANS appeler l'IA (0 coût). Flux 2 temps : détecter gratuitement → analyser via Télécharger. Rappel : le cache empêche de re-payer les factures déjà analysées. — #576
 - ✅ **Assistant IA — désambiguïsation homonymes** : si plusieurs clients du même nom (ex 2 « Bertrand »), l'assistant fait CHOISIR lequel avant d'ouvrir/déplacer (prompt IA renforcé + garde-fou front). — #574
