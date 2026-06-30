@@ -5620,7 +5620,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 badgeColor="bg-fuchsia-100 text-fuchsia-700"
               />
             )}
-            {permissions.voirDashboard && <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={BarChart3} label="Tableau de bord" color="from-blue-500 to-cyan-500" badge={(dashboard.rappelsClient.length + dashboard.rappelsPrestataires.length) > 0 ? `🔔 ${dashboard.rappelsClient.length + dashboard.rappelsPrestataires.length}` : null} badgeColor="bg-amber-100 text-amber-700" />}
+            {permissions.voirDashboard && <TabButton active={activeTab === 'dashboard'} onClick={() => setActiveTab('dashboard')} icon={BarChart3} label="Tableau de bord" color="from-blue-500 to-cyan-500" badge={dashboard.rappelsClient.length > 0 ? `🔔 ${dashboard.rappelsClient.length}` : null} badgeColor="bg-amber-100 text-amber-700" />}
             {permissions.voirReglages && <TabButton active={activeTab === 'reglages'} onClick={() => setActiveTab('reglages')} icon={Settings} label="Réglages" color="from-slate-600 to-slate-700" />}
           </div>
 
@@ -11819,21 +11819,9 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
         </div>
       )}
 
-      {/* 🔕 Bloc « Financeurs en retard » retiré : doublon du Rapport de
-          paiement (vue Argent à recevoir par financeur, avec badge ⏱️ jours).
-          On garde uniquement les prestataires à payer (ce que NOUS devons). */}
-      {dashboard.rappelsPrestataires.length > 0 && (
-        <div className="bg-white rounded-3xl shadow-md border border-amber-200 overflow-hidden">
-          <div className="p-5 border-b border-amber-100 bg-gradient-to-r from-amber-50 to-orange-50">
-            <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
-              <Bell className="w-5 h-5 text-amber-500" />Prestataires à payer (+30 jours)
-            </h2>
-          </div>
-          <div className="p-4">
-            <PrestatairesPayerSection rappels={dashboard.rappelsPrestataires} onShowQuick={onShowQuick} />
-          </div>
-        </div>
-      )}
+      {/* 🔕 Blocs « Financeurs en retard » ET « Prestataires à payer (+30 jours) »
+          retirés du tableau de bord : doublons du Rapport de paiement (vue
+          « Argent à recevoir / à reverser »). On les a déjà ailleurs. */}
 
       <PerfList titre="🔧 Performance des poseurs" data={dashboard.statsPoseurs} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🔧" border="border-amber-100" header="from-amber-50 to-orange-50" iconColor="text-amber-500" simpleCashflow={true} />
       <PerfList titre="🤝 Performance des régies" data={dashboard.statsRegies} dossiers={dossiers} societes={societes} onShowQuick={onShowQuick} onTogglePresta={onTogglePresta} onMarkPrestaPaye={onMarkPrestaPaye} medal="🤝" border="border-purple-100" header="from-purple-50 to-violet-50" iconColor="text-purple-500" />
@@ -11863,9 +11851,14 @@ function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
   // Agrégation : compteurs + journal détaillé par utilisateur.
   const { users, totalActions } = useMemo(() => {
     const userMap = {};
+    // 🔤 On retire les accents et on regroupe sans tenir compte de la casse :
+    //    « Léana », « Leana » et « leana » sont la MÊME personne → leur activité
+    //    n'est plus éclatée et tout le monde apparaît correctement.
+    const stripAccents = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
     const ensureUser = (name) => {
-      const key = name || '(anonyme)';
-      if (!userMap[key]) userMap[key] = { name: key, created: 0, modified: 0, statusChanges: 0, outreach: 0, ca: 0, lastActivity: null, entries: [] };
+      const display = (stripAccents(name).trim()) || '(anonyme)';
+      const key = display.toLowerCase();
+      if (!userMap[key]) userMap[key] = { name: display, created: 0, modified: 0, statusChanges: 0, outreach: 0, ca: 0, lastActivity: null, entries: [] };
       return userMap[key];
     };
     const touch = (u, date) => { if (date && (!u.lastActivity || date > u.lastActivity)) u.lastActivity = date; };
