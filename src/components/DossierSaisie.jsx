@@ -302,6 +302,7 @@ const FINANCEMENTS = ['PROJEXIO', 'SOFINCO', 'DOMOFINANCE', 'COMPTANT', 'CETELEM
 const BACKED_UP_SETTINGS = new Set([
   'produits', 'tarifs-poseurs', 'tarifs-regies', 'tarifs-internes',
   'noms-internes', 'liste-fournisseurs', 'tarifs-fournisseurs', 'societes',
+  'internes-contacts',
 ]);
 
 // 🏷️ Libellés humains des champs de dossier — pour afficher « Date pose »
@@ -1788,6 +1789,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Contacts régies : { nomRegie: { tel, email } } — pour prévenir la régie
   // par WhatsApp/mail quand le financement est accepté → à programmer en pose.
   const [regiesContacts, setRegiesContacts] = useState({});
+  // 🏢 Société interne par personne de l'équipe interne (téléprospecteur,
+  // commercial…) : { nomPersonne: { societe, siret } }. Émetteur de SA facture.
+  const [internesContacts, setInternesContacts] = useState({});
   // Config email SMTP pour envoi auto via Gmail (legacy app password, conservé
   // pour fallback). La méthode primaire est OAuth Google (gmailOAuth ci-dessous).
   const [emailConfig, setEmailConfig] = useState({ smtpUser: '', smtpPass: '', fromName: '' });
@@ -2212,11 +2216,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // ⚠️ Champs legacy (régie unique) - gardés pour rétrocompat, migrés en regies au chargement
     regie: '', regieHtCustom: '', regiePaye: false, regieDatePaye: '',
     typeRegie: 'externe', // 'externe' | 'interne'
-    teleprospecteur: '', teleprospecteurMontant: '', teleprospecteurPaye: false, teleprospecteurDatePaye: '',
-    confirmateur: '', confirmateurMontant: '', confirmateurPaye: false, confirmateurDatePaye: '',
-    commercial: '', commercialMontant: '', commercialPaye: false, commercialDatePaye: '',
-    coordinateurProjet: '', coordinateurProjetMontant: '', coordinateurProjetPaye: false, coordinateurProjetDatePaye: '',
-    responsableEnvoiPose: '', responsableEnvoiPoseMontant: '', responsableEnvoiPosePaye: false, responsableEnvoiPoseDatePaye: '',
+    teleprospecteur: '', teleprospecteurMontant: '', teleprospecteurPaye: false, teleprospecteurDatePaye: '', teleprospecteurFactureNo: '', teleprospecteurFactureFile: '',
+    confirmateur: '', confirmateurMontant: '', confirmateurPaye: false, confirmateurDatePaye: '', confirmateurFactureNo: '', confirmateurFactureFile: '',
+    commercial: '', commercialMontant: '', commercialPaye: false, commercialDatePaye: '', commercialFactureNo: '', commercialFactureFile: '',
+    coordinateurProjet: '', coordinateurProjetMontant: '', coordinateurProjetPaye: false, coordinateurProjetDatePaye: '', coordinateurProjetFactureNo: '', coordinateurProjetFactureFile: '',
+    responsableEnvoiPose: '', responsableEnvoiPoseMontant: '', responsableEnvoiPosePaye: false, responsableEnvoiPoseDatePaye: '', responsableEnvoiPoseFactureNo: '', responsableEnvoiPoseFactureFile: '',
     provenanceLead: '',
     poseurs: [],
     accordDef: false, consuel: false, observations: '',
@@ -2402,7 +2406,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // l'intérim.
       const bgKeys = [
         'statuts-order', 'tarifs-poseurs', 'tarifs-regies',
-        'poseurs-contacts', 'regies-contacts', 'email-config', 'tarifs-internes',
+        'poseurs-contacts', 'regies-contacts', 'internes-contacts', 'email-config', 'tarifs-internes',
         'noms-internes', 'liste-fournisseurs', 'tarifs-fournisseurs',
         'produits', 'users-list', 'projexio-caps', 'chat-messages', 'message-templates',
       ];
@@ -2488,6 +2492,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         }
       } catch (e) {}
       try {
+        const r = bgData['internes-contacts'];
+        if (r?.value) {
+          const obj = JSON.parse(r.value);
+          if (obj && typeof obj === 'object') setInternesContacts(obj);
+        }
+      } catch (e) {}
+      try {
         const r = bgData['email-config'];
         if (r?.value) {
           const obj = JSON.parse(r.value);
@@ -2557,7 +2568,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // la garde anti-écrasement du save effect fonctionne dès la 1ère modif
       // (sinon le 1er changement réécrit toutes les clés avec l'état chargé).
       try {
-        const syncedKeys = ['tarifs-poseurs','tarifs-regies','tarifs-internes','noms-internes','liste-fournisseurs','tarifs-fournisseurs','produits','poseurs-contacts','regies-contacts','email-config','projexio-caps','message-templates'];
+        const syncedKeys = ['tarifs-poseurs','tarifs-regies','tarifs-internes','noms-internes','liste-fournisseurs','tarifs-fournisseurs','produits','poseurs-contacts','regies-contacts','internes-contacts','email-config','projexio-caps','message-templates'];
         syncedKeys.forEach(k => {
           const v = bgData[k]?.value;
           if (typeof v === 'string') lastWrittenSettings.current[k] = v;
@@ -2971,11 +2982,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
     saveAndTrack('produits', produits);
     saveAndTrack('poseurs-contacts', poseursContacts);
     saveAndTrack('regies-contacts', regiesContacts);
+    saveAndTrack('internes-contacts', internesContacts);
     saveAndTrack('email-config', emailConfig);
     saveAndTrack('societes', societes);
     saveAndTrack('projexio-caps', projexioCaps);
     saveAndTrack('message-templates', messageTemplates);
-  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, emailConfig, societes, projexioCaps, messageTemplates, loading]);
+  }, [tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, listeFournisseurs, tarifsFournisseurs, produits, poseursContacts, regiesContacts, internesContacts, emailConfig, societes, projexioCaps, messageTemplates, loading]);
 
   // 💬 Save effect dédié au chat — séparé des réglages pour éviter qu'un
   // envoi de message ne re-sauvegarde TOUS les tarifs (et inversement).
@@ -3016,6 +3028,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       'message-templates': setMessageTemplates,
       'poseurs-contacts': setPoseursContacts,
       'regies-contacts': setRegiesContacts,
+      'internes-contacts': setInternesContacts,
       'email-config': setEmailConfig,
       'chat-messages': mergeChatMessages,
     };
@@ -3504,22 +3517,32 @@ export default function DossierSaisie({ authUser, onLogout }) {
       teleprospecteurMontant: d.teleprospecteurMontant || '',
       teleprospecteurPaye: d.teleprospecteurPaye || false,
       teleprospecteurDatePaye: d.teleprospecteurDatePaye || '',
+      teleprospecteurFactureNo: d.teleprospecteurFactureNo || '',
+      teleprospecteurFactureFile: d.teleprospecteurFactureFile || '',
       confirmateur: d.confirmateur || '',
       confirmateurMontant: d.confirmateurMontant || '',
       confirmateurPaye: d.confirmateurPaye || false,
       confirmateurDatePaye: d.confirmateurDatePaye || '',
+      confirmateurFactureNo: d.confirmateurFactureNo || '',
+      confirmateurFactureFile: d.confirmateurFactureFile || '',
       commercial: d.commercial || '',
       commercialMontant: d.commercialMontant || '',
       commercialPaye: d.commercialPaye || false,
       commercialDatePaye: d.commercialDatePaye || '',
+      commercialFactureNo: d.commercialFactureNo || '',
+      commercialFactureFile: d.commercialFactureFile || '',
       coordinateurProjet: d.coordinateurProjet || '',
       coordinateurProjetMontant: d.coordinateurProjetMontant || '',
       coordinateurProjetPaye: d.coordinateurProjetPaye || false,
       coordinateurProjetDatePaye: d.coordinateurProjetDatePaye || '',
+      coordinateurProjetFactureNo: d.coordinateurProjetFactureNo || '',
+      coordinateurProjetFactureFile: d.coordinateurProjetFactureFile || '',
       responsableEnvoiPose: d.responsableEnvoiPose || '',
       responsableEnvoiPoseMontant: d.responsableEnvoiPoseMontant || '',
       responsableEnvoiPosePaye: d.responsableEnvoiPosePaye || false,
       responsableEnvoiPoseDatePaye: d.responsableEnvoiPoseDatePaye || '',
+      responsableEnvoiPoseFactureNo: d.responsableEnvoiPoseFactureNo || '',
+      responsableEnvoiPoseFactureFile: d.responsableEnvoiPoseFactureFile || '',
       provenanceLead: d.provenanceLead || '',
       regiePaye: d.regiePaye || false, regieDatePaye: d.regieDatePaye || '',
       poseurs: d.poseurs?.length > 0
@@ -6244,6 +6267,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             users={users} setUsers={setUsers}
             poseursContacts={poseursContacts} setPoseursContacts={setPoseursContacts}
             regiesContacts={regiesContacts} setRegiesContacts={setRegiesContacts}
+            internesContacts={internesContacts} setInternesContacts={setInternesContacts}
             emailConfig={emailConfig} setEmailConfig={setEmailConfig}
             gmailOAuth={gmailOAuth} setGmailOAuth={setGmailOAuth}
             societes={societes} setSocietes={setSocietes}
@@ -6258,6 +6282,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             tarifsPoseurs={tarifsPoseurs} tarifsRegies={tarifsRegies} tarifsInternes={tarifsInternes}
             nomsInternes={nomsInternes} setNomsInternes={setNomsInternes}
             poseursContacts={poseursContacts} regiesContacts={regiesContacts}
+            internesContacts={internesContacts}
             produits={produits}
             societes={societes}
             projexioMoisCourant={dashboard.projexioMoisCourant}
@@ -6423,6 +6448,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             permissions={permissions}
             poseursContacts={effectivePoseursContacts}
             regiesContacts={effectiveRegiesContacts}
+            internesContacts={internesContacts}
             emailConfig={emailConfig}
             gmailOAuth={gmailOAuth}
             societes={societes}
@@ -12714,7 +12740,7 @@ function BanquePerfList({ data, dossiers = [], societes = [], onShowQuick }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS = [], dossiers, dossiersEnriched = null, POSEURS = [], REGIES = [], FOURNISSEURS = [], setDossiers, setShowImportJson, setShowQuickViewId = null, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS = [], dossiers, dossiersEnriched = null, POSEURS = [], REGIES = [], FOURNISSEURS = [], setDossiers, setShowImportJson, setShowQuickViewId = null, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, internesContacts = {}, setInternesContacts = () => {}, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
   // Init depuis le hash URL pour qu'un refresh garde la sous-section.
   // Format : #reglages/utilisateurs → section = 'utilisateurs'
   const sectionFromHash = (typeof window !== 'undefined' && window.location.hash)
@@ -12865,7 +12891,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS 
       )}
 
       {section === 'commissions' && (
-        <CommissionsInternesManager tarifs={tarifsInternes} setTarifs={setTarifsInternes} noms={nomsInternes} setNoms={setNomsInternes} dossiers={dossiers} />
+        <CommissionsInternesManager tarifs={tarifsInternes} setTarifs={setTarifsInternes} noms={nomsInternes} setNoms={setNomsInternes} dossiers={dossiers} internesContacts={internesContacts} setInternesContacts={setInternesContacts} societesGroupe={societes} />
       )}
 
       {section === 'email' && (
@@ -15882,7 +15908,7 @@ function EmailConfigManager({ config, setConfig, gmailOAuth, setGmailOAuth }) {
   );
 }
 
-function CommissionsInternesManager({ tarifs, setTarifs, noms, setNoms, dossiers }) {
+function CommissionsInternesManager({ tarifs, setTarifs, noms, setNoms, dossiers, internesContacts = {}, setInternesContacts = () => {}, societesGroupe = [] }) {
   const [addingFor, setAddingFor] = useState(null); // role.key en cours d'ajout
   const [newName, setNewName] = useState('');
 
@@ -15970,15 +15996,32 @@ function CommissionsInternesManager({ tarifs, setTarifs, noms, setNoms, dossiers
                 {liste.length === 0 ? (
                   <div className="text-[13px] text-slate-400 italic px-1 py-1">Aucune personne — clique sur "Ajouter" pour créer la liste</div>
                 ) : (
-                  <div className="flex flex-wrap gap-1">
-                    {liste.map(nom => (
-                      <span key={nom} className="inline-flex items-center gap-1 bg-fuchsia-100 border border-fuchsia-300 text-fuchsia-800 rounded-full px-2 py-0.5 text-[13px] font-semibold">
-                        {nom}
-                        <button onClick={() => removeName(role.key, nom)} className="hover:bg-fuchsia-200 rounded-full p-0.5 text-fuchsia-600" title="Retirer de la liste">
-                          <X className="w-2.5 h-2.5" />
-                        </button>
-                      </span>
-                    ))}
+                  <div className="space-y-1">
+                    {liste.map(nom => {
+                      const c = internesContacts[nom] || {};
+                      return (
+                        <div key={nom} className="flex items-center gap-1.5 flex-wrap bg-white border border-fuchsia-100 rounded-lg px-2 py-1.5">
+                          <span className="font-bold text-fuchsia-800 text-[13px] min-w-[90px]">{nom}</span>
+                          <input
+                            type="text"
+                            value={c.societe || ''}
+                            onChange={(e) => setInternesContacts({ ...internesContacts, [nom]: { ...c, societe: e.target.value } })}
+                            placeholder="🏢 Société (émetteur de sa facture)"
+                            className="flex-1 min-w-[150px] px-2 py-1 bg-white border border-fuchsia-200 rounded text-[12px]"
+                          />
+                          <input
+                            type="text"
+                            value={c.siret || ''}
+                            onChange={(e) => setInternesContacts({ ...internesContacts, [nom]: { ...c, siret: e.target.value } })}
+                            placeholder="SIRET (option)"
+                            className="w-32 px-2 py-1 bg-white border border-fuchsia-200 rounded text-[12px]"
+                          />
+                          <button onClick={() => removeName(role.key, nom)} className="p-1 text-rose-500 hover:bg-rose-50 rounded" title="Retirer de la liste">
+                            <X className="w-3 h-3" />
+                          </button>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -18422,7 +18465,7 @@ function FournisseursManager({ data, setData, dossiers, tarifs, setTarifs }) {
   );
 }
 
-function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, poseursContacts = {}, regiesContacts = {}, produits, societes = [], projexioMoisCourant = { parSociete: {} }, projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, dossiers = [], currentUser, onClose, onSubmit, isAdmin, onOpenGmailSearch = null }) {
+function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_ORDERED, POSEURS, REGIES, FOURNISSEURS, tarifsPoseurs, tarifsRegies, tarifsInternes, nomsInternes, setNomsInternes, poseursContacts = {}, regiesContacts = {}, internesContacts = {}, produits, societes = [], projexioMoisCourant = { parSociete: {} }, projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, dossiers = [], currentUser, onClose, onSubmit, isAdmin, onOpenGmailSearch = null }) {
   // 🚨 Détection de doublons : scanne les dossiers existants à mesure que
   // l'utilisateur saisit nom/prenom/tel. Match strict sur :
   //   - téléphone normalisé E.164 (le plus fiable)
@@ -19967,11 +20010,41 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         </Field>
                       )}
                     </div>
-                    {isAdmin && formData[nomKey] && formData[nomKey] !== '__custom__' && (
-                      <button type="button" onClick={() => setFormData({ ...formData, [payeKey]: !formData[payeKey], [dateKey]: !formData[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-3 py-1.5 rounded-lg text-xs font-bold ${formData[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                        {formData[payeKey] ? `✓ Payé (${montantEffectif}€)` : `⏳ À payer (${montantEffectif}€)`}
-                      </button>
-                    )}
+                    {isAdmin && formData[nomKey] && formData[nomKey] !== '__custom__' && (() => {
+                      const factureNoKey = role.key + 'FactureNo';
+                      const factureFileKey = role.key + 'FactureFile';
+                      const societe = (internesContacts[formData[nomKey]] || {}).societe || '';
+                      return (
+                        <div className="pt-2 border-t border-fuchsia-100 space-y-2">
+                          {societe
+                            ? <div className="text-[12px] text-fuchsia-700">🏢 Société : <span className="font-bold">{societe}</span></div>
+                            : <div className="text-[12px] text-amber-600">🏢 Société non renseignée — ajoute-la dans Réglages → Équipe interne.</div>}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            <input type="text" value={formData[factureNoKey] || ''} onChange={(e) => setFormData({ ...formData, [factureNoKey]: e.target.value })} placeholder="🧾 N° facture" className={inputCls} />
+                            <FactureDupeWarning factureNo={formData[factureNoKey]} allDossiers={dossiers} currentLocalId={editingId} />
+                          </div>
+                          {/* 🧾 Facture du prestataire interne : l'IA lit le HT et remplit la commission, comme une régie. */}
+                          <FactureFileInput
+                            fileId={formData[factureFileKey] || ''}
+                            onChange={(id) => setFormData({ ...formData, [factureFileKey]: id })}
+                            color="purple"
+                            autoExtract={true}
+                            onExtract={(data) => {
+                              const upd = {};
+                              if (data.factureNo && !formData[factureNoKey]) upd[factureNoKey] = String(data.factureNo);
+                              const htR = htFromExtraction(data);
+                              const montantVide = formData[montantKey] === '' || formData[montantKey] === undefined || formData[montantKey] === null;
+                              if (htR > 0 && montantVide) upd[montantKey] = String(htR);
+                              if (Object.keys(upd).length > 0) setFormData({ ...formData, ...upd });
+                            }}
+                            label="facture"
+                          />
+                          <button type="button" onClick={() => setFormData({ ...formData, [payeKey]: !formData[payeKey], [dateKey]: !formData[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-3 py-1.5 rounded-lg text-xs font-bold ${formData[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                            {formData[payeKey] ? `✓ Payé (${montantEffectif}€)` : `⏳ À payer (${montantEffectif}€)`}
+                          </button>
+                        </div>
+                      );
+                    })()}
                   </div>
                 );
               })}
@@ -23008,7 +23081,7 @@ function BLMaterielBlock({ d, onUpdate }) {
   );
 }
 
-function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, emailConfig, gmailOAuth, societes = [], messageTemplates = [], dossiers = [], onOpenGmailSearch = null }) {
+function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, internesContacts = {}, emailConfig, gmailOAuth, societes = [], messageTemplates = [], dossiers = [], onOpenGmailSearch = null }) {
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
   const canSeeMarges = isAdmin || permissions?.voirMarges === true;
@@ -25760,6 +25833,35 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           <button onClick={() => onUpdate({ [payeKey]: !d[payeKey], [dateKey]: !d[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${d[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
                             {d[payeKey] ? `✓ Payé (${montantEffectif}€)` : `⏳ À payer (${montantEffectif}€)`}
                           </button>
+                          {/* 🧾 Facture du prestataire interne (comme une régie) */}
+                          {(() => {
+                            const factureNoKey = role.key + 'FactureNo';
+                            const factureFileKey = role.key + 'FactureFile';
+                            const societe = (internesContacts[d[nomKey]] || {}).societe || '';
+                            return (
+                              <div className="pt-1 mt-1 border-t border-fuchsia-100 space-y-1">
+                                {societe
+                                  ? <div className="text-[11px] text-fuchsia-700">🏢 {societe}</div>
+                                  : <div className="text-[11px] text-amber-600">🏢 Société non renseignée (Réglages → Équipe interne)</div>}
+                                <input type="text" value={d[factureNoKey] || ''} onChange={(e) => onUpdate({ [factureNoKey]: e.target.value })} placeholder="🧾 N° facture" className="w-full px-2 py-1 bg-white border border-fuchsia-200 rounded text-[12px]" />
+                                <FactureFileInput
+                                  fileId={d[factureFileKey] || ''}
+                                  onChange={(id) => onUpdate({ [factureFileKey]: id })}
+                                  color="purple"
+                                  autoExtract={true}
+                                  onExtract={(data) => {
+                                    const upd = {};
+                                    if (data.factureNo && !d[factureNoKey]) upd[factureNoKey] = String(data.factureNo);
+                                    const htR = htFromExtraction(data);
+                                    const vide = d[montantKey] === '' || d[montantKey] === undefined || d[montantKey] === null;
+                                    if (htR > 0 && vide) upd[montantKey] = String(htR);
+                                    if (Object.keys(upd).length > 0) onUpdate(upd);
+                                  }}
+                                  label="facture"
+                                />
+                              </div>
+                            );
+                          })()}
                         </>
                       )}
                     </div>
