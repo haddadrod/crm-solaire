@@ -14042,17 +14042,22 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
             </button>
           </div>
           {/* 🕐 Dernière récupération automatique (cron toutes les 15 min) ou
-              manuelle. Rassure l'user que ça tourne, et quand pour la dernière fois. */}
-          {lastRun?.at && (
-            <div className="text-[12px] text-slate-500">
-              🕐 Dernière récupération : <span className="font-bold text-slate-700">{(() => {
+              manuelle. TOUJOURS affichée : si aucune récup enregistrée, on le dit
+              clairement (= le téléchargement n'a pas encore tourné avec succès). */}
+          {lastRun?.at ? (
+            <div className="text-[12px] text-slate-600 bg-slate-50 border border-slate-200 rounded-lg px-3 py-1.5">
+              🕐 Dernière récupération : <span className="font-bold text-slate-800">{(() => {
                 const d = new Date(lastRun.at);
                 const date = d.toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' });
                 const heure = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }).replace(':', 'h');
                 return `${date} à ${heure}`;
               })()}</span>
-              {typeof lastRun.inboxes === 'number' && <span> · {lastRun.inboxes} boîte{lastRun.inboxes > 1 ? 's' : ''}</span>}
-              {typeof lastRun.pdfsAnalyzed === 'number' && lastRun.pdfsAnalyzed > 0 && <span> · {lastRun.pdfsAnalyzed} nouvelle{lastRun.pdfsAnalyzed > 1 ? 's' : ''}</span>}
+              {typeof lastRun.inboxes === 'number' && <span> · {lastRun.inboxes} boîte{lastRun.inboxes > 1 ? 's' : ''} scannée{lastRun.inboxes > 1 ? 's' : ''}</span>}
+              <span> · <span className="font-bold text-emerald-700">{typeof lastRun.pdfsAnalyzed === 'number' ? lastRun.pdfsAnalyzed : 0} nouvelle{(lastRun.pdfsAnalyzed || 0) > 1 ? 's' : ''} facture{(lastRun.pdfsAnalyzed || 0) > 1 ? 's' : ''}</span> en plus</span>
+            </div>
+          ) : (
+            <div className="text-[12px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-1.5">
+              🕐 Dernière récupération : <span className="font-bold">jamais enregistrée</span> — le téléchargement automatique n'a pas encore tourné avec succès. Clique <span className="font-bold">« 🚀 Télécharger les factures »</span> pour le lancer.
             </div>
           )}
           {cronResult && (
