@@ -19,6 +19,7 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-06-30
+- ✅ **Drive Factures — « 👀 Voir les nouvelles » (gratuit)** : mode `countOnly` sur le cron → compte les nouvelles factures Gmail SANS appeler l'IA (0 coût). Flux 2 temps : détecter gratuitement → analyser via Télécharger. Rappel : le cache empêche de re-payer les factures déjà analysées. — #576
 - ✅ **Assistant IA — désambiguïsation homonymes** : si plusieurs clients du même nom (ex 2 « Bertrand »), l'assistant fait CHOISIR lequel avant d'ouvrir/déplacer (prompt IA renforcé + garde-fou front). — #574
 - ✅ **Drive Factures — « Dernière récupération » toujours affichée** + « X nouvelles en plus » (encart ambre « jamais » si aucune récup enregistrée). — #573
 - ✅ **Assistant IA secrétaire — Phase 1 (agit\!)** : l'assistant 🤖 sait maintenant DÉPLACER un dossier (« bascule HADDAD en financement », « passe X en contrôle qualité », « marque payé/annulé ») → identifie le dossier, propose statut actuel→cible, applique APRÈS confirmation. Intention `move_status` + `targetStatutId` côté endpoint. — #571
