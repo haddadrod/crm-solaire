@@ -19970,9 +19970,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   <div className="text-[12px] text-orange-700 mt-0.5">
                     Ce CQ fait suite à un <span className="font-bold">refus de financement</span>
                     {formData.cqRebasculeFrom ? <> par <span className="font-bold">{formData.cqRebasculeFrom}</span></> : null}
-                    {formData.cqRebasculeTo ? <> → renvoi vers <span className="font-bold">{formData.cqRebasculeTo}</span></> : null}
                     {formData.cqRebasculeAt ? <> (le {formatDateForSheet(formData.cqRebasculeAt)})</> : null}.
-                    {' '}⚠️ C'est un <span className="font-bold">contrôle spécifique de rebascule</span>, pas le CQ initial — vérifie les points propres à la nouvelle maison de financement.
+                    {' '}⚠️ C'est un <span className="font-bold">contrôle spécifique de rebascule</span>, pas le CQ initial.
+                    {' '}👉 Une fois ce CQ <span className="font-bold">validé (✓)</span>, choisis la <span className="font-bold">nouvelle maison de financement</span> (étape 2 💳) puis envoie en banque.
                   </div>
                 </div>
               )}
@@ -20465,17 +20465,15 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
               {/* Bloc retiré : ancien bouton "Annuler décision" remplacé par les 3 boutons toggleables ci-dessus */}
 
-              {formData.statutFin === 'refusé' && (
+              {formData.statutFin === 'refusé' && !formData.cqRebascule && (
                 <div className="mt-3 p-3 bg-rose-50 border-2 border-rose-300 rounded-xl">
-                  <div className="text-xs font-bold text-rose-700 mb-2">⚠️ Refusé par {formData.financement} → rebascule vers une autre maison de financement :</div>
-                  <div className="text-[12px] text-rose-600 mb-2">🔁 Le dossier repassera d'abord par un <span className="font-bold">contrôle qualité de rebascule</span> (spécifique), puis partira vers la nouvelle banque.</div>
-                  <select onChange={(e) => {
-                    const newFin = e.target.value;
-                    if (!newFin) return;
+                  <div className="text-xs font-bold text-rose-700 mb-2">⚠️ Refusé par {formData.financement || 'la banque'} → rebascule vers une autre maison de financement</div>
+                  <div className="text-[12px] text-rose-600 mb-2">🔁 Ordre : on fait <span className="font-bold">d'abord le contrôle qualité de rebascule</span>, et c'est seulement <span className="font-bold">après l'avoir validé</span> que tu choisiras la nouvelle banque et enverras en financement.</div>
+                  <button type="button" onClick={() => {
                     const today = new Date().toISOString().split('T')[0];
-                    // Archive complète de la banque qui a refusé : toutes ses
-                    // dates + le manque doc éventuel, pour garder une trace
-                    // datée par maison de financement (cf. "Banques précédentes").
+                    // Archive complète de la banque qui a refusé : toutes ses dates
+                    // + le manque doc éventuel, pour garder une trace datée par
+                    // maison de financement (cf. "Banques précédentes").
                     const archive = {
                       financeur: formData.financement,
                       dateEnvoi: formData.dateEnvoiFin || '',
@@ -20489,20 +20487,17 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     setFormData({
                       ...formData,
                       envoisHistorique: [...(formData.envoisHistorique || []), archive],
-                      financement: newFin,
-                      // 🔁 REBASCULE : on NE part PAS direct en banque. Le dossier
-                      // doit d'abord repasser par un CONTRÔLE QUALITÉ spécifique
-                      // (CQ de rebascule, différent du CQ initial). On reset donc
-                      // le CQ + tout le cycle financement ; le dossier revient à
-                      // l'étape CQ (statutControleQualite vide → alerte CQ).
+                      // 🔁 REBASCULE : le dossier repasse par un CONTRÔLE QUALITÉ
+                      // spécifique. On NE choisit PAS encore la nouvelle banque :
+                      // ça se fera APRÈS la validation du CQ. On reset le CQ + tout
+                      // le cycle financement ; le dossier revient à l'étape CQ.
                       cqRebascule: true,
                       cqRebasculeFrom: formData.financement,
-                      cqRebasculeTo: newFin,
+                      cqRebasculeTo: '',
                       cqRebasculeAt: today,
+                      financement: '', // à re-choisir APRÈS le CQ de rebascule
                       dateControleQualite: '',
                       statutControleQualite: '',
-                      // Reset COMPLET du cycle financement : la nouvelle banque
-                      // recommence à zéro APRÈS le CQ (envoi → retour → accord).
                       dateEnvoiFin: '',
                       dateRetourFin: '',
                       dateAccord: '',
@@ -20513,10 +20508,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       statutFin: '',
                       statut: 'A_EN_COURS',
                     });
-                  }} defaultValue="" className="w-full px-3 py-2 bg-white border-2 border-rose-300 rounded-xl text-sm font-bold text-rose-700">
-                    <option value="">— Choisir une autre banque —</option>
-                    {FINANCEMENTS.filter(f => f !== formData.financement).map(f => <option key={f} value={f}>📤 Renvoyer à {f}</option>)}
-                  </select>
+                  }} className="w-full px-3 py-2 bg-orange-500 hover:bg-orange-600 text-white rounded-xl text-sm font-bold">
+                    🔁 Repasser en contrôle qualité (rebascule)
+                  </button>
                 </div>
               )}
 
