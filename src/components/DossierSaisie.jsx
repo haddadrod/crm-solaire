@@ -18732,14 +18732,27 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
       const { data: { session } } = await supabase.auth.getSession();
       const headers = { 'Content-Type': 'application/json' };
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const res = await fetch('/api/classify-dossier', {
-        method: 'POST',
-        headers,
-        body: JSON.stringify({
-          storagePath: bucketPath,
-          availableSocietes: (societes || []).map(s => ({ id: s.id, label: s.label })),
-        }),
+      // 🔁 Reprise auto : un « Failed to fetch » (réseau) est souvent transitoire
+      //    — déploiement du CRM en cours, démarrage à froid de la fonction, ou
+      //    coupure réseau. On retente 2× avant d'abandonner.
+      const reqBody = JSON.stringify({
+        storagePath: bucketPath,
+        availableSocietes: (societes || []).map(s => ({ id: s.id, label: s.label })),
       });
+      let res = null;
+      for (let attempt = 1; attempt <= 3; attempt++) {
+        try {
+          res = await fetch('/api/classify-dossier', { method: 'POST', headers, body: reqBody });
+          break; // réponse reçue (même si erreur HTTP) → on sort, c'est géré plus bas
+        } catch (netErr) {
+          if (attempt < 3) {
+            setDossierScanState({ status: 'classifying', error: `Réseau instable — nouvelle tentative (${attempt + 1}/3)…`, sections: null });
+            await new Promise(r => setTimeout(r, 2500 * attempt));
+            continue;
+          }
+          throw new Error('Connexion interrompue (Failed to fetch) — souvent une mise à jour du CRM en cours. Patiente quelques secondes puis relance le scan.');
+        }
+      }
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
       const result = payload.data || {};
