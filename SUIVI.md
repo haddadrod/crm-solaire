@@ -19,6 +19,8 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-06-30
+- ✅ **Assistant IA secrétaire — Phase 1 (agit\!)** : l'assistant 🤖 sait maintenant DÉPLACER un dossier (« bascule HADDAD en financement », « passe X en contrôle qualité », « marque payé/annulé ») → identifie le dossier, propose statut actuel→cible, applique APRÈS confirmation. Intention `move_status` + `targetStatutId` côté endpoint. — #571
+- ✅ **Alerte séparée « 🔁 Refinancement »** : dossiers en rebascule (CQ validé) sortent de « à envoyer banque » et ont leur propre alerte. — #570
 - ✅ **Rebascule : CQ d'abord** — au refus banque, bouton « 🔁 Repasser en contrôle qualité (rebascule) » ; le choix de la nouvelle banque se fait APRÈS validation du CQ. — #567
 - ✅ **Refinancement marqué** — après CQ de rebascule validé, l'envoi en banque est étiqueté « 🔁 REFINANCEMENT » (alerte + chip étape Financement). — #568
 - ✅ **CQ de rebascule** : refus banque + renvoi vers une autre maison de financement → le dossier repasse par un **contrôle qualité spécifique** (marqué « 🔁 REBASCULE » : bandeau dans la section CQ + préfixe dans l'alerte CQ + texte sur le sélecteur). Champs `cqRebascule/From/To/At`. — #565
