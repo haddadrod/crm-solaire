@@ -19,6 +19,7 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-06-30
+- ✅ **CQ de rebascule** : refus banque + renvoi vers une autre maison de financement → le dossier repasse par un **contrôle qualité spécifique** (marqué « 🔁 REBASCULE » : bandeau dans la section CQ + préfixe dans l'alerte CQ + texte sur le sélecteur). Champs `cqRebascule/From/To/At`. — #565
 - ✅ **Alerte fraude acquittable** : bouton « ✓ J'ai vérifié — c'est bon » sur le document (panneau anti-fraude) → flag `doc.fraudReviewed`, le dossier sort de l'alerte fraude (plus de clignotement), badge vert ✅. Réversible (« Ré-signaler »). — #563
 - ✅ **Fix alertes « dossier annulé »** : un dossier `W2_ANNULER` ne génère plus AUCUNE alerte. 9 alertes oubliaient la garde (Prestataires, Financement, Manque docs, Fraude, Litige, SAV, Client à rappeler, Paiement, Récup TVA) → helper `isAnnule()`. Exception voulue : « matériel non rendu ». — #559
 - ✅ **Drive Factures — diagnostic « 0 facture »** : le bouton « Télécharger les factures » affiche maintenant le nb de boîtes scannées, le nb de PDF trouvés, et les erreurs de l'API (token Gmail expiré…). Encart ambre si 0 boîte connectée → renvoie vers Réglages → Email d'envoi. — #560
