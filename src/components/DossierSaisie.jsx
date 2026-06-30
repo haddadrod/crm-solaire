@@ -2135,6 +2135,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     societe: activeSociete || (societes[0]?.id || ''), // 🏢 société émettrice (Yolico/Elsun)
     // Étape 1 : contrôle qualité (avant envoi banque)
     dateControleQualite: '', statutControleQualite: '', // '' | 'ok' | 'pas_ok'
+    // 🔁 CQ de REBASCULE : positionné quand une banque a refusé et qu'on renvoie
+    // vers une AUTRE maison de financement. Le CQ qui suit est un contrôle
+    // SPÉCIFIQUE (différent du CQ initial) → on le signale clairement.
+    cqRebascule: false, cqRebasculeFrom: '', cqRebasculeTo: '', cqRebasculeAt: '',
     // 💳 Crédits / leasings en cours du client, déclarés pendant l'appel CQ
     // ("vous avez des crédits en cours ?"). Liste typée : [{ type, montant }].
     creditsClientCQ: [],
@@ -4643,7 +4647,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       let level = 'warn';
       if (jours >= 5) level = 'critical';
       else if (jours >= 2) level = 'high';
-      rappelsControleQualite.push({ dossier: d, jours, level });
+      rappelsControleQualite.push({ dossier: d, jours, level, rebascule: !!d.cqRebascule, rebasculeFrom: d.cqRebasculeFrom || '', rebasculeTo: d.cqRebasculeTo || '' });
     });
     rappelsControleQualite.sort((a, b) => b.jours - a.jours);
 
@@ -19944,6 +19948,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <span className="flex items-center gap-1.5">
                   <span className="text-purple-600 text-[11px]">{foldedSteps.cq ? '▶' : '▼'}</span>
                   <span>1️⃣ 📋 Contrôle qualité (avant envoi banque)</span>
+                  {formData.cqRebascule && (
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-300">🔁 REBASCULE</span>
+                  )}
                 </span>
                 {formData.statutControleQualite && (
                   <span className={`text-[12px] font-bold px-2 py-1 rounded-full ${
@@ -19957,6 +19964,18 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               </button>
 
               {!foldedSteps.cq && (<>
+              {formData.cqRebascule && (
+                <div className="mb-2 p-2.5 bg-orange-50 border-2 border-orange-300 rounded-xl">
+                  <div className="text-[13px] font-bold text-orange-800">🔁 Contrôle qualité de REBASCULE</div>
+                  <div className="text-[12px] text-orange-700 mt-0.5">
+                    Ce CQ fait suite à un <span className="font-bold">refus de financement</span>
+                    {formData.cqRebasculeFrom ? <> par <span className="font-bold">{formData.cqRebasculeFrom}</span></> : null}
+                    {formData.cqRebasculeTo ? <> → renvoi vers <span className="font-bold">{formData.cqRebasculeTo}</span></> : null}
+                    {formData.cqRebasculeAt ? <> (le {formatDateForSheet(formData.cqRebasculeAt)})</> : null}.
+                    {' '}⚠️ C'est un <span className="font-bold">contrôle spécifique de rebascule</span>, pas le CQ initial — vérifie les points propres à la nouvelle maison de financement.
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="block text-[12px] font-semibold text-slate-600 mb-1">📞 Date contrôle qualité (appel client)</label>
                 <div className="flex gap-1">
@@ -20448,7 +20467,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
               {formData.statutFin === 'refusé' && (
                 <div className="mt-3 p-3 bg-rose-50 border-2 border-rose-300 rounded-xl">
-                  <div className="text-xs font-bold text-rose-700 mb-2">⚠️ Refusé par {formData.financement} → renvoyer chez :</div>
+                  <div className="text-xs font-bold text-rose-700 mb-2">⚠️ Refusé par {formData.financement} → rebascule vers une autre maison de financement :</div>
+                  <div className="text-[12px] text-rose-600 mb-2">🔁 Le dossier repassera d'abord par un <span className="font-bold">contrôle qualité de rebascule</span> (spécifique), puis partira vers la nouvelle banque.</div>
                   <select onChange={(e) => {
                     const newFin = e.target.value;
                     if (!newFin) return;
@@ -20470,18 +20490,28 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       ...formData,
                       envoisHistorique: [...(formData.envoisHistorique || []), archive],
                       financement: newFin,
+                      // 🔁 REBASCULE : on NE part PAS direct en banque. Le dossier
+                      // doit d'abord repasser par un CONTRÔLE QUALITÉ spécifique
+                      // (CQ de rebascule, différent du CQ initial). On reset donc
+                      // le CQ + tout le cycle financement ; le dossier revient à
+                      // l'étape CQ (statutControleQualite vide → alerte CQ).
+                      cqRebascule: true,
+                      cqRebasculeFrom: formData.financement,
+                      cqRebasculeTo: newFin,
+                      cqRebasculeAt: today,
+                      dateControleQualite: '',
+                      statutControleQualite: '',
                       // Reset COMPLET du cycle financement : la nouvelle banque
-                      // recommence à zéro (envoi → retour → manque doc → accord).
-                      // Sans ça, les dates de l'ancienne banque restaient affichées.
-                      dateEnvoiFin: today,
+                      // recommence à zéro APRÈS le CQ (envoi → retour → accord).
+                      dateEnvoiFin: '',
                       dateRetourFin: '',
                       dateAccord: '',
                       motifManqueDoc: '',
                       dateNotifRegie: '',
                       dateRecuRegie: '',
                       dateRenvoiDocs: '',
-                      statutFin: 'envoyé',
-                      statut: 'B1_EN_COURS_FINANCEMENT',
+                      statutFin: '',
+                      statut: 'A_EN_COURS',
                     });
                   }} defaultValue="" className="w-full px-3 py-2 bg-white border-2 border-rose-300 rounded-xl text-sm font-bold text-rose-700">
                     <option value="">— Choisir une autre banque —</option>
@@ -29380,8 +29410,9 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
       bgHeader: 'from-purple-50 to-violet-50',
       borderColor: 'border-purple-200',
       lineLabel: (d) => {
-        if (d.dateControleQualite) return `📞 CQ fait le ${new Date(d.dateControleQualite).toLocaleDateString('fr-FR')} · à statuer`;
-        return `Pas encore de contrôle qualité`;
+        const reb = d.cqRebascule ? `🔁 CQ DE REBASCULE${d.cqRebasculeTo ? ` vers ${d.cqRebasculeTo}` : ''} — ` : '';
+        if (d.dateControleQualite) return `${reb}📞 CQ fait le ${new Date(d.dateControleQualite).toLocaleDateString('fr-FR')} · à statuer`;
+        return `${reb}Pas encore de contrôle qualité`;
       },
       suffixLabel: 'depuis création',
     },
