@@ -19,6 +19,8 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-06-30
+- ✅ **Panneaux « Performance des … » repliés par défaut** (poseurs, régies, fournisseurs, commerciaux, banques) → plus besoin de scroller tout en bas / fermer à chaque fois. Clic sur l'en-tête pour déplier.
+- ✅ **Bouton « retour » du navigateur** : ouvrir un dossier (QuickView) empile une entrée d'historique → « retour » FERME le dossier au lieu de quitter le CRM.
 - ✅ **Tableau de bord nettoyé** : panneau « Prestataires à payer (+30 jours) » RETIRÉ (doublon du Rapport de paiement) + retiré du comptage du badge 🔔.
 - ✅ **Activité par utilisateur — accents normalisés** : regroupement des noms sans accent + insensible à la casse (« Léana » = « Leana ») → activité consolidée, plus de personne éclatée/manquante.
 - ✅ **Scan dossier — reprise auto sur « Failed to fetch »** : l'appel `/api/classify-dossier` retente 2× (réseau instable / déploiement en cours / cold start) au lieu d'échouer sec. Message clair si ça persiste. — #588
