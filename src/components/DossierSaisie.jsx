@@ -20306,6 +20306,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <span className="flex items-center gap-1.5">
                   <span className="text-blue-600 text-[11px]">{foldedSteps.financement ? '▶' : '▼'}</span>
                   <span>2️⃣ 💳 Financement — {formData.financement || '(à choisir)'}</span>
+                  {formData.cqRebascule && (
+                    <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-orange-700 border border-orange-300">🔁 REFINANCEMENT</span>
+                  )}
                 </span>
                 {formData.statutFin && (
                   <span className={`text-[12px] font-bold px-2 py-1 rounded-full ${
@@ -29432,7 +29435,7 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
       gradient: 'from-pink-500 to-rose-500',
       bgHeader: 'from-pink-50 to-rose-50',
       borderColor: 'border-pink-200',
-      lineLabel: (d) => `Validé le ${d.dateControleQualite && new Date(d.dateControleQualite).toLocaleDateString('fr-FR')} → ${d.financement || '(financeur à choisir)'}`,
+      lineLabel: (d) => `${d.cqRebascule ? '🔁 REFINANCEMENT — ' : ''}Validé le ${d.dateControleQualite && new Date(d.dateControleQualite).toLocaleDateString('fr-FR')} → ${d.financement || '(financeur à choisir)'}`,
       suffixLabel: 'depuis validation',
     },
     financement: {
