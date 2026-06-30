@@ -19,6 +19,8 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-06-30
+- ✅ **Tableau de bord nettoyé** : panneau « Prestataires à payer (+30 jours) » RETIRÉ (doublon du Rapport de paiement) + retiré du comptage du badge 🔔.
+- ✅ **Activité par utilisateur — accents normalisés** : regroupement des noms sans accent + insensible à la casse (« Léana » = « Leana ») → activité consolidée, plus de personne éclatée/manquante.
 - ✅ **Scan dossier — reprise auto sur « Failed to fetch »** : l'appel `/api/classify-dossier` retente 2× (réseau instable / déploiement en cours / cold start) au lieu d'échouer sec. Message clair si ça persiste. — #588
 - ✅ **Champ « Téléphone 2 »** dans Identité (form). + fix latent : `mobile` n'était pas recopié par `startEdit` → éditer+sauver un dossier perdait le mobile ; corrigé en même temps. — #587
 - ✅ **Équipe interne payée sur facture (comme les régies)** : chaque rôle interne a sur le dossier n° facture + upload PDF + extraction IA du HT (remplit la commission) + bouton payé/non payé. Société (émetteur) par personne définie dans Réglages → Équipe interne (annuaire `internesContacts`). Champs `<role>FactureNo/FactureFile`. Form + QuickView. — #585
