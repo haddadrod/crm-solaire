@@ -6556,6 +6556,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 : d
               ));
             }}
+            onMoveStatus={(localId, newStatutId, cmd) => {
+              // 🗂️ Déplacement de dossier demandé via l'assistant IA (confirmé par
+              // l'utilisateur). On fixe le statut manuellement (statutLocked) pour
+              // que le déplacement « tienne », et on trace dans l'historique.
+              const userTag = currentUser || '(anonyme)';
+              setDossiers(prev => prev.map(d => d.localId === localId
+                ? { ...d, statut: newStatutId, statutLocked: true, historique: [...(d.historique || []), { date: new Date().toISOString(), user: userTag, action: 'move_status_ia', to: newStatutId, command: cmd || '' }] }
+                : d
+              ));
+            }}
           />
         )}
 
@@ -6574,7 +6584,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             actions principales. */}
         <button
           onClick={() => setShowAssistantIa(true)}
-          title="Assistant IA — envoie un mail à un client en lui donnant un ordre"
+          title="Assistant IA — donne un ordre : envoyer un mail, ouvrir un dossier, ou déplacer un dossier dans le parcours (ex : « bascule HADDAD en financement »)"
           className="fixed bottom-6 right-6 z-40 px-4 py-3 bg-gradient-to-r from-violet-500 to-fuchsia-500 hover:from-violet-600 hover:to-fuchsia-600 text-white rounded-full shadow-lg hover:shadow-xl transition-all flex items-center gap-2 font-bold text-sm"
         >
           <Sparkles className="w-5 h-5" />
@@ -26536,8 +26546,9 @@ function AiCopilotModal({ action, dossier, currentUser, gmailOAuth, emailConfig,
 // Tape un ordre en langage naturel ("Envoie un mail à Marage pour confirmer
 // la pose mardi"), Claude identifie le client + rédige le mail, tu valides
 // et tu envoies via Gmail OAuth ou SMTP.
-function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onClose, onSent, onOpenDossier }) {
-  const [phase, setPhase] = useState('input'); // 'input' | 'draft' | 'answer' | 'sending'
+function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onClose, onSent, onOpenDossier, onMoveStatus }) {
+  const [phase, setPhase] = useState('input'); // 'input' | 'draft' | 'answer' | 'action' | 'sending'
+  const [moving, setMoving] = useState(false);
   const [command, setCommand] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -26588,6 +26599,11 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
       }
       if (d.intent === 'answer') {
         setPhase('answer');
+        return;
+      }
+      if (d.intent === 'move_status' && d.targetLocalId && d.targetStatutId) {
+        // 🗂️ Déplacement de dossier → on demande confirmation AVANT d'appliquer.
+        setPhase('action');
         return;
       }
       // 'email' ou 'ambiguous' → phase draft
@@ -26641,6 +26657,17 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
   const candidates = (draft?.candidateLocalIds || [])
     .map(id => dossiers.find(d => d.localId === id))
     .filter(Boolean);
+
+  // 🗂️ Déplacement de dossier (move_status) : statut cible + application confirmée.
+  const targetStatutObj = useMemo(() => STATUTS.find(s => s.id === (draft?.targetStatutId || '')) || null, [draft]);
+  const applyMove = () => {
+    if (!targetDossier || !draft?.targetStatutId || !onMoveStatus) return;
+    setMoving(true);
+    try {
+      onMoveStatus(targetDossier.localId, draft.targetStatutId, command.trim());
+      onClose();
+    } finally { setMoving(false); }
+  };
 
   // ===== Dictée vocale (Web Speech API) =====
   // Chrome/Edge/Safari supportent. Pas Firefox. On dégrade silencieusement.
@@ -26733,7 +26760,7 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
                 onChange={(e) => { setCommand(e.target.value); baseTranscriptRef.current = e.target.value; }}
                 onKeyDown={(e) => { if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) askIa(); }}
                 rows={5}
-                placeholder={`Exemples :\n• Envoie un mail à Marage pour confirmer la pose mardi prochain\n• Ouvre le dossier de Borbeau\n• Combien de dossiers j'ai en cours ce mois ?\n• Quel est le statut de HADDAD ?`}
+                placeholder={`Exemples :\n• Envoie un mail à Marage pour confirmer la pose mardi prochain\n• Ouvre le dossier de Borbeau\n• Bascule HADDAD en financement\n• Passe Marage en contrôle qualité\n• Marque Borbeau comme payé\n• Combien de dossiers j'ai en cours ce mois ?`}
                 className={`w-full px-3 py-2 bg-white border-2 rounded-xl text-sm resize-none ${isListening ? 'border-rose-400 ring-2 ring-rose-100' : 'border-slate-200 focus:border-violet-400 focus:ring-2 focus:ring-violet-100'}`}
                 autoFocus
               />
@@ -26776,6 +26803,44 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
               <div className="flex justify-between gap-2 pt-2">
                 <button onClick={() => { setPhase('input'); setDraft(null); }} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">← Nouvel ordre</button>
                 <button onClick={onClose} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold">Fermer</button>
+              </div>
+            </>
+          )}
+
+          {phase === 'action' && draft && (
+            <>
+              <div className="p-4 bg-gradient-to-br from-orange-50 to-amber-50 border-2 border-orange-200 rounded-2xl">
+                <div className="flex items-start gap-3">
+                  <span className="text-2xl">🗂️</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-bold text-orange-700 uppercase tracking-wide mb-1">Déplacer le dossier</div>
+                    {targetDossier ? (
+                      <div className="text-sm text-slate-800">
+                        <div className="font-bold">{targetDossier.nom} {targetDossier.prenom}</div>
+                        <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+                          <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 text-xs font-bold">
+                            {(STATUTS.find(s => s.id === targetDossier.statut)?.emoji) || ''} {(STATUTS.find(s => s.id === targetDossier.statut)?.label) || targetDossier.statut || '(sans statut)'}
+                          </span>
+                          <span className="text-slate-400 font-bold">→</span>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${targetStatutObj?.bg || 'bg-orange-100'} ${targetStatutObj?.text || 'text-orange-700'}`}>
+                            {targetStatutObj?.emoji} {targetStatutObj?.label || draft.targetStatutId}
+                          </span>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="text-sm text-rose-700 font-bold">⚠️ Dossier introuvable — annule et reformule avec le nom exact.</div>
+                    )}
+                  </div>
+                </div>
+                {draft.reasoning && <div className="text-[12px] text-orange-600 italic mt-3 pl-9">↳ {draft.reasoning}</div>}
+                <div className="text-[12px] text-slate-500 mt-2 pl-9">Le statut sera fixé manuellement (🔒) ; tu pourras le repasser en auto depuis le dossier.</div>
+              </div>
+              <div className="flex justify-between gap-2 pt-2">
+                <button onClick={() => { setPhase('input'); setDraft(null); }} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">← Nouvel ordre</button>
+                <div className="flex gap-2">
+                  <button onClick={onClose} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold">Annuler</button>
+                  <button onClick={applyMove} disabled={moving || !targetDossier || !targetStatutObj} className="px-4 py-2 bg-orange-600 hover:bg-orange-700 disabled:opacity-50 text-white rounded-lg text-sm font-bold">{moving ? '⏳…' : '✓ Confirmer le déplacement'}</button>
+                </div>
               </div>
             </>
           )}

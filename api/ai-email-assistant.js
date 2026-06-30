@@ -52,8 +52,8 @@ const SCHEMA = {
   properties: {
     intent: {
       type: 'string',
-      enum: ['email', 'open_dossier', 'answer', 'ambiguous'],
-      description: "Type d'action déduite de l'ordre. 'email' pour rédiger un mail, 'open_dossier' pour juste ouvrir un dossier, 'answer' pour répondre à une question/donner une info, 'ambiguous' si plusieurs clients matchent ou ordre trop vague.",
+      enum: ['email', 'open_dossier', 'answer', 'ambiguous', 'move_status'],
+      description: "Type d'action déduite de l'ordre. 'email' pour rédiger un mail, 'open_dossier' pour juste ouvrir un dossier, 'answer' pour répondre à une question/donner une info, 'move_status' pour DÉPLACER un dossier dans le parcours (changer son statut), 'ambiguous' si plusieurs clients matchent ou ordre trop vague.",
     },
     targetLocalId: {
       type: 'string',
@@ -72,12 +72,16 @@ const SCHEMA = {
       type: 'string',
       description: "Corps du mail (si intent='email') OU réponse à la question (si intent='answer'). Format mail : Bonjour [Prénom],\\n\\n[contenu]\\n\\nCordialement,\\n[Ton nom]. Format réponse : texte libre en français.",
     },
+    targetStatutId: {
+      type: 'string',
+      description: "UNIQUEMENT si intent='move_status' : l'id EXACT du statut cible choisi dans la liste autorisée (ex 'B1_EN_COURS_FINANCEMENT'). Vide sinon.",
+    },
     reasoning: {
       type: 'string',
       description: "1 phrase expliquant ce que tu as compris de l'ordre.",
     },
   },
-  required: ['intent', 'targetLocalId', 'candidateLocalIds', 'subject', 'body', 'reasoning'],
+  required: ['intent', 'targetLocalId', 'candidateLocalIds', 'subject', 'body', 'targetStatutId', 'reasoning'],
   additionalProperties: false,
 };
 
@@ -101,10 +105,26 @@ const SYSTEM_PROMPT = `Tu es l'assistant IA du CRM d'une activité de vente et p
 4. **intent='ambiguous'** — plusieurs clients matchent l'ordre OU l'ordre est trop vague pour décider.
    → Liste les candidats dans candidateLocalIds. reasoning explique pourquoi.
 
+5. **intent='move_status'** — l'ordre demande de DÉPLACER un dossier dans le parcours / changer son statut
+   ("bascule X en financement", "passe X en contrôle qualité", "mets X en pose", "marque X payé/annulé").
+   → Identifie le client (targetLocalId). Si plusieurs clients matchent → 'ambiguous' à la place.
+   → targetStatutId = l'id EXACT du statut cible parmi cette liste autorisée :
+     • A1_CONTROLE_QUALITE — contrôle qualité (CQ)
+     • B_A_ENVOYER_BANQUE — à envoyer en financement / en banque
+     • B1_EN_COURS_FINANCEMENT — en financement (dossier envoyé à la banque) ← "en financement" par défaut
+     • B2_A_ENVOYER_POSE — à programmer en pose
+     • B4_EN_COURS_POSE — en cours de pose
+     • W_DOSSIER_PAYER — payé
+     • W2_ANNULER — annulé
+     • C_LITIGE — litige
+     • D_SAV — SAV
+   → subject/body vides. reasoning = ce que tu déplaces et vers quoi.
+
 Règles globales :
 - Si l'ordre est une question pure ("combien", "quel", "qui", "où est"), c'est 'answer'.
 - Si l'ordre commence par un verbe d'envoi de mail, c'est 'email'.
 - Si l'ordre dit juste "ouvre", "affiche", "montre" un nom, c'est 'open_dossier'.
+- Si l'ordre dit "bascule", "passe", "déplace", "mets", "marque" un dossier vers une étape/statut, c'est 'move_status'.
 - En cas de doute entre email et open_dossier, choisis email seulement si "mail", "message", "écris" ou "envoie" est explicite.`;
 
 export default async function handler(req, res) {
