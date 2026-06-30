@@ -19,6 +19,8 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-06-30
+- ✅ **Rebascule : CQ d'abord** — au refus banque, bouton « 🔁 Repasser en contrôle qualité (rebascule) » ; le choix de la nouvelle banque se fait APRÈS validation du CQ. — #567
+- ✅ **Refinancement marqué** — après CQ de rebascule validé, l'envoi en banque est étiqueté « 🔁 REFINANCEMENT » (alerte + chip étape Financement). — #568
 - ✅ **CQ de rebascule** : refus banque + renvoi vers une autre maison de financement → le dossier repasse par un **contrôle qualité spécifique** (marqué « 🔁 REBASCULE » : bandeau dans la section CQ + préfixe dans l'alerte CQ + texte sur le sélecteur). Champs `cqRebascule/From/To/At`. — #565
 - ✅ **Alerte fraude acquittable** : bouton « ✓ J'ai vérifié — c'est bon » sur le document (panneau anti-fraude) → flag `doc.fraudReviewed`, le dossier sort de l'alerte fraude (plus de clignotement), badge vert ✅. Réversible (« Ré-signaler »). — #563
 - ✅ **Fix alertes « dossier annulé »** : un dossier `W2_ANNULER` ne génère plus AUCUNE alerte. 9 alertes oubliaient la garde (Prestataires, Financement, Manque docs, Fraude, Litige, SAV, Client à rappeler, Paiement, Récup TVA) → helper `isAnnule()`. Exception voulue : « matériel non rendu ». — #559
