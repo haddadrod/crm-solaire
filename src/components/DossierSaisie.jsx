@@ -3193,6 +3193,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       ...(formData.regies || []),
       ...(formData.poseurs || []),
     ].forEach(p => {
+      if (p.factureGroupee) return; // 📋 facture groupée multi-clients → exemptée
       const conflicts = findFactureNoDupes(p.factureNo, dossiers, editingId);
       if (conflicts.length > 0) {
         dupesDetected.push({ factureNo: p.factureNo, conflicts });
@@ -11448,9 +11449,11 @@ function findFactureNoDupes(factureNo, allDossiers = [], currentLocalId = null) 
   allDossiers.forEach(d => {
     if (!d || d.localId === currentLocalId) return;
     const facKeys = new Set();
-    (d.fournisseurs || []).forEach(f => { const k = norm(f.factureNo); if (k) facKeys.add(k); });
-    (d.regies || []).forEach(r => { const k = norm(r.factureNo); if (k) facKeys.add(k); });
-    (d.poseurs || []).forEach(p => { const k = norm(p.factureNo); if (k) facKeys.add(k); });
+    // 📋 Les lignes « facture groupée » (1 facture régie pour PLUSIEURS clients)
+    // sont exemptées : leur n° est légitimement présent sur plusieurs dossiers.
+    (d.fournisseurs || []).forEach(f => { if (f.factureGroupee) return; const k = norm(f.factureNo); if (k) facKeys.add(k); });
+    (d.regies || []).forEach(r => { if (r.factureGroupee) return; const k = norm(r.factureNo); if (k) facKeys.add(k); });
+    (d.poseurs || []).forEach(p => { if (p.factureGroupee) return; const k = norm(p.factureNo); if (k) facKeys.add(k); });
     if (facKeys.has(key)) {
       conflicts.push(`${d.nom || ''} ${d.prenom || ''}`.trim() || 'sans nom');
     }
@@ -11510,9 +11513,11 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
         if (!factureMap[k]) factureMap[k] = [];
         factureMap[k].push({ d, type, prestaName, raw });
       };
-      (d.fournisseurs || []).forEach(f => push(f.factureNo, 'Fournisseur', f.nom));
-      (d.regies || []).forEach(r => push(r.factureNo, 'Régie', r.nom));
-      (d.poseurs || []).forEach(p => push(p.factureNo, 'Poseur', p.nom));
+      // 📋 « Facture groupée » (1 facture pour plusieurs clients) → exemptée du
+      // contrôle de doublon de n° (légitimement présente sur plusieurs dossiers).
+      (d.fournisseurs || []).forEach(f => { if (!f.factureGroupee) push(f.factureNo, 'Fournisseur', f.nom); });
+      (d.regies || []).forEach(r => { if (!r.factureGroupee) push(r.factureNo, 'Régie', r.nom); });
+      (d.poseurs || []).forEach(p => { if (!p.factureGroupee) push(p.factureNo, 'Poseur', p.nom); });
     });
     // Garde uniquement les N° qui apparaissent sur >1 dossier distinct (un
     // même N° sur le même dossier 2 lignes n'est pas un doublon métier).
@@ -11555,9 +11560,9 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
       // 🧾 Doublons N° facture : un N° de ce dossier apparaît aussi sur un
       // autre. On liste les autres clients pour que tu retrouves la collision.
       const myFacKeys = new Set();
-      (d.fournisseurs || []).forEach(f => { const k = normFac(f.factureNo); if (k) myFacKeys.add(k); });
-      (d.regies || []).forEach(r => { const k = normFac(r.factureNo); if (k) myFacKeys.add(k); });
-      (d.poseurs || []).forEach(p => { const k = normFac(p.factureNo); if (k) myFacKeys.add(k); });
+      (d.fournisseurs || []).forEach(f => { if (f.factureGroupee) return; const k = normFac(f.factureNo); if (k) myFacKeys.add(k); });
+      (d.regies || []).forEach(r => { if (r.factureGroupee) return; const k = normFac(r.factureNo); if (k) myFacKeys.add(k); });
+      (d.poseurs || []).forEach(p => { if (p.factureGroupee) return; const k = normFac(p.factureNo); if (k) myFacKeys.add(k); });
       myFacKeys.forEach(k => {
         if (!factureDuplicates[k]) return;
         const autresClients = factureDuplicates[k]
@@ -19518,9 +19523,15 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             <input type="text" value={r.bl || ''} onChange={(e) => upd({ bl: e.target.value })} placeholder="📦 N° BL" className={inputCls} />
                             <div>
                               <input type="text" value={r.factureNo || ''} onChange={(e) => upd({ factureNo: e.target.value })} placeholder="🧾 N° facture" className={inputCls} />
-                              <FactureDupeWarning factureNo={r.factureNo} allDossiers={dossiers} currentLocalId={editingId} />
+                              {!r.factureGroupee && <FactureDupeWarning factureNo={r.factureNo} allDossiers={dossiers} currentLocalId={editingId} />}
                             </div>
                           </div>
+                          {/* 📋 Facture groupée : 1 facture régie pour PLUSIEURS clients.
+                              Coché → ce n° n'est plus signalé comme doublon (légitime). */}
+                          <label className="flex items-center gap-2 text-[13px] text-slate-600 cursor-pointer select-none">
+                            <input type="checkbox" checked={!!r.factureGroupee} onChange={(e) => upd({ factureGroupee: e.target.checked })} className="w-4 h-4 accent-purple-600" />
+                            📋 Facture groupée (1 facture pour plusieurs clients) — ne plus signaler ce n° comme doublon
+                          </label>
                           <FactureFileInput
                             fileId={r.factureFile || ''}
                             onChange={(id) => upd({ factureFile: id })}
@@ -19536,10 +19547,10 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                               if (htR > 0 && !r.htCustom) updIa.htCustom = String(htR);
                               if (data.dateFacture && !r.dateFacture) updIa.dateFacture = String(data.dateFacture);
                               if (Object.keys(updIa).length > 0) upd(updIa);
-                              if (updIa.factureNo) {
+                              if (updIa.factureNo && !r.factureGroupee) {
                                 const conflicts = findFactureNoDupes(updIa.factureNo, dossiers, editingId);
                                 if (conflicts.length > 0) {
-                                  alert(`⚠️ N° facture ${updIa.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.`);
+                                  alert(`⚠️ N° facture ${updIa.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.\n\n(Si c'est une facture groupée multi-clients, coche « 📋 Facture groupée ».)`);
                                 }
                               }
                             }}
@@ -25612,7 +25623,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               <input type="text" value={r.bl || ''} onChange={(e) => updateRegie(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-purple-200 rounded text-[12px]" />
                               <input type="text" value={r.factureNo || ''} onChange={(e) => updateRegie(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-purple-200 rounded text-[12px]" />
                             </div>
-                            <FactureDupeWarning factureNo={r.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} />
+                            {!r.factureGroupee && <FactureDupeWarning factureNo={r.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} />}
+                            <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer select-none">
+                              <input type="checkbox" checked={!!r.factureGroupee} onChange={(e) => updateRegie(i, { factureGroupee: e.target.checked })} className="w-3.5 h-3.5 accent-purple-600" />
+                              📋 Facture groupée (plusieurs clients) — pas de doublon
+                            </label>
                             <FactureFileInput
                               fileId={r.factureFile || ''}
                               onChange={(id) => updateRegie(i, { factureFile: id })}
