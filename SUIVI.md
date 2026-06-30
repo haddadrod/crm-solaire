@@ -18,6 +18,12 @@
 
 ## 🗓️ Journal (plus récent en haut)
 
+### 2026-06-30
+- ✅ **Fix alertes « dossier annulé »** : un dossier `W2_ANNULER` ne génère plus AUCUNE alerte. 9 alertes oubliaient la garde (Prestataires, Financement, Manque docs, Fraude, Litige, SAV, Client à rappeler, Paiement, Récup TVA) → helper `isAnnule()`. Exception voulue : « matériel non rendu ». — #559
+- ✅ **Drive Factures — diagnostic « 0 facture »** : le bouton « Télécharger les factures » affiche maintenant le nb de boîtes scannées, le nb de PDF trouvés, et les erreurs de l'API (token Gmail expiré…). Encart ambre si 0 boîte connectée → renvoie vers Réglages → Email d'envoi. — #560
+- ✅ **Drive Factures — « 🕐 Dernière récupération : jj/mm/aaaa à HHhMM »** : le cron (toutes les 15 min) + le bouton manuel écrivent `gmail-prefetch-last-run` dans Supabase ; affiché sous les boutons avec nb de boîtes + nouvelles. — #561
+- 🔎 **En cours d'investigation** : le total de factures n'augmenterait plus (nouvelles non récupérées). Cause la plus probable = **connexion Gmail d'une boîte expirée** (app Google en mode Test → jeton qui meurt). À confirmer via le nouveau diagnostic, puis reconnecter la boîte dans Réglages → Email d'envoi. ⚠️ Le téléchargement ne scanne QUE les boîtes **partagées** (`gmail-shared-inboxes`), pas les boîtes perso.
+
 ### 2026-06-29
 - ✅ Erreur 500 Drive Factures corrigée (pagination `ia-list` + maxDuration 60s) — #554
 - ✅ Compteur de résultats « 📊 N dossiers » dans la barre de recherche — #555
