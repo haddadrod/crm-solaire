@@ -1828,6 +1828,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [showDocsForId, setShowDocsForId] = useState(null); // 📎 modal documents
   const [showHistForId, setShowHistForId] = useState(null); // 📜 modal historique
   const [showQuickViewId, setShowQuickViewId] = useState(null); // 👁️ panneau aperçu rapide
+  // 🔙 Bouton « retour » du navigateur : quand un dossier est ouvert (QuickView),
+  //    on empile une entrée d'historique. Ainsi « retour » FERME le dossier au
+  //    lieu de sortir du CRM. (Demande utilisateur.)
+  useEffect(() => {
+    if (!showQuickViewId) return;
+    window.history.pushState({ crmOverlay: 'quickview' }, '');
+    const onPop = () => setShowQuickViewId(null);
+    window.addEventListener('popstate', onPop);
+    return () => window.removeEventListener('popstate', onPop);
+  }, [showQuickViewId]);
   const [quickViewScrollTo, setQuickViewScrollTo] = useState(null); // 🎯 section à scroller dans la bannière
   const [showSearch, setShowSearch] = useState(false); // 🔍 recherche globale Ctrl+K
   const [showAssistantIa, setShowAssistantIa] = useState(false); // 🤖 modale assistant IA email
@@ -12142,8 +12152,9 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
   const [expandedNom, setExpandedNom] = useState(null);
   // 📑 Pliage de toute la fiche (header + liste) — utile quand on a plusieurs
   // sections sur la page : on plie celle qu'on ne consulte pas pour scroller
-  // moins. Par défaut DÉPLIÉ (comportement existant préservé).
-  const [folded, setFolded] = useState(false);
+  // moins. Par défaut REPLIÉ (demande utilisateur : éviter de scroller tout en
+  // bas ; on déplie au clic sur l'en-tête).
+  const [folded, setFolded] = useState(true);
   // 🧾 Sélection pour virement groupé : Set des localId cochés. Reset à chaque
   // changement de ligne dépliée (sinon la sélection d'un poseur fuite vers
   // un autre).
@@ -12596,7 +12607,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
 // manque docs / en attente vs % payés / posés / refus pour les régies).
 function BanquePerfList({ data, dossiers = [], societes = [], onShowQuick }) {
   const [expandedKey, setExpandedKey] = useState(null);
-  const [folded, setFolded] = useState(false);
+  const [folded, setFolded] = useState(true); // replié par défaut (demande utilisateur)
   const societeById = useMemo(() => {
     const m = new Map();
     (societes || []).forEach(s => m.set(s.id, s));
