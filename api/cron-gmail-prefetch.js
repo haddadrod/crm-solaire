@@ -536,6 +536,10 @@ export default async function handler(req, res) {
 
   const days = Math.max(1, Math.min(365, parseInt(req.query?.days || '60', 10)));
   const cap = Math.max(1, Math.min(200, parseInt(req.query?.max || String(MAX_PDFS_PER_RUN), 10)));
+  // 👀 Mode DÉTECTION (gratuit) : on liste les PDF Gmail et on COMPTE les
+  //    nouvelles (non encore en cache / pas déjà au CRM), SANS appeler l'IA.
+  //    Permet de dire « il y a N nouvelles factures » avant de payer l'analyse.
+  const countOnly = req.query?.countOnly === '1' || req.query?.countOnly === 'true';
 
   const startedAt = Date.now();
   const admin = makeAdmin();
@@ -545,6 +549,7 @@ export default async function handler(req, res) {
     pdfsAlreadyCached: 0,
     pdfsAnalyzed: 0,
     pdfsErrored: 0,
+    newDetected: 0,
     errors: [],
   };
 
@@ -611,6 +616,10 @@ export default async function handler(req, res) {
         }
         return true;
       });
+
+      // 👀 Mode détection : on compte les nouvelles et on passe à la boîte
+      //    suivante SANS analyser (donc 0 coût IA).
+      if (countOnly) { stats.newDetected += todo.length; continue; }
 
       // 🤖 Analyse parallèle (PARALLEL en concurrence, Anthropic rate-limit safe).
       let accessToken = null; // refresh une seule fois si OAuth
@@ -703,7 +712,8 @@ export default async function handler(req, res) {
 
   // 🕐 Horodatage du dernier run (cron OU bouton manuel) → affiché dans Drive
   //    Factures (« Dernière récupération : … »). Best-effort, n'échoue jamais.
-  try {
+  //    ⚠️ Pas en mode détection (countOnly) : ce n'est pas une vraie récupération.
+  if (!countOnly) try {
     await admin.from('storage').upsert({
       key: 'gmail-prefetch-last-run',
       value: JSON.stringify({
