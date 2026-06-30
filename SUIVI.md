@@ -18,6 +18,10 @@
 
 ## 🗓️ Journal (plus récent en haut)
 
+### 2026-06-30
+- ✅ **Fix alertes « dossier annulé »** : un dossier `W2_ANNULER` ne génère plus AUCUNE alerte. 8 alertes oubliaient la garde (Prestataires, Financement, Manque docs, Litige, SAV, Client à rappeler, Paiement, Récup TVA) → helper `isAnnule()` ajouté dans le calcul du dashboard. Exception volontaire : « matériel non rendu » (suit le matériel resté chez le poseur après annulation). Commit `876aab7`.
+- ⚠️ **Constat déploiement** : `main` est **1093 commits derrière** la branche `crm-multi-computer-setup`. Le site utilisé au quotidien = **le déploiement de la branche (preview Vercel)**, pas `main`. Le merge branche→main n'a donc pas été fait depuis longtemps. À clarifier si on veut un jour remettre `main` à jour (gros merge).
+
 ### 2026-06-29
 - ✅ Erreur 500 Drive Factures corrigée (pagination `ia-list` + maxDuration 60s) — #554
 - ✅ Compteur de résultats « 📊 N dossiers » dans la barre de recherche — #555
