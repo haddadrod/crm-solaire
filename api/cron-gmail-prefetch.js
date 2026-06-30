@@ -556,6 +556,11 @@ export default async function handler(req, res) {
     errors: [],
   };
 
+  // Set in-memory des clés à ajouter à importedSet à la fin (post-IA matches).
+  // ⚠️ Déclaré AVANT le try : il est AUSSI utilisé APRÈS (persistance finale) —
+  //    sinon ReferenceError « toMarkImported is not defined » → crash du cron.
+  const toMarkImported = new Set();
+
   try {
     // Pour le cron, on traite UNIQUEMENT les boîtes partagées (équipe). Les
     // boîtes perso (un seul user) sortent du scope cron.
@@ -571,8 +576,6 @@ export default async function handler(req, res) {
     const crmRefs = await readCrmFactureRefs(admin);
     stats.pdfsAlreadyInCrm = 0;
     stats.pdfsMatchedByFilename = 0;
-    // Set in-memory des clés à ajouter à importedSet à la fin (post-IA matches).
-    const toMarkImported = new Set();
 
     for (const inbox of shared) {
       if (stats.pdfsAnalyzed >= cap) break;
