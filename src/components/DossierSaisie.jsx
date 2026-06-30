@@ -4514,7 +4514,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsFraude = [];
     dossiersDash.forEach(d => {
       if (isAnnule(d)) return; // 🚫 dossier annulé → aucune alerte
-      const docsFraude = (d.documents || []).filter(doc => doc && (doc.fraudRisk === 'high' || doc.fraudRisk === 'medium'));
+      // On ignore les documents déjà VÉRIFIÉS manuellement (doc.fraudReviewed) :
+      // une fois que l'utilisateur a contrôlé et acquitté la suspicion, l'alerte
+      // ne doit plus clignoter pour ce dossier.
+      const docsFraude = (d.documents || []).filter(doc => doc && (doc.fraudRisk === 'high' || doc.fraudRisk === 'medium') && !doc.fraudReviewed);
       if (docsFraude.length === 0) return;
       const hasHigh = docsFraude.some(doc => doc.fraudRisk === 'high');
       const flags = [];
@@ -10024,11 +10027,14 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
   const fraudRisk = doc.fraudRisk || 'low';
   const fraudFlags = Array.isArray(doc.fraudFlags) ? doc.fraudFlags : [];
   const hasFraudFlags = fraudFlags.length > 0;
+  // ✅ Suspicion VÉRIFIÉE manuellement → l'alerte est acquittée (ne clignote plus).
+  const fraudReviewed = !!doc.fraudReviewed;
+  const fraudActive = hasFraudFlags && !fraudReviewed; // alerte « vivante »
   const fraudColor = fraudRisk === 'high' ? 'bg-rose-50 border-rose-300 text-rose-700' : fraudRisk === 'medium' ? 'bg-amber-50 border-amber-300 text-amber-700' : '';
   const fraudIcon = fraudRisk === 'high' ? '🚨' : fraudRisk === 'medium' ? '⚠️' : '';
 
   return (
-    <div className={`bg-white border rounded-xl overflow-hidden hover:border-violet-300 transition-colors ${fraudRisk === 'high' ? 'border-rose-300' : fraudRisk === 'medium' ? 'border-amber-300' : 'border-slate-200'}`}>
+    <div className={`bg-white border rounded-xl overflow-hidden hover:border-violet-300 transition-colors ${fraudActive && fraudRisk === 'high' ? 'border-rose-300' : fraudActive && fraudRisk === 'medium' ? 'border-amber-300' : 'border-slate-200'}`}>
       <div className={`flex items-center gap-2 ${compact ? 'p-2' : 'p-3 gap-3'}`}>
         <div className={`${compact ? 'w-7 h-7' : 'w-10 h-10'} bg-gradient-to-br ${iconColor} rounded-lg flex items-center justify-center flex-shrink-0 shadow-sm`}>
           <Icon className={`${compact ? 'w-3.5 h-3.5' : 'w-5 h-5'} text-white`} />
@@ -10052,10 +10058,10 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
           {hasFraudFlags && (
             <button
               onClick={() => setShowFraud(!showFraud)}
-              title={`${fraudRisk === 'high' ? 'Forte' : 'Légère'} suspicion de fraude — clique pour les détails`}
-              className={`${compact ? 'p-1' : 'p-1.5'} rounded-lg ${fraudRisk === 'high' ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
+              title={fraudReviewed ? 'Suspicion de fraude vérifiée et acquittée — clique pour les détails' : `${fraudRisk === 'high' ? 'Forte' : 'Légère'} suspicion de fraude — clique pour les détails`}
+              className={`${compact ? 'p-1' : 'p-1.5'} rounded-lg ${fraudReviewed ? 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200' : fraudRisk === 'high' ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : 'bg-amber-100 text-amber-700 hover:bg-amber-200'}`}
             >
-              <span className={compact ? 'text-xs' : 'text-sm'}>{fraudIcon}</span>
+              <span className={compact ? 'text-xs' : 'text-sm'}>{fraudReviewed ? '✅' : fraudIcon}</span>
             </button>
           )}
           <button onClick={onOpen} title="Ouvrir / aperçu" className={`${compact ? 'p-1' : 'p-1.5'} text-slate-500 hover:text-violet-600 hover:bg-violet-50 rounded-lg`}><Eye className={compact ? 'w-3.5 h-3.5' : 'w-4 h-4'} /></button>
@@ -10066,12 +10072,35 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
       </div>
       {/* Panneau anti-fraude — visible au clic du badge */}
       {showFraud && hasFraudFlags && (
-        <div className={`px-3 py-2 border-t ${fraudColor}`}>
-          <div className="text-xs font-bold mb-1">{fraudIcon} Suspicion de fraude — {fraudRisk === 'high' ? 'forte' : 'à vérifier'}</div>
+        <div className={`px-3 py-2 border-t ${fraudReviewed ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : fraudColor}`}>
+          <div className="text-xs font-bold mb-1">
+            {fraudReviewed
+              ? `✅ Suspicion vérifiée${doc.fraudReviewedAt ? ` le ${formatDateForSheet(doc.fraudReviewedAt.split('T')[0])}` : ''} — alerte acquittée`
+              : `${fraudIcon} Suspicion de fraude — ${fraudRisk === 'high' ? 'forte' : 'à vérifier'}`}
+          </div>
           <ul className="text-[13px] space-y-0.5">
             {fraudFlags.map((flag, i) => <li key={i}>• {flag}</li>)}
           </ul>
-          <div className="text-[12px] italic mt-1 opacity-70">⚠️ L'IA peut se tromper — vérifie manuellement avant toute conclusion.</div>
+          {!fraudReviewed && (
+            <div className="text-[12px] italic mt-1 opacity-70">⚠️ L'IA peut se tromper — vérifie manuellement avant toute conclusion.</div>
+          )}
+          <div className="mt-2">
+            {fraudReviewed ? (
+              <button
+                onClick={() => onUpdateMeta({ fraudReviewed: false, fraudReviewedAt: null })}
+                className="px-2.5 py-1 bg-white border border-amber-300 text-amber-700 rounded-lg text-[12px] font-bold hover:bg-amber-50"
+              >
+                ↩️ Ré-signaler comme suspecte
+              </button>
+            ) : (
+              <button
+                onClick={() => onUpdateMeta({ fraudReviewed: true, fraudReviewedAt: new Date().toISOString() })}
+                className="px-2.5 py-1 bg-emerald-600 text-white rounded-lg text-[12px] font-bold hover:bg-emerald-700"
+              >
+                ✓ J'ai vérifié — c'est bon, arrêter l'alerte
+              </button>
+            )}
+          </div>
         </div>
       )}
       {expanded && (
