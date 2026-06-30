@@ -13471,7 +13471,7 @@ async function startGmailPrefetch({ days = 365, max = 200 } = {}) {
   _gmailPrefetch.running = true;
   _gmailPrefetch.result = null;
   _notifyPrefetch();
-  const totals = { pdfsAnalyzed: 0, pdfsAlreadyCached: 0, pdfsAlreadyInCrm: 0, pdfsErrored: 0, pdfsListed: 0, durationMs: 0, runs: 0 };
+  const totals = { pdfsAnalyzed: 0, pdfsAlreadyCached: 0, pdfsAlreadyInCrm: 0, pdfsErrored: 0, pdfsListed: 0, inboxes: 0, errors: [], durationMs: 0, runs: 0 };
   try {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session?.access_token) throw new Error('Pas de session — reconnecte-toi');
@@ -13490,6 +13490,15 @@ async function startGmailPrefetch({ days = 365, max = 200 } = {}) {
       totals.pdfsAlreadyInCrm += d.pdfsAlreadyInCrm || 0;
       totals.pdfsErrored += d.pdfsErrored || 0;
       totals.pdfsListed = Math.max(totals.pdfsListed, d.pdfsListed || 0);
+      totals.inboxes = Math.max(totals.inboxes, d.inboxes || 0);
+      // Remonte les erreurs renvoyées par l'API (token Gmail expiré, boîte
+      // injoignable, etc.) pour qu'on voie POURQUOI 0 facture est récupérée.
+      if (Array.isArray(d.errors)) {
+        for (const er of d.errors) {
+          const msg = er?.global || (er?.email ? `${er.email} : ${er.error || ''}` : (er?.error || JSON.stringify(er)));
+          if (msg && !totals.errors.includes(msg)) totals.errors.push(msg);
+        }
+      }
       totals.durationMs += d.durationMs || 0;
       _gmailPrefetch.result = { ...totals, _inProgress: true };
       _notifyPrefetch();
@@ -13982,6 +13991,28 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
               {cronResult.pdfsAlreadyInCrm > 0 && <span> · {cronResult.pdfsAlreadyInCrm} déjà dans le CRM</span>}
               {cronResult.pdfsErrored > 0 && <span> · ⚠️ {cronResult.pdfsErrored} erreurs</span>}
               <span> · {Math.round((cronResult.durationMs || 0) / 1000)}s</span>
+              {/* 🔎 Diagnostic : boîtes scannées + PDF listés. Si 0 boîte → aucune
+                  boîte partagée connectée ; si 0 PDF listé → connexion morte. */}
+              {!cronResult._inProgress && (
+                <div className="mt-1 text-slate-600">
+                  📥 {cronResult.inboxes || 0} boîte{(cronResult.inboxes || 0) > 1 ? 's' : ''} scannée{(cronResult.inboxes || 0) > 1 ? 's' : ''}
+                  {' · '}{cronResult.pdfsListed || 0} PDF trouvés sur Gmail
+                </div>
+              )}
+              {!cronResult._inProgress && (cronResult.inboxes || 0) === 0 && (
+                <div className="mt-1 p-2 bg-amber-50 border border-amber-200 text-amber-800 rounded">
+                  ⚠️ <span className="font-bold">Aucune boîte mail partagée connectée.</span> Va dans <span className="font-bold">Réglages → Email d'envoi → « 📥 Récupérer les factures reçues par email »</span> et connecte (ou reconnecte) tes boîtes.
+                </div>
+              )}
+              {!cronResult._inProgress && Array.isArray(cronResult.errors) && cronResult.errors.length > 0 && (
+                <div className="mt-1 p-2 bg-rose-50 border border-rose-200 text-rose-800 rounded">
+                  ⚠️ <span className="font-bold">Erreurs de récupération :</span>
+                  <ul className="list-disc ml-5 mt-0.5">
+                    {cronResult.errors.slice(0, 5).map((er, i) => <li key={i} className="break-words">{er}</li>)}
+                  </ul>
+                  <div className="mt-1 text-[11px]">Si tu vois « invalid_grant », « auth » ou « token » → la connexion Gmail a expiré : reconnecte la boîte dans <span className="font-bold">Réglages → Email d'envoi</span>.</div>
+                </div>
+              )}
               {cronResult._inProgress && (
                 <div className="mt-1 text-indigo-700">
                   🔄 Boucle en cours — j'enchaîne les runs jusqu'à ce qu'il n'y ait plus rien à télécharger.
