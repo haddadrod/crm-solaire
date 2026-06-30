@@ -13636,6 +13636,9 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
   const [lastRun, setLastRun] = useState(null); // { at, pdfsAnalyzed, inboxes, pdfsListed }
   // 👀 Détection GRATUITE (sans IA) : compte les nouvelles factures sur Gmail.
   const [detecting, setDetecting] = useState(false);
+  // 📅 Fenêtre de recherche Gmail (détection + téléchargement). 60 j par défaut
+  //    (routine) ; on peut monter à 6 mois / 1 an pour un rattrapage ponctuel.
+  const [periodDays, setPeriodDays] = useState(60);
   const [detectResult, setDetectResult] = useState(null); // { newDetected, inboxes, pdfsListed, errors }
   const [openFolders, setOpenFolders] = useState({}); // { [fournisseur]: bool }
   const [query, setQuery] = useState('');
@@ -13724,7 +13727,7 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
   // 🚀 Lance le prefetch via le singleton (tourne en arrière-plan, survit
   //    aux changements de panneau). Au moindre changement d'état, on
   //    refresh la liste pour voir l'avancement live.
-  const runCron = () => startPrefetch({ days: 365, max: 200 });
+  const runCron = () => startPrefetch({ days: periodDays, max: 200 });
 
   // 👀 Détection GRATUITE : scanne Gmail et compte les nouvelles factures, SANS
   //    lancer l'analyse IA (countOnly=1 → 0 coût). Donne le « il y a N en plus ».
@@ -13734,7 +13737,7 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
       const { data: { session } } = await supabase.auth.getSession();
       const headers = {};
       if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-      const res = await fetch('/api/cron-gmail-prefetch?countOnly=1&days=365', { method: 'GET', headers });
+      const res = await fetch(`/api/cron-gmail-prefetch?countOnly=1&days=${periodDays}`, { method: 'GET', headers });
       const payload = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
       const d = payload.data || {};
@@ -14068,10 +14071,24 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
               onClick={() => runCron()}
               disabled={cronRunning}
               className="px-3 py-2 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white rounded-lg text-xs font-bold disabled:opacity-60 shadow"
-              title="Télécharge + analyse jusqu'à 200 nouvelles factures (365 derniers jours). Re-cliquable plusieurs fois — idempotent."
+              title={`Télécharge + analyse les nouvelles factures des ${periodDays} derniers jours. Re-cliquable plusieurs fois — idempotent (ne re-paie jamais les déjà analysées).`}
             >
               {cronRunning ? '⏳ Téléchargement IA en cours…' : '🚀 Télécharger les factures'}
             </button>
+          </div>
+          {/* 📅 Fenêtre de recherche Gmail : limite à quelle ancienneté on cherche
+              les factures (détection + téléchargement). Plus court = plus rapide
+              et moins cher ; plus long = rattrapage ponctuel. */}
+          <div className="flex items-center gap-1.5 flex-wrap text-[12px]">
+            <span className="text-slate-500 font-semibold">📅 Chercher sur :</span>
+            {[{ d: 30, l: '30 jours' }, { d: 60, l: '60 jours' }, { d: 180, l: '6 mois' }, { d: 365, l: '1 an' }].map(opt => (
+              <button
+                key={opt.d}
+                onClick={() => setPeriodDays(opt.d)}
+                className={`px-2.5 py-1 rounded-lg font-bold border transition ${periodDays === opt.d ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white text-slate-600 border-slate-200 hover:border-indigo-300'}`}
+              >{opt.l}</button>
+            ))}
+            <span className="text-slate-400">— par défaut 60 jours (suffisant au quotidien)</span>
           </div>
           {/* 👀 Résultat de la détection gratuite (countOnly) : combien de nouvelles
               factures attendent sur Gmail, sans avoir rien analysé (0 coût IA). */}
