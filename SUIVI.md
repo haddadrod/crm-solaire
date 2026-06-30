@@ -19,6 +19,8 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-06-30
+- ✅ **Assistant IA — désambiguïsation homonymes** : si plusieurs clients du même nom (ex 2 « Bertrand »), l'assistant fait CHOISIR lequel avant d'ouvrir/déplacer (prompt IA renforcé + garde-fou front). — #574
+- ✅ **Drive Factures — « Dernière récupération » toujours affichée** + « X nouvelles en plus » (encart ambre « jamais » si aucune récup enregistrée). — #573
 - ✅ **Assistant IA secrétaire — Phase 1 (agit\!)** : l'assistant 🤖 sait maintenant DÉPLACER un dossier (« bascule HADDAD en financement », « passe X en contrôle qualité », « marque payé/annulé ») → identifie le dossier, propose statut actuel→cible, applique APRÈS confirmation. Intention `move_status` + `targetStatutId` côté endpoint. — #571
 - ✅ **Alerte séparée « 🔁 Refinancement »** : dossiers en rebascule (CQ validé) sortent de « à envoyer banque » et ont leur propre alerte. — #570
 - ✅ **Rebascule : CQ d'abord** — au refus banque, bouton « 🔁 Repasser en contrôle qualité (rebascule) » ; le choix de la nouvelle banque se fait APRÈS validation du CQ. — #567
