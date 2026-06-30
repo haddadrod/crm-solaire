@@ -6239,7 +6239,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         )}
 
         {/* DASHBOARD */}
-        {activeTab === 'dashboard' && <DashboardView dossiers={dossiersEnriched} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} onTogglePresta={handleTogglePresta} onMarkPrestaPaye={handleMarkPrestaPaye} />}
+        {activeTab === 'dashboard' && <DashboardView dossiers={dossiersEnriched} dashboard={dashboard} STATUTS={STATUTS} currentUserRole={currentUserRole} users={users} societes={societes} activeSociete={activeSociete} projexioCaps={projexioCaps} setProjexioCaps={setProjexioCaps} isAdmin={isAdmin} produits={produits} onCreate={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }} onTogglePresta={handleTogglePresta} onMarkPrestaPaye={handleMarkPrestaPaye} />}
 
         {activeTab === 'calendrier' && (
           <CalendrierView
@@ -11658,7 +11658,7 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
   );
 }
 
-function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes = [], activeSociete = '', projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, setProjexioCaps, isAdmin = false, onCreate, onShowQuick, onTogglePresta, onMarkPrestaPaye, produits = [] }) {
+function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, users = [], societes = [], activeSociete = '', projexioCaps = PROJEXIO_CAP_MENSUEL_PAR_SOCIETE, setProjexioCaps, isAdmin = false, onCreate, onShowQuick, onTogglePresta, onMarkPrestaPaye, produits = [] }) {
   // Vue restreinte pour le rôle « Envoi finance » : seules les sections
   // Plafond Projexio + Financements en attente de retour sont affichées.
   // Les tuiles CA/marge/évolution et tous les autres rappels sont masqués.
@@ -11844,7 +11844,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
       )}
 
       {/* ACTIVITÉ PAR UTILISATEUR — cliquer une ligne déroule le détail */}
-      <ActiviteParUtilisateur dossiers={dossiers} onShowQuick={onShowQuick} />
+      <ActiviteParUtilisateur dossiers={dossiers} registeredUsers={users} onShowQuick={onShowQuick} />
 
       </>)}
     </div>
@@ -11855,7 +11855,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, societes
 // dépliable : clic → détail des dernières actions (quel champ modifié sur
 // quel dossier, changement de statut, relance…). Répond à « je veux voir
 // CE qu'ils ont modifié », pas juste le compteur.
-function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
+function ActiviteParUtilisateur({ dossiers = [], registeredUsers = [], onShowQuick }) {
   const [expandedUser, setExpandedUser] = useState(null);
 
   // Agrégation : compteurs + journal détaillé par utilisateur.
@@ -11865,10 +11865,21 @@ function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
     //    « Léana », « Leana » et « leana » sont la MÊME personne → leur activité
     //    n'est plus éclatée et tout le monde apparaît correctement.
     const stripAccents = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const normKey = (s) => stripAccents(s).toLowerCase().trim();
+    // 👤 Annuaire des utilisateurs enregistrés (Réglages → Utilisateurs), indexé
+    //    par nom normalisé. Permet d'afficher le NOM COMPLET (prénom + nom) et
+    //    l'emoji au lieu du seul nom d'affichage enregistré dans les actions
+    //    (ex : actions sous « Fitoussi » → affiché « 🚀 Leanah Fitoussi »).
+    const regByKey = {};
+    (registeredUsers || []).forEach(u => { if (u && u.name) regByKey[normKey(u.name)] = u; });
     const ensureUser = (name) => {
       const display = (stripAccents(name).trim()) || '(anonyme)';
       const key = display.toLowerCase();
-      if (!userMap[key]) userMap[key] = { name: display, created: 0, modified: 0, statusChanges: 0, outreach: 0, ca: 0, lastActivity: null, entries: [] };
+      if (!userMap[key]) {
+        const reg = regByKey[key];
+        const fullName = reg ? `${reg.prenom ? reg.prenom + ' ' : ''}${reg.name}`.trim() : display;
+        userMap[key] = { name: fullName, emoji: reg?.emoji || '👤', created: 0, modified: 0, statusChanges: 0, outreach: 0, ca: 0, lastActivity: null, entries: [] };
+      }
       return userMap[key];
     };
     const touch = (u, date) => { if (date && (!u.lastActivity || date > u.lastActivity)) u.lastActivity = date; };
@@ -11904,6 +11915,12 @@ function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
         }
       });
     });
+    // 👥 Inclure TOUS les utilisateurs enregistrés (Réglages → Utilisateurs),
+    //    même ceux sans activité → ils apparaissent avec 0 action au lieu d'être
+    //    invisibles (cas « Léana »). ensureUser fusionne avec leur activité si
+    //    elle existe sous une variante d'accent/casse.
+    (registeredUsers || []).forEach(u => { if (u && u.name) ensureUser(u.name); });
+
     // Tri du journal (plus récent en haut) + cap à 60 entrées par user
     Object.values(userMap).forEach(u => {
       u.entries.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
@@ -11914,7 +11931,7 @@ function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
     );
     const total = list.reduce((s, u) => s + u.created + u.modified + u.statusChanges + u.outreach, 0);
     return { users: list, totalActions: total };
-  }, [dossiers]);
+  }, [dossiers, registeredUsers]);
 
   const formatLast = (iso) => {
     if (!iso) return '—';
@@ -11967,7 +11984,7 @@ function ActiviteParUtilisateur({ dossiers = [], onShowQuick }) {
                     <div>
                       <div className={`font-bold flex items-center gap-1 ${isAnonymous ? 'text-rose-700 italic' : 'text-slate-800'}`}>
                         <span className="text-slate-400 text-xs">{isExpanded ? '▼' : '▶'}</span>
-                        {isAnonymous ? '⚠️ ' : '👤 '}{u.name}
+                        {isAnonymous ? '⚠️ ' : `${u.emoji || '👤'} `}{u.name}
                       </div>
                       <div className="text-[12px] text-slate-500">Dernière activité : {formatLast(u.lastActivity)}</div>
                     </div>
