@@ -120,6 +120,11 @@ const SYSTEM_PROMPT = `Tu es l'assistant IA du CRM d'une activité de vente et p
      • D_SAV — SAV
    → subject/body vides. reasoning = ce que tu déplaces et vers quoi.
 
+⚠️ RÈGLE D'AMBIGUÏTÉ (PRIORITAIRE) — vaut pour 'open_dossier', 'move_status' ET 'email' :
+- Si PLUSIEURS clients de la liste correspondent au nom donné (ex : l'ordre dit "Bertrand" et il y a 2+ clients dont le nom OU prénom est "Bertrand"), tu NE choisis JAMAIS arbitrairement.
+- Dans ce cas → intent='ambiguous', et mets TOUS les localId correspondants dans candidateLocalIds (pas un seul). reasoning = "Plusieurs clients s'appellent X, lequel ?".
+- Tu ne renvoies 'open_dossier'/'move_status'/'email' avec un targetLocalId unique QUE si UN SEUL client correspond sans ambiguïté.
+
 Règles globales :
 - Si l'ordre est une question pure ("combien", "quel", "qui", "où est"), c'est 'answer'.
 - Si l'ordre commence par un verbe d'envoi de mail, c'est 'email'.

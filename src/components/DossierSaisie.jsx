@@ -26563,6 +26563,12 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
   const [editedBody, setEditedBody] = useState('');
   const [chosenLocalId, setChosenLocalId] = useState('');
   const [sending, setSending] = useState(false);
+  // 🧑‍🤝‍🧑 Désambiguïsation « plusieurs clients du même nom » : quand l'ordre vise
+  // un dossier mais que d'autres portent le même nom, on FORCE le choix avant
+  // d'agir. pendingAction = { type:'open' } | { type:'move', statutId } ; ambigList
+  // = les dossiers candidats à départager.
+  const [pendingAction, setPendingAction] = useState(null);
+  const [ambigList, setAmbigList] = useState([]);
 
   const targetDossier = useMemo(() => {
     const id = chosenLocalId || draft?.targetLocalId || '';
@@ -26596,17 +26602,31 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
       setEditedSubject(d.subject || '');
       setEditedBody(d.body || '');
       setChosenLocalId(d.targetLocalId || '');
+      // 🧑‍🤝‍🧑 Garde-fou : si d'autres dossiers portent le MÊME nom que la cible,
+      // on ne fonce pas — on fait choisir l'utilisateur (même si l'IA a tranché).
+      const norm = (s) => String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+      const siblingsOf = (id) => {
+        const t = dossiers.find(x => x.localId === id);
+        if (!t) return [];
+        const tn = norm(t.nom);
+        if (!tn) return [t];
+        return dossiers.filter(x => norm(x.nom) === tn);
+      };
       // Dispatch selon l'intention détectée par l'IA
-      if (d.intent === 'open_dossier' && d.targetLocalId && onOpenDossier) {
-        onOpenDossier(d.targetLocalId);
-        onClose();
-        return;
-      }
       if (d.intent === 'answer') {
         setPhase('answer');
         return;
       }
+      if (d.intent === 'open_dossier' && d.targetLocalId && onOpenDossier) {
+        const sibs = siblingsOf(d.targetLocalId);
+        if (sibs.length > 1) { setAmbigList(sibs); setPendingAction({ type: 'open' }); setPhase('disambiguate'); return; }
+        onOpenDossier(d.targetLocalId);
+        onClose();
+        return;
+      }
       if (d.intent === 'move_status' && d.targetLocalId && d.targetStatutId) {
+        const sibs = siblingsOf(d.targetLocalId);
+        if (sibs.length > 1) { setAmbigList(sibs); setPendingAction({ type: 'move', statutId: d.targetStatutId }); setPhase('disambiguate'); return; }
         // 🗂️ Déplacement de dossier → on demande confirmation AVANT d'appliquer.
         setPhase('action');
         return;
@@ -26672,6 +26692,18 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
       onMoveStatus(targetDossier.localId, draft.targetStatutId, command.trim());
       onClose();
     } finally { setMoving(false); }
+  };
+
+  // L'utilisateur a choisi LE bon dossier parmi les homonymes → on exécute
+  // l'action qui était en attente (ouvrir, ou passer à la confirmation de move).
+  const pickAmbig = (localId) => {
+    setChosenLocalId(localId);
+    if (pendingAction?.type === 'open') {
+      if (onOpenDossier) onOpenDossier(localId);
+      onClose();
+    } else if (pendingAction?.type === 'move') {
+      setPhase('action');
+    }
   };
 
   // ===== Dictée vocale (Web Speech API) =====
@@ -26808,6 +26840,38 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
               <div className="flex justify-between gap-2 pt-2">
                 <button onClick={() => { setPhase('input'); setDraft(null); }} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">← Nouvel ordre</button>
                 <button onClick={onClose} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold">Fermer</button>
+              </div>
+            </>
+          )}
+
+          {phase === 'disambiguate' && (
+            <>
+              <div className="p-3 bg-amber-50 border-2 border-amber-300 rounded-xl">
+                <div className="text-sm font-bold text-amber-800 mb-1">🧑‍🤝‍🧑 Plusieurs clients portent ce nom — lequel ?</div>
+                <div className="text-[12px] text-amber-700 mb-2">{pendingAction?.type === 'move' ? 'Choisis le dossier à déplacer :' : 'Choisis le dossier à ouvrir :'}</div>
+                <div className="space-y-1.5">
+                  {ambigList.map(c => {
+                    const st = STATUTS.find(s => s.id === c.statut);
+                    return (
+                      <button key={c.localId} onClick={() => pickAmbig(c.localId)} className="w-full text-left px-3 py-2 rounded-lg border-2 bg-white border-slate-200 hover:border-amber-400">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="font-bold text-slate-800 text-sm">{c.nom} {c.prenom}</span>
+                          {st && <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${st.bg} ${st.text}`}>{st.emoji} {st.label}</span>}
+                        </div>
+                        <div className="text-[12px] text-slate-500 mt-0.5 flex items-center gap-2 flex-wrap">
+                          {c.ville && <span>📍 {c.ville}</span>}
+                          {c.telephone && <span>📞 {c.telephone}</span>}
+                          {c.financement && <span>💳 {c.financement}</span>}
+                          {c.dateInsta && <span>📅 {new Date(c.dateInsta).toLocaleDateString('fr-FR')}</span>}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              <div className="flex justify-between gap-2 pt-2">
+                <button onClick={() => { setPhase('input'); setDraft(null); setAmbigList([]); setPendingAction(null); }} className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-xs font-bold">← Nouvel ordre</button>
+                <button onClick={onClose} className="px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-lg text-sm font-bold">Annuler</button>
               </div>
             </>
           )}
