@@ -19,6 +19,7 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-06-30
+- ✅ **Champ « Téléphone 2 »** dans Identité (form). + fix latent : `mobile` n'était pas recopié par `startEdit` → éditer+sauver un dossier perdait le mobile ; corrigé en même temps. — #587
 - ✅ **Équipe interne payée sur facture (comme les régies)** : chaque rôle interne a sur le dossier n° facture + upload PDF + extraction IA du HT (remplit la commission) + bouton payé/non payé. Société (émetteur) par personne définie dans Réglages → Équipe interne (annuaire `internesContacts`). Champs `<role>FactureNo/FactureFile`. Form + QuickView. — #585
 - ✅ **Facture régie multi-clients** : case « 📋 Facture groupée (plusieurs clients) » sur la ligne régie (formulaire + QuickView) → exempte ce n° de facture de TOUTES les détections de doublon (Santé des dossiers, alerte inline, sauvegarde, post-IA). Flag `r.factureGroupee`. — #583
 - ✅ **Drive Factures — choix de période** (30j / 60j / 6 mois / 1 an) pour la détection ET le téléchargement. Défaut 60 j (routine). Évite de scanner 1 an à chaque fois. — #581

@@ -2200,7 +2200,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     tvaDateDemarche: '', // date où la démarche a été envoyée
     tvaDateRecuperee: '', // date où la TVA a été récupérée
     tvaNotes: '', // notes libres sur la démarche
-    nom: '', prenom: '', telephone: '', mobile: '', email: '',
+    nom: '', prenom: '', telephone: '', telephone2: '', mobile: '', email: '',
     adresse: '', codePostal: '', ville: '',
     statut: 'A_EN_COURS', statutLocked: false, financement: '',
     montantTotal: '', montantHtCustom: '', tauxTvaVente: 20, payeClient: false, payeClientDate: '',
@@ -3492,7 +3492,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       tvaDateRecuperee: d.tvaDateRecuperee || '',
       tvaNotes: d.tvaNotes || '',
       nom: d.nom || '', prenom: d.prenom || '',
-      telephone: d.telephone || '', email: d.email || '',
+      telephone: d.telephone || '', telephone2: d.telephone2 || '', mobile: d.mobile || '', email: d.email || '',
       adresse: d.adresse || '', codePostal: d.codePostal || '', ville: d.ville || '',
       statut: d.statut || 'M_ATT_DOSSIER', statutLocked: !!d.statutLocked, financement: d.financement || 'PROJEXIO',
       montantTotal: d.montantTotal?.toString() || '', montantHtCustom: d.montantHtCustom || '', tauxTvaVente: d.tauxTvaVente || 20,
@@ -19133,6 +19133,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <Field label="Prénom"><input type="text" value={formData.prenom} onChange={(e) => setFormData({ ...formData, prenom: e.target.value })} placeholder="JEAN" className={inputCls} /></Field>
               <div></div>
               <Field label="📞 Téléphone"><input type="tel" value={formData.telephone} onChange={(e) => setFormData({ ...formData, telephone: e.target.value })} placeholder="01 23 45 67 89" className={inputCls} /></Field>
+              <Field label="📞 Téléphone 2"><input type="tel" value={formData.telephone2 || ''} onChange={(e) => setFormData({ ...formData, telephone2: e.target.value })} placeholder="01 23 45 67 89" className={inputCls} /></Field>
               <Field label="📱 Mobile"><input type="tel" value={formData.mobile || ''} onChange={(e) => setFormData({ ...formData, mobile: e.target.value })} placeholder="06 12 34 56 78" className={inputCls} /></Field>
               <Field label="✉️ Email"><input type="email" value={formData.email} onChange={(e) => setFormData({ ...formData, email: e.target.value })} placeholder="client@email.fr" className={inputCls} /></Field>
               <div className="md:col-span-3">
