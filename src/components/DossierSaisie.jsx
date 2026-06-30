@@ -4651,8 +4651,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
     });
     rappelsControleQualite.sort((a, b) => b.jours - a.jours);
 
-    // Rappels À envoyer en banque — CQ validé mais pas encore envoyé
+    // Rappels À envoyer en banque — CQ validé mais pas encore envoyé.
+    // 🔁 Les REFINANCEMENTS (après rebascule : CQ validé + cqRebascule) partent
+    //    dans une alerte SÉPARÉE « À renvoyer en refinancement », pour ne pas les
+    //    confondre avec un 1er envoi en banque.
     const rappelsAEnvoyerBanque = [];
+    const rappelsRefinancement = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (d.statutControleQualite !== 'ok') return; // pas validé OK
@@ -4665,9 +4669,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
       let level = 'warn';
       if (jours >= 3) level = 'critical';
       else if (jours >= 1) level = 'high';
-      rappelsAEnvoyerBanque.push({ dossier: d, jours, level });
+      if (d.cqRebascule) rappelsRefinancement.push({ dossier: d, jours, level });
+      else rappelsAEnvoyerBanque.push({ dossier: d, jours, level });
     });
     rappelsAEnvoyerBanque.sort((a, b) => b.jours - a.jours);
+    rappelsRefinancement.sort((a, b) => b.jours - a.jours);
 
     // Rappels À envoyer en pose — financement accordé mais aucune date d'envoi
     // en pose. C'est le 1er bucket : tu dois entrer une date depuis ici.
@@ -5083,7 +5089,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Tri du plus récent au plus ancien (mois actuel en premier).
     const activiteMois = Object.values(activiteMoisMap).sort((a, b) => b.mois.localeCompare(a.mois));
 
-    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsFournisseurs, statsCommerciaux, statsBanques, activiteMois, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsMaterielInsere, rappelsPoseSansRegie, rappelsLitige, rappelsSav, rappelsClientRappel, rappelsFraude };
+    return { statsMois, moisCourant, moisPrecedent, projexioMoisCourant, statsPoseurs, statsRegies, statsFournisseurs, statsCommerciaux, statsBanques, activiteMois, rappelsClient, rappelsPrestataires, rappelsStagnation, rappelsFinancement, rappelsManqueDoc, rappelsPaiement, rappelsControleLivraison, rappelsControleQualite, rappelsAEnvoyerBanque, rappelsRefinancement, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer, rappelsMaterielNonRendu, rappelsMaterielInsere, rappelsPoseSansRegie, rappelsLitige, rappelsSav, rappelsClientRappel, rappelsFraude };
   }, [dossiersEnriched, tarifsInternes, activeSociete]);
 
   // Archivage manuel : un dossier est archivé seulement si on l'a archivé volontairement
@@ -5600,6 +5606,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           {!['accueil', 'calendrier', 'paiements', 'dashboard', 'reglages'].includes(activeTab) && <AlertesBar
             rappelsControleQualite={dashboard.rappelsControleQualite || []}
             rappelsAEnvoyerBanque={dashboard.rappelsAEnvoyerBanque || []}
+            rappelsRefinancement={dashboard.rappelsRefinancement || []}
             rappelsFinancement={dashboard.rappelsFinancement || []}
             rappelsManqueDoc={dashboard.rappelsManqueDoc || []}
             rappelsAEnvoyerPose={dashboard.rappelsAEnvoyerPose || []}
@@ -6630,6 +6637,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
               const scrollMap = {
                 controleQualite: 'cq',
                 aEnvoyerBanque: 'financement',
+                refinancement: 'financement',
                 financement: 'financement',
                 manqueDoc: 'manqueDoc',
                 aEnvoyerPose: 'pose',
@@ -11271,6 +11279,7 @@ function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onS
     { key: 'rappelsClientRappel',       emoji: '📞', label: 'Rappeler le client',                    scrollTo: 'rappel',        cat: 'Client' },
     { key: 'rappelsControleQualite',    emoji: '📋', label: 'Faire le contrôle qualité',             scrollTo: 'cq',            cat: 'Qualité' },
     { key: 'rappelsAEnvoyerBanque',     emoji: '🏦', label: 'Envoyer le dossier en banque',          scrollTo: 'financement',   cat: 'Banque' },
+    { key: 'rappelsRefinancement',      emoji: '🔁', label: 'Renvoyer en refinancement (rebascule)',  scrollTo: 'financement',   cat: 'Banque' },
     { key: 'rappelsFinancement',        emoji: '⏳', label: 'Relancer la banque (sans retour)',       scrollTo: 'financement',   cat: 'Banque' },
     { key: 'rappelsManqueDoc',          emoji: '📄', label: 'Récupérer les docs réclamés par la banque', scrollTo: 'financement', cat: 'Banque' },
     { key: 'rappelsAEnvoyerPose',       emoji: '📅', label: 'Programmer la pose',                     scrollTo: 'pose',          cat: 'Pose' },
@@ -28943,7 +28952,7 @@ function AccueilPastilles({ dossiers, STATUTS_ORDERED, nbDoublons, currentUser, 
   );
 }
 
-function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer = [], rappelsMaterielNonRendu = [], rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], rappelsFraude = [], nbDoublons = 0, isAdmin, currentUserRole, onClick }) {
+function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsRefinancement = [], rappelsFinancement, rappelsManqueDoc, rappelsAEnvoyerPose, rappelsPoseurNonAssigne, rappelsPoseNonFinie, rappelsAEnvoyerMairie, rappelsAEnvoyerConsuel, rappelsAEnvoyerRaccordement, rappelsOriginaux, rappelsControleLivraison, rappelsPaiement, rappelsStagnation, rappelsRecupTva, rappelsFacturesManquantes, rappelsPennylaneAEnvoyer = [], rappelsMaterielNonRendu = [], rappelsLitige = [], rappelsSav = [], rappelsClientRappel = [], rappelsFraude = [], nbDoublons = 0, isAdmin, currentUserRole, onClick }) {
   // showAll : si true, on affiche aussi les alertes à 0 (déplié via la flèche).
   const [showAll, setShowAll] = useState(false);
   // Définition des badges
@@ -28995,6 +29004,18 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsFina
       colorBorder: 'border-pink-200',
       colorText: 'text-pink-700',
       tooltip: 'CQ validé — dossiers à envoyer en financement',
+    },
+    {
+      type: 'refinancement',
+      label: 'Refinancement',
+      emoji: '🔁',
+      count: (rappelsRefinancement || []).length,
+      adminOnly: false,
+      color: 'from-orange-500 to-amber-500',
+      colorBg: 'bg-orange-50',
+      colorBorder: 'border-orange-200',
+      colorText: 'text-orange-700',
+      tooltip: 'Rebascule : CQ validé — à renvoyer vers une nouvelle maison de financement',
     },
     // Badge « Financement » retiré : doublon avec le Kanban qui affiche
     // déjà « ⏱ X j sans retour » sur chaque carte en B1_EN_COURS_FINANCEMENT.
@@ -29437,6 +29458,16 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
       borderColor: 'border-pink-200',
       lineLabel: (d) => `${d.cqRebascule ? '🔁 REFINANCEMENT — ' : ''}Validé le ${d.dateControleQualite && new Date(d.dateControleQualite).toLocaleDateString('fr-FR')} → ${d.financement || '(financeur à choisir)'}`,
       suffixLabel: 'depuis validation',
+    },
+    refinancement: {
+      title: '🔁 Dossiers à renvoyer en refinancement',
+      subtitle: 'Rebascule : CQ de rebascule validé — choisis la nouvelle maison de financement et envoie',
+      items: dashboard.rappelsRefinancement || [],
+      gradient: 'from-orange-500 to-amber-500',
+      bgHeader: 'from-orange-50 to-amber-50',
+      borderColor: 'border-orange-200',
+      lineLabel: (d) => `🔁 Refus précédent${d.cqRebasculeFrom ? ` de ${d.cqRebasculeFrom}` : ''} · CQ validé le ${d.dateControleQualite && new Date(d.dateControleQualite).toLocaleDateString('fr-FR')} → ${d.financement || '(nouvelle banque à choisir)'}`,
+      suffixLabel: 'depuis validation CQ',
     },
     financement: {
       title: '💳 Financements en attente de retour',
