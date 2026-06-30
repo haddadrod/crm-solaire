@@ -4072,6 +4072,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const dossiersDash = activeSociete
       ? dossiersEnriched.filter(d => d.societe === activeSociete)
       : dossiersEnriched;
+    // 🚫 Dossier ANNULÉ → ne doit plus apparaître dans AUCUNE alerte (règle métier).
+    // Certaines alertes filtrent déjà via finalStatuses/SEUILS_STATUT ; ce helper
+    // sert à celles qui n'avaient pas de garde. Seule exception volontaire :
+    // « matériel non rendu », qui suit le matériel resté chez le poseur APRÈS
+    // une annulation.
+    const isAnnule = (d) => d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
     // 📊 Stats mensuelles — UNIQUEMENT les dossiers payés par le client.
     // On groupe par mois du paiement (payeClientDate), pas par dateInsta
     // (qui est la date de pose et qui était souvent pré-remplie à tort).
@@ -4362,6 +4368,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsPrestataires = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
+      if (isAnnule(d)) return; // 🚫 dossier annulé → aucune alerte
       // Prestataires externes (poseurs, fournisseurs, régie externe) : pose faite + client a payé
       if (d.dateInsta && d.payeClient) {
         const j = joursEcoules(d.dateInsta);
@@ -4466,6 +4473,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsFinancement = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
+      if (isAnnule(d)) return; // 🚫 dossier annulé → aucune alerte
       if (!d.dateEnvoiFin) return; // pas envoyé
       if (d.dateRetourFin) return; // déjà reçu retour
       if (d.statutFin === 'accepté' || d.statutFin === 'refusé' || d.statutFin === 'manque_doc') return; // déjà répondu
@@ -4484,6 +4492,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsManqueDoc = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
+      if (isAnnule(d)) return; // 🚫 dossier annulé → aucune alerte
       if (d.statutFin !== 'manque_doc') return;
       if (d.dateRenvoiDocs) return; // déjà renvoyés (l'user oubliera juste de repasser à 'envoyé')
       // Jours depuis le retour banque (ou envoi initial à défaut)
@@ -4504,6 +4513,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsLitige = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
+      if (isAnnule(d)) return; // 🚫 dossier annulé → aucune alerte
       if (!d.hasLitige) return;
       if (d.litigeTraite) return; // déjà clos
       if (!d.litigeDateCourrierRecommande) return; // pas de courrier → rien à mesurer
@@ -4523,6 +4533,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsSav = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
+      if (isAnnule(d)) return; // 🚫 dossier annulé → aucune alerte
       if (!d.hasSav) return;
       if (d.savTraite) return;
       const ref = d.savDateOuverture || d.savedAt || d.createdAt;
@@ -4543,6 +4554,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsClientRappel = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
+      if (isAnnule(d)) return; // 🚫 dossier annulé → aucune alerte
       if (!d.hasRappel) return;
       if (d.rappelFait) return;
       let jours = 0; // jours de retard sur la date planifiée
@@ -4561,6 +4573,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsPaiement = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
+      if (isAnnule(d)) return; // 🚫 dossier annulé → aucune alerte
       if (!d.dateControleLivraison) return; // pas de contrôle
       if (d.datePaiementBanque || d.payeClient) return; // déjà payé
       const jours = joursEcoules(d.dateControleLivraison);
@@ -4802,6 +4815,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const rappelsRecupTva = [];
     dossiersDash.forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
+      if (isAnnule(d)) return; // 🚫 dossier annulé → aucune alerte
       // Seulement si client payé et démarche pas encore terminée
       if (!d.payeClient) return;
       if (d.tvaStatus === 'recuperee' || d.tvaStatus === 'non_concerne') return;
