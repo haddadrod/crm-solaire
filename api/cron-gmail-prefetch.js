@@ -542,6 +542,9 @@ export default async function handler(req, res) {
   const countOnly = req.query?.countOnly === '1' || req.query?.countOnly === 'true';
 
   const startedAt = Date.now();
+  // 🛡️ Wrapper global : toute exception inattendue (init Supabase, lecture
+  //    storage, etc.) renvoie un message LISIBLE au lieu d'un « 500 » nu.
+  try {
   const admin = makeAdmin();
   const stats = {
     inboxes: 0,
@@ -728,4 +731,7 @@ export default async function handler(req, res) {
 
   const durationMs = Date.now() - startedAt;
   return json(res, 200, { data: { ...stats, durationMs } });
+  } catch (e) {
+    return json(res, 500, { error: `cron crash: ${e?.message || String(e)}` });
+  }
 }
