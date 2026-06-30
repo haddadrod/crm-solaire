@@ -13634,6 +13634,9 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
   const [error, setError] = useState('');
   // 🕐 Dernière récupération (horodatage écrit par le cron/bouton dans Supabase).
   const [lastRun, setLastRun] = useState(null); // { at, pdfsAnalyzed, inboxes, pdfsListed }
+  // 👀 Détection GRATUITE (sans IA) : compte les nouvelles factures sur Gmail.
+  const [detecting, setDetecting] = useState(false);
+  const [detectResult, setDetectResult] = useState(null); // { newDetected, inboxes, pdfsListed, errors }
   const [openFolders, setOpenFolders] = useState({}); // { [fournisseur]: bool }
   const [query, setQuery] = useState('');
   const [previewing, setPreviewing] = useState('');
@@ -13722,6 +13725,27 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
   //    aux changements de panneau). Au moindre changement d'état, on
   //    refresh la liste pour voir l'avancement live.
   const runCron = () => startPrefetch({ days: 365, max: 200 });
+
+  // 👀 Détection GRATUITE : scanne Gmail et compte les nouvelles factures, SANS
+  //    lancer l'analyse IA (countOnly=1 → 0 coût). Donne le « il y a N en plus ».
+  const detectNew = async () => {
+    setDetecting(true); setDetectResult(null);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = {};
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const res = await fetch('/api/cron-gmail-prefetch?countOnly=1&days=365', { method: 'GET', headers });
+      const payload = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+      const d = payload.data || {};
+      const errors = Array.isArray(d.errors) ? d.errors.map(er => er?.global || (er?.email ? `${er.email} : ${er.error || ''}` : (er?.error || ''))).filter(Boolean) : [];
+      setDetectResult({ newDetected: d.newDetected || 0, inboxes: d.inboxes || 0, pdfsListed: d.pdfsListed || 0, errors });
+    } catch (e) {
+      setDetectResult({ error: e?.message || 'Erreur' });
+    } finally {
+      setDetecting(false);
+    }
+  };
   // Refresh la liste à chaque update du prefetch (live)
   useEffect(() => {
     if (cronRunning || cronResult?._inProgress) {
@@ -14033,6 +14057,14 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
               {loading ? '⏳ …' : '🔄 Rafraîchir'}
             </button>
             <button
+              onClick={detectNew}
+              disabled={detecting || cronRunning}
+              className="px-3 py-2 bg-amber-100 hover:bg-amber-200 text-amber-800 rounded-lg text-xs font-bold disabled:opacity-50"
+              title="Scanne Gmail et compte les nouvelles factures SANS les analyser (gratuit, aucun coût IA)."
+            >
+              {detecting ? '⏳ Scan…' : '👀 Voir les nouvelles (gratuit)'}
+            </button>
+            <button
               onClick={() => runCron()}
               disabled={cronRunning}
               className="px-3 py-2 bg-gradient-to-r from-indigo-500 to-violet-600 hover:from-indigo-600 hover:to-violet-700 text-white rounded-lg text-xs font-bold disabled:opacity-60 shadow"
@@ -14041,6 +14073,24 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
               {cronRunning ? '⏳ Téléchargement IA en cours…' : '🚀 Télécharger les factures'}
             </button>
           </div>
+          {/* 👀 Résultat de la détection gratuite (countOnly) : combien de nouvelles
+              factures attendent sur Gmail, sans avoir rien analysé (0 coût IA). */}
+          {detectResult && (
+            <div className="text-[12px] rounded-lg px-3 py-1.5 border">
+              {detectResult.error ? (
+                <span className="text-rose-700">⚠️ {detectResult.error}</span>
+              ) : detectResult.newDetected > 0 ? (
+                <span className="text-amber-800">📥 <span className="font-bold">{detectResult.newDetected} nouvelle{detectResult.newDetected > 1 ? 's' : ''} facture{detectResult.newDetected > 1 ? 's' : ''}</span> détectée{detectResult.newDetected > 1 ? 's' : ''} sur Gmail ({detectResult.inboxes} boîte{detectResult.inboxes > 1 ? 's' : ''}) — clique <span className="font-bold">« 🚀 Télécharger les factures »</span> pour les analyser. <span className="text-slate-500">(Détection gratuite, 0 € d'IA.)</span></span>
+              ) : detectResult.inboxes === 0 ? (
+                <span className="text-amber-800">⚠️ <span className="font-bold">Aucune boîte mail connectée.</span> Va dans Réglages → Email d'envoi pour (re)connecter tes boîtes.</span>
+              ) : (
+                <span className="text-emerald-700">✅ Aucune nouvelle facture sur Gmail ({detectResult.inboxes} boîte{detectResult.inboxes > 1 ? 's' : ''} scannée{detectResult.inboxes > 1 ? 's' : ''}, {detectResult.pdfsListed} PDF déjà connus). Rien à télécharger.</span>
+              )}
+              {Array.isArray(detectResult.errors) && detectResult.errors.length > 0 && (
+                <div className="text-rose-700 mt-1">⚠️ {detectResult.errors.slice(0, 3).join(' · ')}</div>
+              )}
+            </div>
+          )}
           {/* 🕐 Dernière récupération automatique (cron toutes les 15 min) ou
               manuelle. TOUJOURS affichée : si aucune récup enregistrée, on le dit
               clairement (= le téléchargement n'a pas encore tourné avec succès). */}
