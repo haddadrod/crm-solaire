@@ -19,6 +19,7 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-06-30
+- ✅ **Équipe interne — même disposition que les régies** : dans la QuickView, le bouton « payer » passe EN BAS (après société + n° facture + upload facture), identique aux régies/poseurs. Vaut pour tous les rôles internes (télépro, confirmateur, commercial, coordinateur, resp. envoi pose). Le formulaire l'avait déjà.
 - ✅ **Activité par utilisateur — vue par statut** : badge du statut ACTUEL du dossier sur chaque ligne + menu déroulant « 🔄 Statut » pour filtrer (ex : les clients créés par Laura qui sont maintenant en financement). Combinable avec le filtre par type.
 - ✅ **Activité par utilisateur — filtre par type** (Tout · ✨ Créés · ✏️ Modifs · 🔄 Statuts · 📞 Relances) dans le détail déplié, + on garde TOUTES les créations (avant, noyées/perdues dans les centaines de modifs → on ne voyait pas les clients créés). Clic sur une ligne ouvre le client.
 - ✅ **Activité par utilisateur — noms complets + tous les utilisateurs** : affiche désormais l'emoji + le **nom complet** (prénom + nom) au lieu du seul nom d'affichage enregistré dans les actions (ex actions sous « Fitoussi » → « 🚀 Leanah Fitoussi »). + inclut TOUS les utilisateurs enregistrés (même à 0 action). Résout « je ne vois pas Léana » (= Leanah Fitoussi).

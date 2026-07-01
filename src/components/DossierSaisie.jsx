@@ -25916,10 +25916,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             <label className="block text-[11px] font-semibold text-fuchsia-600 uppercase mb-0.5">💰 Montant (€) — défaut {tarifAuto}€</label>
                             <input type="number" step="0.01" value={d[montantKey] || ''} onChange={(e) => onUpdate({ [montantKey]: e.target.value })} placeholder={`Vide = ${tarifAuto}€`} className="w-full px-2 py-1 bg-white border border-fuchsia-200 rounded text-[12px]" />
                           </div>
-                          <button onClick={() => onUpdate({ [payeKey]: !d[payeKey], [dateKey]: !d[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${d[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                            {d[payeKey] ? `✓ Payé (${montantEffectif}€)` : `⏳ À payer (${montantEffectif}€)`}
-                          </button>
-                          {/* 🧾 Facture du prestataire interne (comme une régie) */}
+                          {/* 🧾 Facture du prestataire interne + bouton PAYER EN BAS (identique aux régies) */}
                           {(() => {
                             const factureNoKey = role.key + 'FactureNo';
                             const factureFileKey = role.key + 'FactureFile';
@@ -25945,6 +25942,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                   }}
                                   label="facture"
                                 />
+                                <button onClick={() => onUpdate({ [payeKey]: !d[payeKey], [dateKey]: !d[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${d[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                                  {d[payeKey] ? `✓ Payé (${montantEffectif}€)` : `⏳ À payer (${montantEffectif}€)`}
+                                </button>
                               </div>
                             );
                           })()}
