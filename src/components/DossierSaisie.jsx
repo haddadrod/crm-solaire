@@ -11858,6 +11858,13 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, users = 
 function ActiviteParUtilisateur({ dossiers = [], registeredUsers = [], onShowQuick }) {
   const [expandedUser, setExpandedUser] = useState(null);
   const [entryFilter, setEntryFilter] = useState('all'); // all | création | modification | statut | relance
+  const [statutFilter, setStatutFilter] = useState('all'); // 'all' | id de statut (statut ACTUEL du dossier)
+  // 🔄 Statut ACTUEL de chaque dossier, pour afficher un badge et filtrer par statut.
+  const statutParLocalId = useMemo(() => {
+    const m = {};
+    (dossiers || []).forEach(d => { if (d && d.localId) m[d.localId] = d.statut; });
+    return m;
+  }, [dossiers]);
 
   // Agrégation : compteurs + journal détaillé par utilisateur.
   const { users, totalActions } = useMemo(() => {
@@ -11981,7 +11988,7 @@ function ActiviteParUtilisateur({ dossiers = [], registeredUsers = [], onShowQui
           const isExpanded = expandedUser === u.name;
           return (
             <div key={u.name}>
-              <button onClick={() => { setExpandedUser(isExpanded ? null : u.name); setEntryFilter('all'); }} className="w-full p-4 hover:bg-slate-50 text-left transition-colors">
+              <button onClick={() => { setExpandedUser(isExpanded ? null : u.name); setEntryFilter('all'); setStatutFilter('all'); }} className="w-full p-4 hover:bg-slate-50 text-left transition-colors">
                 <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <span className={`text-base font-bold w-8 h-8 rounded-full flex items-center justify-center ${idx === 0 ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-white' : idx === 1 ? 'bg-gradient-to-br from-slate-400 to-slate-500 text-white' : idx === 2 ? 'bg-gradient-to-br from-amber-700 to-orange-700 text-white' : 'bg-slate-100 text-slate-500'}`}>
@@ -12033,11 +12040,26 @@ function ActiviteParUtilisateur({ dossiers = [], registeredUsers = [], onShowQui
                       </div>
                     );
                   })()}
-                  {u.entries.filter(e => entryFilter === 'all' || e.type === entryFilter).length === 0 ? (
+                  {/* 🔄 Filtre par STATUT actuel du dossier (ex : ses créés qui sont en financement) */}
+                  {(() => {
+                    const base = u.entries.filter(e => entryFilter === 'all' || e.type === entryFilter);
+                    const ids = [...new Set(base.map(e => statutParLocalId[e.localId]).filter(Boolean))];
+                    if (ids.length <= 1) return null;
+                    return (
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-[12px] text-slate-500 font-semibold">🔄 Statut :</span>
+                        <select value={statutFilter} onClick={(ev) => ev.stopPropagation()} onChange={(ev) => { ev.stopPropagation(); setStatutFilter(ev.target.value); }} className="px-2 py-1 bg-white border border-slate-200 rounded text-[12px]">
+                          <option value="all">Tous ({base.length})</option>
+                          {ids.map(sid => { const st = STATUTS.find(s => s.id === sid); const n = base.filter(e => statutParLocalId[e.localId] === sid).length; return <option key={sid} value={sid}>{(st ? `${st.emoji} ${st.label}` : sid)} ({n})</option>; })}
+                        </select>
+                      </div>
+                    );
+                  })()}
+                  {u.entries.filter(e => (entryFilter === 'all' || e.type === entryFilter) && (statutFilter === 'all' || statutParLocalId[e.localId] === statutFilter)).length === 0 ? (
                     <div className="text-xs text-slate-400 italic py-2">Aucune action de ce type.</div>
                   ) : (
                     <div className="space-y-1 max-h-[360px] overflow-y-auto">
-                      {u.entries.filter(e => entryFilter === 'all' || e.type === entryFilter).map((e, j) => {
+                      {u.entries.filter(e => (entryFilter === 'all' || e.type === entryFilter) && (statutFilter === 'all' || statutParLocalId[e.localId] === statutFilter)).map((e, j) => {
                         // Pour les modifs : ne garde QUE les changements visibles
                         // (from formaté ≠ to formaté). Évite les « OREN → OREN »
                         // ou « 1 élément → 1 élément » quand seul un sous-champ
@@ -12053,8 +12075,9 @@ function ActiviteParUtilisateur({ dossiers = [], registeredUsers = [], onShowQui
                             className="w-full text-left bg-white hover:bg-violet-50 border border-slate-100 rounded-lg p-2 transition-colors"
                           >
                             <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <span className="text-[13px] font-bold text-slate-700 truncate">
+                              <span className="text-[13px] font-bold text-slate-700 truncate flex items-center gap-1.5">
                                 {e.type === 'création' ? '✨ Créé' : e.type === 'modification' ? '✏️ Modifié' : e.type === 'statut' ? '🔄 Statut' : '📞 Relance'} · {e.client}
+                                {(() => { const st = STATUTS.find(s => s.id === statutParLocalId[e.localId]); return st ? <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${st.bg} ${st.text}`}>{st.emoji} {st.label}</span> : null; })()}
                               </span>
                               <span className="text-[11px] text-slate-400 flex-shrink-0">{formatEntryDate(e.date)}</span>
                             </div>
