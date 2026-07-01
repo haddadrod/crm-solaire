@@ -11857,6 +11857,7 @@ function DashboardView({ dossiers, dashboard, STATUTS, currentUserRole, users = 
 // CE qu'ils ont modifié », pas juste le compteur.
 function ActiviteParUtilisateur({ dossiers = [], registeredUsers = [], onShowQuick }) {
   const [expandedUser, setExpandedUser] = useState(null);
+  const [entryFilter, setEntryFilter] = useState('all'); // all | création | modification | statut | relance
 
   // Agrégation : compteurs + journal détaillé par utilisateur.
   const { users, totalActions } = useMemo(() => {
@@ -11921,10 +11922,15 @@ function ActiviteParUtilisateur({ dossiers = [], registeredUsers = [], onShowQui
     //    elle existe sous une variante d'accent/casse.
     (registeredUsers || []).forEach(u => { if (u && u.name) ensureUser(u.name); });
 
-    // Tri du journal (plus récent en haut) + cap à 60 entrées par user
+    // Tri du journal (plus récent en haut). On garde TOUTES les créations,
+    // statuts et relances (peu nombreux et intéressants), et on ne plafonne QUE
+    // les modifications (souvent des centaines) → les clients créés ne sont
+    // jamais perdus dans la masse.
     Object.values(userMap).forEach(u => {
       u.entries.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
-      u.entries = u.entries.slice(0, 60);
+      const modifs = u.entries.filter(e => e.type === 'modification').slice(0, 100);
+      const autres = u.entries.filter(e => e.type !== 'modification');
+      u.entries = [...autres, ...modifs].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
     });
     const list = Object.values(userMap).sort((a, b) =>
       (b.created + b.modified + b.statusChanges + b.outreach) - (a.created + a.modified + a.statusChanges + a.outreach)
@@ -11975,7 +11981,7 @@ function ActiviteParUtilisateur({ dossiers = [], registeredUsers = [], onShowQui
           const isExpanded = expandedUser === u.name;
           return (
             <div key={u.name}>
-              <button onClick={() => setExpandedUser(isExpanded ? null : u.name)} className="w-full p-4 hover:bg-slate-50 text-left transition-colors">
+              <button onClick={() => { setExpandedUser(isExpanded ? null : u.name); setEntryFilter('all'); }} className="w-full p-4 hover:bg-slate-50 text-left transition-colors">
                 <div className="flex items-center justify-between mb-2 flex-wrap gap-2">
                   <div className="flex items-center gap-2">
                     <span className={`text-base font-bold w-8 h-8 rounded-full flex items-center justify-center ${idx === 0 ? 'bg-gradient-to-br from-yellow-400 to-amber-500 text-white' : idx === 1 ? 'bg-gradient-to-br from-slate-400 to-slate-500 text-white' : idx === 2 ? 'bg-gradient-to-br from-amber-700 to-orange-700 text-white' : 'bg-slate-100 text-slate-500'}`}>
@@ -12005,11 +12011,33 @@ function ActiviteParUtilisateur({ dossiers = [], registeredUsers = [], onShowQui
               {isExpanded && (
                 <div className="px-4 pb-3 bg-slate-50">
                   <div className="text-[12px] font-bold text-slate-500 uppercase mb-1.5 mt-1">📜 Détail des dernières actions</div>
-                  {u.entries.length === 0 ? (
-                    <div className="text-xs text-slate-400 italic py-2">Aucun détail (anciens dossiers non tracés).</div>
+                  {/* 🔎 Filtre par type d'action — pour voir p.ex. UNIQUEMENT les
+                      clients créés, sans les modifs par centaines. */}
+                  {(() => {
+                    const cnt = (t) => u.entries.filter(e => e.type === t).length;
+                    const tabs = [
+                      { id: 'all', label: `Tout (${u.entries.length})` },
+                      { id: 'création', label: `✨ Créés (${cnt('création')})` },
+                      { id: 'modification', label: `✏️ Modifs (${cnt('modification')})` },
+                      { id: 'statut', label: `🔄 Statuts (${cnt('statut')})` },
+                      { id: 'relance', label: `📞 Relances (${cnt('relance')})` },
+                    ];
+                    return (
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {tabs.map(t => (
+                          <button key={t.id} type="button" onClick={(ev) => { ev.stopPropagation(); setEntryFilter(t.id); }}
+                            className={`px-2 py-0.5 rounded-full text-[12px] font-bold border ${entryFilter === t.id ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200 hover:border-violet-300'}`}>
+                            {t.label}
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })()}
+                  {u.entries.filter(e => entryFilter === 'all' || e.type === entryFilter).length === 0 ? (
+                    <div className="text-xs text-slate-400 italic py-2">Aucune action de ce type.</div>
                   ) : (
                     <div className="space-y-1 max-h-[360px] overflow-y-auto">
-                      {u.entries.map((e, j) => {
+                      {u.entries.filter(e => entryFilter === 'all' || e.type === entryFilter).map((e, j) => {
                         // Pour les modifs : ne garde QUE les changements visibles
                         // (from formaté ≠ to formaté). Évite les « OREN → OREN »
                         // ou « 1 élément → 1 élément » quand seul un sous-champ
