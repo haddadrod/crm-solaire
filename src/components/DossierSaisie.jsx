@@ -6671,6 +6671,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
         {showExportComptable && (
           <ExportComptableModal
             dossiersEnriched={dossiersEnriched}
+            societes={societes}
+            activeSociete={activeSociete}
             onClose={() => setShowExportComptable(false)}
             onExport={(sel) => { setShowExportComptable(false); exportComptable(sel); }}
           />
@@ -26920,7 +26922,17 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 // Avant de générer le grand livre, on choisit QUI exporter : tout (comportement
 // historique) ou une sélection de poseurs / régies / fournisseurs / internes.
 // Renvoie à onExport soit null (tout), soit un Set de clés `Catégorie||Nom`.
-function ExportComptableModal({ dossiersEnriched, onClose, onExport }) {
+function ExportComptableModal({ dossiersEnriched, societes = [], activeSociete = '', onClose, onExport }) {
+  // Libellé de la société d'un dossier (pour ranger le ZIP par société).
+  const socLabel = (d) => {
+    const soc = societes.find(x => x.id === (d.societe || ''));
+    return soc?.label || d.societe || 'Sans société';
+  };
+  // Respecte le filtre société actif en haut du CRM (comme le grand livre).
+  const dossiersScope = useMemo(
+    () => activeSociete ? (dossiersEnriched || []).filter(d => d.societe === activeSociete) : (dossiersEnriched || []),
+    [dossiersEnriched, activeSociete]
+  );
   const [checked, setChecked] = useState(() => new Set());
   const [search, setSearch] = useState('');
 
@@ -26933,14 +26945,14 @@ function ExportComptableModal({ dossiersEnriched, onClose, onExport }) {
       if (!map.has(key)) map.set(key, { key, cat, ordre, nom, nb: 0 });
       map.get(key).nb += 1;
     };
-    (dossiersEnriched || []).forEach(d => {
+    dossiersScope.forEach(d => {
       (d.poseursDetail || []).forEach(p => add('Poseur', 1, p.nom));
       (d.regiesDetail || []).forEach(r => add('Régie', 2, r.nom));
       (d.fournisseursDetail || []).forEach(f => add('Fournisseur', 3, f.nom));
       ROLES_INTERNES.forEach(role => { if (d[role.key]) add(role.label, 4, d[role.key]); });
     });
     return [...map.values()].sort((a, b) => a.ordre !== b.ordre ? a.ordre - b.ordre : a.nom.localeCompare(b.nom));
-  }, [dossiersEnriched]);
+  }, [dossiersScope]);
 
   const cats = useMemo(() => {
     const out = [];
@@ -26988,15 +27000,16 @@ function ExportComptableModal({ dossiersEnriched, onClose, onExport }) {
       };
       const wanted = (cat, nom) => checked.size === 0 || checked.has(cat + '||' + nom);
       const items = [];
-      (dossiersEnriched || []).forEach(d => {
+      dossiersScope.forEach(d => {
         const client = `${d.nom || ''} ${d.prenom || ''}`.trim() || 'client';
-        (d.poseurs || []).forEach(x => { if (x.nom && x.factureFile && keep(x.paye, x.datePaye) && wanted('Poseur', x.nom)) items.push({ cat: 'Poseur', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye, paye: !!x.paye }); });
-        (d.regies || []).forEach(x => { if (x.nom && x.factureFile && keep(x.paye, x.datePaye) && wanted('Régie', x.nom)) items.push({ cat: 'Régie', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye, paye: !!x.paye }); });
-        (d.fournisseurs || []).forEach(x => { if (x.nom && x.factureFile && keep(x.paye, x.datePaye) && wanted('Fournisseur', x.nom)) items.push({ cat: 'Fournisseur', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye, paye: !!x.paye }); });
+        const soc = socLabel(d);
+        (d.poseurs || []).forEach(x => { if (x.nom && x.factureFile && keep(x.paye, x.datePaye) && wanted('Poseur', x.nom)) items.push({ soc, cat: 'Poseur', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye, paye: !!x.paye }); });
+        (d.regies || []).forEach(x => { if (x.nom && x.factureFile && keep(x.paye, x.datePaye) && wanted('Régie', x.nom)) items.push({ soc, cat: 'Régie', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye, paye: !!x.paye }); });
+        (d.fournisseurs || []).forEach(x => { if (x.nom && x.factureFile && keep(x.paye, x.datePaye) && wanted('Fournisseur', x.nom)) items.push({ soc, cat: 'Fournisseur', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye, paye: !!x.paye }); });
         ROLES_INTERNES.forEach(role => {
           const nom = d[role.key];
           if (nom && d[role.key + 'FactureFile'] && keep(!!d[role.key + 'Paye'], d[role.key + 'DatePaye']) && wanted(role.label, nom)) {
-            items.push({ cat: role.label, nom, client, factureNo: d[role.key + 'FactureNo'], fileId: d[role.key + 'FactureFile'], datePaye: d[role.key + 'DatePaye'], paye: !!d[role.key + 'Paye'] });
+            items.push({ soc, cat: role.label, nom, client, factureNo: d[role.key + 'FactureNo'], fileId: d[role.key + 'FactureFile'], datePaye: d[role.key + 'DatePaye'], paye: !!d[role.key + 'Paye'] });
           }
         });
       });
@@ -27018,7 +27031,7 @@ function ExportComptableModal({ dossiersEnriched, onClose, onExport }) {
           if (!m) { manquantes++; continue; }
           const ext = (data.name || '').includes('.') ? data.name.slice(data.name.lastIndexOf('.')) : '.pdf';
           const datePart = it.paye ? clean(it.datePaye || 'payee') : 'APAYER';
-          const fname = `${clean(it.cat)}_${clean(it.nom)}/${datePart}_${clean(it.client)}_${clean(it.factureNo || 'facture')}${ext}`;
+          const fname = `${clean(it.soc)}/${clean(it.cat)}_${clean(it.nom)}/${datePart}_${clean(it.client)}_${clean(it.factureNo || 'facture')}${ext}`;
           zip.file(fname, m[2], { base64: true });
           ajoutees++;
         } catch (e) { manquantes++; }
