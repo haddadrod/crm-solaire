@@ -26906,6 +26906,29 @@ function ModifRequestModal({ onClose, currentUser }) {
   // Coupe le micro si on ferme le modal en pleine dictée.
   useEffect(() => () => { try { recogRef.current?.stop(); } catch (e) {} }, []);
 
+  // 📸 Capture d'écran jointe — compressée côté client (max 1400 px, JPEG 82 %)
+  // pour rester bien sous la limite de l'API. L'IA de vision la décrira côté
+  // serveur pour que le Claude-codeur sache exactement où est la modif.
+  const [imageData, setImageData] = useState('');
+  const onPickImage = (file) => {
+    if (!file || !file.type || !file.type.startsWith('image/')) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const MAX = 1400;
+        const scale = Math.min(1, MAX / Math.max(img.width, img.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+        setImageData(canvas.toDataURL('image/jpeg', 0.82));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const callApi = async (payload) => {
     const { data: { session } } = await supabase.auth.getSession();
     const headers = { 'Content-Type': 'application/json' };
@@ -26937,12 +26960,13 @@ function ModifRequestModal({ onClose, currentUser }) {
     setSending(true);
     setError(null);
     try {
-      const data = await callApi({ action: 'modif_request', titre: titre.trim(), description: description.trim() });
+      const data = await callApi({ action: 'modif_request', titre: titre.trim(), description: description.trim(), imageBase64: imageData || undefined });
       setSuccess(data.entry);
       setRequests(data.requests || []);
       setGithubConfigured(!!data.githubConfigured);
       setTitre('');
       setDescription('');
+      setImageData('');
     } catch (e) {
       setError(e.message);
     } finally {
@@ -26997,11 +27021,40 @@ function ModifRequestModal({ onClose, currentUser }) {
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
+                  onPaste={(e) => {
+                    // 📸 Coller une capture directement (Ctrl+V / Cmd+V)
+                    const items = e.clipboardData?.items || [];
+                    for (const it of items) {
+                      if (it.type && it.type.startsWith('image/')) {
+                        e.preventDefault();
+                        onPickImage(it.getAsFile());
+                        return;
+                      }
+                    }
+                  }}
+                  onDrop={(e) => {
+                    const f = e.dataTransfer?.files?.[0];
+                    if (f && f.type.startsWith('image/')) { e.preventDefault(); onPickImage(f); }
+                  }}
+                  onDragOver={(e) => e.preventDefault()}
                   rows={5}
-                  placeholder={"Explique en français ce que tu veux — ou clique 🎤 Dicter et parle.\nEx : « Dans la fiche client, je voudrais un champ pour noter la date du 2e appel, à côté du téléphone. »"}
+                  placeholder={"Explique en français ce que tu veux — ou clique 🎤 Dicter et parle.\n📸 Tu peux COLLER une capture d'écran ici (Ctrl+V) pour montrer où est la modif.\nEx : « Dans la fiche client, je voudrais un champ pour noter la date du 2e appel. »"}
                   className={`w-full px-3 py-2 bg-white border rounded-xl text-[14px] ${recording ? 'border-rose-400 ring-2 ring-rose-200' : 'border-slate-200'}`}
                   autoFocus
                 />
+                {/* 📸 Capture jointe : aperçu + retirer, ou bouton joindre */}
+                {imageData ? (
+                  <div className="mt-1.5 flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-xl p-1.5">
+                    <img src={imageData} alt="Capture jointe" className="h-16 rounded-lg border border-slate-300" />
+                    <div className="flex-1 text-[12px] text-slate-600">📸 Capture jointe — le robot saura exactement où est la modif.</div>
+                    <button type="button" onClick={() => setImageData('')} className="text-[12px] font-bold text-rose-600 bg-rose-50 hover:bg-rose-100 px-2 py-1 rounded-lg whitespace-nowrap">✕ Retirer</button>
+                  </div>
+                ) : (
+                  <label className="mt-1.5 inline-flex items-center gap-1.5 text-[12px] font-semibold text-slate-600 bg-slate-100 hover:bg-amber-100 border border-slate-200 px-3 py-1.5 rounded-full cursor-pointer">
+                    📸 Joindre une capture d'écran (ou colle-la avec Ctrl+V)
+                    <input type="file" accept="image/*" className="hidden" onChange={(e) => { onPickImage(e.target.files?.[0]); e.target.value = ''; }} />
+                  </label>
+                )}
               </div>
               {error && <div className="text-[13px] text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-2">⚠️ {error}</div>}
               <button onClick={submit} disabled={sending} className="w-full px-4 py-2.5 rounded-xl font-bold text-white bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 disabled:opacity-50 shadow-md">
@@ -27019,7 +27072,7 @@ function ModifRequestModal({ onClose, currentUser }) {
               {requests.map((r, i) => (
                 <div key={i} className="bg-slate-50 border border-slate-200 rounded-xl p-2">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <span className="text-[13px] font-bold text-slate-700">{r.titre || (r.description || '').slice(0, 60)}</span>
+                    <span className="text-[13px] font-bold text-slate-700">{r.imageKey ? '📸 ' : ''}{r.titre || (r.description || '').slice(0, 60)}</span>
                     <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${r.issueUrl ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
                       {r.issueUrl ? `→ Claude #${r.issueNumber}` : r.status || 'enregistrée'}
                     </span>

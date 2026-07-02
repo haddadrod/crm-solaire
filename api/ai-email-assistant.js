@@ -178,11 +178,52 @@ async function handleModifRequest(res, body, caller) {
     issueUrl: '',
   };
 
+  // 📸 Capture d'écran jointe (data URL compressée côté front). On la stocke
+  // dans storage (clé dédiée) et on la fait DÉCRIRE par l'IA de vision : cette
+  // description part dans l'issue GitHub pour que le Claude-codeur « voie »
+  // où est la modif demandée (les issues GitHub n'acceptent pas d'upload
+  // d'image par API — la description texte est le vecteur fiable).
+  const imageBase64 = typeof body.imageBase64 === 'string' ? body.imageBase64 : '';
+  if (imageBase64) {
+    if (imageBase64.length > 3_000_000) {
+      return json(res, 400, { error: 'Capture trop lourde (max ~2 Mo) — recadre ou réduis la qualité.' });
+    }
+    const imgMatch = imageBase64.match(/^data:(image\/(?:png|jpeg|jpg|webp|gif));base64,([A-Za-z0-9+/=]+)$/);
+    if (!imgMatch) return json(res, 400, { error: "Format d'image non reconnu." });
+    entry.imageKey = `modif-img-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await admin.from('storage').upsert({ key: entry.imageKey, value: imageBase64, updated_at: new Date().toISOString() });
+    if (ANTHROPIC_API_KEY) {
+      try {
+        const client = new Anthropic({ apiKey: ANTHROPIC_API_KEY });
+        const msg = await client.messages.create({
+          model: 'claude-haiku-4-5',
+          max_tokens: 700,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: imgMatch[1] === 'image/jpg' ? 'image/jpeg' : imgMatch[1], data: imgMatch[2] } },
+              { type: 'text', text: "Cette capture d'écran d'un CRM accompagne une demande de modification. Décris-la PRÉCISÉMENT pour le développeur qui fera la modif SANS voir l'image : quel écran/onglet/section, quels éléments visibles (titres exacts, boutons, champs, badges, couleurs), et signale tout élément entouré, fléché ou surligné par l'utilisateur. 5 à 8 phrases, en français, factuel." },
+            ],
+          }],
+        });
+        const t = msg.content.find(b => b.type === 'text');
+        if (t?.text) entry.imageDescription = t.text.trim();
+      } catch (e) {
+        console.error('modif_request vision error:', e?.message);
+      }
+    }
+  }
+
   if (GITHUB_MODIF_TOKEN) {
     try {
       const issueTitle = `[CRM] ${titre || description.slice(0, 70)}`;
       const issueBody = [
         `@claude ${description}`,
+        ...(entry.imageDescription ? [
+          '',
+          `📸 **Une capture d'écran est jointe à la demande** (stockée dans le CRM, clé \`${entry.imageKey}\`). Description automatique de la capture :`,
+          `> ${entry.imageDescription.replace(/\n/g, '\n> ')}`,
+        ] : (entry.imageKey ? ['', `📸 Une capture d'écran est jointe (clé \`${entry.imageKey}\` dans la table storage), mais sa description automatique a échoué.`] : [])),
         '',
         '---',
         `_Demande déposée par **${par}** (${caller.email || 'email inconnu'}) depuis le CRM (bouton « 💡 Demander une modif »)._`,
