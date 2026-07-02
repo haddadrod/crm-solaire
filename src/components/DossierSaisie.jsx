@@ -1900,6 +1900,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     window.storage.set('ui-theme', darkMode ? 'dark' : 'light').catch(() => {});
   }, [darkMode]);
   const [showImportJson, setShowImportJson] = useState(false); // 📦 modal import dossiers JSON
+  const [showModifRequest, setShowModifRequest] = useState(false); // 💡 modal « Demander une modif » (codage du CRM)
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
   // Plus de dropdown local — qui est connecté = qui agit.
   // currentUser = nom complet (utilisé pour tagger createdBy / modifiedBy) ;
@@ -5661,6 +5662,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     <span className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-[12px] opacity-60">▼</span>
                   </div>
                 )}
+                <button
+                  onClick={() => setShowModifRequest(true)}
+                  className="bg-white hover:bg-amber-50 hover:border-amber-300 text-slate-700 px-3 py-2 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200"
+                  title="Demander une modification du CRM (nouvelle fonctionnalité, correction…) — codée par Claude"
+                >
+                  <span className="text-2xl leading-none">💡</span>
+                </button>
                 {onLogout && (
                   <button
                     onClick={onLogout}
@@ -6602,6 +6610,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
               setShowImportJson(false);
             }}
           />
+        )}
+
+        {/* 💡 DEMANDER UNE MODIF — Laura (ou n'importe qui de connecté) décrit une
+            modification du CRM → issue GitHub @claude → PR codée par Claude,
+            validée par l'admin avant mise en ligne. */}
+        {showModifRequest && (
+          <ModifRequestModal onClose={() => setShowModifRequest(false)} currentUser={currentUser} />
         )}
 
         {/* RECHERCHE GLOBALE Ctrl+K */}
@@ -26835,6 +26850,146 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
         }
       `}</style>
     </>
+  );
+}
+
+// ===================== 💡 DEMANDER UNE MODIF DU CRM =====================
+// N'importe quel utilisateur connecté (ex : Laura) décrit une modification du
+// CRM (nouvelle fonctionnalité, correction, changement d'écran…). La demande :
+//   1. est enregistrée dans storage (clé `modif-requests`) → historique visible ici ;
+//   2. si GITHUB_MODIF_TOKEN est configuré sur Vercel → crée une issue GitHub
+//      mentionnant @claude → l'app Claude Code GitHub code la modif et ouvre
+//      une PR → l'admin valide (merge) → Vercel déploie.
+// Backend : /api/ai-email-assistant avec action:'modif_request' (mutualisé).
+function ModifRequestModal({ onClose, currentUser }) {
+  const [titre, setTitre] = useState('');
+  const [description, setDescription] = useState('');
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState(null);
+  const [success, setSuccess] = useState(null); // entry renvoyée par l'API
+  const [requests, setRequests] = useState([]);
+  const [githubConfigured, setGithubConfigured] = useState(null);
+  const [loadingList, setLoadingList] = useState(true);
+
+  const callApi = async (payload) => {
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = { 'Content-Type': 'application/json' };
+    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+    const res = await fetch('/api/ai-email-assistant', { method: 'POST', headers, body: JSON.stringify(payload) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `Erreur ${res.status}`);
+    return data;
+  };
+
+  // Charge l'historique à l'ouverture
+  useEffect(() => {
+    (async () => {
+      try {
+        const data = await callApi({ action: 'modif_request_list' });
+        setRequests(data.requests || []);
+        setGithubConfigured(!!data.githubConfigured);
+      } catch (e) {
+        // silencieux : la liste est secondaire
+      } finally {
+        setLoadingList(false);
+      }
+    })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const submit = async () => {
+    if (description.trim().length < 10) { setError('Décris la modification souhaitée (au moins 10 caractères).'); return; }
+    setSending(true);
+    setError(null);
+    try {
+      const data = await callApi({ action: 'modif_request', titre: titre.trim(), description: description.trim() });
+      setSuccess(data.entry);
+      setRequests(data.requests || []);
+      setGithubConfigured(!!data.githubConfigured);
+      setTitre('');
+      setDescription('');
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl border border-amber-200 w-full max-w-2xl max-h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-gradient-to-r from-amber-400 to-orange-500 px-5 py-3 flex items-center justify-between">
+          <div>
+            <div className="text-white font-extrabold text-lg flex items-center gap-2">💡 Demander une modif du CRM</div>
+            <div className="text-amber-50 text-[12px]">Décris ce que tu veux changer — Claude le code, l'admin valide avant mise en ligne.</div>
+          </div>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-2xl leading-none px-2">×</button>
+        </div>
+        <div className="p-4 space-y-3 overflow-y-auto">
+          {success ? (
+            <div className="bg-emerald-50 border-2 border-emerald-300 rounded-2xl p-4 space-y-2">
+              <div className="text-emerald-800 font-bold text-[15px]">✅ Demande envoyée !</div>
+              {success.issueUrl ? (
+                <div className="text-[13px] text-emerald-700">
+                  Claude va la coder et proposer la modification. Elle sera en ligne après validation de l'admin.
+                  {' '}<a href={success.issueUrl} target="_blank" rel="noreferrer" className="underline font-semibold">Suivre la demande #{success.issueNumber}</a>
+                </div>
+              ) : (
+                <div className="text-[13px] text-emerald-700">Demande enregistrée dans la liste ci-dessous. {githubConfigured === false && "⚠️ L'envoi automatique à Claude n'est pas encore configuré (GITHUB_MODIF_TOKEN manquant sur Vercel) — l'admin la verra ici."}</div>
+              )}
+              <button onClick={() => setSuccess(null)} className="text-[13px] font-bold text-emerald-700 bg-emerald-100 hover:bg-emerald-200 px-3 py-1.5 rounded-lg">➕ Faire une autre demande</button>
+            </div>
+          ) : (
+            <>
+              <div>
+                <label className="block text-[12px] font-semibold text-slate-600 uppercase mb-1">Titre (optionnel)</label>
+                <input type="text" value={titre} onChange={(e) => setTitre(e.target.value)} placeholder={'Ex : « Ajouter un champ … » / « Corriger l’affichage … »'} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[14px]" />
+              </div>
+              <div>
+                <label className="block text-[12px] font-semibold text-slate-600 uppercase mb-1">Décris la modification *</label>
+                <textarea
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  rows={5}
+                  placeholder={"Explique en français ce que tu veux : où (quel écran / quel bouton), quoi (ce qui doit changer), pourquoi si utile.\nEx : « Dans la fiche client, je voudrais un champ pour noter la date du 2e appel, à côté du téléphone. »"}
+                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[14px]"
+                  autoFocus
+                />
+              </div>
+              {error && <div className="text-[13px] text-rose-600 bg-rose-50 border border-rose-200 rounded-xl p-2">⚠️ {error}</div>}
+              <button onClick={submit} disabled={sending} className="w-full px-4 py-2.5 rounded-xl font-bold text-white bg-gradient-to-r from-amber-400 to-orange-500 hover:from-amber-500 hover:to-orange-600 disabled:opacity-50 shadow-md">
+                {sending ? '⏳ Envoi…' : '🚀 Envoyer ma demande'}
+              </button>
+              <div className="text-[11px] text-slate-400">Demande déposée en tant que {currentUser || 'utilisateur connecté'}. L'admin garde la main : rien ne part en ligne sans sa validation.</div>
+            </>
+          )}
+
+          {/* Historique des demandes */}
+          <div className="pt-2 border-t border-slate-100">
+            <div className="text-[12px] font-bold text-slate-500 uppercase mb-1.5">📋 Demandes précédentes {loadingList ? '…' : `(${requests.length})`}</div>
+            {!loadingList && requests.length === 0 && <div className="text-[13px] text-slate-400 italic">Aucune demande pour l'instant.</div>}
+            <div className="space-y-1.5 max-h-56 overflow-y-auto">
+              {requests.map((r, i) => (
+                <div key={i} className="bg-slate-50 border border-slate-200 rounded-xl p-2">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <span className="text-[13px] font-bold text-slate-700">{r.titre || (r.description || '').slice(0, 60)}</span>
+                    <span className={`text-[11px] font-bold px-1.5 py-0.5 rounded-full ${r.issueUrl ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`}>
+                      {r.issueUrl ? `→ Claude #${r.issueNumber}` : r.status || 'enregistrée'}
+                    </span>
+                  </div>
+                  <div className="text-[12px] text-slate-500 mt-0.5">{(r.description || '').slice(0, 140)}{(r.description || '').length > 140 ? '…' : ''}</div>
+                  <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
+                    <span>👤 {r.par}</span>
+                    <span>🕐 {r.at ? new Date(r.at).toLocaleDateString('fr-FR') : ''}</span>
+                    {r.issueUrl && <a href={r.issueUrl} target="_blank" rel="noreferrer" className="underline text-blue-500">suivre</a>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 

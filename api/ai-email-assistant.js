@@ -132,10 +132,106 @@ Règles globales :
 - Si l'ordre dit "bascule", "passe", "déplace", "mets", "marque" un dossier vers une étape/statut, c'est 'move_status'.
 - En cas de doute entre email et open_dossier, choisis email seulement si "mail", "message", "écris" ou "envoie" est explicite.`;
 
+// ── 💡 Demandes de modification du CRM (codage) ──────────────────────────────
+// Le bouton « 💡 Demander une modif » du CRM poste ici. La demande est
+// enregistrée dans la table storage (clé `modif-requests`) ET, si un token
+// GitHub est configuré (GITHUB_MODIF_TOKEN sur Vercel, scope issues:write sur
+// le repo), une issue GitHub mentionnant @claude est créée → l'app Claude Code
+// GitHub implémente la modif sur une branche et ouvre une PR (validée par
+// l'admin avant merge). Sans token : mode dégradé « boîte à demandes ».
+// Routes (mutualisées ici pour ne pas créer une énième fonction api/*.js) :
+//   body.action = 'modif_request'      → créer une demande
+//   body.action = 'modif_request_list' → lister les demandes
+const GITHUB_MODIF_TOKEN = process.env.GITHUB_MODIF_TOKEN;
+const GITHUB_MODIF_REPO = process.env.GITHUB_MODIF_REPO || 'haddadrod/crm-solaire';
+const MODIF_KEY = 'modif-requests';
+
+async function handleModifRequest(res, body, caller) {
+  const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const readList = async () => {
+    const { data } = await admin.from('storage').select('value').eq('key', MODIF_KEY).maybeSingle();
+    if (!data?.value) return [];
+    try { const arr = JSON.parse(data.value); return Array.isArray(arr) ? arr : []; } catch { return []; }
+  };
+
+  if (body.action === 'modif_request_list') {
+    const list = await readList();
+    return json(res, 200, { requests: list.slice().reverse(), githubConfigured: !!GITHUB_MODIF_TOKEN });
+  }
+
+  const description = String(body.description || '').trim();
+  const titre = String(body.titre || '').trim();
+  if (description.length < 10) {
+    return json(res, 400, { error: 'Décris la modification souhaitée (au moins 10 caractères).' });
+  }
+  const par = caller.user_metadata?.display_name || (caller.email ? caller.email.split('@')[0] : 'utilisateur');
+  const entry = {
+    at: new Date().toISOString(),
+    par,
+    email: caller.email || '',
+    titre,
+    description,
+    status: 'enregistrée',
+    issueNumber: null,
+    issueUrl: '',
+  };
+
+  if (GITHUB_MODIF_TOKEN) {
+    try {
+      const issueTitle = `[CRM] ${titre || description.slice(0, 70)}`;
+      const issueBody = [
+        `@claude ${description}`,
+        '',
+        '---',
+        `_Demande déposée par **${par}** (${caller.email || 'email inconnu'}) depuis le CRM (bouton « 💡 Demander une modif »)._`,
+        '',
+        "**Instructions :** lis `CLAUDE.md` et `SUIVI.md` d'abord. Implémente sur une branche `claude/...`, vérifie que `npm run build` passe, puis ouvre une PR vers `main`. Ne pousse JAMAIS directement sur `main` — la PR sera validée par l'admin avant merge.",
+      ].join('\n');
+      const ghRes = await fetch(`https://api.github.com/repos/${GITHUB_MODIF_REPO}/issues`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${GITHUB_MODIF_TOKEN}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+          'User-Agent': 'crm-solaire-modif-request',
+        },
+        body: JSON.stringify({ title: issueTitle, body: issueBody, labels: ['demande-crm'] }),
+      });
+      const ghData = await ghRes.json().catch(() => ({}));
+      if (ghRes.ok && ghData.number) {
+        entry.status = 'issue créée';
+        entry.issueNumber = ghData.number;
+        entry.issueUrl = ghData.html_url || '';
+      } else {
+        entry.status = `erreur GitHub (${ghRes.status}) — demande quand même enregistrée`;
+        console.error('modif_request GitHub error:', ghRes.status, ghData?.message);
+      }
+    } catch (e) {
+      entry.status = 'erreur GitHub — demande quand même enregistrée';
+      console.error('modif_request GitHub exception:', e?.message);
+    }
+  }
+
+  let list = await readList();
+  list.push(entry);
+  if (list.length > 200) list = list.slice(-200);
+  await admin.from('storage').upsert({ key: MODIF_KEY, value: JSON.stringify(list), updated_at: new Date().toISOString() });
+  return json(res, 200, { ok: true, entry, requests: list.slice().reverse(), githubConfigured: !!GITHUB_MODIF_TOKEN });
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
     return json(res, 405, { error: 'Method Not Allowed' });
+  }
+  // 💡 Demandes de modif : pas besoin d'ANTHROPIC_API_KEY, juste d'être connecté.
+  const preBody = req.body || {};
+  if (preBody.action === 'modif_request' || preBody.action === 'modif_request_list') {
+    const modifCaller = await getCaller(req);
+    if (!modifCaller) return json(res, 401, { error: 'Connexion requise.' });
+    return handleModifRequest(res, preBody, modifCaller);
   }
   if (!ANTHROPIC_API_KEY) {
     return json(res, 503, { error: "Crédits IA non configurés (ANTHROPIC_API_KEY manquante sur Vercel)." });
