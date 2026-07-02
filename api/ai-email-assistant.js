@@ -161,6 +161,58 @@ async function handleModifRequest(res, body, caller) {
     return json(res, 200, { requests: list.slice().reverse(), githubConfigured: !!GITHUB_MODIF_TOKEN });
   }
 
+  const ghHeaders = {
+    'Authorization': `Bearer ${GITHUB_MODIF_TOKEN}`,
+    'Accept': 'application/vnd.github+json',
+    'Content-Type': 'application/json',
+    'User-Agent': 'crm-solaire-modif-request',
+  };
+  const isAdminCaller = caller.user_metadata?.role === 'admin';
+
+  // ✅ Liste des propositions (PRs ouvertes par le Claude-codeur) à valider —
+  // affichée dans le CRM pour que l'admin n'ait pas à aller sur GitHub.
+  if (body.action === 'modif_pr_list') {
+    if (!GITHUB_MODIF_TOKEN) return json(res, 200, { prs: [] });
+    const ghRes = await fetch(`https://api.github.com/repos/${GITHUB_MODIF_REPO}/pulls?state=open&per_page=30`, { headers: ghHeaders });
+    const ghData = await ghRes.json().catch(() => ([]));
+    if (!ghRes.ok) return json(res, 502, { error: `GitHub (${ghRes.status}) : ${ghData?.message || 'erreur'}` });
+    const prs = (Array.isArray(ghData) ? ghData : [])
+      .filter(p => /^claude\/issue-\d+/.test(p.head?.ref || ''))
+      .map(p => ({
+        number: p.number,
+        title: p.title || '',
+        url: p.html_url || '',
+        branch: p.head?.ref || '',
+        issueNumber: parseInt((p.head?.ref || '').match(/^claude\/issue-(\d+)/)?.[1] || '0', 10) || null,
+        createdAt: p.created_at || '',
+        body: (p.body || '').slice(0, 600),
+      }));
+    return json(res, 200, { prs, isAdmin: isAdminCaller });
+  }
+
+  // 🚀 Valider (= merger) une proposition depuis le CRM. Admin uniquement.
+  // Le merge déclenche le déploiement Vercel automatique.
+  if (body.action === 'modif_pr_merge') {
+    if (!isAdminCaller) return json(res, 403, { error: 'Seul un admin peut valider une mise en ligne.' });
+    if (!GITHUB_MODIF_TOKEN) return json(res, 503, { error: 'GITHUB_MODIF_TOKEN non configuré sur Vercel.' });
+    const prNumber = parseInt(body.prNumber, 10);
+    if (!prNumber) return json(res, 400, { error: 'prNumber requis.' });
+    const ghRes = await fetch(`https://api.github.com/repos/${GITHUB_MODIF_REPO}/pulls/${prNumber}/merge`, {
+      method: 'PUT',
+      headers: ghHeaders,
+      body: JSON.stringify({ merge_method: 'squash' }),
+    });
+    const ghData = await ghRes.json().catch(() => ({}));
+    if (!ghRes.ok) {
+      // 403 = le token n'a pas les permissions Contents/Pull requests (Read & write).
+      const hint = ghRes.status === 403
+        ? " — le token GitHub (crm-bouton-modif) n'a pas les permissions « Contents » et « Pull requests » en Read & write. Édite-le sur github.com/settings/personal-access-tokens et ajoute-les."
+        : '';
+      return json(res, 502, { error: `Validation impossible (${ghRes.status}) : ${ghData?.message || 'erreur GitHub'}${hint}` });
+    }
+    return json(res, 200, { ok: true, merged: true, sha: ghData.sha || '' });
+  }
+
   const description = String(body.description || '').trim();
   const titre = String(body.titre || '').trim();
   if (description.length < 10) {
@@ -269,7 +321,7 @@ export default async function handler(req, res) {
   }
   // 💡 Demandes de modif : pas besoin d'ANTHROPIC_API_KEY, juste d'être connecté.
   const preBody = req.body || {};
-  if (preBody.action === 'modif_request' || preBody.action === 'modif_request_list') {
+  if (['modif_request', 'modif_request_list', 'modif_pr_list', 'modif_pr_merge'].includes(preBody.action)) {
     const modifCaller = await getCaller(req);
     if (!modifCaller) return json(res, 401, { error: 'Connexion requise.' });
     return handleModifRequest(res, preBody, modifCaller);

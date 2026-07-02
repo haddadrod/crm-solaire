@@ -26987,7 +26987,37 @@ function ModifRequestModal({ onClose, currentUser }) {
     return data;
   };
 
-  // Charge l'historique à l'ouverture
+  // ✅ Propositions du robot (PRs) prêtes à valider — pour ne PAS avoir à
+  // aller sur GitHub : liste + bouton « Valider et mettre en ligne » (admin).
+  const [prs, setPrs] = useState([]);
+  const [isAdminForMerge, setIsAdminForMerge] = useState(false);
+  const [mergingPr, setMergingPr] = useState(null);
+  const [mergedFlash, setMergedFlash] = useState(null);
+
+  const refreshPrs = async () => {
+    try {
+      const data = await callApi({ action: 'modif_pr_list' });
+      setPrs(data.prs || []);
+      setIsAdminForMerge(!!data.isAdmin);
+    } catch (e) { /* silencieux */ }
+  };
+
+  const mergePr = async (pr) => {
+    if (!window.confirm(`Valider « ${pr.title} » et mettre en ligne ?\n\nLa modification sera en production dans ~2 minutes.`)) return;
+    setMergingPr(pr.number);
+    try {
+      await callApi({ action: 'modif_pr_merge', prNumber: pr.number });
+      setMergedFlash(pr.number);
+      setTimeout(() => setMergedFlash(null), 5000);
+      await refreshPrs();
+    } catch (e) {
+      alert(`❌ ${e.message}`);
+    } finally {
+      setMergingPr(null);
+    }
+  };
+
+  // Charge l'historique + les propositions à l'ouverture
   useEffect(() => {
     (async () => {
       try {
@@ -27000,6 +27030,7 @@ function ModifRequestModal({ onClose, currentUser }) {
         setLoadingList(false);
       }
     })();
+    refreshPrs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -27110,6 +27141,35 @@ function ModifRequestModal({ onClose, currentUser }) {
               </button>
               <div className="text-[11px] text-slate-400">Demande déposée en tant que {currentUser || 'utilisateur connecté'}. L'admin garde la main : rien ne part en ligne sans sa validation.</div>
             </>
+          )}
+
+          {/* ✅ Propositions du robot prêtes à valider (sans aller sur GitHub) */}
+          {(prs.length > 0 || mergedFlash) && (
+            <div className="pt-2 border-t border-slate-100">
+              <div className="text-[12px] font-bold text-emerald-600 uppercase mb-1.5">✅ Propositions à valider ({prs.length})</div>
+              {mergedFlash && (
+                <div className="mb-1.5 text-[13px] text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl p-2">🚀 Validé ! La modification sera en ligne dans ~2 minutes.</div>
+              )}
+              <div className="space-y-1.5">
+                {prs.map((pr) => (
+                  <div key={pr.number} className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-2">
+                    <div className="text-[13px] font-bold text-slate-700">{pr.title}</div>
+                    <div className="text-[11px] text-slate-400 mt-0.5">Proposition #{pr.number}{pr.issueNumber ? ` — demande #${pr.issueNumber}` : ''} · <a href={pr.url} target="_blank" rel="noreferrer" className="underline text-blue-500">voir le détail</a></div>
+                    {isAdminForMerge ? (
+                      <button
+                        onClick={() => mergePr(pr)}
+                        disabled={mergingPr === pr.number}
+                        className="mt-1.5 w-full px-3 py-1.5 rounded-lg text-[13px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 disabled:opacity-50 shadow-sm"
+                      >
+                        {mergingPr === pr.number ? '⏳ Mise en ligne…' : '🚀 Valider et mettre en ligne'}
+                      </button>
+                    ) : (
+                      <div className="mt-1 text-[11px] text-slate-500 italic">⏳ En attente de validation par l'admin.</div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
 
           {/* Historique des demandes */}
