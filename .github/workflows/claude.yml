@@ -49,5 +49,8 @@ jobs:
         with:
           anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
           # Toujours répondre en français + garde-fous du repo.
+          # allowedTools : npm (pour vérifier le build) + gh pr (pour ouvrir la
+          # PR tout seul au lieu de laisser juste un lien « Create PR »).
           claude_args: |
-            --append-system-prompt "Réponds toujours en français. Lis CLAUDE.md et SUIVI.md avant de coder. Vérifie que npm run build passe avant de proposer la PR. Ne pousse jamais directement sur main."
+            --allowedTools "Bash(npm ci),Bash(npm install),Bash(npm run build),Bash(node --check:*),Bash(gh pr create:*),Bash(gh pr list:*),Bash(gh pr view:*)"
+            --append-system-prompt "Réponds toujours en français. Lis CLAUDE.md et SUIVI.md avant de coder. Vérifie que npm run build passe avant de proposer la PR (npm ci puis npm run build). Après avoir poussé ta branche, ouvre directement la pull request vers main avec gh pr create. Ne pousse jamais directement sur main."

@@ -26870,6 +26870,41 @@ function ModifRequestModal({ onClose, currentUser }) {
   const [requests, setRequests] = useState([]);
   const [githubConfigured, setGithubConfigured] = useState(null);
   const [loadingList, setLoadingList] = useState(true);
+  // 🎤 Dictée vocale (Web Speech API, fr-FR) — parler au lieu d'écrire.
+  const [recording, setRecording] = useState(false);
+  const recogRef = useRef(null);
+  const micSupported = typeof window !== 'undefined' && !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  const toggleMic = () => {
+    if (recording) {
+      try { recogRef.current?.stop(); } catch (e) {}
+      setRecording(false);
+      return;
+    }
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SR) { setError("La dictée vocale n'est pas supportée par ce navigateur — utilise Chrome, Edge ou Safari."); return; }
+    const rec = new SR();
+    rec.lang = 'fr-FR';
+    rec.continuous = true;
+    rec.interimResults = false;
+    rec.onresult = (e) => {
+      let txt = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        if (e.results[i].isFinal) txt += e.results[i][0].transcript;
+      }
+      if (txt.trim()) setDescription(prev => (prev ? prev.trimEnd() + ' ' : '') + txt.trim());
+    };
+    rec.onerror = (e) => {
+      setRecording(false);
+      if (e.error === 'not-allowed' || e.error === 'service-not-allowed') setError('Autorise le micro dans ton navigateur (icône 🔒 à côté de l’adresse) pour dicter.');
+    };
+    rec.onend = () => setRecording(false);
+    recogRef.current = rec;
+    try { rec.start(); setRecording(true); setError(null); } catch (e) { setError('Impossible de démarrer le micro.'); }
+  };
+
+  // Coupe le micro si on ferme le modal en pleine dictée.
+  useEffect(() => () => { try { recogRef.current?.stop(); } catch (e) {} }, []);
 
   const callApi = async (payload) => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -26946,13 +26981,25 @@ function ModifRequestModal({ onClose, currentUser }) {
                 <input type="text" value={titre} onChange={(e) => setTitre(e.target.value)} placeholder={'Ex : « Ajouter un champ … » / « Corriger l’affichage … »'} className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[14px]" />
               </div>
               <div>
-                <label className="block text-[12px] font-semibold text-slate-600 uppercase mb-1">Décris la modification *</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[12px] font-semibold text-slate-600 uppercase">Décris la modification *</label>
+                  {micSupported && (
+                    <button
+                      type="button"
+                      onClick={toggleMic}
+                      className={`text-[13px] font-bold px-3 py-1 rounded-full flex items-center gap-1.5 transition-all ${recording ? 'bg-rose-500 text-white animate-pulse shadow-md' : 'bg-slate-100 hover:bg-amber-100 text-slate-700 border border-slate-200'}`}
+                      title={recording ? 'Arrêter la dictée' : 'Dicter au micro au lieu d’écrire'}
+                    >
+                      {recording ? '⏺ Je t’écoute… (clique pour arrêter)' : '🎤 Dicter'}
+                    </button>
+                  )}
+                </div>
                 <textarea
                   value={description}
                   onChange={(e) => setDescription(e.target.value)}
                   rows={5}
-                  placeholder={"Explique en français ce que tu veux : où (quel écran / quel bouton), quoi (ce qui doit changer), pourquoi si utile.\nEx : « Dans la fiche client, je voudrais un champ pour noter la date du 2e appel, à côté du téléphone. »"}
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[14px]"
+                  placeholder={"Explique en français ce que tu veux — ou clique 🎤 Dicter et parle.\nEx : « Dans la fiche client, je voudrais un champ pour noter la date du 2e appel, à côté du téléphone. »"}
+                  className={`w-full px-3 py-2 bg-white border rounded-xl text-[14px] ${recording ? 'border-rose-400 ring-2 ring-rose-200' : 'border-slate-200'}`}
                   autoFocus
                 />
               </div>
