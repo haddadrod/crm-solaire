@@ -18,6 +18,10 @@
 
 ## 🗓️ Journal (plus récent en haut)
 
+### 2026-07-02
+- ✅ **Équipe interne — bloc facture EXACTEMENT comme un fournisseur** : HT (€) + TTC côte à côte avec badge « ✓ Auto : X€ », TTC éditable (`<role>TtcCustom`, bouton « ↺ auto ») pour les factures où le TTC ≠ HT × 1,20, case « Sans TVA (auto-entrepreneur / société étrangère) », N° BL + N° Facture, glisser PDF (lecture IA) + recherche Gmail, bouton « Non payé » en bas. Vaut pour les 5 rôles (télépro, confirmateur, commercial, coordinateur, resp. envoi pose). Form + QuickView. Nouveaux champs `<role>TtcCustom` / `<role>Bl` (défauts + normalisation `startEdit`).
+- 🟢 **FIX marge — commissions internes déduites** : la marge (HT et TTC) soustrait désormais le coût de l'équipe interne (comme fournisseurs/régies/poseurs). Avant, « rien n'était déduit » → marge fausse. `enrichDossier` + le calcul live du formulaire prennent `tarifsInternes` (param + deps) et respectent le TTC override.
+
 ### 2026-06-30
 - ✅ **Équipe interne — TVA comme les régies** : case « Sans TVA (auto-entrepreneur) » (cochée par défaut) + affichage du TTC (HT + TVA 20 %) + bouton payer sur le TTC. L'IA coche/décoche selon la facture (taux 0 → sans TVA). Champs `<role>SansTva` (défauts + normalisation). Form + QuickView.
 - ✅ **Équipe interne — même disposition que les régies** : dans la QuickView, le bouton « payer » passe EN BAS (après société + n° facture + upload facture), identique aux régies/poseurs. Vaut pour tous les rôles internes (télépro, confirmateur, commercial, coordinateur, resp. envoi pose). Le formulaire l'avait déjà.

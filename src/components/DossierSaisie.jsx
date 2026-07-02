@@ -1211,7 +1211,7 @@ const findClosestTarif = (tarifs, puissance) => {
 
 // Enrichit un dossier brut avec les champs calculés (HT, marges, totaux, etc.)
 // Utilisé à l'affichage pour que les anciens dossiers aient aussi ces infos.
-const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs = {}) => {
+const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs = {}, tarifsInternes = {}) => {
   if (!d) return d;
   // Liste des produits du dossier (fallback ancien format)
   const produitsList = (d.produits && d.produits.length > 0)
@@ -1298,9 +1298,27 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
   const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
   const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
 
-  // Marge nulle si pas de vente (TTC=0). Sinon = vente − coûts.
-  const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc);
-  const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt);
+  // 👥 Coût de l'ÉQUIPE INTERNE (commissions télépro/confirmateur/commercial/…)
+  //    — c'est un vrai coût qui doit être DÉDUIT de la marge. Montant = celui
+  //    saisi sur le dossier, sinon le tarif par défaut de Réglages. TTC via TVA.
+  const interneHt = ROLES_INTERNES.reduce((s, role) => {
+    if (!d[role.key]) return s; // pas de personne assignée
+    const m = d[role.key + 'Montant'];
+    const ht = (m !== '' && m !== undefined && m !== null) ? (parseFloat(m) || 0) : (tarifsInternes[role.key] ?? role.defaultTarif ?? 0);
+    return s + ht;
+  }, 0);
+  const interneTtc = ROLES_INTERNES.reduce((s, role) => {
+    if (!d[role.key]) return s;
+    const m = d[role.key + 'Montant'];
+    const ht = (m !== '' && m !== undefined && m !== null) ? (parseFloat(m) || 0) : (tarifsInternes[role.key] ?? role.defaultTarif ?? 0);
+    const sansTva = d[role.key + 'SansTva'] === undefined ? true : !!d[role.key + 'SansTva'];
+    return s + computeTtcPresta(ht, sansTva, undefined, d[role.key + 'TtcCustom']);
+  }, 0);
+
+  // Marge nulle si pas de vente (TTC=0). Sinon = vente − coûts (fournisseur +
+  // régie + poseur + équipe interne).
+  const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc - interneTtc);
+  const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt - interneHt);
   const tva = margeTtc - margeHt;
 
   return {
@@ -1309,6 +1327,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
     fournisseursDetail, fournisseurHt, fournisseurTtc,
     regiesDetail, regieAutoHt, regieHt, regieTtc,
     poseursDetail, poseurHt, poseurTtc,
+    interneHt, interneTtc,
     margeTtc, margeHt,
     puissance: d.puissance || totalPuissance,
   };
@@ -2226,11 +2245,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // ⚠️ Champs legacy (régie unique) - gardés pour rétrocompat, migrés en regies au chargement
     regie: '', regieHtCustom: '', regiePaye: false, regieDatePaye: '',
     typeRegie: 'externe', // 'externe' | 'interne'
-    teleprospecteur: '', teleprospecteurMontant: '', teleprospecteurPaye: false, teleprospecteurDatePaye: '', teleprospecteurFactureNo: '', teleprospecteurFactureFile: '', teleprospecteurSansTva: true,
-    confirmateur: '', confirmateurMontant: '', confirmateurPaye: false, confirmateurDatePaye: '', confirmateurFactureNo: '', confirmateurFactureFile: '', confirmateurSansTva: true,
-    commercial: '', commercialMontant: '', commercialPaye: false, commercialDatePaye: '', commercialFactureNo: '', commercialFactureFile: '', commercialSansTva: true,
-    coordinateurProjet: '', coordinateurProjetMontant: '', coordinateurProjetPaye: false, coordinateurProjetDatePaye: '', coordinateurProjetFactureNo: '', coordinateurProjetFactureFile: '', coordinateurProjetSansTva: true,
-    responsableEnvoiPose: '', responsableEnvoiPoseMontant: '', responsableEnvoiPosePaye: false, responsableEnvoiPoseDatePaye: '', responsableEnvoiPoseFactureNo: '', responsableEnvoiPoseFactureFile: '', responsableEnvoiPoseSansTva: true,
+    teleprospecteur: '', teleprospecteurMontant: '', teleprospecteurPaye: false, teleprospecteurDatePaye: '', teleprospecteurFactureNo: '', teleprospecteurFactureFile: '', teleprospecteurSansTva: true, teleprospecteurTtcCustom: '', teleprospecteurBl: '',
+    confirmateur: '', confirmateurMontant: '', confirmateurPaye: false, confirmateurDatePaye: '', confirmateurFactureNo: '', confirmateurFactureFile: '', confirmateurSansTva: true, confirmateurTtcCustom: '', confirmateurBl: '',
+    commercial: '', commercialMontant: '', commercialPaye: false, commercialDatePaye: '', commercialFactureNo: '', commercialFactureFile: '', commercialSansTva: true, commercialTtcCustom: '', commercialBl: '',
+    coordinateurProjet: '', coordinateurProjetMontant: '', coordinateurProjetPaye: false, coordinateurProjetDatePaye: '', coordinateurProjetFactureNo: '', coordinateurProjetFactureFile: '', coordinateurProjetSansTva: true, coordinateurProjetTtcCustom: '', coordinateurProjetBl: '',
+    responsableEnvoiPose: '', responsableEnvoiPoseMontant: '', responsableEnvoiPosePaye: false, responsableEnvoiPoseDatePaye: '', responsableEnvoiPoseFactureNo: '', responsableEnvoiPoseFactureFile: '', responsableEnvoiPoseSansTva: true, responsableEnvoiPoseTtcCustom: '', responsableEnvoiPoseBl: '',
     provenanceLead: '',
     poseurs: [],
     accordDef: false, consuel: false, observations: '',
@@ -3182,15 +3201,30 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
     const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
 
-    const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc);
-    const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt);
+    // 🧑‍💼 Équipe interne (télépro, confirmateur, commercial…) : commissions à déduire de la marge.
+    const interneHt = ROLES_INTERNES.reduce((s, role) => {
+      if (!formData[role.key]) return s;
+      const m = formData[role.key + 'Montant'];
+      const ht = (m !== '' && m !== undefined && m !== null) ? (parseFloat(m) || 0) : (tarifsInternes[role.key] ?? role.defaultTarif ?? 0);
+      return s + ht;
+    }, 0);
+    const interneTtc = ROLES_INTERNES.reduce((s, role) => {
+      if (!formData[role.key]) return s;
+      const m = formData[role.key + 'Montant'];
+      const ht = (m !== '' && m !== undefined && m !== null) ? (parseFloat(m) || 0) : (tarifsInternes[role.key] ?? role.defaultTarif ?? 0);
+      const sansTva = formData[role.key + 'SansTva'] === undefined ? true : !!formData[role.key + 'SansTva'];
+      return s + computeTtcPresta(ht, sansTva, undefined, formData[role.key + 'TtcCustom']);
+    }, 0);
+
+    const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc - interneTtc);
+    const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt - interneHt);
     const tva = margeTtc - margeHt;
 
     // useAutoTarif : indique si AU MOINS un produit a un tarif auto défini quelque part
     const hasAnyAutoTarif = regiesDetail.some(r => r.autoHt > 0) || poseursDetail.some(p => p.autoHt > 0);
 
-    return { montantTotal, montantHt, tvaVente, tauxTva, fournisseursDetail, fournisseurHt, fournisseurTtc, regiesDetail, regieHt, regieAutoHt, regieTtc, poseursDetail, poseurHt, poseurTtc, margeTtc, margeHt, tva, puissance: totalPuissance, useAutoTarif: hasAnyAutoTarif, computeAutoTarif };
-  }, [formData, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs]);
+    return { montantTotal, montantHt, tvaVente, tauxTva, fournisseursDetail, fournisseurHt, fournisseurTtc, regiesDetail, regieHt, regieAutoHt, regieTtc, poseursDetail, poseurHt, poseurTtc, interneHt, interneTtc, margeTtc, margeHt, tva, puissance: totalPuissance, useAutoTarif: hasAnyAutoTarif, computeAutoTarif };
+  }, [formData, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs, tarifsInternes]);
 
   const resetForm = () => { setFormData(emptyForm); setEditingId(null); setShowForm(false); };
 
@@ -3530,6 +3564,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       teleprospecteurFactureNo: d.teleprospecteurFactureNo || '',
       teleprospecteurFactureFile: d.teleprospecteurFactureFile || '',
       teleprospecteurSansTva: d.teleprospecteurSansTva !== undefined ? d.teleprospecteurSansTva : true,
+      teleprospecteurTtcCustom: d.teleprospecteurTtcCustom || '',
+      teleprospecteurBl: d.teleprospecteurBl || '',
       confirmateur: d.confirmateur || '',
       confirmateurMontant: d.confirmateurMontant || '',
       confirmateurPaye: d.confirmateurPaye || false,
@@ -3537,6 +3573,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       confirmateurFactureNo: d.confirmateurFactureNo || '',
       confirmateurFactureFile: d.confirmateurFactureFile || '',
       confirmateurSansTva: d.confirmateurSansTva !== undefined ? d.confirmateurSansTva : true,
+      confirmateurTtcCustom: d.confirmateurTtcCustom || '',
+      confirmateurBl: d.confirmateurBl || '',
       commercial: d.commercial || '',
       commercialMontant: d.commercialMontant || '',
       commercialPaye: d.commercialPaye || false,
@@ -3544,6 +3582,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       commercialFactureNo: d.commercialFactureNo || '',
       commercialFactureFile: d.commercialFactureFile || '',
       commercialSansTva: d.commercialSansTva !== undefined ? d.commercialSansTva : true,
+      commercialTtcCustom: d.commercialTtcCustom || '',
+      commercialBl: d.commercialBl || '',
       coordinateurProjet: d.coordinateurProjet || '',
       coordinateurProjetMontant: d.coordinateurProjetMontant || '',
       coordinateurProjetPaye: d.coordinateurProjetPaye || false,
@@ -3551,6 +3591,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       coordinateurProjetFactureNo: d.coordinateurProjetFactureNo || '',
       coordinateurProjetFactureFile: d.coordinateurProjetFactureFile || '',
       coordinateurProjetSansTva: d.coordinateurProjetSansTva !== undefined ? d.coordinateurProjetSansTva : true,
+      coordinateurProjetTtcCustom: d.coordinateurProjetTtcCustom || '',
+      coordinateurProjetBl: d.coordinateurProjetBl || '',
       responsableEnvoiPose: d.responsableEnvoiPose || '',
       responsableEnvoiPoseMontant: d.responsableEnvoiPoseMontant || '',
       responsableEnvoiPosePaye: d.responsableEnvoiPosePaye || false,
@@ -3558,6 +3600,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       responsableEnvoiPoseFactureNo: d.responsableEnvoiPoseFactureNo || '',
       responsableEnvoiPoseFactureFile: d.responsableEnvoiPoseFactureFile || '',
       responsableEnvoiPoseSansTva: d.responsableEnvoiPoseSansTva !== undefined ? d.responsableEnvoiPoseSansTva : true,
+      responsableEnvoiPoseTtcCustom: d.responsableEnvoiPoseTtcCustom || '',
+      responsableEnvoiPoseBl: d.responsableEnvoiPoseBl || '',
       provenanceLead: d.provenanceLead || '',
       regiePaye: d.regiePaye || false, regieDatePaye: d.regieDatePaye || '',
       poseurs: d.poseurs?.length > 0
@@ -3896,8 +3940,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Dossiers enrichis : calcule à la volée HT, marges, totaux poseurs/régie/fournisseur, etc.
   // Permet d'afficher correctement les anciens dossiers qui n'ont pas ces champs stockés.
   const dossiersEnriched = useMemo(() => {
-    return dossiers.map(d => enrichDossier(d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs));
-  }, [dossiers, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs]);
+    return dossiers.map(d => enrichDossier(d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs, tarifsInternes));
+  }, [dossiers, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs, tarifsInternes]);
 
   const stats = useMemo(() => {
     const totalCA = dossiersEnriched.reduce((s, d) => s + (d.montantTotal || 0), 0);
@@ -20095,36 +20139,64 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           )}
                         </div>
                       </Field>
-                      {isAdmin && (
-                        <Field label={`💰 Commission (€) — défaut ${tarifAuto}€`}>
-                          <input type="number" step="0.01" value={formData[montantKey]} onChange={(e) => setFormData({ ...formData, [montantKey]: e.target.value })} placeholder={`Vide = ${tarifAuto}€ (auto)`} className={inputCls} />
-                        </Field>
-                      )}
                     </div>
+                    {/* 💰 Bloc facture — EXACTEMENT comme un fournisseur : HT + TTC côte à côte
+                        (badge « ✓ Auto »), Sans TVA (auto-entrepreneur / société étrangère),
+                        N° BL + N° Facture, glisser PDF, bouton payer EN BAS. */}
                     {isAdmin && formData[nomKey] && formData[nomKey] !== '__custom__' && (() => {
                       const factureNoKey = role.key + 'FactureNo';
                       const factureFileKey = role.key + 'FactureFile';
                       const sansTvaKey = role.key + 'SansTva';
+                      const ttcCustomKey = role.key + 'TtcCustom';
+                      const blKey = role.key + 'Bl';
                       const sansTva = formData[sansTvaKey] === undefined ? true : !!formData[sansTvaKey];
-                      const ttc = computeTtcPresta(montantEffectif, sansTva);
+                      const ttc = computeTtcPresta(montantEffectif, sansTva, undefined, formData[ttcCustomKey]);
                       const societe = (internesContacts[formData[nomKey]] || {}).societe || '';
+                      const usingAuto = (formData[montantKey] === '' || formData[montantKey] === undefined || formData[montantKey] === null) && tarifAuto > 0;
                       return (
                         <div className="pt-2 border-t border-fuchsia-100 space-y-2">
                           {societe
                             ? <div className="text-[12px] text-fuchsia-700">🏢 Société : <span className="font-bold">{societe}</span></div>
                             : <div className="text-[12px] text-amber-600">🏢 Société non renseignée — ajoute-la dans Réglages → Équipe interne.</div>}
+                          <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+                            <div>
+                              <label className="text-[11px] font-semibold text-fuchsia-600 uppercase mb-0.5 flex items-center justify-between gap-1">
+                                <span>💰 HT (€)</span>
+                                {tarifAuto > 0 && (
+                                  <span className={`text-[11px] font-bold normal-case px-1 py-0.5 rounded ${usingAuto ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                    {usingAuto ? '✓ Auto' : 'Auto'} : {formatEuro(tarifAuto)}
+                                  </span>
+                                )}
+                              </label>
+                              <input type="number" step="0.01" value={formData[montantKey]} onChange={(e) => setFormData({ ...formData, [montantKey]: e.target.value })} placeholder={tarifAuto > 0 ? `Vide → auto ${tarifAuto.toFixed(2)} €` : 'Montant HT'} className={inputCls} />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-semibold text-fuchsia-600 uppercase mb-0.5 flex items-center justify-between gap-1">
+                                <span>TTC{formData[ttcCustomKey] ? '' : ' (TVA 20 %)'}</span>
+                                {formData[ttcCustomKey] && (
+                                  <button type="button" onClick={() => setFormData({ ...formData, [ttcCustomKey]: '' })} className="text-[11px] font-bold text-fuchsia-600 bg-fuchsia-100 hover:bg-fuchsia-200 rounded px-1" title="Revenir au calcul auto HT × TVA">↺ auto</button>
+                                )}
+                              </label>
+                              <input
+                                type="number" step="0.01"
+                                value={formData[ttcCustomKey] !== undefined && formData[ttcCustomKey] !== null && formData[ttcCustomKey] !== '' ? formData[ttcCustomKey] : ''}
+                                onChange={(e) => setFormData({ ...formData, [ttcCustomKey]: e.target.value })}
+                                placeholder={formatEuro(ttc)}
+                                title="Override TTC — utile si la facture a un TTC différent du HT × 1,20"
+                                className={`w-full px-2 py-1 border rounded text-[12px] font-bold text-fuchsia-800 text-right ${formData[ttcCustomKey] ? 'bg-white border-fuchsia-400' : 'bg-fuchsia-50 border-fuchsia-200'}`}
+                              />
+                            </div>
+                          </div>
                           <label className="flex items-center gap-1.5 text-[12px] font-semibold text-fuchsia-700 cursor-pointer select-none">
                             <input type="checkbox" checked={sansTva} onChange={(e) => setFormData({ ...formData, [sansTvaKey]: e.target.checked })} className="w-4 h-4 accent-fuchsia-600" />
-                            Sans TVA <span className="text-fuchsia-500 font-normal">(auto-entrepreneur)</span>
+                            Sans TVA <span className="text-fuchsia-500 font-normal">(auto-entrepreneur / société étrangère)</span>
                           </label>
-                          {!sansTva && (
-                            <div className="text-[12px] text-slate-600">HT {formatEuro(montantEffectif)} + TVA 20% = <span className="font-bold text-fuchsia-700">{formatEuro(ttc)} TTC</span></div>
-                          )}
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                            <input type="text" value={formData[factureNoKey] || ''} onChange={(e) => setFormData({ ...formData, [factureNoKey]: e.target.value })} placeholder="🧾 N° facture" className={inputCls} />
-                            <FactureDupeWarning factureNo={formData[factureNoKey]} allDossiers={dossiers} currentLocalId={editingId} />
+                          <div className="grid grid-cols-2 gap-2">
+                            <input type="text" value={formData[blKey] || ''} onChange={(e) => setFormData({ ...formData, [blKey]: e.target.value })} placeholder="📦 N° BL" className={inputCls} />
+                            <input type="text" value={formData[factureNoKey] || ''} onChange={(e) => setFormData({ ...formData, [factureNoKey]: e.target.value })} placeholder="🧾 N° Facture" className={inputCls} />
                           </div>
-                          {/* 🧾 Facture du prestataire interne : l'IA lit le HT et remplit la commission, comme une régie. */}
+                          <FactureDupeWarning factureNo={formData[factureNoKey]} allDossiers={dossiers} currentLocalId={editingId} />
+                          {/* 🧾 Facture du prestataire interne : l'IA lit le HT et remplit la commission, comme un fournisseur. */}
                           <FactureFileInput
                             fileId={formData[factureFileKey] || ''}
                             onChange={(id) => setFormData({ ...formData, [factureFileKey]: id })}
@@ -20133,17 +20205,18 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             onExtract={(data) => {
                               const upd = {};
                               if (data.factureNo && !formData[factureNoKey]) upd[factureNoKey] = String(data.factureNo);
+                              if (data.bl && !formData[blKey]) upd[blKey] = String(data.bl);
+                              // 🧾 TVA : si l'IA lit un taux, on coche/décoche « Sans TVA » (0 % → sans TVA).
+                              if (typeof data.tauxTva === 'number') upd[sansTvaKey] = data.tauxTva === 0;
                               const htR = htFromExtraction(data);
                               const montantVide = formData[montantKey] === '' || formData[montantKey] === undefined || formData[montantKey] === null;
                               if (htR > 0 && montantVide) upd[montantKey] = String(htR);
-                              // 🧾 TVA : si l'IA lit un taux, on coche/décoche « Sans TVA » (0 % → sans TVA).
-                              if (typeof data.tauxTva === 'number') upd[sansTvaKey] = data.tauxTva === 0;
                               if (Object.keys(upd).length > 0) setFormData({ ...formData, ...upd });
                             }}
                             label="facture"
                           />
                           <button type="button" onClick={() => setFormData({ ...formData, [payeKey]: !formData[payeKey], [dateKey]: !formData[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-3 py-1.5 rounded-lg text-xs font-bold ${formData[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                            {formData[payeKey] ? `✓ Payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})` : `⏳ À payer (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})`}
+                            {formData[payeKey] ? `✓ Payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})` : `⏳ Non payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})`}
                           </button>
                         </div>
                       );
@@ -25926,58 +25999,89 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           )}
                         </div>
                       )}
-                      {/* Champ montant + bouton payé */}
-                      {d[nomKey] && d[nomKey] !== '__custom__' && (
-                        <>
-                          <div>
-                            <label className="block text-[11px] font-semibold text-fuchsia-600 uppercase mb-0.5">💰 Montant (€) — défaut {tarifAuto}€</label>
-                            <input type="number" step="0.01" value={d[montantKey] || ''} onChange={(e) => onUpdate({ [montantKey]: e.target.value })} placeholder={`Vide = ${tarifAuto}€`} className="w-full px-2 py-1 bg-white border border-fuchsia-200 rounded text-[12px]" />
-                          </div>
-                          {/* 🧾 Facture du prestataire interne + bouton PAYER EN BAS (identique aux régies) */}
-                          {(() => {
-                            const factureNoKey = role.key + 'FactureNo';
-                            const factureFileKey = role.key + 'FactureFile';
-                            const sansTvaKey = role.key + 'SansTva';
-                            const sansTva = d[sansTvaKey] === undefined ? true : !!d[sansTvaKey];
-                            const ttc = computeTtcPresta(montantEffectif, sansTva);
-                            const societe = (internesContacts[d[nomKey]] || {}).societe || '';
-                            return (
-                              <div className="pt-1 mt-1 border-t border-fuchsia-100 space-y-1">
-                                {societe
-                                  ? <div className="text-[11px] text-fuchsia-700">🏢 {societe}</div>
-                                  : <div className="text-[11px] text-amber-600">🏢 Société non renseignée (Réglages → Équipe interne)</div>}
-                                <label className="flex items-center gap-1.5 text-[12px] font-semibold text-fuchsia-700 cursor-pointer select-none">
-                                  <input type="checkbox" checked={sansTva} onChange={(e) => onUpdate({ [sansTvaKey]: e.target.checked })} className="w-3.5 h-3.5 accent-fuchsia-600" />
-                                  Sans TVA <span className="text-fuchsia-500 font-normal">(auto-entrepreneur)</span>
+                      {/* 💰 Bloc facture — EXACTEMENT comme un fournisseur : HT + TTC côte à côte
+                          (badge « ✓ Auto »), Sans TVA, N° BL + N° Facture, glisser PDF + Gmail,
+                          bouton payer EN BAS. */}
+                      {d[nomKey] && d[nomKey] !== '__custom__' && (() => {
+                        const factureNoKey = role.key + 'FactureNo';
+                        const factureFileKey = role.key + 'FactureFile';
+                        const sansTvaKey = role.key + 'SansTva';
+                        const ttcCustomKey = role.key + 'TtcCustom';
+                        const blKey = role.key + 'Bl';
+                        const sansTva = d[sansTvaKey] === undefined ? true : !!d[sansTvaKey];
+                        const ttc = computeTtcPresta(montantEffectif, sansTva, undefined, d[ttcCustomKey]);
+                        const societe = (internesContacts[d[nomKey]] || {}).societe || '';
+                        const usingAuto = (d[montantKey] === '' || d[montantKey] === undefined || d[montantKey] === null) && tarifAuto > 0;
+                        return (
+                          <div className="space-y-1">
+                            {societe
+                              ? <div className="text-[11px] text-fuchsia-700">🏢 {societe}</div>
+                              : <div className="text-[11px] text-amber-600">🏢 Société non renseignée (Réglages → Équipe interne)</div>}
+                            <div className="grid grid-cols-[1fr_auto] gap-1 items-end">
+                              <div>
+                                <label className="text-[11px] font-semibold text-fuchsia-600 uppercase mb-0.5 flex items-center justify-between gap-1">
+                                  <span>💰 HT (€)</span>
+                                  {tarifAuto > 0 && (
+                                    <span className={`text-[11px] font-bold normal-case px-1 py-0.5 rounded ${usingAuto ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
+                                      {usingAuto ? '✓ Auto' : 'Auto'} : {formatEuro(tarifAuto)}
+                                    </span>
+                                  )}
                                 </label>
-                                {!sansTva && (
-                                  <div className="text-[11px] text-slate-600">HT {formatEuro(montantEffectif)} + TVA 20% = <span className="font-bold text-fuchsia-700">{formatEuro(ttc)} TTC</span></div>
-                                )}
-                                <input type="text" value={d[factureNoKey] || ''} onChange={(e) => onUpdate({ [factureNoKey]: e.target.value })} placeholder="🧾 N° facture" className="w-full px-2 py-1 bg-white border border-fuchsia-200 rounded text-[12px]" />
-                                <FactureFileInput
-                                  fileId={d[factureFileKey] || ''}
-                                  onChange={(id) => onUpdate({ [factureFileKey]: id })}
-                                  color="purple"
-                                  autoExtract={true}
-                                  onExtract={(data) => {
-                                    const upd = {};
-                                    if (data.factureNo && !d[factureNoKey]) upd[factureNoKey] = String(data.factureNo);
-                                    const htR = htFromExtraction(data);
-                                    const vide = d[montantKey] === '' || d[montantKey] === undefined || d[montantKey] === null;
-                                    if (htR > 0 && vide) upd[montantKey] = String(htR);
-                                    if (typeof data.tauxTva === 'number') upd[sansTvaKey] = data.tauxTva === 0;
-                                    if (Object.keys(upd).length > 0) onUpdate(upd);
-                                  }}
-                                  label="facture"
-                                />
-                                <button onClick={() => onUpdate({ [payeKey]: !d[payeKey], [dateKey]: !d[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${d[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                                  {d[payeKey] ? `✓ Payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})` : `⏳ À payer (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})`}
-                                </button>
+                                <input type="number" step="0.01" value={d[montantKey] || ''} onChange={(e) => onUpdate({ [montantKey]: e.target.value })} placeholder={tarifAuto > 0 ? `Vide → auto ${tarifAuto.toFixed(2)} €` : 'Montant HT'} className="w-full px-2 py-1 bg-white border border-fuchsia-200 rounded text-[12px]" />
                               </div>
-                            );
-                          })()}
-                        </>
-                      )}
+                              <div>
+                                <label className="block text-[11px] font-semibold text-fuchsia-600 uppercase mb-0.5 flex items-center justify-between gap-1">
+                                  <span>TTC{d[ttcCustomKey] ? '' : ' (TVA 20 %)'}</span>
+                                  {d[ttcCustomKey] && (
+                                    <button type="button" onClick={() => onUpdate({ [ttcCustomKey]: '' })} className="text-[11px] font-bold text-fuchsia-600 bg-fuchsia-100 hover:bg-fuchsia-200 rounded px-1" title="Revenir au calcul auto HT × TVA">↺ auto</button>
+                                  )}
+                                </label>
+                                <input
+                                  type="number" step="0.01"
+                                  value={d[ttcCustomKey] !== undefined && d[ttcCustomKey] !== null && d[ttcCustomKey] !== '' ? d[ttcCustomKey] : ''}
+                                  onChange={(e) => onUpdate({ [ttcCustomKey]: e.target.value })}
+                                  placeholder={formatEuro(ttc)}
+                                  title="Override TTC — utile si la facture a un TTC différent du HT × 1,20"
+                                  className={`w-full px-2 py-1 border rounded text-[12px] font-bold text-fuchsia-800 text-right ${d[ttcCustomKey] ? 'bg-white border-fuchsia-400' : 'bg-fuchsia-50 border-fuchsia-200'}`}
+                                />
+                              </div>
+                            </div>
+                            <label className="flex items-center gap-1.5 text-[12px] font-semibold text-fuchsia-700 cursor-pointer select-none">
+                              <input type="checkbox" checked={sansTva} onChange={(e) => onUpdate({ [sansTvaKey]: e.target.checked })} className="w-3.5 h-3.5 accent-fuchsia-600" />
+                              Sans TVA <span className="text-fuchsia-500 font-normal">(auto-entrepreneur / société étrangère)</span>
+                            </label>
+                            <div className="grid grid-cols-2 gap-1">
+                              <input type="text" value={d[blKey] || ''} onChange={(e) => onUpdate({ [blKey]: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-fuchsia-200 rounded text-[12px]" />
+                              <input type="text" value={d[factureNoKey] || ''} onChange={(e) => onUpdate({ [factureNoKey]: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-fuchsia-200 rounded text-[12px]" />
+                            </div>
+                            <FactureDupeWarning factureNo={d[factureNoKey]} allDossiers={dossiers} currentLocalId={dossier.localId} />
+                            <FactureFileInput
+                              fileId={d[factureFileKey] || ''}
+                              onChange={(id) => onUpdate({ [factureFileKey]: id })}
+                              color="purple"
+                              autoExtract={true}
+                              onExtract={(data) => {
+                                const upd = {};
+                                if (data.factureNo && !d[factureNoKey]) upd[factureNoKey] = String(data.factureNo);
+                                if (data.bl && !d[blKey]) upd[blKey] = String(data.bl);
+                                if (typeof data.tauxTva === 'number') upd[sansTvaKey] = data.tauxTva === 0;
+                                const htR = htFromExtraction(data);
+                                const vide = d[montantKey] === '' || d[montantKey] === undefined || d[montantKey] === null;
+                                if (htR > 0 && vide) upd[montantKey] = String(htR);
+                                if (Object.keys(upd).length > 0) onUpdate(upd);
+                              }}
+                              label="facture"
+                              onOpenGmailSearch={onOpenGmailSearch}
+                              gmailQuery={`${societe || d[nomKey] || ''} facture`.trim()}
+                              gmailContextLabel={`${role.label} — ${d[nomKey] || ''}${societe ? ` (${societe})` : ''}`.trim()}
+                              gmailClientHint={societe || d[nomKey] || ''}
+                            />
+                            <button onClick={() => onUpdate({ [payeKey]: !d[payeKey], [dateKey]: !d[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${d[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                              {d[payeKey] ? `✓ Payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})` : `⏳ Non payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})`}
+                            </button>
+                          </div>
+                        );
+                      })()}
                     </div>
                   );
                 })}
