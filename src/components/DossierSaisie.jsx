@@ -2226,11 +2226,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // ⚠️ Champs legacy (régie unique) - gardés pour rétrocompat, migrés en regies au chargement
     regie: '', regieHtCustom: '', regiePaye: false, regieDatePaye: '',
     typeRegie: 'externe', // 'externe' | 'interne'
-    teleprospecteur: '', teleprospecteurMontant: '', teleprospecteurPaye: false, teleprospecteurDatePaye: '', teleprospecteurFactureNo: '', teleprospecteurFactureFile: '',
-    confirmateur: '', confirmateurMontant: '', confirmateurPaye: false, confirmateurDatePaye: '', confirmateurFactureNo: '', confirmateurFactureFile: '',
-    commercial: '', commercialMontant: '', commercialPaye: false, commercialDatePaye: '', commercialFactureNo: '', commercialFactureFile: '',
-    coordinateurProjet: '', coordinateurProjetMontant: '', coordinateurProjetPaye: false, coordinateurProjetDatePaye: '', coordinateurProjetFactureNo: '', coordinateurProjetFactureFile: '',
-    responsableEnvoiPose: '', responsableEnvoiPoseMontant: '', responsableEnvoiPosePaye: false, responsableEnvoiPoseDatePaye: '', responsableEnvoiPoseFactureNo: '', responsableEnvoiPoseFactureFile: '',
+    teleprospecteur: '', teleprospecteurMontant: '', teleprospecteurPaye: false, teleprospecteurDatePaye: '', teleprospecteurFactureNo: '', teleprospecteurFactureFile: '', teleprospecteurSansTva: true,
+    confirmateur: '', confirmateurMontant: '', confirmateurPaye: false, confirmateurDatePaye: '', confirmateurFactureNo: '', confirmateurFactureFile: '', confirmateurSansTva: true,
+    commercial: '', commercialMontant: '', commercialPaye: false, commercialDatePaye: '', commercialFactureNo: '', commercialFactureFile: '', commercialSansTva: true,
+    coordinateurProjet: '', coordinateurProjetMontant: '', coordinateurProjetPaye: false, coordinateurProjetDatePaye: '', coordinateurProjetFactureNo: '', coordinateurProjetFactureFile: '', coordinateurProjetSansTva: true,
+    responsableEnvoiPose: '', responsableEnvoiPoseMontant: '', responsableEnvoiPosePaye: false, responsableEnvoiPoseDatePaye: '', responsableEnvoiPoseFactureNo: '', responsableEnvoiPoseFactureFile: '', responsableEnvoiPoseSansTva: true,
     provenanceLead: '',
     poseurs: [],
     accordDef: false, consuel: false, observations: '',
@@ -3529,30 +3529,35 @@ export default function DossierSaisie({ authUser, onLogout }) {
       teleprospecteurDatePaye: d.teleprospecteurDatePaye || '',
       teleprospecteurFactureNo: d.teleprospecteurFactureNo || '',
       teleprospecteurFactureFile: d.teleprospecteurFactureFile || '',
+      teleprospecteurSansTva: d.teleprospecteurSansTva !== undefined ? d.teleprospecteurSansTva : true,
       confirmateur: d.confirmateur || '',
       confirmateurMontant: d.confirmateurMontant || '',
       confirmateurPaye: d.confirmateurPaye || false,
       confirmateurDatePaye: d.confirmateurDatePaye || '',
       confirmateurFactureNo: d.confirmateurFactureNo || '',
       confirmateurFactureFile: d.confirmateurFactureFile || '',
+      confirmateurSansTva: d.confirmateurSansTva !== undefined ? d.confirmateurSansTva : true,
       commercial: d.commercial || '',
       commercialMontant: d.commercialMontant || '',
       commercialPaye: d.commercialPaye || false,
       commercialDatePaye: d.commercialDatePaye || '',
       commercialFactureNo: d.commercialFactureNo || '',
       commercialFactureFile: d.commercialFactureFile || '',
+      commercialSansTva: d.commercialSansTva !== undefined ? d.commercialSansTva : true,
       coordinateurProjet: d.coordinateurProjet || '',
       coordinateurProjetMontant: d.coordinateurProjetMontant || '',
       coordinateurProjetPaye: d.coordinateurProjetPaye || false,
       coordinateurProjetDatePaye: d.coordinateurProjetDatePaye || '',
       coordinateurProjetFactureNo: d.coordinateurProjetFactureNo || '',
       coordinateurProjetFactureFile: d.coordinateurProjetFactureFile || '',
+      coordinateurProjetSansTva: d.coordinateurProjetSansTva !== undefined ? d.coordinateurProjetSansTva : true,
       responsableEnvoiPose: d.responsableEnvoiPose || '',
       responsableEnvoiPoseMontant: d.responsableEnvoiPoseMontant || '',
       responsableEnvoiPosePaye: d.responsableEnvoiPosePaye || false,
       responsableEnvoiPoseDatePaye: d.responsableEnvoiPoseDatePaye || '',
       responsableEnvoiPoseFactureNo: d.responsableEnvoiPoseFactureNo || '',
       responsableEnvoiPoseFactureFile: d.responsableEnvoiPoseFactureFile || '',
+      responsableEnvoiPoseSansTva: d.responsableEnvoiPoseSansTva !== undefined ? d.responsableEnvoiPoseSansTva : true,
       provenanceLead: d.provenanceLead || '',
       regiePaye: d.regiePaye || false, regieDatePaye: d.regieDatePaye || '',
       poseurs: d.poseurs?.length > 0
@@ -20099,12 +20104,22 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     {isAdmin && formData[nomKey] && formData[nomKey] !== '__custom__' && (() => {
                       const factureNoKey = role.key + 'FactureNo';
                       const factureFileKey = role.key + 'FactureFile';
+                      const sansTvaKey = role.key + 'SansTva';
+                      const sansTva = formData[sansTvaKey] === undefined ? true : !!formData[sansTvaKey];
+                      const ttc = computeTtcPresta(montantEffectif, sansTva);
                       const societe = (internesContacts[formData[nomKey]] || {}).societe || '';
                       return (
                         <div className="pt-2 border-t border-fuchsia-100 space-y-2">
                           {societe
                             ? <div className="text-[12px] text-fuchsia-700">🏢 Société : <span className="font-bold">{societe}</span></div>
                             : <div className="text-[12px] text-amber-600">🏢 Société non renseignée — ajoute-la dans Réglages → Équipe interne.</div>}
+                          <label className="flex items-center gap-1.5 text-[12px] font-semibold text-fuchsia-700 cursor-pointer select-none">
+                            <input type="checkbox" checked={sansTva} onChange={(e) => setFormData({ ...formData, [sansTvaKey]: e.target.checked })} className="w-4 h-4 accent-fuchsia-600" />
+                            Sans TVA <span className="text-fuchsia-500 font-normal">(auto-entrepreneur)</span>
+                          </label>
+                          {!sansTva && (
+                            <div className="text-[12px] text-slate-600">HT {formatEuro(montantEffectif)} + TVA 20% = <span className="font-bold text-fuchsia-700">{formatEuro(ttc)} TTC</span></div>
+                          )}
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                             <input type="text" value={formData[factureNoKey] || ''} onChange={(e) => setFormData({ ...formData, [factureNoKey]: e.target.value })} placeholder="🧾 N° facture" className={inputCls} />
                             <FactureDupeWarning factureNo={formData[factureNoKey]} allDossiers={dossiers} currentLocalId={editingId} />
@@ -20121,12 +20136,14 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                               const htR = htFromExtraction(data);
                               const montantVide = formData[montantKey] === '' || formData[montantKey] === undefined || formData[montantKey] === null;
                               if (htR > 0 && montantVide) upd[montantKey] = String(htR);
+                              // 🧾 TVA : si l'IA lit un taux, on coche/décoche « Sans TVA » (0 % → sans TVA).
+                              if (typeof data.tauxTva === 'number') upd[sansTvaKey] = data.tauxTva === 0;
                               if (Object.keys(upd).length > 0) setFormData({ ...formData, ...upd });
                             }}
                             label="facture"
                           />
                           <button type="button" onClick={() => setFormData({ ...formData, [payeKey]: !formData[payeKey], [dateKey]: !formData[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-3 py-1.5 rounded-lg text-xs font-bold ${formData[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                            {formData[payeKey] ? `✓ Payé (${montantEffectif}€)` : `⏳ À payer (${montantEffectif}€)`}
+                            {formData[payeKey] ? `✓ Payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})` : `⏳ À payer (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})`}
                           </button>
                         </div>
                       );
@@ -25920,12 +25937,22 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           {(() => {
                             const factureNoKey = role.key + 'FactureNo';
                             const factureFileKey = role.key + 'FactureFile';
+                            const sansTvaKey = role.key + 'SansTva';
+                            const sansTva = d[sansTvaKey] === undefined ? true : !!d[sansTvaKey];
+                            const ttc = computeTtcPresta(montantEffectif, sansTva);
                             const societe = (internesContacts[d[nomKey]] || {}).societe || '';
                             return (
                               <div className="pt-1 mt-1 border-t border-fuchsia-100 space-y-1">
                                 {societe
                                   ? <div className="text-[11px] text-fuchsia-700">🏢 {societe}</div>
                                   : <div className="text-[11px] text-amber-600">🏢 Société non renseignée (Réglages → Équipe interne)</div>}
+                                <label className="flex items-center gap-1.5 text-[12px] font-semibold text-fuchsia-700 cursor-pointer select-none">
+                                  <input type="checkbox" checked={sansTva} onChange={(e) => onUpdate({ [sansTvaKey]: e.target.checked })} className="w-3.5 h-3.5 accent-fuchsia-600" />
+                                  Sans TVA <span className="text-fuchsia-500 font-normal">(auto-entrepreneur)</span>
+                                </label>
+                                {!sansTva && (
+                                  <div className="text-[11px] text-slate-600">HT {formatEuro(montantEffectif)} + TVA 20% = <span className="font-bold text-fuchsia-700">{formatEuro(ttc)} TTC</span></div>
+                                )}
                                 <input type="text" value={d[factureNoKey] || ''} onChange={(e) => onUpdate({ [factureNoKey]: e.target.value })} placeholder="🧾 N° facture" className="w-full px-2 py-1 bg-white border border-fuchsia-200 rounded text-[12px]" />
                                 <FactureFileInput
                                   fileId={d[factureFileKey] || ''}
@@ -25938,12 +25965,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                     const htR = htFromExtraction(data);
                                     const vide = d[montantKey] === '' || d[montantKey] === undefined || d[montantKey] === null;
                                     if (htR > 0 && vide) upd[montantKey] = String(htR);
+                                    if (typeof data.tauxTva === 'number') upd[sansTvaKey] = data.tauxTva === 0;
                                     if (Object.keys(upd).length > 0) onUpdate(upd);
                                   }}
                                   label="facture"
                                 />
                                 <button onClick={() => onUpdate({ [payeKey]: !d[payeKey], [dateKey]: !d[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${d[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
-                                  {d[payeKey] ? `✓ Payé (${montantEffectif}€)` : `⏳ À payer (${montantEffectif}€)`}
+                                  {d[payeKey] ? `✓ Payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})` : `⏳ À payer (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})`}
                                 </button>
                               </div>
                             );
