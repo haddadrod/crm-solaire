@@ -26960,33 +26960,49 @@ function ExportComptableModal({ dossiersEnriched, onClose, onExport }) {
   // Parcourt les lignes prestataires marquées « payées » dont la date de
   // règlement est dans la période, récupère chaque PDF depuis le storage
   // (`file:<id>`) et assemble un ZIP (jszip en import dynamique).
-  const [periodeJours, setPeriodeJours] = useState(30);
+  // 📅 Bornes de dates choisies librement (vide = pas de limite de ce côté).
+  const [dateDu, setDateDu] = useState('');
+  const [dateAu, setDateAu] = useState('');
+  const [zipStatut, setZipStatut] = useState('payees'); // 'payees' | 'apayer' | 'toutes'
   const [zipEnCours, setZipEnCours] = useState(false);
   const downloadFacturesZip = async () => {
     setZipEnCours(true);
     try {
-      const cutoff = periodeJours > 0 ? (Date.now() - periodeJours * 24 * 3600 * 1000) : 0;
+      const tDu = dateDu ? new Date(dateDu + 'T00:00:00').getTime() : null;
+      const tAu = dateAu ? new Date(dateAu + 'T23:59:59').getTime() : null;
       const inPeriod = (datePaye) => {
-        if (!datePaye) return periodeJours === 0; // sans date : seulement en mode « tout »
+        if (!datePaye) return !tDu && !tAu; // payée sans date : seulement si aucune borne
         const t = new Date(datePaye).getTime();
-        return isNaN(t) ? periodeJours === 0 : t >= cutoff;
+        if (isNaN(t)) return !tDu && !tAu;
+        if (tDu && t < tDu) return false;
+        if (tAu && t > tAu) return false;
+        return true;
+      };
+      // 🎚️ Filtre par statut de règlement :
+      //   payées  → lignes payées, dans la période (justificatifs des virements)
+      //   à payer → lignes NON payées, quelle que soit la période (stock du dû)
+      //   toutes  → payées (période) + à payer
+      const keep = (paye, datePaye) => {
+        if (paye) return zipStatut !== 'apayer' && inPeriod(datePaye);
+        return zipStatut !== 'payees';
       };
       const wanted = (cat, nom) => checked.size === 0 || checked.has(cat + '||' + nom);
       const items = [];
       (dossiersEnriched || []).forEach(d => {
         const client = `${d.nom || ''} ${d.prenom || ''}`.trim() || 'client';
-        (d.poseurs || []).forEach(x => { if (x.nom && x.paye && x.factureFile && inPeriod(x.datePaye) && wanted('Poseur', x.nom)) items.push({ cat: 'Poseur', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye }); });
-        (d.regies || []).forEach(x => { if (x.nom && x.paye && x.factureFile && inPeriod(x.datePaye) && wanted('Régie', x.nom)) items.push({ cat: 'Régie', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye }); });
-        (d.fournisseurs || []).forEach(x => { if (x.nom && x.paye && x.factureFile && inPeriod(x.datePaye) && wanted('Fournisseur', x.nom)) items.push({ cat: 'Fournisseur', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye }); });
+        (d.poseurs || []).forEach(x => { if (x.nom && x.factureFile && keep(x.paye, x.datePaye) && wanted('Poseur', x.nom)) items.push({ cat: 'Poseur', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye, paye: !!x.paye }); });
+        (d.regies || []).forEach(x => { if (x.nom && x.factureFile && keep(x.paye, x.datePaye) && wanted('Régie', x.nom)) items.push({ cat: 'Régie', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye, paye: !!x.paye }); });
+        (d.fournisseurs || []).forEach(x => { if (x.nom && x.factureFile && keep(x.paye, x.datePaye) && wanted('Fournisseur', x.nom)) items.push({ cat: 'Fournisseur', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye, paye: !!x.paye }); });
         ROLES_INTERNES.forEach(role => {
           const nom = d[role.key];
-          if (nom && d[role.key + 'Paye'] && d[role.key + 'FactureFile'] && inPeriod(d[role.key + 'DatePaye']) && wanted(role.label, nom)) {
-            items.push({ cat: role.label, nom, client, factureNo: d[role.key + 'FactureNo'], fileId: d[role.key + 'FactureFile'], datePaye: d[role.key + 'DatePaye'] });
+          if (nom && d[role.key + 'FactureFile'] && keep(!!d[role.key + 'Paye'], d[role.key + 'DatePaye']) && wanted(role.label, nom)) {
+            items.push({ cat: role.label, nom, client, factureNo: d[role.key + 'FactureNo'], fileId: d[role.key + 'FactureFile'], datePaye: d[role.key + 'DatePaye'], paye: !!d[role.key + 'Paye'] });
           }
         });
       });
       if (items.length === 0) {
-        alert(`Aucune facture PDF trouvée pour des paiements ${periodeJours > 0 ? `des ${periodeJours} derniers jours` : ''}${checked.size > 0 ? ' (avec cette sélection)' : ''}.\n\n💡 Seules les lignes marquées « payées » AVEC une facture PDF jointe sont prises.`);
+        const quoi = zipStatut === 'payees' ? `payée${dateDu || dateAu ? ` entre ${dateDu || '…'} et ${dateAu || '…'}` : ''}` : zipStatut === 'apayer' ? 'à payer' : '';
+        alert(`Aucune facture PDF trouvée ${quoi}${checked.size > 0 ? ' (avec cette sélection)' : ''}.\n\n💡 Seules les lignes AVEC une facture PDF jointe sont prises.`);
         return;
       }
       const { default: JSZip } = await import('jszip');
@@ -27001,7 +27017,8 @@ function ExportComptableModal({ dossiersEnriched, onClose, onExport }) {
           const m = (data.dataUrl || '').match(/^data:([^;]+);base64,(.+)$/);
           if (!m) { manquantes++; continue; }
           const ext = (data.name || '').includes('.') ? data.name.slice(data.name.lastIndexOf('.')) : '.pdf';
-          const fname = `${clean(it.cat)}_${clean(it.nom)}/${clean(it.datePaye || '')}_${clean(it.client)}_${clean(it.factureNo || 'facture')}${ext}`;
+          const datePart = it.paye ? clean(it.datePaye || 'payee') : 'APAYER';
+          const fname = `${clean(it.cat)}_${clean(it.nom)}/${datePart}_${clean(it.client)}_${clean(it.factureNo || 'facture')}${ext}`;
           zip.file(fname, m[2], { base64: true });
           ajoutees++;
         } catch (e) { manquantes++; }
@@ -27011,7 +27028,9 @@ function ExportComptableModal({ dossiersEnriched, onClose, onExport }) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `factures-paiements_${periodeJours > 0 ? periodeJours + 'j' : 'tout'}_${new Date().toISOString().split('T')[0]}.zip`;
+      const statutPart = zipStatut === 'payees' ? 'payees' : zipStatut === 'apayer' ? 'a-payer' : 'toutes';
+      const datesPart = (dateDu || dateAu) ? `${dateDu || 'debut'}_au_${dateAu || 'aujourdhui'}` : 'tout';
+      a.download = `factures-${statutPart}_${datesPart}.zip`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -27083,21 +27102,27 @@ function ExportComptableModal({ dossiersEnriched, onClose, onExport }) {
             📊 Exporter la sélection ({checked.size})
           </button>
           {/* 💸 ZIP des factures PDF des paiements récents (respecte la sélection si cochée) */}
-          <div className="flex items-center gap-2">
-            <select value={periodeJours} onChange={(e) => setPeriodeJours(parseInt(e.target.value, 10))} className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-[13px] font-semibold text-slate-700">
-              <option value={7}>7 derniers jours</option>
-              <option value={30}>30 derniers jours</option>
-              <option value={60}>60 derniers jours</option>
-              <option value={90}>90 derniers jours</option>
-              <option value={0}>Tout</option>
+          <div className="flex items-center gap-2 flex-wrap">
+            <select value={zipStatut} onChange={(e) => setZipStatut(e.target.value)} className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-[13px] font-semibold text-slate-700">
+              <option value="payees">✅ Payées</option>
+              <option value="apayer">⏳ À payer</option>
+              <option value="toutes">📚 Les deux</option>
             </select>
+            <label className="flex items-center gap-1 text-[12px] font-semibold text-slate-500">
+              du
+              <input type="date" value={dateDu} onChange={(e) => setDateDu(e.target.value)} disabled={zipStatut === 'apayer'} className="px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-[13px] text-slate-700 disabled:opacity-40" />
+            </label>
+            <label className="flex items-center gap-1 text-[12px] font-semibold text-slate-500">
+              au
+              <input type="date" value={dateAu} onChange={(e) => setDateAu(e.target.value)} disabled={zipStatut === 'apayer'} className="px-2 py-1.5 bg-white border border-slate-200 rounded-xl text-[13px] text-slate-700 disabled:opacity-40" />
+            </label>
             <button
               onClick={downloadFacturesZip}
               disabled={zipEnCours}
-              title="Télécharge en un ZIP les factures PDF des lignes marquées « payées » sur la période (limité aux tiers cochés si une sélection est faite)"
-              className="flex-1 px-3 py-2 rounded-xl font-bold text-white bg-violet-500 hover:bg-violet-600 disabled:opacity-50 shadow-md text-[13px]"
+              title="Télécharge en un ZIP les factures PDF : payées (sur la période) et/ou à payer — limité aux tiers cochés si une sélection est faite"
+              className="flex-1 min-w-[160px] px-3 py-2 rounded-xl font-bold text-white bg-violet-500 hover:bg-violet-600 disabled:opacity-50 shadow-md text-[13px]"
             >
-              {zipEnCours ? '⏳ Préparation du ZIP…' : '💸 Factures des paiements (ZIP)'}
+              {zipEnCours ? '⏳ Préparation du ZIP…' : '💸 Télécharger les factures (ZIP)'}
             </button>
           </div>
         </div>
