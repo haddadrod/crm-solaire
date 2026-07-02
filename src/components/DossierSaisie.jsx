@@ -1305,14 +1305,16 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
     if (!d[role.key]) return s; // pas de personne assignée
     const m = d[role.key + 'Montant'];
     const ht = (m !== '' && m !== undefined && m !== null) ? (parseFloat(m) || 0) : (tarifsInternes[role.key] ?? role.defaultTarif ?? 0);
-    return s + ht;
+    const avoirsHt = (Array.isArray(d[role.key + 'Avoirs']) ? d[role.key + 'Avoirs'] : []).reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+    return s + (ht - avoirsHt);
   }, 0);
   const interneTtc = ROLES_INTERNES.reduce((s, role) => {
     if (!d[role.key]) return s;
     const m = d[role.key + 'Montant'];
     const ht = (m !== '' && m !== undefined && m !== null) ? (parseFloat(m) || 0) : (tarifsInternes[role.key] ?? role.defaultTarif ?? 0);
     const sansTva = d[role.key + 'SansTva'] === undefined ? true : !!d[role.key + 'SansTva'];
-    return s + computeTtcPresta(ht, sansTva, undefined, d[role.key + 'TtcCustom']);
+    const avoirsHt = (Array.isArray(d[role.key + 'Avoirs']) ? d[role.key + 'Avoirs'] : []).reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+    return s + computeTtcPresta(ht - avoirsHt, sansTva, undefined, d[role.key + 'TtcCustom']);
   }, 0);
 
   // Marge nulle si pas de vente (TTC=0). Sinon = vente − coûts (fournisseur +
@@ -2245,11 +2247,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // ⚠️ Champs legacy (régie unique) - gardés pour rétrocompat, migrés en regies au chargement
     regie: '', regieHtCustom: '', regiePaye: false, regieDatePaye: '',
     typeRegie: 'externe', // 'externe' | 'interne'
-    teleprospecteur: '', teleprospecteurMontant: '', teleprospecteurPaye: false, teleprospecteurDatePaye: '', teleprospecteurFactureNo: '', teleprospecteurFactureFile: '', teleprospecteurSansTva: true, teleprospecteurTtcCustom: '', teleprospecteurBl: '',
-    confirmateur: '', confirmateurMontant: '', confirmateurPaye: false, confirmateurDatePaye: '', confirmateurFactureNo: '', confirmateurFactureFile: '', confirmateurSansTva: true, confirmateurTtcCustom: '', confirmateurBl: '',
-    commercial: '', commercialMontant: '', commercialPaye: false, commercialDatePaye: '', commercialFactureNo: '', commercialFactureFile: '', commercialSansTva: true, commercialTtcCustom: '', commercialBl: '',
-    coordinateurProjet: '', coordinateurProjetMontant: '', coordinateurProjetPaye: false, coordinateurProjetDatePaye: '', coordinateurProjetFactureNo: '', coordinateurProjetFactureFile: '', coordinateurProjetSansTva: true, coordinateurProjetTtcCustom: '', coordinateurProjetBl: '',
-    responsableEnvoiPose: '', responsableEnvoiPoseMontant: '', responsableEnvoiPosePaye: false, responsableEnvoiPoseDatePaye: '', responsableEnvoiPoseFactureNo: '', responsableEnvoiPoseFactureFile: '', responsableEnvoiPoseSansTva: true, responsableEnvoiPoseTtcCustom: '', responsableEnvoiPoseBl: '',
+    teleprospecteur: '', teleprospecteurMontant: '', teleprospecteurPaye: false, teleprospecteurDatePaye: '', teleprospecteurFactureNo: '', teleprospecteurFactureFile: '', teleprospecteurSansTva: true, teleprospecteurTtcCustom: '', teleprospecteurBl: '', teleprospecteurAvoirs: [],
+    confirmateur: '', confirmateurMontant: '', confirmateurPaye: false, confirmateurDatePaye: '', confirmateurFactureNo: '', confirmateurFactureFile: '', confirmateurSansTva: true, confirmateurTtcCustom: '', confirmateurBl: '', confirmateurAvoirs: [],
+    commercial: '', commercialMontant: '', commercialPaye: false, commercialDatePaye: '', commercialFactureNo: '', commercialFactureFile: '', commercialSansTva: true, commercialTtcCustom: '', commercialBl: '', commercialAvoirs: [],
+    coordinateurProjet: '', coordinateurProjetMontant: '', coordinateurProjetPaye: false, coordinateurProjetDatePaye: '', coordinateurProjetFactureNo: '', coordinateurProjetFactureFile: '', coordinateurProjetSansTva: true, coordinateurProjetTtcCustom: '', coordinateurProjetBl: '', coordinateurProjetAvoirs: [],
+    responsableEnvoiPose: '', responsableEnvoiPoseMontant: '', responsableEnvoiPosePaye: false, responsableEnvoiPoseDatePaye: '', responsableEnvoiPoseFactureNo: '', responsableEnvoiPoseFactureFile: '', responsableEnvoiPoseSansTva: true, responsableEnvoiPoseTtcCustom: '', responsableEnvoiPoseBl: '', responsableEnvoiPoseAvoirs: [],
     provenanceLead: '',
     poseurs: [],
     accordDef: false, consuel: false, observations: '',
@@ -3206,14 +3208,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (!formData[role.key]) return s;
       const m = formData[role.key + 'Montant'];
       const ht = (m !== '' && m !== undefined && m !== null) ? (parseFloat(m) || 0) : (tarifsInternes[role.key] ?? role.defaultTarif ?? 0);
-      return s + ht;
+      const avoirsHt = (Array.isArray(formData[role.key + 'Avoirs']) ? formData[role.key + 'Avoirs'] : []).reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+      return s + (ht - avoirsHt);
     }, 0);
     const interneTtc = ROLES_INTERNES.reduce((s, role) => {
       if (!formData[role.key]) return s;
       const m = formData[role.key + 'Montant'];
       const ht = (m !== '' && m !== undefined && m !== null) ? (parseFloat(m) || 0) : (tarifsInternes[role.key] ?? role.defaultTarif ?? 0);
       const sansTva = formData[role.key + 'SansTva'] === undefined ? true : !!formData[role.key + 'SansTva'];
-      return s + computeTtcPresta(ht, sansTva, undefined, formData[role.key + 'TtcCustom']);
+      const avoirsHt = (Array.isArray(formData[role.key + 'Avoirs']) ? formData[role.key + 'Avoirs'] : []).reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+      return s + computeTtcPresta(ht - avoirsHt, sansTva, undefined, formData[role.key + 'TtcCustom']);
     }, 0);
 
     const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc - interneTtc);
@@ -3566,6 +3570,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       teleprospecteurSansTva: d.teleprospecteurSansTva !== undefined ? d.teleprospecteurSansTva : true,
       teleprospecteurTtcCustom: d.teleprospecteurTtcCustom || '',
       teleprospecteurBl: d.teleprospecteurBl || '',
+      teleprospecteurAvoirs: Array.isArray(d.teleprospecteurAvoirs) ? d.teleprospecteurAvoirs : [],
       confirmateur: d.confirmateur || '',
       confirmateurMontant: d.confirmateurMontant || '',
       confirmateurPaye: d.confirmateurPaye || false,
@@ -3575,6 +3580,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       confirmateurSansTva: d.confirmateurSansTva !== undefined ? d.confirmateurSansTva : true,
       confirmateurTtcCustom: d.confirmateurTtcCustom || '',
       confirmateurBl: d.confirmateurBl || '',
+      confirmateurAvoirs: Array.isArray(d.confirmateurAvoirs) ? d.confirmateurAvoirs : [],
       commercial: d.commercial || '',
       commercialMontant: d.commercialMontant || '',
       commercialPaye: d.commercialPaye || false,
@@ -3584,6 +3590,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       commercialSansTva: d.commercialSansTva !== undefined ? d.commercialSansTva : true,
       commercialTtcCustom: d.commercialTtcCustom || '',
       commercialBl: d.commercialBl || '',
+      commercialAvoirs: Array.isArray(d.commercialAvoirs) ? d.commercialAvoirs : [],
       coordinateurProjet: d.coordinateurProjet || '',
       coordinateurProjetMontant: d.coordinateurProjetMontant || '',
       coordinateurProjetPaye: d.coordinateurProjetPaye || false,
@@ -3593,6 +3600,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       coordinateurProjetSansTva: d.coordinateurProjetSansTva !== undefined ? d.coordinateurProjetSansTva : true,
       coordinateurProjetTtcCustom: d.coordinateurProjetTtcCustom || '',
       coordinateurProjetBl: d.coordinateurProjetBl || '',
+      coordinateurProjetAvoirs: Array.isArray(d.coordinateurProjetAvoirs) ? d.coordinateurProjetAvoirs : [],
       responsableEnvoiPose: d.responsableEnvoiPose || '',
       responsableEnvoiPoseMontant: d.responsableEnvoiPoseMontant || '',
       responsableEnvoiPosePaye: d.responsableEnvoiPosePaye || false,
@@ -3602,6 +3610,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       responsableEnvoiPoseSansTva: d.responsableEnvoiPoseSansTva !== undefined ? d.responsableEnvoiPoseSansTva : true,
       responsableEnvoiPoseTtcCustom: d.responsableEnvoiPoseTtcCustom || '',
       responsableEnvoiPoseBl: d.responsableEnvoiPoseBl || '',
+      responsableEnvoiPoseAvoirs: Array.isArray(d.responsableEnvoiPoseAvoirs) ? d.responsableEnvoiPoseAvoirs : [],
       provenanceLead: d.provenanceLead || '',
       regiePaye: d.regiePaye || false, regieDatePaye: d.regieDatePaye || '',
       poseurs: d.poseurs?.length > 0
@@ -3806,10 +3815,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
           const nom = d[role.key];
           if (!nom) return;
           const m = d[role.key + 'Montant'];
-          const tarif = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
+          const tarifBrut = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
+          const avoirsNet = (Array.isArray(d[role.key + 'Avoirs']) ? d[role.key + 'Avoirs'] : []).reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+          const tarif = tarifBrut - avoirsNet;
           if (tarif <= 0) return;
-          // Équipe interne : pas de N° facture (pas de facturation).
-          ajoute(role.label, 4, nom, d, '', tarif, tarif, !!d[role.key + 'Paye'], d[role.key + 'DatePaye']);
+          ajoute(role.label, 4, nom, d, d[role.key + 'FactureNo'] || '', tarif, tarif, !!d[role.key + 'Paye'], d[role.key + 'DatePaye']);
         });
       });
       // Tri : poseurs, puis régies, puis fournisseurs, puis interne ; par nom.
@@ -3998,9 +4008,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
         const nom = d[role.key];
         if (!nom) return;
         const m = d[role.key + 'Montant'];
-        const tarif = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
+        const tarifBrut = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
+        const avoirsNet = (Array.isArray(d[role.key + 'Avoirs']) ? d[role.key + 'Avoirs'] : []).reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+        const tarif = tarifBrut - avoirsNet;
         if (tarif > 0) {
-          addEntry(nom, role.label, tarif, d[role.key + 'Paye'], d[role.key + 'DatePaye'], d);
+          addEntry(nom, role.label, tarif, d[role.key + 'Paye'], d[role.key + 'DatePaye'], d, d[role.key + 'FactureNo'] || '');
         }
       });
     });
@@ -4493,7 +4505,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (!nom) return;
         if (d[role.key + 'Paye']) return;
         const m = d[role.key + 'Montant'];
-        const tarif = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
+        const tarifBrut = (m !== '' && m !== undefined && m !== null) ? parseFloat(m) : (tarifsInternes[role.key] || 0);
+        const avoirsNet = (Array.isArray(d[role.key + 'Avoirs']) ? d[role.key + 'Avoirs'] : []).reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+        const tarif = tarifBrut - avoirsNet;
         if (tarif > 0) {
           rappelsPrestataires.push({ type: role.label, nom, ttc: tarif, dossier: d, joursAttente: j });
         }
@@ -20066,7 +20080,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 if (!formData[role.key]) return sum;
                 const m = formData[role.key + 'Montant'];
                 const v = m !== '' && m !== undefined && m !== null ? parseFloat(m) : (tarifsInternes[role.key] || 0);
-                return sum + (isNaN(v) ? 0 : v);
+                const avoirsNet = (Array.isArray(formData[role.key + 'Avoirs']) ? formData[role.key + 'Avoirs'] : []).reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+                return sum + (isNaN(v) ? 0 : v - avoirsNet);
               }, 0);
               return `▶️ ${remplis} rôle${remplis > 1 ? 's' : ''} · ${formatEuro(totalCommissions)} de commissions`;
             })()}
@@ -20149,8 +20164,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       const sansTvaKey = role.key + 'SansTva';
                       const ttcCustomKey = role.key + 'TtcCustom';
                       const blKey = role.key + 'Bl';
+                      const avoirsKey = role.key + 'Avoirs';
+                      const avoirs = Array.isArray(formData[avoirsKey]) ? formData[avoirsKey] : [];
+                      const avoirsHt = avoirs.reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+                      const htNet = montantEffectif - avoirsHt;
+                      const setAvoirs = (list) => setFormData({ ...formData, [avoirsKey]: list });
                       const sansTva = formData[sansTvaKey] === undefined ? true : !!formData[sansTvaKey];
-                      const ttc = computeTtcPresta(montantEffectif, sansTva, undefined, formData[ttcCustomKey]);
+                      const ttc = computeTtcPresta(htNet, sansTva, undefined, formData[ttcCustomKey]);
                       const societe = (internesContacts[formData[nomKey]] || {}).societe || '';
                       const usingAuto = (formData[montantKey] === '' || formData[montantKey] === undefined || formData[montantKey] === null) && tarifAuto > 0;
                       return (
@@ -20215,6 +20235,48 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             }}
                             label="facture"
                           />
+                          {/* 🧾 Avoirs / notes de crédit — déduits du montant dû + de la marge (comme un fournisseur). */}
+                          <div className="mt-1.5 rounded-xl border-2 border-rose-300 bg-rose-50 p-2 space-y-1.5">
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-[12px] font-extrabold text-rose-700 uppercase flex items-center gap-1">🧾 Avoirs / notes de crédit{avoirsHt > 0 ? ` · −${formatEuro(avoirsHt)}` : ''}</span>
+                              <button type="button" onClick={() => setAvoirs([...avoirs, { montantHt: '', avoirNo: '', date: '', file: '' }])} className="text-[12px] font-extrabold text-white bg-rose-500 hover:bg-rose-600 px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm whitespace-nowrap">
+                                <Plus className="w-3 h-3" />Ajouter un avoir
+                              </button>
+                            </div>
+                            {avoirs.length === 0 && (
+                              <div className="text-[11px] italic text-rose-600">Un avoir du prestataire ? Clique « Ajouter un avoir » pour saisir la note de crédit (déduite du montant dû).</div>
+                            )}
+                            {avoirsHt > 0 && (
+                              <div className="text-[12px] text-rose-700 font-semibold">Montant net : {formatEuro(montantEffectif)} − {formatEuro(avoirsHt)} = <span className="font-extrabold">{formatEuro(htNet)}</span> HT</div>
+                            )}
+                            {avoirs.map((a, aIdx) => (
+                              <div key={aIdx} className="rounded-lg border border-rose-200 bg-white p-1.5 space-y-1">
+                                <div className="grid grid-cols-[1fr_1fr_auto] gap-1 items-center">
+                                  <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, montantHt: e.target.value } : av))} placeholder="Montant HT" className="px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                  <input type="text" value={a.avoirNo || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, avoirNo: e.target.value } : av))} placeholder="N° avoir" className="px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                  <button type="button" onClick={() => setAvoirs(avoirs.filter((_, i) => i !== aIdx))} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
+                                    <Trash2 className="w-3 h-3" />
+                                  </button>
+                                </div>
+                                <input type="date" value={a.date || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, date: e.target.value } : av))} className="w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px] text-rose-700" />
+                                <FactureFileInput
+                                  fileId={a.file || ''}
+                                  onChange={(id) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, file: id } : av))}
+                                  color="purple"
+                                  label="avoir"
+                                  autoExtract={true}
+                                  onExtract={(data) => {
+                                    const updIa = {};
+                                    if (data.factureNo && !a.avoirNo) updIa.avoirNo = String(data.factureNo);
+                                    const htA = htFromExtraction(data);
+                                    if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
+                                    if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
+                                    if (Object.keys(updIa).length > 0) setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, ...updIa } : av));
+                                  }}
+                                />
+                              </div>
+                            ))}
+                          </div>
                           <button type="button" onClick={() => setFormData({ ...formData, [payeKey]: !formData[payeKey], [dateKey]: !formData[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-3 py-1.5 rounded-lg text-xs font-bold ${formData[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
                             {formData[payeKey] ? `✓ Payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})` : `⏳ Non payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})`}
                           </button>
@@ -20229,13 +20291,15 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   if (!formData[role.key]) return sum;
                   const m = formData[role.key + 'Montant'];
                   const v = m !== '' && m !== undefined && m !== null ? parseFloat(m) : (tarifsInternes[role.key] || 0);
-                  return sum + (isNaN(v) ? 0 : v);
+                  const avoirsNet = (Array.isArray(formData[role.key + 'Avoirs']) ? formData[role.key + 'Avoirs'] : []).reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+                  return sum + (isNaN(v) ? 0 : v - avoirsNet);
                 }, 0);
                 const totalPaye = ROLES_INTERNES.reduce((sum, role) => {
                   if (!formData[role.key] || !formData[role.key + 'Paye']) return sum;
                   const m = formData[role.key + 'Montant'];
                   const v = m !== '' && m !== undefined && m !== null ? parseFloat(m) : (tarifsInternes[role.key] || 0);
-                  return sum + (isNaN(v) ? 0 : v);
+                  const avoirsNet = (Array.isArray(formData[role.key + 'Avoirs']) ? formData[role.key + 'Avoirs'] : []).reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+                  return sum + (isNaN(v) ? 0 : v - avoirsNet);
                 }, 0);
                 const reste = totalCommissions - totalPaye;
                 if (totalCommissions === 0) return null;
@@ -26008,8 +26072,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         const sansTvaKey = role.key + 'SansTva';
                         const ttcCustomKey = role.key + 'TtcCustom';
                         const blKey = role.key + 'Bl';
+                        const avoirsKey = role.key + 'Avoirs';
+                        const avoirs = Array.isArray(d[avoirsKey]) ? d[avoirsKey] : [];
+                        const avoirsHt = avoirs.reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+                        const htNet = montantEffectif - avoirsHt;
+                        const setAvoirs = (list) => onUpdate({ [avoirsKey]: list });
                         const sansTva = d[sansTvaKey] === undefined ? true : !!d[sansTvaKey];
-                        const ttc = computeTtcPresta(montantEffectif, sansTva, undefined, d[ttcCustomKey]);
+                        const ttc = computeTtcPresta(htNet, sansTva, undefined, d[ttcCustomKey]);
                         const societe = (internesContacts[d[nomKey]] || {}).societe || '';
                         const usingAuto = (d[montantKey] === '' || d[montantKey] === undefined || d[montantKey] === null) && tarifAuto > 0;
                         return (
@@ -26076,6 +26145,48 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               gmailContextLabel={`${role.label} — ${d[nomKey] || ''}${societe ? ` (${societe})` : ''}`.trim()}
                               gmailClientHint={societe || d[nomKey] || ''}
                             />
+                            {/* 🧾 Avoirs / notes de crédit — déduits du montant dû + de la marge (comme un fournisseur). */}
+                            <div className="mt-1 rounded-xl border-2 border-rose-300 bg-rose-50 p-1.5 space-y-1">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[11px] font-extrabold text-rose-700 uppercase flex items-center gap-1">🧾 Avoirs / notes de crédit{avoirsHt > 0 ? ` · −${formatEuro(avoirsHt)}` : ''}</span>
+                                <button onClick={() => setAvoirs([...avoirs, { montantHt: '', avoirNo: '', date: '', file: '' }])} className="text-[11px] font-extrabold text-white bg-rose-500 hover:bg-rose-600 px-1.5 py-0.5 rounded-lg flex items-center gap-1 shadow-sm whitespace-nowrap">
+                                  <Plus className="w-3 h-3" />Ajouter un avoir
+                                </button>
+                              </div>
+                              {avoirs.length === 0 && (
+                                <div className="text-[11px] italic text-rose-600">Un avoir du prestataire ? Clique « Ajouter un avoir » pour saisir la note de crédit (déduite du montant dû).</div>
+                              )}
+                              {avoirsHt > 0 && (
+                                <div className="text-[11px] text-rose-700 font-semibold">Net : {formatEuro(montantEffectif)} − {formatEuro(avoirsHt)} = <span className="font-extrabold">{formatEuro(htNet)}</span> HT</div>
+                              )}
+                              {avoirs.map((a, aIdx) => (
+                                <div key={aIdx} className="rounded-lg border border-rose-200 bg-white p-1.5 space-y-1">
+                                  <div className="grid grid-cols-[1fr_1fr_auto] gap-1 items-center">
+                                    <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, montantHt: e.target.value } : av))} placeholder="Montant HT" className="px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                    <input type="text" value={a.avoirNo || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, avoirNo: e.target.value } : av))} placeholder="N° avoir" className="px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                    <button onClick={() => setAvoirs(avoirs.filter((_, i) => i !== aIdx))} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
+                                      <Trash2 className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                  <input type="date" value={a.date || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, date: e.target.value } : av))} className="w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px] text-rose-700" />
+                                  <FactureFileInput
+                                    fileId={a.file || ''}
+                                    onChange={(id) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, file: id } : av))}
+                                    color="purple"
+                                    label="avoir"
+                                    autoExtract={true}
+                                    onExtract={(data) => {
+                                      const updIa = {};
+                                      if (data.factureNo && !a.avoirNo) updIa.avoirNo = String(data.factureNo);
+                                      const htA = htFromExtraction(data);
+                                      if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
+                                      if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
+                                      if (Object.keys(updIa).length > 0) setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, ...updIa } : av));
+                                    }}
+                                  />
+                                </div>
+                              ))}
+                            </div>
                             <button onClick={() => onUpdate({ [payeKey]: !d[payeKey], [dateKey]: !d[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${d[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
                               {d[payeKey] ? `✓ Payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})` : `⏳ Non payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})`}
                             </button>

@@ -19,6 +19,7 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-07-02
+- ✅ **Équipe interne — AVOIRS / notes de crédit (comme un fournisseur)** : section rose « 🧾 Avoirs / notes de crédit » sur chaque rôle interne (form + QuickView) : + Ajouter un avoir, montant HT / n° / date / PDF (lecture IA). Déduits PARTOUT : marge HT+TTC, bouton payer, total commissions, rapport paiements, export compte prestataires, rappels. Champ `<role>Avoirs` (défauts + normalisation). + le n° facture interne remonte maintenant dans le rapport paiements/export.
 - ✅ **Équipe interne — bloc facture EXACTEMENT comme un fournisseur** : HT (€) + TTC côte à côte avec badge « ✓ Auto : X€ », TTC éditable (`<role>TtcCustom`, bouton « ↺ auto ») pour les factures où le TTC ≠ HT × 1,20, case « Sans TVA (auto-entrepreneur / société étrangère) », N° BL + N° Facture, glisser PDF (lecture IA) + recherche Gmail, bouton « Non payé » en bas. Vaut pour les 5 rôles (télépro, confirmateur, commercial, coordinateur, resp. envoi pose). Form + QuickView. Nouveaux champs `<role>TtcCustom` / `<role>Bl` (défauts + normalisation `startEdit`).
 - 🟢 **FIX marge — commissions internes déduites** : la marge (HT et TTC) soustrait désormais le coût de l'équipe interne (comme fournisseurs/régies/poseurs). Avant, « rien n'était déduit » → marge fausse. `enrichDossier` + le calcul live du formulaire prennent `tarifsInternes` (param + deps) et respectent le TTC override.
 
