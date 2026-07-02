@@ -1943,6 +1943,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   }, [darkMode]);
   const [showImportJson, setShowImportJson] = useState(false); // 📦 modal import dossiers JSON
   const [showModifRequest, setShowModifRequest] = useState(false); // 💡 modal « Demander une modif » (codage du CRM)
+  const [showExportComptable, setShowExportComptable] = useState(false); // 📊 modal de choix des tiers pour l'export comptable
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
   // Plus de dropdown local — qui est connecté = qui agit.
   // currentUser = nom complet (utilisé pour tagger createdBy / modifiedBy) ;
@@ -3793,7 +3794,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // en comptes par tiers : un poseur / régie / fournisseur / commission
   // interne = un compte, listant tout ce qu'on lui doit (dossier par
   // dossier, avec N° facture), ce qui est réglé, et son solde restant.
-  const exportComptable = () => {
+  // `selectedKeys` (optionnel) : Set de clés `Catégorie||Nom` — si fourni,
+  // seuls ces tiers sont exportés (choix fait dans ExportComptableModal).
+  const exportComptable = (selectedKeys = null) => {
     if (!isAdmin && currentUserRole !== 'compta') {
       alert('🔒 Export comptable réservé à l\'admin et à la compta.');
       return;
@@ -3836,6 +3839,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const ajoute = (categorie, ordreCat, nom, d, factureNo, ht, ttc, paye, datePaye) => {
         if (!nom || !String(nom).trim()) return;
         const key = categorie + '||' + nom;
+        // 🎯 Export ciblé : on saute les tiers non sélectionnés.
+        if (selectedKeys && !selectedKeys.has(key)) return;
         if (!comptes.has(key)) comptes.set(key, { categorie, ordreCat, nom, lignes: [], totHt: 0, totTtc: 0, payeTtc: 0 });
         const c = comptes.get(key);
         c.lignes.push({
@@ -3888,13 +3893,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
         gPayeTtc += c.payeTtc;
       });
       if (comptesList.length === 0) {
-        rows.push(['(aucun prestataire enregistré sur cette société)']);
+        rows.push([selectedKeys ? '(aucun des tiers sélectionnés sur cette société)' : '(aucun prestataire enregistré sur cette société)']);
       } else {
         rows.push([`RÉCAPITULATIF ${socLabel}`, '► TOTAL GÉNÉRAL', '', '', '', '',
           fmt(gTotHt), fmt(gTotTtc),
           `Payé ${fmt(gPayeTtc)} — Reste ${fmt(gTotTtc - gPayeTtc)}`, '']);
       }
-      return { name: `grand-livre_${sufx}_${stamp}.csv`, csv: toCsv(rows) };
+      const selSufx = selectedKeys ? '_selection' : '';
+      return { name: `grand-livre_${sufx}${selSufx}_${stamp}.csv`, csv: toCsv(rows) };
     };
 
     // Un seul fichier par société.
@@ -5630,8 +5636,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
               )}
               {(isAdmin || currentUserRole === 'compta') && dossiers.length > 0 && (
                 <button
-                  onClick={exportComptable}
-                  title="Télécharge le grand livre comptable — un fichier CSV par société, un compte par tiers (poseur/régie/fournisseur) avec dû, payé et solde"
+                  onClick={() => setShowExportComptable(true)}
+                  title="Grand livre comptable : choisis quels poseurs / régies / fournisseurs exporter, ou tout"
                   className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-emerald-200 whitespace-nowrap flex-shrink-0"
                 >
                   📊 Export comptable
@@ -6659,6 +6665,15 @@ export default function DossierSaisie({ authUser, onLogout }) {
             validée par l'admin avant mise en ligne. */}
         {showModifRequest && (
           <ModifRequestModal onClose={() => setShowModifRequest(false)} currentUser={currentUser} />
+        )}
+
+        {/* 📊 EXPORT COMPTABLE — choix des tiers (ou tout) avant de générer le grand livre */}
+        {showExportComptable && (
+          <ExportComptableModal
+            dossiersEnriched={dossiersEnriched}
+            onClose={() => setShowExportComptable(false)}
+            onExport={(sel) => { setShowExportComptable(false); exportComptable(sel); }}
+          />
         )}
 
         {/* RECHERCHE GLOBALE Ctrl+K */}
@@ -26898,6 +26913,196 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
         }
       `}</style>
     </>
+  );
+}
+
+// ===================== 📊 EXPORT COMPTABLE — CHOIX DES TIERS =====================
+// Avant de générer le grand livre, on choisit QUI exporter : tout (comportement
+// historique) ou une sélection de poseurs / régies / fournisseurs / internes.
+// Renvoie à onExport soit null (tout), soit un Set de clés `Catégorie||Nom`.
+function ExportComptableModal({ dossiersEnriched, onClose, onExport }) {
+  const [checked, setChecked] = useState(() => new Set());
+  const [search, setSearch] = useState('');
+
+  // Liste des tiers présents dans les dossiers (mêmes clés que l'export).
+  const tiers = useMemo(() => {
+    const map = new Map();
+    const add = (cat, ordre, nom) => {
+      if (!nom || !String(nom).trim()) return;
+      const key = cat + '||' + nom;
+      if (!map.has(key)) map.set(key, { key, cat, ordre, nom, nb: 0 });
+      map.get(key).nb += 1;
+    };
+    (dossiersEnriched || []).forEach(d => {
+      (d.poseursDetail || []).forEach(p => add('Poseur', 1, p.nom));
+      (d.regiesDetail || []).forEach(r => add('Régie', 2, r.nom));
+      (d.fournisseursDetail || []).forEach(f => add('Fournisseur', 3, f.nom));
+      ROLES_INTERNES.forEach(role => { if (d[role.key]) add(role.label, 4, d[role.key]); });
+    });
+    return [...map.values()].sort((a, b) => a.ordre !== b.ordre ? a.ordre - b.ordre : a.nom.localeCompare(b.nom));
+  }, [dossiersEnriched]);
+
+  const cats = useMemo(() => {
+    const out = [];
+    tiers.forEach(t => {
+      let g = out.find(x => x.cat === t.cat);
+      if (!g) { g = { cat: t.cat, ordre: t.ordre, items: [] }; out.push(g); }
+      g.items.push(t);
+    });
+    return out;
+  }, [tiers]);
+
+  const norm = (x) => String(x || '').toLowerCase();
+  const matches = (t) => !search.trim() || norm(t.nom).includes(norm(search)) || norm(t.cat).includes(norm(search));
+  const toggle = (key) => setChecked(prev => { const n = new Set(prev); if (n.has(key)) n.delete(key); else n.add(key); return n; });
+
+  // 💸 Téléchargement ZIP des factures PDF des paiements récents.
+  // Parcourt les lignes prestataires marquées « payées » dont la date de
+  // règlement est dans la période, récupère chaque PDF depuis le storage
+  // (`file:<id>`) et assemble un ZIP (jszip en import dynamique).
+  const [periodeJours, setPeriodeJours] = useState(30);
+  const [zipEnCours, setZipEnCours] = useState(false);
+  const downloadFacturesZip = async () => {
+    setZipEnCours(true);
+    try {
+      const cutoff = periodeJours > 0 ? (Date.now() - periodeJours * 24 * 3600 * 1000) : 0;
+      const inPeriod = (datePaye) => {
+        if (!datePaye) return periodeJours === 0; // sans date : seulement en mode « tout »
+        const t = new Date(datePaye).getTime();
+        return isNaN(t) ? periodeJours === 0 : t >= cutoff;
+      };
+      const wanted = (cat, nom) => checked.size === 0 || checked.has(cat + '||' + nom);
+      const items = [];
+      (dossiersEnriched || []).forEach(d => {
+        const client = `${d.nom || ''} ${d.prenom || ''}`.trim() || 'client';
+        (d.poseurs || []).forEach(x => { if (x.nom && x.paye && x.factureFile && inPeriod(x.datePaye) && wanted('Poseur', x.nom)) items.push({ cat: 'Poseur', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye }); });
+        (d.regies || []).forEach(x => { if (x.nom && x.paye && x.factureFile && inPeriod(x.datePaye) && wanted('Régie', x.nom)) items.push({ cat: 'Régie', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye }); });
+        (d.fournisseurs || []).forEach(x => { if (x.nom && x.paye && x.factureFile && inPeriod(x.datePaye) && wanted('Fournisseur', x.nom)) items.push({ cat: 'Fournisseur', nom: x.nom, client, factureNo: x.factureNo, fileId: x.factureFile, datePaye: x.datePaye }); });
+        ROLES_INTERNES.forEach(role => {
+          const nom = d[role.key];
+          if (nom && d[role.key + 'Paye'] && d[role.key + 'FactureFile'] && inPeriod(d[role.key + 'DatePaye']) && wanted(role.label, nom)) {
+            items.push({ cat: role.label, nom, client, factureNo: d[role.key + 'FactureNo'], fileId: d[role.key + 'FactureFile'], datePaye: d[role.key + 'DatePaye'] });
+          }
+        });
+      });
+      if (items.length === 0) {
+        alert(`Aucune facture PDF trouvée pour des paiements ${periodeJours > 0 ? `des ${periodeJours} derniers jours` : ''}${checked.size > 0 ? ' (avec cette sélection)' : ''}.\n\n💡 Seules les lignes marquées « payées » AVEC une facture PDF jointe sont prises.`);
+        return;
+      }
+      const { default: JSZip } = await import('jszip');
+      const zip = new JSZip();
+      const clean = (x) => String(x || '').replace(/[\/:*?"<>|]/g, '-').slice(0, 60);
+      let ajoutees = 0, manquantes = 0;
+      for (const it of items) {
+        try {
+          const r = await window.storage.get(`file:${it.fileId}`);
+          if (!r?.value) { manquantes++; continue; }
+          const data = JSON.parse(r.value);
+          const m = (data.dataUrl || '').match(/^data:([^;]+);base64,(.+)$/);
+          if (!m) { manquantes++; continue; }
+          const ext = (data.name || '').includes('.') ? data.name.slice(data.name.lastIndexOf('.')) : '.pdf';
+          const fname = `${clean(it.cat)}_${clean(it.nom)}/${clean(it.datePaye || '')}_${clean(it.client)}_${clean(it.factureNo || 'facture')}${ext}`;
+          zip.file(fname, m[2], { base64: true });
+          ajoutees++;
+        } catch (e) { manquantes++; }
+      }
+      if (ajoutees === 0) { alert('Aucun fichier récupérable (factures introuvables dans le storage).'); return; }
+      const blob = await zip.generateAsync({ type: 'blob' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `factures-paiements_${periodeJours > 0 ? periodeJours + 'j' : 'tout'}_${new Date().toISOString().split('T')[0]}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 10000);
+      if (manquantes > 0) alert(`📥 ${ajoutees} facture${ajoutees > 1 ? 's' : ''} dans le ZIP — ⚠️ ${manquantes} introuvable${manquantes > 1 ? 's' : ''} (fichier supprimé du storage).`);
+    } catch (e) {
+      alert('Erreur ZIP : ' + e.message);
+    } finally {
+      setZipEnCours(false);
+    }
+  };
+  const toggleCat = (g) => setChecked(prev => {
+    const n = new Set(prev);
+    const allOn = g.items.every(t => n.has(t.key));
+    g.items.forEach(t => { if (allOn) n.delete(t.key); else n.add(t.key); });
+    return n;
+  });
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl border border-emerald-200 w-full max-w-xl max-h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-gradient-to-r from-emerald-500 to-teal-500 px-5 py-3 flex items-center justify-between">
+          <div>
+            <div className="text-white font-extrabold text-lg">📊 Export comptable</div>
+            <div className="text-emerald-50 text-[12px]">Choisis qui exporter — ou télécharge le grand livre complet.</div>
+          </div>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-2xl leading-none px-2">×</button>
+        </div>
+        <div className="p-4 flex-1 overflow-y-auto space-y-3">
+          <button onClick={() => onExport(null)} className="w-full px-4 py-2.5 rounded-xl font-bold text-white bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-600 hover:to-teal-600 shadow-md">
+            📥 Tout exporter (grand livre complet)
+          </button>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 border-t border-slate-200"></div>
+            <span className="text-[12px] text-slate-400 font-semibold">ou choisis un ou plusieurs tiers</span>
+            <div className="flex-1 border-t border-slate-200"></div>
+          </div>
+          <input type="text" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="🔍 Chercher un nom…" className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-[14px]" />
+          {cats.map(g => {
+            const visibles = g.items.filter(matches);
+            if (visibles.length === 0) return null;
+            const allOn = g.items.every(t => checked.has(t.key));
+            return (
+              <div key={g.cat}>
+                <button onClick={() => toggleCat(g)} className="w-full flex items-center justify-between text-[12px] font-bold text-slate-500 uppercase mb-1 hover:text-emerald-600">
+                  <span>{g.cat === 'Poseur' ? '🔧' : g.cat === 'Régie' ? '📣' : g.cat === 'Fournisseur' ? '📦' : '👥'} {g.cat}{g.items.length > 1 ? 's' : ''} ({g.items.length})</span>
+                  <span className="normal-case font-semibold text-[11px] text-emerald-600">{allOn ? 'tout décocher' : 'tout cocher'}</span>
+                </button>
+                <div className="space-y-0.5">
+                  {visibles.map(t => (
+                    <label key={t.key} className={`flex items-center gap-2 px-2 py-1.5 rounded-lg cursor-pointer text-[13px] ${checked.has(t.key) ? 'bg-emerald-50 border border-emerald-200 font-semibold text-emerald-800' : 'hover:bg-slate-50 border border-transparent text-slate-700'}`}>
+                      <input type="checkbox" checked={checked.has(t.key)} onChange={() => toggle(t.key)} className="w-4 h-4 accent-emerald-600" />
+                      <span className="flex-1">{t.nom}</span>
+                      <span className="text-[11px] text-slate-400">{t.nb} dossier{t.nb > 1 ? 's' : ''}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+          {tiers.length === 0 && <div className="text-[13px] text-slate-400 italic text-center py-3">Aucun prestataire dans les dossiers.</div>}
+        </div>
+        <div className="p-3 border-t border-slate-100 bg-slate-50 space-y-2">
+          <button
+            onClick={() => checked.size > 0 && onExport(new Set(checked))}
+            disabled={checked.size === 0}
+            className="w-full px-4 py-2.5 rounded-xl font-bold text-white bg-emerald-500 hover:bg-emerald-600 disabled:opacity-40 shadow-md"
+          >
+            📊 Exporter la sélection ({checked.size})
+          </button>
+          {/* 💸 ZIP des factures PDF des paiements récents (respecte la sélection si cochée) */}
+          <div className="flex items-center gap-2">
+            <select value={periodeJours} onChange={(e) => setPeriodeJours(parseInt(e.target.value, 10))} className="px-2 py-2 bg-white border border-slate-200 rounded-xl text-[13px] font-semibold text-slate-700">
+              <option value={7}>7 derniers jours</option>
+              <option value={30}>30 derniers jours</option>
+              <option value={60}>60 derniers jours</option>
+              <option value={90}>90 derniers jours</option>
+              <option value={0}>Tout</option>
+            </select>
+            <button
+              onClick={downloadFacturesZip}
+              disabled={zipEnCours}
+              title="Télécharge en un ZIP les factures PDF des lignes marquées « payées » sur la période (limité aux tiers cochés si une sélection est faite)"
+              className="flex-1 px-3 py-2 rounded-xl font-bold text-white bg-violet-500 hover:bg-violet-600 disabled:opacity-50 shadow-md text-[13px]"
+            >
+              {zipEnCours ? '⏳ Préparation du ZIP…' : '💸 Factures des paiements (ZIP)'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
