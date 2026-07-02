@@ -729,7 +729,7 @@ function DebouncedInput({ value, onCommit, delay = 350, ...rest }) {
 // ou clic. Stocke le fichier inline (window.storage `file:<id>`) et garde
 // l'ID du fichier dans la prop `fileId`. Onglet 👁️ pour prévisualiser dans
 // un nouvel onglet.
-function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false, pennylaneInfo = null, onPennylaneSuccess = null, label = 'facture', onOpenGmailSearch = null, gmailQuery = '', gmailContextLabel = '', gmailClientHint = '' }) {
+function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false, pennylaneInfo = null, onPennylaneSuccess = null, label = 'facture', onOpenGmailSearch = null, gmailQuery = '', gmailContextLabel = '', gmailClientHint = '', paye = null }) {
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [pushingPennylane, setPushingPennylane] = useState(false);
@@ -836,11 +836,11 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
     } catch (e) { alert('Erreur : ' + e.message); }
   };
 
-  // Push la facture vers Pennylane via /api/pennylane-push-facture.
-  // Validation : il faut au moins nom fournisseur + N° facture + montants
-  // + un fichier uploadé (pour éviter d'envoyer du n'importe quoi).
-  const handlePushPennylane = async () => {
-    if (!pennylaneInfo || !fileId) return;
+  // Vérifie que les infos requises pour un push Pennylane sont là.
+  // Renvoie { blocked, montantManquant, missing, isAvoir } — partagé par le
+  // push manuel (qui alerte) et le push AUTO à la bascule « payé » (silencieux).
+  const checkPennylaneReady = () => {
+    if (!pennylaneInfo || !fileId) return { blocked: true, montantManquant: false, missing: [], isAvoir: false };
     const missing = [];
     if (!pennylaneInfo.supplierName) missing.push('le nom du fournisseur');
     if (!pennylaneInfo.factureNo) missing.push('le N° de facture');
@@ -851,21 +851,15 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
     const montantManquant = isAvoir
       ? (Math.abs(pennylaneInfo.montantHt || 0) === 0 || Math.abs(pennylaneInfo.montantTtc || 0) === 0)
       : ((!pennylaneInfo.montantHt || pennylaneInfo.montantHt <= 0) || (!pennylaneInfo.montantTtc || pennylaneInfo.montantTtc <= 0));
-    if (montantManquant) {
-      // Cas le plus fréquent : le prestataire n'a pas de tarif → montant à 0.
-      // Message actionnable plutôt qu'un « manque montant HT/TTC » cryptique.
-      alert(
-        `Impossible d'envoyer à Pennylane : le montant de « ${pennylaneInfo.supplierName || 'ce prestataire'} » est à 0 €.\n\n` +
-        (isAvoir
-          ? `👉 Renseigne le montant HT de l'avoir, puis réessaie.`
-          : `👉 Renseigne le montant HT sur la ligne (champ « HT »), ou configure son tarif dans Réglages → ${pennylaneInfo.tauxTva === 0 ? 'Poseurs' : 'Régies'}, puis réessaie.`)
-      );
-      return;
-    }
-    if (missing.length > 0) {
-      alert(`Impossible d'envoyer à Pennylane — il manque : ${missing.join(', ')}.`);
-      return;
-    }
+    return { blocked: false, montantManquant, missing, isAvoir };
+  };
+
+  // Envoi effectif de la facture vers Pennylane via /api/pennylane-push-facture.
+  // `silent` (envoi AUTO sur « payé ») → pas d'alertes bloquantes : on log en
+  // console et on laisse le bouton 📤 manuel en secours.
+  const doPushPennylane = async ({ silent = false } = {}) => {
+    if (!pennylaneInfo || !fileId) return;
+    if (pennylaneInfo.pushedId) return; // déjà envoyé → on ne renvoie jamais
     setPushingPennylane(true);
     try {
       const r = await window.storage.get(`file:${fileId}`);
@@ -895,13 +889,61 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       if (onPennylaneSuccess && payload.data?.pennylaneInvoiceId) {
         onPennylaneSuccess(payload.data.pennylaneInvoiceId);
       }
-      alert(`✅ ${label === 'avoir' ? 'Avoir envoyé' : 'Facture envoyée'} à Pennylane (ID ${payload.data?.pennylaneInvoiceId || '?'})`);
+      if (!silent) {
+        alert(`✅ ${label === 'avoir' ? 'Avoir envoyé' : 'Facture envoyée'} à Pennylane (ID ${payload.data?.pennylaneInvoiceId || '?'})`);
+      }
     } catch (e) {
-      alert(`Envoi Pennylane : ${e.message}`);
+      if (silent) {
+        // Envoi auto : on ne bloque pas l'utilisateur. Le bouton 📤 reste dispo.
+        console.warn('[Pennylane] envoi auto (payé) échoué :', e?.message || e);
+      } else {
+        alert(`Envoi Pennylane : ${e.message}`);
+      }
     } finally {
-      setPushingPennylane(false);
+      if (isMountedRef.current) setPushingPennylane(false);
     }
   };
+
+  // Push manuel via le bouton « 📤 Pennylane » — valide et alerte si un champ
+  // manque (nom fournisseur + N° facture + montants + fichier uploadé).
+  const handlePushPennylane = async () => {
+    const chk = checkPennylaneReady();
+    if (chk.blocked) return;
+    if (chk.montantManquant) {
+      // Cas le plus fréquent : le prestataire n'a pas de tarif → montant à 0.
+      // Message actionnable plutôt qu'un « manque montant HT/TTC » cryptique.
+      alert(
+        `Impossible d'envoyer à Pennylane : le montant de « ${pennylaneInfo.supplierName || 'ce prestataire'} » est à 0 €.\n\n` +
+        (chk.isAvoir
+          ? `👉 Renseigne le montant HT de l'avoir, puis réessaie.`
+          : `👉 Renseigne le montant HT sur la ligne (champ « HT »), ou configure son tarif dans Réglages → ${pennylaneInfo.tauxTva === 0 ? 'Poseurs' : 'Régies'}, puis réessaie.`)
+      );
+      return;
+    }
+    if (chk.missing.length > 0) {
+      alert(`Impossible d'envoyer à Pennylane — il manque : ${chk.missing.join(', ')}.`);
+      return;
+    }
+    await doPushPennylane({ silent: false });
+  };
+
+  // 📤 Envoi AUTOMATIQUE à Pennylane quand la facture prestataire passe à
+  // « payée » (demande #598). Ne se déclenche QUE sur la transition
+  // non-payé → payé (pas au chargement d'un dossier déjà payé), une seule
+  // fois, et seulement si les infos sont complètes ET la facture pas déjà
+  // envoyée. Sinon on ne fait rien (le bouton 📤 manuel reste disponible).
+  const prevPayeRef = useRef(paye);
+  useEffect(() => {
+    const wasPaye = prevPayeRef.current;
+    prevPayeRef.current = paye;
+    // Uniquement la bascule franche non-payé (false) → payé (true).
+    if (paye !== true || wasPaye !== false) return;
+    if (!pennylaneInfo || pennylaneInfo.pushedId || !fileId) return;
+    const chk = checkPennylaneReady();
+    if (chk.blocked || chk.montantManquant || chk.missing.length > 0) return;
+    doPushPennylane({ silent: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paye]);
 
   // Aperçu de la facture : on charge le fichier depuis le storage et on ouvre
   // l'overlay in-app FilePreviewOverlay (compatible mobile, pas de popup blocker
@@ -19772,6 +19814,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                               pushedId: r.pennylaneInvoiceId,
                             }}
                             onPennylaneSuccess={(id) => upd({ pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                            paye={r.paye}
                             onOpenGmailSearch={onOpenGmailSearch}
                             gmailQuery={`${r.nom || ''} ${formData.nom || ''}`.trim()}
                             gmailContextLabel={`${r.nom || 'Régie'} chez ${formData.nom || ''} ${formData.prenom || ''}`.trim()}
@@ -19918,6 +19961,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             pushedId: p.pennylaneInvoiceId,
                           }}
                           onPennylaneSuccess={(id) => upd({ pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                          paye={p.paye}
                           onOpenGmailSearch={onOpenGmailSearch}
                           gmailQuery={`${p.nom || ''} ${formData.nom || ''}`.trim()}
                           gmailContextLabel={`${p.nom || 'Poseur'} chez ${formData.nom || ''} ${formData.prenom || ''}`.trim()}
@@ -20059,6 +20103,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             pushedId: f.pennylaneInvoiceId,
                           }}
                           onPennylaneSuccess={(id) => upd({ pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                          paye={f.paye}
                           onOpenGmailSearch={onOpenGmailSearch}
                           gmailQuery={`${f.nom || ''} ${formData.nom || ''}`.trim()}
                           gmailContextLabel={`${f.nom || 'Fournisseur'} chez ${formData.nom || ''} ${formData.prenom || ''}`.trim()}
@@ -25992,6 +26037,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 pushedId: r.pennylaneInvoiceId,
                               }}
                               onPennylaneSuccess={(id) => updateRegie(i, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                              paye={r.paye}
                               onOpenGmailSearch={onOpenGmailSearch}
                               gmailQuery={`${r.nom || ''} ${dossier.nom || ''}`.trim()}
                               gmailContextLabel={`${r.nom || 'Régie'} chez ${dossier.nom || ''} ${dossier.prenom || ''}`.trim()}
@@ -26486,6 +26532,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           pushedId: p.pennylaneInvoiceId,
                         }}
                         onPennylaneSuccess={(id) => updatePoseur(i, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                        paye={p.paye}
                         onOpenGmailSearch={onOpenGmailSearch}
                         gmailQuery={`${p.nom || ''} ${dossier.nom || ''}`.trim()}
                         gmailContextLabel={`${p.nom || 'Poseur'} chez ${dossier.nom || ''} ${dossier.prenom || ''}`.trim()}
@@ -26640,6 +26687,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           pushedId: f.pennylaneInvoiceId,
                         }}
                         onPennylaneSuccess={(id) => updateFournisseur(i, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                        paye={f.paye}
                         onOpenGmailSearch={onOpenGmailSearch}
                         gmailQuery={`${f.nom || ''} ${dossier.nom || ''}`.trim()}
                         gmailContextLabel={`${f.nom || 'Fournisseur'} chez ${dossier.nom || ''} ${dossier.prenom || ''}`.trim()}
