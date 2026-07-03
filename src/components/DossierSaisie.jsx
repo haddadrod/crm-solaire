@@ -12546,7 +12546,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                           let total = 0, totalPaye = 0;
                           ids.forEach(lid => {
                             const dd = dossierByLocalId.get(lid); if (!dd) return;
-                            const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : (dd.regiesDetail || []);
+                            const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : p.kind === 'fournisseur' ? (dd.fournisseursDetail || []) : (dd.regiesDetail || []);
                             const it = list.find(x => x.nom === p.nom); if (!it) return;
                             const ttc = it.ttc || 0;
                             total += ttc; if (it.paye) totalPaye += ttc;
@@ -12610,7 +12610,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                     const isPresPaid = (lid) => {
                       const dd = dossierByLocalId.get(lid);
                       if (!dd) return false;
-                      const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : (dd.regiesDetail || []);
+                      const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : p.kind === 'fournisseur' ? (dd.fournisseursDetail || []) : (dd.regiesDetail || []);
                       const it = list.find(x => x.nom === p.nom);
                       return !!(it && it.paye);
                     };
@@ -12624,7 +12624,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                     const renderLine = (lid, allowSelection, age) => {
                       const d = dossierByLocalId.get(lid);
                       if (!d) return null;
-                      const list = p.kind === 'poseur' ? (d.poseursDetail || []) : p.kind === 'regie' ? (d.regiesDetail || []) : null;
+                      const list = p.kind === 'poseur' ? (d.poseursDetail || []) : p.kind === 'regie' ? (d.regiesDetail || []) : p.kind === 'fournisseur' ? (d.fournisseursDetail || []) : null;
                       const detail = list ? list.find(x => x.nom === p.nom) : null;
                       const amount = detail ? (detail.ttc || 0) : (d.montantTotal || 0);
                       const paye = detail ? !!detail.paye : false;
@@ -12686,7 +12686,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                     // Sommes par section pour les entêtes
                     const sumGroup = (idsArr) => idsArr.reduce((s, lid) => {
                       const dd = dossierByLocalId.get(lid); if (!dd) return s;
-                      const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : (dd.regiesDetail || []);
+                      const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : p.kind === 'fournisseur' ? (dd.fournisseursDetail || []) : (dd.regiesDetail || []);
                       const it = list.find(x => x.nom === p.nom); if (!it) return s;
                       return s + (it.ttc || 0);
                     }, 0);
@@ -12729,7 +12729,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                     const toMark = [];
                     selectedIds.forEach(lid => {
                       const dd = dossierByLocalId.get(lid); if (!dd) return;
-                      const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : (dd.regiesDetail || []);
+                      const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : p.kind === 'fournisseur' ? (dd.fournisseursDetail || []) : (dd.regiesDetail || []);
                       const it = list.find(x => x.nom === p.nom); if (!it) return;
                       if (it.paye) return; // ignorés
                       totalSel += it.ttc || 0;
@@ -12741,7 +12741,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                       lines.push(['Client', 'N° facture', 'Montant TTC'].join('\t'));
                       toMark.forEach(lid => {
                         const dd = dossierByLocalId.get(lid); if (!dd) return;
-                        const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : (dd.regiesDetail || []);
+                        const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : p.kind === 'fournisseur' ? (dd.fournisseursDetail || []) : (dd.regiesDetail || []);
                         const it = list.find(x => x.nom === p.nom); if (!it) return;
                         lines.push([
                           `${dd.nom || ''} ${dd.prenom || ''}`.trim(),
