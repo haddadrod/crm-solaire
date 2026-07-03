@@ -12365,6 +12365,8 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
   // un autre).
   const [selectedIds, setSelectedIds] = useState(() => new Set());
   useEffect(() => { setSelectedIds(new Set()); }, [expandedNom]);
+  // 👁️ Case « Cacher les clients payés » : n'affiche que ce qui reste à payer.
+  const [hidePaid, setHidePaid] = useState(false);
   const toggleSelected = (lid) => {
     setSelectedIds(prev => {
       const next = new Set(prev);
@@ -12621,6 +12623,11 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                     });
                     idsAttente.sort((a, b) => ageAttente(b) - ageAttente(a));
 
+                    // 👁️ « Cacher les clients payés » : on ne garde que les lignes
+                    // dont CE prestataire n'est pas encore payé.
+                    const showEncaisses = hidePaid ? idsEncaisses.filter(lid => !isPresPaid(lid)) : idsEncaisses;
+                    const showAttente = hidePaid ? idsAttente.filter(lid => !isPresPaid(lid)) : idsAttente;
+
                     const renderLine = (lid, allowSelection, age) => {
                       const d = dossierByLocalId.get(lid);
                       if (!d) return null;
@@ -12690,32 +12697,40 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                       const it = list.find(x => x.nom === p.nom); if (!it) return s;
                       return s + (it.ttc || 0);
                     }, 0);
-                    const totalEncaisses = sumGroup(idsEncaisses);
-                    const totalAttente = sumGroup(idsAttente);
+                    const totalEncaisses = sumGroup(showEncaisses);
+                    const totalAttente = sumGroup(showAttente);
 
                     return (
                       <>
-                        {idsEncaisses.length > 0 && (
+                        {/* 👁️ Case « comme d'habitude » : cacher les clients déjà payés */}
+                        <label className="flex items-center gap-1.5 px-2 py-1.5 text-[12px] font-semibold text-slate-600 cursor-pointer select-none border-b border-slate-100">
+                          <input type="checkbox" checked={hidePaid} onChange={(e) => setHidePaid(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
+                          Cacher les clients payés — ne montrer que le reste à payer
+                        </label>
+                        {showEncaisses.length > 0 && (
                           <div>
                             <div className="flex items-center justify-between gap-2 px-2 py-2 bg-emerald-50 border-y border-emerald-200 sticky top-0 z-[1]">
-                              <span className="text-[13px] font-bold text-emerald-800 uppercase">💚 Client a payé — à payer maintenant ({idsEncaisses.length})</span>
+                              <span className="text-[13px] font-bold text-emerald-800 uppercase">💚 Client a payé — à payer maintenant ({showEncaisses.length})</span>
                               <span className="text-[13px] font-bold text-emerald-900">{formatEuro(totalEncaisses)}</span>
                             </div>
                             <div className="divide-y divide-slate-200">
-                              {idsEncaisses.map(lid => renderLine(lid, true, ageEncaisse(lid)))}
+                              {showEncaisses.map(lid => renderLine(lid, true, ageEncaisse(lid)))}
                             </div>
                           </div>
                         )}
-                        {idsAttente.length > 0 && (
+                        {showAttente.length > 0 && (
                           <div className="mt-2">
                             <div className="flex items-center justify-between gap-2 px-2 py-2 bg-slate-100 border-y border-slate-200 sticky top-0 z-[1]">
-                              <span className="text-[13px] font-bold text-slate-600 uppercase">⏳ En attente d'encaissement client — pas encore à payer ({idsAttente.length})</span>
+                              <span className="text-[13px] font-bold text-slate-600 uppercase">⏳ En attente d'encaissement client — pas encore à payer ({showAttente.length})</span>
                               <span className="text-[13px] font-bold text-slate-700">{formatEuro(totalAttente)}</span>
                             </div>
                             <div className="divide-y divide-slate-200">
-                              {idsAttente.map(lid => renderLine(lid, true, ageAttente(lid)))}
+                              {showAttente.map(lid => renderLine(lid, true, ageAttente(lid)))}
                             </div>
                           </div>
+                        )}
+                        {hidePaid && showEncaisses.length === 0 && showAttente.length === 0 && (
+                          <div className="text-center py-3 text-[13px] text-emerald-700 font-semibold">✓ Tout est payé pour ce prestataire — rien à afficher.</div>
                         )}
                       </>
                     );
