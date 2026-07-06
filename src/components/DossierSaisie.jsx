@@ -7758,6 +7758,92 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
   // sous forme de Map<attachmentKey, { selected, mail, inbox, attachment }>
   // pour pouvoir cocher/décocher avant l'import dans la queue d'analyse.
   const [gmailScanning, setGmailScanning] = useState(false);
+  // 🤖 Récupération AUTO des factures par n° : pour chaque ligne prestataire
+  // qui a un n° de facture (ou de commande/BL) mais PAS de PDF joint, on
+  // cherche dans le cache d'emails indexés (ia-search) l'unique pièce jointe
+  // dont le nom / le n° lu par l'IA contient ce n°, on la télécharge et on
+  // l'attache au dossier. Ambigu (2+ candidats) ou introuvable → laissé au
+  // traitement manuel, listé dans le rapport.
+  const [autoFetching, setAutoFetching] = useState(false);
+  const [autoFetchProgress, setAutoFetchProgress] = useState(null); // {done,total,label}
+  const [autoFetchReport, setAutoFetchReport] = useState(null); // {ok,none,multi,err}
+  const autoFetchByNumero = async () => {
+    const normNo = (x) => String(x || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const targets = [];
+    (dossiers || []).forEach(d => {
+      if (d.archived) return;
+      [['fournisseurs', 'Fournisseur'], ['regies', 'Régie'], ['poseurs', 'Poseur']].forEach(([arrKey, cat]) => {
+        (d[arrKey] || []).forEach((x, idx) => {
+          if (!x || !x.nom || x.factureFile) return;
+          const no = x.factureNo || x.bl;
+          if (!no || String(no).trim().length < 4) return;
+          targets.push({ localId: d.localId, client: `${d.nom || ''} ${d.prenom || ''}`.trim(), arrKey, cat, idx, nom: x.nom, factureNo: x.factureNo || '', bl: x.bl || '' });
+        });
+      });
+    });
+    if (!targets.length) { alert('Rien à récupérer : toutes les lignes avec un n° ont déjà leur PDF (ou aucun n° saisi).'); return; }
+    if (!window.confirm(`🤖 Chercher automatiquement ${targets.length} facture(s) dans les emails indexés (par n° de facture / commande) et les attacher aux dossiers ?\n\nSeules les correspondances SÛRES (un seul PDF candidat) sont attachées — le reste est listé pour traitement manuel.`)) return;
+    setAutoFetching(true);
+    setAutoFetchReport(null);
+    const report = { ok: [], none: [], multi: [], err: [] };
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      let done = 0;
+      for (const t of targets) {
+        setAutoFetchProgress({ done, total: targets.length, label: `${t.factureNo || t.bl} · ${t.client}` });
+        try {
+          let matches = [];
+          for (const q of [t.factureNo, t.bl].filter(Boolean)) {
+            const res = await fetch('/api/gmail-oauth?action=ia-search', { method: 'POST', headers, body: JSON.stringify({ query: q, limit: 20 }) });
+            const payload = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+            const results = payload.data?.results || [];
+            const qn = normNo(q);
+            matches = [];
+            results.forEach(r => (r.messages || []).forEach(m => (m.attachments || []).forEach(a => {
+              const inName = normNo(a.filename).includes(qn);
+              const inIa = a.iaCached && normNo(a.iaCached.factureNo).includes(qn);
+              if (inName || inIa) matches.push({ email: r.email, messageId: m.messageId, att: a });
+            })));
+            if (matches.length > 1) {
+              // Même facture reçue dans plusieurs emails → dédoublonne par nom de fichier.
+              const seen = new Set();
+              matches = matches.filter(mm => { const k = normNo(mm.att.filename); if (seen.has(k)) return false; seen.add(k); return true; });
+            }
+            if (matches.length) break;
+          }
+          if (matches.length === 0) { report.none.push(t); done++; continue; }
+          if (matches.length > 1) { report.multi.push(t); done++; continue; }
+          const match = matches[0];
+          const resp = await fetch('/api/gmail-oauth?action=fetch-attachment', { method: 'POST', headers, body: JSON.stringify({ email: match.email, messageId: match.messageId, attachmentId: match.att.attachmentId }) });
+          const pl = await resp.json().catch(() => ({}));
+          if (!resp.ok || !pl.data?.base64) throw new Error(pl.error || 'PDF vide');
+          const fileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+          const dataUrl = `data:application/pdf;base64,${pl.data.base64}`;
+          const okSet = await window.storage.set(`file:${fileId}`, JSON.stringify({ dataUrl, name: match.att.filename || `${t.factureNo || t.bl}.pdf`, type: 'application/pdf' }));
+          if (!okSet) throw new Error('stockage impossible (fichier trop lourd ?)');
+          const now = new Date().toISOString();
+          setDossiers(prev => prev.map(d => {
+            if (d.localId !== t.localId) return d;
+            const arr = [...(d[t.arrKey] || [])];
+            if (!arr[t.idx] || arr[t.idx].factureFile) return d; // déjà rempli entre-temps
+            arr[t.idx] = { ...arr[t.idx], factureFile: fileId };
+            return { ...d, [t.arrKey]: arr, savedAt: now, modifiedAt: now, modifiedBy: '[récup auto factures]' };
+          }));
+          report.ok.push({ ...t, filename: match.att.filename || '' });
+        } catch (e) {
+          report.err.push({ ...t, error: e?.message || 'erreur' });
+        }
+        done++;
+      }
+    } finally {
+      setAutoFetchProgress(null);
+      setAutoFetchReport(report);
+      setAutoFetching(false);
+    }
+  };
   const [gmailScanResults, setGmailScanResults] = useState(null); // { results, errors } | null
   // 👁️ Masque par défaut les PDFs déjà rattachés à un dossier CRM — l'utilisateur
   // n'a pas besoin de les revoir à chaque scan. Toggle dans la barre du scan
@@ -8703,6 +8789,66 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
       {/* 📊 Rapprochement fournisseur (porté du CRM POSE) : Excel du fournisseur
           → quels n° sont déjà chez nous, lesquels manquent, import en 1 clic. */}
       <RapprochementFournisseur dossiers={dossiers} setDossiers={setDossiers} />
+
+      {/* 🤖 Récupération AUTO des PDF par n° de facture / commande */}
+      <div className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 rounded-2xl p-3">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0 flex-1">
+            <div className="text-sm font-bold text-violet-900">🤖 Récupérer les factures automatiquement (par n°)</div>
+            <div className="text-[13px] text-violet-700 mt-0.5">
+              Pour chaque ligne qui a un <strong>n° de facture ou de commande</strong> mais pas de PDF, le CRM cherche la pièce jointe correspondante dans les emails indexés et <strong>l'attache tout seul</strong>. Il n'attache que les correspondances sûres — le reste t'est listé.
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={autoFetchByNumero}
+            disabled={autoFetching}
+            className="flex-shrink-0 px-3 py-2 bg-violet-600 hover:bg-violet-700 disabled:bg-violet-300 text-white rounded-xl text-xs font-bold whitespace-nowrap"
+          >
+            {autoFetching ? '⏳ Récupération…' : '🤖 Récupérer automatiquement'}
+          </button>
+        </div>
+        {autoFetchProgress && (
+          <div className="mt-2">
+            <div className="flex items-center justify-between text-[12px] text-violet-700 font-semibold">
+              <span className="truncate">🔎 {autoFetchProgress.label}</span>
+              <span>{autoFetchProgress.done}/{autoFetchProgress.total}</span>
+            </div>
+            <div className="mt-1 h-1.5 bg-violet-100 rounded-full overflow-hidden">
+              <div className="h-full bg-violet-500 transition-all" style={{ width: `${Math.round((autoFetchProgress.done / Math.max(1, autoFetchProgress.total)) * 100)}%` }} />
+            </div>
+          </div>
+        )}
+        {autoFetchReport && (
+          <div className="mt-2 space-y-1.5 text-[12px]">
+            <div className="flex items-center gap-3 font-bold flex-wrap">
+              <span className="text-emerald-700">✅ {autoFetchReport.ok.length} attachée{autoFetchReport.ok.length > 1 ? 's' : ''}</span>
+              <span className="text-slate-500">🤷 {autoFetchReport.none.length} introuvable{autoFetchReport.none.length > 1 ? 's' : ''}</span>
+              <span className="text-amber-600">⚠️ {autoFetchReport.multi.length} ambiguë{autoFetchReport.multi.length > 1 ? 's' : ''}</span>
+              {autoFetchReport.err.length > 0 && <span className="text-rose-600">❌ {autoFetchReport.err.length} erreur{autoFetchReport.err.length > 1 ? 's' : ''}</span>}
+              <button onClick={() => setAutoFetchReport(null)} className="ml-auto text-[11px] text-slate-400 hover:text-slate-600 underline">fermer</button>
+            </div>
+            {autoFetchReport.ok.length > 0 && (
+              <details className="bg-emerald-50 border border-emerald-200 rounded-lg p-1.5">
+                <summary className="cursor-pointer font-semibold text-emerald-700">✅ Attachées ({autoFetchReport.ok.length})</summary>
+                <div className="mt-1 max-h-32 overflow-y-auto space-y-0.5">
+                  {autoFetchReport.ok.map((t, i) => <div key={i} className="text-slate-600"><span className="font-mono font-bold text-emerald-700">{t.factureNo || t.bl}</span> → {t.client} · {t.nom}</div>)}
+                </div>
+              </details>
+            )}
+            {(autoFetchReport.none.length > 0 || autoFetchReport.multi.length > 0 || autoFetchReport.err.length > 0) && (
+              <details className="bg-slate-50 border border-slate-200 rounded-lg p-1.5">
+                <summary className="cursor-pointer font-semibold text-slate-600">À traiter à la main ({autoFetchReport.none.length + autoFetchReport.multi.length + autoFetchReport.err.length}) — via 🔍 Gmail sur la ligne du dossier</summary>
+                <div className="mt-1 max-h-32 overflow-y-auto space-y-0.5">
+                  {autoFetchReport.multi.map((t, i) => <div key={'m' + i} className="text-amber-700">⚠️ <span className="font-mono font-bold">{t.factureNo || t.bl}</span> · {t.client} — plusieurs PDF candidats</div>)}
+                  {autoFetchReport.none.map((t, i) => <div key={'n' + i} className="text-slate-500">🤷 <span className="font-mono font-bold">{t.factureNo || t.bl}</span> · {t.client} — rien dans les emails indexés</div>)}
+                  {autoFetchReport.err.map((t, i) => <div key={'e' + i} className="text-rose-600">❌ <span className="font-mono font-bold">{t.factureNo || t.bl}</span> · {t.client} — {t.error}</div>)}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
+      </div>
       {/* En-tête + stats */}
       <div className="bg-gradient-to-r from-fuchsia-50 to-pink-50 border border-fuchsia-200 rounded-2xl p-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
