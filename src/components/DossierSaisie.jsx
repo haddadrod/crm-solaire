@@ -7483,7 +7483,7 @@ function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier
 // et lesquels MANQUENT — avec import des manquants sur les bons clients.
 // Comparaison sur TOUS les dossiers (archivés inclus), n° normalisé
 // (majuscules, sans espaces/tirets) + repli « contient » pour les formats.
-function RapprochementFournisseur({ dossiers, setDossiers }) {
+function RapprochementFournisseur({ dossiers, setDossiers, onOpenDossier = null }) {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
   const [rows, setRows] = useState([]); // lignes structurées du .xlsx : { factureNo, commande, refChantier, montantHt, type }
@@ -7723,6 +7723,11 @@ function RapprochementFournisseur({ dossiers, setDossiers }) {
                           {!st.done ? (
                             <div className="mt-1 flex items-center gap-1.5">
                               <input list="rappro-dossiers" value={st.matchLabel || ''} onChange={e => setMatch(row.factureNo, e.target.value)} placeholder="🔍 Rattacher au client…" className={`flex-1 min-w-[130px] text-[10px] border rounded px-1.5 py-1 ${st.matchLocalId ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'}`} />
+                              {st.matchLocalId && onOpenDossier && (
+                                <button onClick={() => onOpenDossier(st.matchLocalId)} className="px-2 py-1 rounded text-[11px] font-bold bg-white border border-blue-200 text-blue-600 hover:bg-blue-50 whitespace-nowrap" title="Ouvrir la fiche du client (panneau de droite) pour vérifier avant d'importer">
+                                  👁 Voir
+                                </button>
+                              )}
                               <button onClick={() => doImport(row)} disabled={!st.matchLocalId} className="px-2 py-1 rounded text-[10px] font-bold bg-indigo-600 text-white disabled:opacity-40 whitespace-nowrap">Importer</button>
                             </div>
                           ) : <div className="mt-0.5 text-[10px] text-emerald-700 font-semibold">✅ Importé</div>}
@@ -8814,7 +8819,7 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
     <div className="space-y-4">
       {/* 📊 Rapprochement fournisseur (porté du CRM POSE) : Excel du fournisseur
           → quels n° sont déjà chez nous, lesquels manquent, import en 1 clic. */}
-      <RapprochementFournisseur dossiers={dossiers} setDossiers={setDossiers} />
+      <RapprochementFournisseur dossiers={dossiers} setDossiers={setDossiers} onOpenDossier={onOpenDossier} />
 
       {/* 🤖 Récupération AUTO des PDF par n° de facture / commande */}
       <div className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 rounded-2xl p-3">
