@@ -7593,7 +7593,19 @@ function RapprochementFournisseur({ dossiers, setDossiers }) {
     const text = await file.text().catch(() => '');
     if (text) { setInput(text); setRows([]); setResult(null); setImports({}); }
   };
-  const copyMissing = () => { if (result?.missing?.length && navigator.clipboard) navigator.clipboard.writeText(result.missing.map(m => m.factureNo).join('\n')).then(() => alert('Liste des manquants copiée ✅')).catch(() => {}); };
+  // 📋 Copie les manquants en colonnes (tabulations) : n° facture, commande
+  // (CV…), montant HT, client — collable direct dans Excel / un email.
+  const copyMissing = () => {
+    if (!(result?.missing?.length) || !navigator.clipboard) return;
+    const lignes = result.missing.map(m => [
+      m.factureNo || '',
+      m.commande || '',
+      m.montantHt ? String(m.montantHt).replace('.', ',') : '',
+      parseClient(m.refChantier) || m.refChantier || '',
+    ].join('\t'));
+    const txt = (result.hasRows ? 'N° facture\tCommande\tMontant HT\tClient\n' : '') + lignes.join('\n');
+    navigator.clipboard.writeText(txt).then(() => alert('Liste des manquants copiée ✅ — n° + commande + montant + client, en colonnes (colle dans Excel).')).catch(() => {});
+  };
 
   const setMatch = (factureNo, val) => { const m = dossiersActifs.find(d => labelOf(d) === val); setImports(prev => ({ ...prev, [factureNo]: { ...(prev[factureNo] || {}), matchLabel: val, matchLocalId: m ? m.localId : '' } })); };
   const doImport = (row) => {
