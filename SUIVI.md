@@ -19,6 +19,7 @@
 ## 🗓️ Journal (plus récent en haut)
 
 ### 2026-07-02
+- 🟢 **FIX Rapprochement — la vérification respecte le fournisseur choisi** : le sélecteur (ex BROTHER NEGOCE) filtre désormais AUSSI la comparaison, pas seulement l'import — un n° présent chez ECO NEGOCE ne compte plus « présent » pour un autre fournisseur. Changer de fournisseur réinitialise le résultat.
 - ✅ **Rapprochement — « ✓ Tout pointer payé »** : dans la section « ✅ Présents », badge ⏳ non payé / ✓ payé par n° + bouton « ✓ Tout pointer payé (N) » qui marque payées (date du jour) toutes les lignes du CRM correspondant aux n° présents (fournisseurs/régies/poseurs, jamais une ligne déjà payée, dédoublonné par ligne). Usage : coller la liste des factures réglées → Vérifier → Tout pointer payé.
 - ✅ **Rapprochement — bouton « 👁 Voir » sur les manquants** : dès qu'un client est rattaché à une facture manquante, un bouton « 👁 Voir » ouvre sa fiche (QuickView, scrollée sur les fournisseurs) pour vérifier avant de cliquer Importer. Prop `onOpenDossier` transmise à `RapprochementFournisseur`.
 - ✅ **Rapprochement — rattachement client élargi** : le champ « Rattacher au client… » propose désormais TOUS les dossiers (archivés inclus, marqués 📦 — une facture arrive souvent après archivage), et la saisie est tolérante : taper une partie du nom suffit si un seul dossier correspond (sinon on précise). Le devinage auto depuis « Référence Chantier » cherche aussi dans les archivés.
