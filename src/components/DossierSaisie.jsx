@@ -7469,6 +7469,262 @@ function UploadVocalCqButton({ onUploaded, label = '📤 Téléverser un fichier
 
 // ====================== TRI FACTURES (compta) ======================
 //
+// 📊 RAPPROCHEMENT FOURNISSEUR (porté du CRM POSE) — on charge le fichier
+// Excel du fournisseur (ou on colle la liste des n°) et le CRM dit lesquels
+// sont DÉJÀ enregistrés (facture / BL d'une ligne prestataire d'un dossier)
+// et lesquels MANQUENT — avec import des manquants sur les bons clients.
+// Comparaison sur TOUS les dossiers (archivés inclus), n° normalisé
+// (majuscules, sans espaces/tirets) + repli « contient » pour les formats.
+function RapprochementFournisseur({ dossiers, setDossiers }) {
+  const [open, setOpen] = useState(false);
+  const [input, setInput] = useState('');
+  const [rows, setRows] = useState([]); // lignes structurées du .xlsx : { factureNo, commande, refChantier, montantHt, type }
+  const [result, setResult] = useState(null);
+  const [imports, setImports] = useState({}); // factureNo -> { matchLocalId, matchLabel, done }
+
+  const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const dossiersActifs = useMemo(() => (dossiers || []).filter(d => !d.archived), [dossiers]);
+  const labelOf = (d) => `${(d.nom || '').toUpperCase()} ${d.prenom || ''}`.trim() + (d.ville ? ` · ${d.ville}` : '') + (d.id ? ` · ${d.id}` : ` · ${d.localId}`);
+
+  // 🏷️ Fournisseur cible pour l'import des manquants (ECO NEGOCE par défaut).
+  const nomsFournisseurs = useMemo(() => {
+    const set = new Set();
+    (dossiers || []).forEach(d => (d.fournisseurs || []).forEach(f => { if (f && f.nom) set.add(f.nom); }));
+    return [...set].sort();
+  }, [dossiers]);
+  const [targetFournisseur, setTargetFournisseur] = useState('');
+  useEffect(() => {
+    if (!targetFournisseur && nomsFournisseurs.length > 0) {
+      setTargetFournisseur(nomsFournisseurs.find(n => /ECO\s*NEGOCE/i.test(n)) || nomsFournisseurs[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [nomsFournisseurs]);
+
+  // Index de TOUS les n° connus du CRM : factures/BL des fournisseurs, régies
+  // et poseurs de chaque dossier.
+  const crmIndex = useMemo(() => {
+    const map = new Map();
+    const push = (n, entry) => { if (n.length >= 4) { if (!map.has(n)) map.set(n, []); map.get(n).push(entry); } };
+    (dossiers || []).forEach(d => {
+      const client = `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)';
+      (d.fournisseurs || []).forEach(f => {
+        [['facture', f && f.factureNo], ['BL', f && f.bl], ['commande', f && f.commande]].forEach(([champ, val]) => push(norm(val), { client, champ, brut: val, fournisseur: (f && f.nom) || '' }));
+      });
+      (d.regies || []).forEach(r => {
+        [['facture', r && r.factureNo], ['BL', r && r.bl]].forEach(([champ, val]) => push(norm(val), { client, champ, brut: val, fournisseur: (r && r.nom) || '' }));
+      });
+      (d.poseurs || []).forEach(po => {
+        [['facture', po && po.factureNo], ['BL', po && po.bl]].forEach(([champ, val]) => push(norm(val), { client, champ, brut: val, fournisseur: (po && po.nom) || '' }));
+      });
+    });
+    return map;
+  }, [dossiers]);
+  const isPresent = (raw) => {
+    const n = norm(raw);
+    if (!n) return null;
+    if (crmIndex.has(n)) return crmIndex.get(n);
+    if (n.length >= 6) { for (const [k, v] of crmIndex) { if (k.length >= 6 && (k.includes(n) || n.includes(k))) return v; } }
+    return null;
+  };
+  // Nom du client depuis « Référence Chantier » (ex : "PALAU – ELS 48150" → "PALAU").
+  const parseClient = (ref) => { let sc = String(ref || '').split('–')[0].split(/\s[-]\s/)[0]; return sc.replace(/\d+/g, '').replace(/\s+/g, ' ').trim(); };
+  const matchDossier = (clientName) => { const cn = norm(clientName); if (cn.length < 3) return null; return dossiersActifs.find(d => { const nom = norm(d.nom); return nom.length >= 3 && (cn.includes(nom) || nom.includes(cn)); }) || null; };
+
+  const parseNumbers = (txt) => Array.from(new Set(String(txt || '').split(/[\n\r\t,;]+/).map(x => x.trim()).filter(x => x.length >= 3)));
+  const check = () => {
+    if (rows.length) {
+      const present = [], missing = [];
+      rows.forEach(row => {
+        const hit = isPresent(row.factureNo) || (row.commande && isPresent(row.commande));
+        if (hit) present.push({ raw: row.factureNo, hits: hit }); else missing.push(row);
+      });
+      const nextImports = {};
+      missing.forEach(row => { const m = matchDossier(parseClient(row.refChantier)); nextImports[row.factureNo] = { matchLocalId: m ? m.localId : '', matchLabel: m ? labelOf(m) : '', done: false }; });
+      setImports(nextImports);
+      setResult({ present, missing, total: rows.length, hasRows: true });
+      return;
+    }
+    const nums = parseNumbers(input);
+    if (!nums.length) { alert('Charge un fichier Excel, ou colle la liste des numéros.'); return; }
+    const present = [], missing = [];
+    nums.forEach(raw => { const hit = isPresent(raw); if (hit && hit.length) present.push({ raw, hits: hit }); else missing.push(raw); });
+    setResult({ present, missing: missing.map(m => ({ factureNo: m })), total: nums.length, hasRows: false });
+  };
+
+  const onFile = async (file) => {
+    if (!file) return;
+    const isXlsx = /\.xlsx?$/i.test(file.name) || /sheet|excel|spreadsheet/i.test(file.type || '');
+    if (isXlsx) {
+      try {
+        const mod = await import('xlsx');
+        const XLSX = mod.default || mod;
+        const wb = XLSX.read(await file.arrayBuffer(), { type: 'array' });
+        let outRows = [], outNums = [];
+        for (const name of wb.SheetNames) {
+          const sheet = XLSX.utils.sheet_to_json(wb.Sheets[name], { header: 1, defval: '' });
+          if (!sheet.length) continue;
+          const hdr = (sheet[0] || []).map(c => String(c || '').toLowerCase().trim());
+          const find = (re) => hdr.findIndex(h => re.test(h));
+          const cFact = find(/n[°o]?\s*document|facture|invoice|n[°o]?\s*pi[eè]ce/);
+          const cDesc = find(/description|commande|libell/);
+          const cRef = find(/chantier|r[eé]f[eé]rence|client/);
+          const cMont = find(/somme.*montant|montant\s*ht/) >= 0 ? find(/somme.*montant|montant\s*ht/) : find(/montant/);
+          const cType = find(/type/);
+          if (cFact < 0) { sheet.forEach(r => (r || []).forEach(c => { const m = String(c ?? '').match(/\b(?:FV|CV|BL|AV|FA|BC)[\s.\-_]?\d[\w.\-\/]*/gi); if (m) outNums.push(...m); })); continue; }
+          sheet.slice(1).forEach(r => {
+            const factureNo = String(r[cFact] ?? '').trim();
+            if (!factureNo) return;
+            const desc = cDesc >= 0 ? String(r[cDesc] ?? '') : '';
+            const mcv = desc.match(/\b(CV\d[\w\-]*)/i);
+            const refChantier = cRef >= 0 ? String(r[cRef] ?? '').trim() : '';
+            const montantHt = cMont >= 0 ? (parseFloat(String(r[cMont] ?? '').replace(/[^\d.,\-]/g, '').replace(',', '.')) || 0) : 0;
+            const type = cType >= 0 ? String(r[cType] ?? '').trim() : '';
+            outRows.push({ factureNo, commande: mcv ? mcv[1] : '', refChantier, montantHt, type });
+            outNums.push(factureNo);
+          });
+        }
+        setRows(outRows);
+        setInput(Array.from(new Set(outNums)).join('\n'));
+        setResult(null); setImports({});
+        if (!outRows.length && !outNums.length) alert('Aucun numéro détecté dans le fichier Excel. Copie-colle la colonne des n° à la place.');
+      } catch (e) { alert('Impossible de lire le fichier Excel : ' + (e?.message || e) + '\nAstuce : copie-colle la colonne des n° dans la case.'); }
+      return;
+    }
+    const text = await file.text().catch(() => '');
+    if (text) { setInput(text); setRows([]); setResult(null); setImports({}); }
+  };
+  const copyMissing = () => { if (result?.missing?.length && navigator.clipboard) navigator.clipboard.writeText(result.missing.map(m => m.factureNo).join('\n')).then(() => alert('Liste des manquants copiée ✅')).catch(() => {}); };
+
+  const setMatch = (factureNo, val) => { const m = dossiersActifs.find(d => labelOf(d) === val); setImports(prev => ({ ...prev, [factureNo]: { ...(prev[factureNo] || {}), matchLabel: val, matchLocalId: m ? m.localId : '' } })); };
+  const doImport = (row) => {
+    const st = imports[row.factureNo]; if (!st || !st.matchLocalId) return false;
+    const cible = targetFournisseur || 'ECO NEGOCE';
+    const now = new Date().toISOString();
+    setDossiers(prev => prev.map(d => {
+      if (d.localId !== st.matchLocalId) return d;
+      const fournisseurs = [...(d.fournisseurs || [])];
+      // Complète une ligne du fournisseur cible SANS n° facture, sinon en ajoute une.
+      let idx = fournisseurs.findIndex(f => f && norm(f.nom) === norm(cible) && !f.factureNo);
+      const base = idx >= 0 ? fournisseurs[idx] : { nom: cible, htCustom: '', paye: false, datePaye: '', bl: '', factureNo: '', facturePdfUrl: '', avoirs: [] };
+      const merged = { ...base, nom: base.nom || cible, factureNo: base.factureNo || row.factureNo || '', bl: base.bl || row.commande || '', htCustom: (base.htCustom !== '' && base.htCustom != null) ? base.htCustom : (row.montantHt ? String(row.montantHt) : '') };
+      if (idx >= 0) fournisseurs[idx] = merged; else fournisseurs.push(merged);
+      return { ...d, fournisseurs, savedAt: now, modifiedAt: now, modifiedBy: '[rapprochement fournisseur]' };
+    }));
+    setImports(prev => ({ ...prev, [row.factureNo]: { ...(prev[row.factureNo] || {}), done: true } }));
+    return true;
+  };
+  const importAll = () => {
+    const todo = (result?.missing || []).filter(row => imports[row.factureNo]?.matchLocalId && !imports[row.factureNo]?.done);
+    if (!todo.length) { alert('Rattache au moins une facture manquante à un client.'); return; }
+    if (!window.confirm(`Importer ${todo.length} facture(s) manquante(s) sur leurs clients ?\n\nÇa ajoute/complète le fournisseur ${targetFournisseur || 'ECO NEGOCE'} (n° facture + BL + montant HT) sur chaque dossier.`)) return;
+    todo.forEach(row => doImport(row));
+  };
+
+  const nbImportables = (result?.missing || []).filter(row => imports[row.factureNo]?.matchLocalId && !imports[row.factureNo]?.done).length;
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+      <datalist id="rappro-dossiers">{dossiersActifs.slice(0, 2000).map(d => <option key={d.localId} value={labelOf(d)} />)}</datalist>
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-4 py-3 hover:bg-slate-50 text-left">
+        <span className="text-lg">📊</span>
+        <span className="font-bold text-slate-800 text-sm">Rapprochement fournisseur — quels n° me manquent ? (+ import)</span>
+        <span className="ml-auto text-slate-400 text-xs">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="p-4 border-t border-slate-100 space-y-3">
+          <p className="text-[11px] text-slate-500 leading-snug"><strong>Charge le fichier Excel de ton fournisseur</strong> — le CRM détecte la colonne des n° (+ client, commande, montant). Il te dit lesquels sont <strong>déjà chez toi</strong> et lesquels <strong>manquent</strong>, et te permet d'<strong>importer les manquants</strong> sur les bons clients en un clic.</p>
+          <textarea value={input} onChange={e => { setInput(e.target.value); setRows([]); }} rows={5} placeholder={"Charge un .xlsx ci-dessous, ou colle :\nFV26-03-00360\n..."} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-mono" />
+          <div className="flex items-center gap-2 flex-wrap">
+            <label className="text-[11px] font-semibold text-white cursor-pointer bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg">
+              📎 Charger le fichier Excel (.xlsx) / .csv
+              <input type="file" accept=".xlsx,.xls,.csv,.txt,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,text/csv,text/plain" className="hidden" onChange={e => onFile(e.target.files?.[0])} />
+            </label>
+            <button onClick={check} className="px-3 py-1.5 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-lg text-xs font-bold">🔎 Vérifier lesquels manquent</button>
+            {nomsFournisseurs.length > 0 && (
+              <label className="flex items-center gap-1 text-[11px] text-slate-500">
+                cible :
+                <select value={targetFournisseur} onChange={(e) => setTargetFournisseur(e.target.value)} className="text-[11px] border border-slate-200 rounded-lg px-1.5 py-1 bg-white font-semibold" title="Fournisseur sur lequel importer les factures manquantes">
+                  {nomsFournisseurs.map(n => <option key={n} value={n}>{n}</option>)}
+                </select>
+              </label>
+            )}
+            {rows.length > 0 && <span className="text-[10px] text-emerald-600 font-semibold">✓ Excel lu ({rows.length} lignes, import possible)</span>}
+            {(input || result) && <button onClick={() => { setInput(''); setRows([]); setResult(null); setImports({}); }} className="text-[11px] text-slate-400 hover:text-rose-600 underline">effacer</button>}
+          </div>
+          {result && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 text-xs font-bold flex-wrap">
+                <span className="text-slate-600">{result.total} n° vérifiés</span>
+                <span className="text-emerald-600">✅ {result.present.length} présents</span>
+                <span className="text-rose-600">❌ {result.missing.length} manquants</span>
+              </div>
+              {result.missing.length > 0 && result.hasRows && (
+                <div className="border border-rose-200 bg-rose-50 rounded-xl p-2.5">
+                  <div className="flex items-center justify-between mb-1.5 gap-2 flex-wrap">
+                    <span className="text-[11px] font-bold text-rose-700">❌ Manquants ({result.missing.length}) — rattache au client puis importe</span>
+                    <div className="flex items-center gap-2">
+                      <button onClick={copyMissing} className="text-[10px] font-bold text-rose-600 hover:underline whitespace-nowrap">copier n°</button>
+                      {nbImportables > 0 && <button onClick={importAll} className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-indigo-600 hover:bg-indigo-700 text-white whitespace-nowrap">📥 Tout importer ({nbImportables})</button>}
+                    </div>
+                  </div>
+                  <div className="max-h-72 overflow-y-auto space-y-1.5">
+                    {result.missing.map((row, i) => {
+                      const st = imports[row.factureNo] || {};
+                      return (
+                        <div key={i} className={`rounded-lg p-1.5 border ${st.done ? 'border-emerald-300 bg-emerald-50' : 'border-rose-200 bg-white'}`}>
+                          <div className="flex items-center gap-1.5 flex-wrap text-[10px]">
+                            <span className="font-mono font-bold text-rose-700">{row.factureNo}</span>
+                            {row.commande ? <span className="text-slate-400">· {row.commande}</span> : null}
+                            {row.montantHt ? <span className="text-slate-500">· {formatEuro(row.montantHt)} HT</span> : null}
+                            {row.type && row.type.toLowerCase() !== 'facture' ? <span className="px-1 rounded bg-amber-100 text-amber-700 font-bold">{row.type}</span> : null}
+                            <span className="text-slate-400 truncate">· {row.refChantier}</span>
+                          </div>
+                          {!st.done ? (
+                            <div className="mt-1 flex items-center gap-1.5">
+                              <input list="rappro-dossiers" value={st.matchLabel || ''} onChange={e => setMatch(row.factureNo, e.target.value)} placeholder="🔍 Rattacher au client…" className={`flex-1 min-w-[130px] text-[10px] border rounded px-1.5 py-1 ${st.matchLocalId ? 'border-emerald-300 bg-emerald-50' : 'border-slate-200 bg-white'}`} />
+                              <button onClick={() => doImport(row)} disabled={!st.matchLocalId} className="px-2 py-1 rounded text-[10px] font-bold bg-indigo-600 text-white disabled:opacity-40 whitespace-nowrap">Importer</button>
+                            </div>
+                          ) : <div className="mt-0.5 text-[10px] text-emerald-700 font-semibold">✅ Importé</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-1 text-[9px] text-slate-400">💡 Le client est deviné depuis « Référence Chantier » — vérifie/corrige avant d'importer. L'import ajoute ou complète {targetFournisseur || 'le fournisseur cible'} (n° facture + BL + montant HT) sur le dossier.</div>
+                </div>
+              )}
+              {result.missing.length > 0 && !result.hasRows && (
+                <div className="border border-rose-200 bg-rose-50 rounded-xl p-2.5">
+                  <div className="flex items-center justify-between mb-1 gap-2">
+                    <span className="text-[11px] font-bold text-rose-700">❌ Manquants ({result.missing.length}) — pas encore chez toi</span>
+                    <button onClick={copyMissing} className="text-[10px] font-bold text-rose-600 hover:underline whitespace-nowrap">copier la liste</button>
+                  </div>
+                  <div className="max-h-44 overflow-y-auto flex flex-wrap gap-1">
+                    {result.missing.map((m, i) => <span key={i} className="px-1.5 py-0.5 bg-white border border-rose-200 rounded text-[10px] font-mono text-rose-700">{m.factureNo}</span>)}
+                  </div>
+                  <div className="mt-1 text-[9px] text-slate-400">💡 Charge le fichier Excel (au lieu de coller) pour pouvoir importer les manquants directement sur les clients.</div>
+                </div>
+              )}
+              {result.present.length > 0 && (
+                <details className="border border-emerald-200 bg-emerald-50 rounded-xl p-2.5">
+                  <summary className="text-[11px] font-bold text-emerald-700 cursor-pointer">✅ Présents ({result.present.length}) — déjà enregistrés (clique pour voir)</summary>
+                  <div className="mt-1.5 max-h-44 overflow-y-auto space-y-0.5">
+                    {result.present.map((pr, i) => (
+                      <div key={i} className="text-[10px] text-slate-600 flex items-center gap-1.5 flex-wrap">
+                        <span className="font-mono font-bold text-emerald-700">{pr.raw}</span>
+                        <span className="text-slate-400">→ {pr.hits[0].client} · {pr.hits[0].fournisseur || pr.hits[0].champ}{pr.hits.length > 1 ? ` (+${pr.hits.length - 1})` : ''}</span>
+                      </div>
+                    ))}
+                  </div>
+                </details>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // Onglet "📥 Tri factures" : la compta drag&drop ses PDFs de factures
 // prestataires (poseur / régie / fournisseur). Pour chaque PDF :
 //   1. Claude lit la facture → extrait fournisseur, n°, date, HT/TTC, TVA.
@@ -8429,6 +8685,9 @@ function TriFacturesPanel({ dossiers, setDossiers, currentUserRole, isAdmin, gma
 
   return (
     <div className="space-y-4">
+      {/* 📊 Rapprochement fournisseur (porté du CRM POSE) : Excel du fournisseur
+          → quels n° sont déjà chez nous, lesquels manquent, import en 1 clic. */}
+      <RapprochementFournisseur dossiers={dossiers} setDossiers={setDossiers} />
       {/* En-tête + stats */}
       <div className="bg-gradient-to-r from-fuchsia-50 to-pink-50 border border-fuchsia-200 rounded-2xl p-4">
         <div className="flex items-start justify-between gap-3 flex-wrap">
