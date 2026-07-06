@@ -7664,15 +7664,15 @@ function RapprochementFournisseur({ dossiers, setDossiers, onOpenDossier = null 
   const nbImportables = (result?.missing || []).filter(row => imports[row.factureNo]?.matchLocalId && !imports[row.factureNo]?.done).length;
 
   return (
-    <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+    <div className="bg-gradient-to-r from-indigo-50 to-fuchsia-50 rounded-2xl border-2 border-indigo-200 overflow-hidden shadow-sm">
       <datalist id="rappro-dossiers">{dossiersRattachables.slice(0, 3000).map(d => <option key={d.localId} value={labelOf(d)} />)}</datalist>
-      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-4 py-3 hover:bg-slate-50 text-left">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-4 py-3 hover:bg-white/60 text-left">
         <span className="text-lg">📊</span>
-        <span className="font-bold text-slate-800 text-sm">Rapprochement fournisseur — quels n° me manquent ? (+ import)</span>
-        <span className="ml-auto text-slate-400 text-xs">{open ? '▲' : '▼'}</span>
+        <span className="font-bold text-indigo-900 text-sm">Rapprochement fournisseur — quels n° me manquent ? (+ import)</span>
+        <span className="ml-auto text-indigo-400 text-xs">{open ? '▲' : '▼'}</span>
       </button>
       {open && (
-        <div className="p-4 border-t border-slate-100 space-y-3">
+        <div className="p-4 border-t border-indigo-100 bg-white space-y-3">
           <p className="text-[11px] text-slate-500 leading-snug"><strong>Charge le fichier Excel de ton fournisseur</strong> — le CRM détecte la colonne des n° (+ client, commande, montant). Il te dit lesquels sont <strong>déjà chez toi</strong> et lesquels <strong>manquent</strong>, et te permet d'<strong>importer les manquants</strong> sur les bons clients en un clic.</p>
           <textarea value={input} onChange={e => { setInput(e.target.value); setRows([]); }} rows={5} placeholder={"Charge un .xlsx ci-dessous, ou colle :\nFV26-03-00360\n..."} className="w-full px-3 py-2 border border-slate-200 rounded-lg text-xs font-mono" />
           <div className="flex items-center gap-2 flex-wrap">
