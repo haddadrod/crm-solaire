@@ -3299,7 +3299,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       ...(formData.poseurs || []),
     ].forEach(p => {
       if (p.factureGroupee) return; // 📋 facture groupée multi-clients → exemptée
-      const conflicts = findFactureNoDupes(p.factureNo, dossiers, editingId);
+      const conflicts = findFactureNoDupes(p.factureNo, dossiers, editingId, p.nom);
       if (conflicts.length > 0) {
         dupesDetected.push({ factureNo: p.factureNo, conflicts });
       }
@@ -11614,19 +11614,24 @@ function MaJourneeView({ dashboard, dossiers = [], currentUserRole, isAdmin, onS
 // 🧾 Détecte si un N° de facture est déjà utilisé sur un autre dossier.
 // Renvoie un tableau de noms clients en collision (vide si aucun doublon).
 // Tolérant aux espaces et à la casse pour matcher "FV26-04" et "fv 26 04".
-function findFactureNoDupes(factureNo, allDossiers = [], currentLocalId = null) {
+// ⚠️ Un n° de facture n'est unique QUE chez un même émetteur : deux régies
+// différentes peuvent chacune émettre une facture « 71 ». Si `emitterName`
+// est fourni, on ne compare qu'avec les lignes du MÊME prestataire.
+function findFactureNoDupes(factureNo, allDossiers = [], currentLocalId = null, emitterName = null) {
   const norm = (s) => String(s || '').toUpperCase().replace(/\s+/g, '').trim();
   const key = norm(factureNo);
   if (!key) return [];
+  const emitter = norm(emitterName);
+  const sameEmitter = (nom) => !emitter || norm(nom) === emitter;
   const conflicts = [];
   allDossiers.forEach(d => {
     if (!d || d.localId === currentLocalId) return;
     const facKeys = new Set();
     // 📋 Les lignes « facture groupée » (1 facture régie pour PLUSIEURS clients)
     // sont exemptées : leur n° est légitimement présent sur plusieurs dossiers.
-    (d.fournisseurs || []).forEach(f => { if (f.factureGroupee) return; const k = norm(f.factureNo); if (k) facKeys.add(k); });
-    (d.regies || []).forEach(r => { if (r.factureGroupee) return; const k = norm(r.factureNo); if (k) facKeys.add(k); });
-    (d.poseurs || []).forEach(p => { if (p.factureGroupee) return; const k = norm(p.factureNo); if (k) facKeys.add(k); });
+    (d.fournisseurs || []).forEach(f => { if (f.factureGroupee || !sameEmitter(f.nom)) return; const k = norm(f.factureNo); if (k) facKeys.add(k); });
+    (d.regies || []).forEach(r => { if (r.factureGroupee || !sameEmitter(r.nom)) return; const k = norm(r.factureNo); if (k) facKeys.add(k); });
+    (d.poseurs || []).forEach(p => { if (p.factureGroupee || !sameEmitter(p.nom)) return; const k = norm(p.factureNo); if (k) facKeys.add(k); });
     if (facKeys.has(key)) {
       conflicts.push(`${d.nom || ''} ${d.prenom || ''}`.trim() || 'sans nom');
     }
@@ -11636,10 +11641,10 @@ function findFactureNoDupes(factureNo, allDossiers = [], currentLocalId = null) 
 
 // Badge visuel à coller sous (ou à côté de) un input N° facture pour signaler
 // le doublon en direct dès qu'on tape. Discret quand pas de collision.
-function FactureDupeWarning({ factureNo, allDossiers, currentLocalId }) {
+function FactureDupeWarning({ factureNo, allDossiers, currentLocalId, emitterName = null }) {
   const conflicts = useMemo(
-    () => findFactureNoDupes(factureNo, allDossiers, currentLocalId),
-    [factureNo, allDossiers, currentLocalId]
+    () => findFactureNoDupes(factureNo, allDossiers, currentLocalId, emitterName),
+    [factureNo, allDossiers, currentLocalId, emitterName]
   );
   if (conflicts.length === 0) return null;
   const aperc = conflicts.slice(0, 2).join(', ');
@@ -11680,9 +11685,12 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
     const normFac = (s) => String(s || '').toUpperCase().replace(/\s+/g, '').trim();
     const factureMap = {}; // { factureNorm: [{ dossier, type, prestaName, raw }] }
     actifs.forEach(d => {
+      // ⚠️ Un n° n'est unique QUE chez un même émetteur (deux régies peuvent
+      // avoir chacune une facture « 71 ») → la clé inclut le prestataire.
       const push = (raw, type, prestaName) => {
-        const k = normFac(raw);
-        if (!k) return;
+        const kNo = normFac(raw);
+        if (!kNo) return;
+        const k = normFac(prestaName) + '::' + kNo;
         if (!factureMap[k]) factureMap[k] = [];
         factureMap[k].push({ d, type, prestaName, raw });
       };
@@ -11733,9 +11741,9 @@ function SanteDossiersPanel({ dossiers, produits = [], activeSociete = '', onSho
       // 🧾 Doublons N° facture : un N° de ce dossier apparaît aussi sur un
       // autre. On liste les autres clients pour que tu retrouves la collision.
       const myFacKeys = new Set();
-      (d.fournisseurs || []).forEach(f => { if (f.factureGroupee) return; const k = normFac(f.factureNo); if (k) myFacKeys.add(k); });
-      (d.regies || []).forEach(r => { if (r.factureGroupee) return; const k = normFac(r.factureNo); if (k) myFacKeys.add(k); });
-      (d.poseurs || []).forEach(p => { if (p.factureGroupee) return; const k = normFac(p.factureNo); if (k) myFacKeys.add(k); });
+      (d.fournisseurs || []).forEach(f => { if (f.factureGroupee) return; const k = normFac(f.factureNo); if (k) myFacKeys.add(normFac(f.nom) + '::' + k); });
+      (d.regies || []).forEach(r => { if (r.factureGroupee) return; const k = normFac(r.factureNo); if (k) myFacKeys.add(normFac(r.nom) + '::' + k); });
+      (d.poseurs || []).forEach(p => { if (p.factureGroupee) return; const k = normFac(p.factureNo); if (k) myFacKeys.add(normFac(p.nom) + '::' + k); });
       myFacKeys.forEach(k => {
         if (!factureDuplicates[k]) return;
         const autresClients = factureDuplicates[k]
@@ -19804,7 +19812,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             <input type="text" value={r.bl || ''} onChange={(e) => upd({ bl: e.target.value })} placeholder="📦 N° BL" className={inputCls} />
                             <div>
                               <input type="text" value={r.factureNo || ''} onChange={(e) => upd({ factureNo: e.target.value })} placeholder="🧾 N° facture" className={inputCls} />
-                              {!r.factureGroupee && <FactureDupeWarning factureNo={r.factureNo} allDossiers={dossiers} currentLocalId={editingId} />}
+                              {!r.factureGroupee && <FactureDupeWarning factureNo={r.factureNo} allDossiers={dossiers} currentLocalId={editingId} emitterName={r.nom} />}
                             </div>
                           </div>
                           {/* 📋 Facture groupée : 1 facture régie pour PLUSIEURS clients.
@@ -19829,7 +19837,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                               if (data.dateFacture && !r.dateFacture) updIa.dateFacture = String(data.dateFacture);
                               if (Object.keys(updIa).length > 0) upd(updIa);
                               if (updIa.factureNo && !r.factureGroupee) {
-                                const conflicts = findFactureNoDupes(updIa.factureNo, dossiers, editingId);
+                                const conflicts = findFactureNoDupes(updIa.factureNo, dossiers, editingId, r.nom);
                                 if (conflicts.length > 0) {
                                   alert(`⚠️ N° facture ${updIa.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.\n\n(Si c'est une facture groupée multi-clients, coche « 📋 Facture groupée ».)`);
                                 }
@@ -19946,7 +19954,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <div>
                           <label className="block text-[12px] font-semibold text-slate-500 mb-1">🧾 N° facture</label>
                           <input type="text" value={p.factureNo || ''} onChange={(e) => upd({ factureNo: e.target.value })} placeholder="Ex: FA24-001" className={inputCls} />
-                          <FactureDupeWarning factureNo={p.factureNo} allDossiers={dossiers} currentLocalId={editingId} />
+                          <FactureDupeWarning factureNo={p.factureNo} allDossiers={dossiers} currentLocalId={editingId} emitterName={p.nom} />
                         </div>
                         <div>
                           <label className="block text-[12px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
@@ -19976,7 +19984,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             if (data.dateFacture && !p.dateFacture) updIa.dateFacture = String(data.dateFacture);
                             if (Object.keys(updIa).length > 0) upd(updIa);
                             if (updIa.factureNo) {
-                              const conflicts = findFactureNoDupes(updIa.factureNo, dossiers, editingId);
+                              const conflicts = findFactureNoDupes(updIa.factureNo, dossiers, editingId, p.nom);
                               if (conflicts.length > 0) {
                                 alert(`⚠️ N° facture ${updIa.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.`);
                               }
@@ -20084,7 +20092,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         <div>
                           <label className="block text-[12px] font-semibold text-slate-500 mb-1">🧾 N° facture</label>
                           <input type="text" value={f.factureNo || ''} onChange={(e) => upd({ factureNo: e.target.value })} placeholder="Ex: FA24-001" className={inputCls} />
-                          <FactureDupeWarning factureNo={f.factureNo} allDossiers={dossiers} currentLocalId={editingId} />
+                          <FactureDupeWarning factureNo={f.factureNo} allDossiers={dossiers} currentLocalId={editingId} emitterName={f.nom} />
                         </div>
                         <div>
                           <label className="block text-[12px] font-semibold text-slate-500 mb-1 flex items-center justify-between">
@@ -20118,7 +20126,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             if (data.dateFacture && !f.dateFacture) updIa.dateFacture = String(data.dateFacture);
                             if (Object.keys(updIa).length > 0) upd(updIa);
                             if (updIa.factureNo) {
-                              const conflicts = findFactureNoDupes(updIa.factureNo, dossiers, editingId);
+                              const conflicts = findFactureNoDupes(updIa.factureNo, dossiers, editingId, f.nom);
                               if (conflicts.length > 0) {
                                 alert(`⚠️ N° facture ${updIa.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.`);
                               }
@@ -20307,7 +20315,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             <input type="text" value={formData[blKey] || ''} onChange={(e) => setFormData({ ...formData, [blKey]: e.target.value })} placeholder="📦 N° BL" className={inputCls} />
                             <input type="text" value={formData[factureNoKey] || ''} onChange={(e) => setFormData({ ...formData, [factureNoKey]: e.target.value })} placeholder="🧾 N° Facture" className={inputCls} />
                           </div>
-                          <FactureDupeWarning factureNo={formData[factureNoKey]} allDossiers={dossiers} currentLocalId={editingId} />
+                          <FactureDupeWarning factureNo={formData[factureNoKey]} allDossiers={dossiers} currentLocalId={editingId} emitterName={formData[nomKey]} />
                           {/* 🧾 Facture du prestataire interne : l'IA lit le HT et remplit la commission, comme un fournisseur. */}
                           <FactureFileInput
                             fileId={formData[factureFileKey] || ''}
@@ -26028,7 +26036,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               <input type="text" value={r.bl || ''} onChange={(e) => updateRegie(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-purple-200 rounded text-[12px]" />
                               <input type="text" value={r.factureNo || ''} onChange={(e) => updateRegie(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-purple-200 rounded text-[12px]" />
                             </div>
-                            {!r.factureGroupee && <FactureDupeWarning factureNo={r.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} />}
+                            {!r.factureGroupee && <FactureDupeWarning factureNo={r.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} emitterName={r.nom} />}
                             <label className="flex items-center gap-2 text-[12px] text-slate-600 cursor-pointer select-none">
                               <input type="checkbox" checked={!!r.factureGroupee} onChange={(e) => updateRegie(i, { factureGroupee: e.target.checked })} className="w-3.5 h-3.5 accent-purple-600" />
                               📋 Facture groupée (plusieurs clients) — pas de doublon
@@ -26052,7 +26060,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 if (Object.keys(upd).length > 0) updateRegie(i, upd);
                                 // Alerte instantanée si l'IA vient d'insérer un N° en doublon.
                                 if (upd.factureNo) {
-                                  const conflicts = findFactureNoDupes(upd.factureNo, dossiers, dossier.localId);
+                                  const conflicts = findFactureNoDupes(upd.factureNo, dossiers, dossier.localId, r.nom);
                                   if (conflicts.length > 0) {
                                     alert(`⚠️ N° facture ${upd.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.`);
                                   }
@@ -26216,7 +26224,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               <input type="text" value={d[blKey] || ''} onChange={(e) => onUpdate({ [blKey]: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-fuchsia-200 rounded text-[12px]" />
                               <input type="text" value={d[factureNoKey] || ''} onChange={(e) => onUpdate({ [factureNoKey]: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-fuchsia-200 rounded text-[12px]" />
                             </div>
-                            <FactureDupeWarning factureNo={d[factureNoKey]} allDossiers={dossiers} currentLocalId={dossier.localId} />
+                            <FactureDupeWarning factureNo={d[factureNoKey]} allDossiers={dossiers} currentLocalId={dossier.localId} emitterName={d[nomKey]} />
                             <FactureFileInput
                               fileId={d[factureFileKey] || ''}
                               onChange={(id) => onUpdate({ [factureFileKey]: id })}
@@ -26532,7 +26540,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         <input type="text" value={p.bl || ''} onChange={(e) => updatePoseur(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-amber-200 rounded text-[12px]" />
                         <input type="text" value={p.factureNo || ''} onChange={(e) => updatePoseur(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-amber-200 rounded text-[12px]" />
                       </div>
-                      <FactureDupeWarning factureNo={p.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} />
+                      <FactureDupeWarning factureNo={p.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} emitterName={p.nom} />
                       <FactureFileInput
                         fileId={p.factureFile || ''}
                         onChange={(id) => updatePoseur(i, { factureFile: id })}
@@ -26547,7 +26555,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           if (data.dateFacture && !p.dateFacture) upd.dateFacture = String(data.dateFacture);
                           if (Object.keys(upd).length > 0) updatePoseur(i, upd);
                           if (upd.factureNo) {
-                            const conflicts = findFactureNoDupes(upd.factureNo, dossiers, dossier.localId);
+                            const conflicts = findFactureNoDupes(upd.factureNo, dossiers, dossier.localId, p.nom);
                             if (conflicts.length > 0) {
                               alert(`⚠️ N° facture ${upd.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.`);
                             }
@@ -26683,7 +26691,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         <input type="text" value={f.bl || ''} onChange={(e) => updateFournisseur(i, { bl: e.target.value })} placeholder="📦 N° BL" className="px-2 py-1 bg-white border border-orange-200 rounded text-[12px]" />
                         <input type="text" value={f.factureNo || ''} onChange={(e) => updateFournisseur(i, { factureNo: e.target.value })} placeholder="🧾 N° Facture" className="px-2 py-1 bg-white border border-orange-200 rounded text-[12px]" />
                       </div>
-                      <FactureDupeWarning factureNo={f.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} />
+                      <FactureDupeWarning factureNo={f.factureNo} allDossiers={dossiers} currentLocalId={dossier.localId} emitterName={f.nom} />
                       <FactureFileInput
                         fileId={f.factureFile || ''}
                         onChange={(id) => updateFournisseur(i, { factureFile: id })}
@@ -26702,7 +26710,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           if (data.dateFacture && !f.dateFacture) upd.dateFacture = String(data.dateFacture);
                           if (Object.keys(upd).length > 0) updateFournisseur(i, upd);
                           if (upd.factureNo) {
-                            const conflicts = findFactureNoDupes(upd.factureNo, dossiers, dossier.localId);
+                            const conflicts = findFactureNoDupes(upd.factureNo, dossiers, dossier.localId, f.nom);
                             if (conflicts.length > 0) {
                               alert(`⚠️ N° facture ${upd.factureNo} déjà sur : ${conflicts.slice(0, 3).join(', ')}\n\nVérifie avant de continuer.`);
                             }
