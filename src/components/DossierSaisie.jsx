@@ -7522,18 +7522,56 @@ function RapprochementFournisseur({ dossiers, setDossiers, onOpenDossier = null 
     const push = (n, entry) => { if (n.length >= 4) { if (!map.has(n)) map.set(n, []); map.get(n).push(entry); } };
     (dossiers || []).forEach(d => {
       const client = `${d.nom || ''} ${d.prenom || ''}`.trim() || '(sans nom)';
-      (d.fournisseurs || []).forEach(f => {
-        [['facture', f && f.factureNo], ['BL', f && f.bl], ['commande', f && f.commande]].forEach(([champ, val]) => push(norm(val), { client, champ, brut: val, fournisseur: (f && f.nom) || '' }));
+      // On garde localId/arrKey/idx/paye → permet de POINTER PAYÉ en masse.
+      (d.fournisseurs || []).forEach((f, idx) => {
+        [['facture', f && f.factureNo], ['BL', f && f.bl], ['commande', f && f.commande]].forEach(([champ, val]) => push(norm(val), { client, champ, brut: val, fournisseur: (f && f.nom) || '', localId: d.localId, arrKey: 'fournisseurs', idx, paye: !!(f && f.paye) }));
       });
-      (d.regies || []).forEach(r => {
-        [['facture', r && r.factureNo], ['BL', r && r.bl]].forEach(([champ, val]) => push(norm(val), { client, champ, brut: val, fournisseur: (r && r.nom) || '' }));
+      (d.regies || []).forEach((r, idx) => {
+        [['facture', r && r.factureNo], ['BL', r && r.bl]].forEach(([champ, val]) => push(norm(val), { client, champ, brut: val, fournisseur: (r && r.nom) || '', localId: d.localId, arrKey: 'regies', idx, paye: !!(r && r.paye) }));
       });
-      (d.poseurs || []).forEach(po => {
-        [['facture', po && po.factureNo], ['BL', po && po.bl]].forEach(([champ, val]) => push(norm(val), { client, champ, brut: val, fournisseur: (po && po.nom) || '' }));
+      (d.poseurs || []).forEach((po, idx) => {
+        [['facture', po && po.factureNo], ['BL', po && po.bl]].forEach(([champ, val]) => push(norm(val), { client, champ, brut: val, fournisseur: (po && po.nom) || '', localId: d.localId, arrKey: 'poseurs', idx, paye: !!(po && po.paye) }));
       });
     });
     return map;
   }, [dossiers]);
+
+  // ✓ Pointe PAYÉES (date du jour) toutes les lignes correspondant aux n°
+  // PRÉSENTS du rapprochement — au lieu de cocher dossier par dossier.
+  // Ne touche jamais une ligne déjà payée.
+  const marquerPresentsPayes = () => {
+    if (!result?.present?.length) return;
+    const seen = new Set();
+    const targets = [];
+    result.present.forEach(pr => (pr.hits || []).forEach(h => {
+      if (!h.localId || h.paye) return;
+      const k = `${h.localId}|${h.arrKey}|${h.idx}`;
+      if (seen.has(k)) return;
+      seen.add(k);
+      targets.push(h);
+    }));
+    if (!targets.length) { alert('Toutes les lignes correspondant à ces n° sont déjà pointées payées. ✅'); return; }
+    if (!window.confirm(`✓ Pointer ${targets.length} ligne(s) comme PAYÉES (date d'aujourd'hui) ?\n\nConcerne les n° « présents » du rapprochement. Les lignes déjà payées ne sont pas touchées.`)) return;
+    const today = new Date().toISOString().split('T')[0];
+    const now = new Date().toISOString();
+    setDossiers(prev => prev.map(d => {
+      const mine = targets.filter(x => x.localId === d.localId);
+      if (!mine.length) return d;
+      const nd = { ...d };
+      mine.forEach(x => {
+        const arr = [...(nd[x.arrKey] || [])];
+        if (arr[x.idx] && !arr[x.idx].paye) { arr[x.idx] = { ...arr[x.idx], paye: true, datePaye: today }; nd[x.arrKey] = arr; }
+      });
+      return { ...nd, savedAt: now, modifiedAt: now, modifiedBy: '[rapprochement payé]' };
+    }));
+    alert(`✅ ${targets.length} ligne(s) pointée(s) payées au ${new Date().toLocaleDateString('fr-FR')}.`);
+  };
+  const nbPresentsNonPayes = useMemo(() => {
+    if (!result?.present?.length) return 0;
+    const seen = new Set();
+    result.present.forEach(pr => (pr.hits || []).forEach(h => { if (h.localId && !h.paye) seen.add(`${h.localId}|${h.arrKey}|${h.idx}`); }));
+    return seen.size;
+  }, [result]);
   const isPresent = (raw) => {
     const n = norm(raw);
     if (!n) return null;
@@ -7753,11 +7791,22 @@ function RapprochementFournisseur({ dossiers, setDossiers, onOpenDossier = null 
               {result.present.length > 0 && (
                 <details className="border border-emerald-200 bg-emerald-50 rounded-xl p-2.5">
                   <summary className="text-[11px] font-bold text-emerald-700 cursor-pointer">✅ Présents ({result.present.length}) — déjà enregistrés (clique pour voir)</summary>
+                  {nbPresentsNonPayes > 0 && (
+                    <div className="mt-1.5 flex items-center justify-between gap-2 flex-wrap bg-white border border-emerald-200 rounded-lg p-1.5">
+                      <span className="text-[11px] text-emerald-800">💸 {nbPresentsNonPayes} ligne{nbPresentsNonPayes > 1 ? 's' : ''} pas encore pointée{nbPresentsNonPayes > 1 ? 's' : ''} payée{nbPresentsNonPayes > 1 ? 's' : ''} dans le CRM</span>
+                      <button onClick={marquerPresentsPayes} className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white whitespace-nowrap" title="Marque payées (date du jour) toutes les lignes du CRM correspondant aux n° présents — les lignes déjà payées ne bougent pas">
+                        ✓ Tout pointer payé ({nbPresentsNonPayes})
+                      </button>
+                    </div>
+                  )}
                   <div className="mt-1.5 max-h-44 overflow-y-auto space-y-0.5">
                     {result.present.map((pr, i) => (
                       <div key={i} className="text-[10px] text-slate-600 flex items-center gap-1.5 flex-wrap">
                         <span className="font-mono font-bold text-emerald-700">{pr.raw}</span>
                         <span className="text-slate-400">→ {pr.hits[0].client} · {pr.hits[0].fournisseur || pr.hits[0].champ}{pr.hits.length > 1 ? ` (+${pr.hits.length - 1})` : ''}</span>
+                        {pr.hits.some(h => !h.paye)
+                          ? <span className="px-1 rounded bg-amber-100 text-amber-700 font-bold">⏳ non payé</span>
+                          : <span className="px-1 rounded bg-emerald-100 text-emerald-700 font-bold">✓ payé</span>}
                       </div>
                     ))}
                   </div>
