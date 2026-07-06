@@ -769,7 +769,12 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
   }, [fileId]);
 
   // Appelle l'API IA pour lire la facture et renvoyer les champs extraits.
-  const runExtraction = async (base64DataUrl, mimeType) => {
+  // `extractedFileId` : id du fichier tout juste uploadé — transmis à
+  // onExtract (data.__fileId) pour que les handlers qui réécrivent une LISTE
+  // (ex : avoirs) puissent re-poser le fichier dans la MÊME écriture.
+  // Sans ça : onChange(id) puis onExtract(listePérimée) → le PDF sautait
+  // (il fallait uploader 2 fois).
+  const runExtraction = async (base64DataUrl, mimeType, extractedFileId = null) => {
     if (!onExtract) return;
     setExtracting(true);
     try {
@@ -787,7 +792,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       // Si le composant a été unmount entre temps (modale fermée par l'user),
       // on n'invoque pas onExtract (qui tenterait de mettre à jour des states
       // d'un parent peut-être démonté aussi).
-      if (isMountedRef.current) onExtract(payload.data || {});
+      if (isMountedRef.current) onExtract({ ...(payload.data || {}), __fileId: extractedFileId || fileId || '' });
     } catch (e) {
       if (isMountedRef.current) alert(`Lecture IA de la facture : ${e.message}`);
     } finally {
@@ -816,7 +821,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       setTimeout(() => { if (isMountedRef.current) setJustSaved(false); }, 3000);
       // Auto-extraction si activée (ex : Lire la facture dès qu'on l'upload)
       if (autoExtract && onExtract) {
-        runExtraction(dataUrl, file.type);
+        runExtraction(dataUrl, file.type, id);
       }
     } catch (e) {
       if (isMountedRef.current) alert('Erreur : ' + e.message);
@@ -20787,8 +20792,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             {avoirs.map((a, aIdx) => (
                               <div key={aIdx} className="rounded-lg border border-rose-200 bg-white p-1.5 space-y-1">
                                 <div className="grid grid-cols-[1fr_1fr_auto] gap-1 items-center">
-                                  <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, montantHt: e.target.value } : av))} placeholder="Montant HT" className="px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
-                                  <input type="text" value={a.avoirNo || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, avoirNo: e.target.value } : av))} placeholder="N° avoir" className="px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                  <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, montantHt: e.target.value } : av))} placeholder="Montant HT" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                  <input type="text" value={a.avoirNo || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, avoirNo: e.target.value } : av))} placeholder="N° avoir" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
                                   <button type="button" onClick={() => setAvoirs(avoirs.filter((_, i) => i !== aIdx))} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
                                     <Trash2 className="w-3 h-3" />
                                   </button>
@@ -20810,6 +20815,8 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                                   autoExtract={true}
                                   onExtract={(data) => {
                                     const updIa = {};
+                                    // 🔒 Re-pose le fichier dans la même écriture (anti « uploader 2 fois »).
+                                    if (data.__fileId) updIa.file = data.__fileId;
                                     if (data.factureNo && !a.avoirNo) updIa.avoirNo = String(data.factureNo);
                                     const htA = htFromExtraction(data);
                                     if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
@@ -26711,8 +26718,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               {avoirs.map((a, aIdx) => (
                                 <div key={aIdx} className="rounded-lg border border-rose-200 bg-white p-1.5 space-y-1">
                                   <div className="grid grid-cols-[1fr_1fr_auto] gap-1 items-center">
-                                    <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, montantHt: e.target.value } : av))} placeholder="Montant HT" className="px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
-                                    <input type="text" value={a.avoirNo || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, avoirNo: e.target.value } : av))} placeholder="N° avoir" className="px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                    <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, montantHt: e.target.value } : av))} placeholder="Montant HT" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                    <input type="text" value={a.avoirNo || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, avoirNo: e.target.value } : av))} placeholder="N° avoir" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
                                     <button onClick={() => setAvoirs(avoirs.filter((_, i) => i !== aIdx))} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
                                       <Trash2 className="w-3 h-3" />
                                     </button>
@@ -26734,6 +26741,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                     autoExtract={true}
                                     onExtract={(data) => {
                                       const updIa = {};
+                                      // 🔒 Re-pose le fichier dans la même écriture (anti « uploader 2 fois »).
+                                      if (data.__fileId) updIa.file = data.__fileId;
                                       if (data.factureNo && !a.avoirNo) updIa.avoirNo = String(data.factureNo);
                                       const htA = htFromExtraction(data);
                                       if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
@@ -27226,8 +27235,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               return (
                                 <div key={aIdx} className="rounded-lg border border-rose-200 bg-white p-1.5 space-y-1">
                                   <div className="grid grid-cols-[1fr_1fr_auto] gap-1 items-center">
-                                    <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { montantHt: e.target.value })} placeholder="Montant HT" className="px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
-                                    <input type="text" value={a.avoirNo || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { avoirNo: e.target.value })} placeholder="N° avoir" className="px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                    <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { montantHt: e.target.value })} placeholder="Montant HT" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                    <input type="text" value={a.avoirNo || ''} onChange={(e) => updateAvoirFournisseur(i, aIdx, { avoirNo: e.target.value })} placeholder="N° avoir" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
                                     <button onClick={() => removeAvoirFournisseur(i, aIdx)} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
                                       <Trash2 className="w-3 h-3" />
                                     </button>
@@ -27253,6 +27262,8 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                       // Pour un avoir, on stocke le HT en VALEUR ABSOLUE
                                       // (le signe négatif est ajouté plus bas au push Pennylane).
                                       const updIa = {};
+                                      // 🔒 Re-pose le fichier dans la même écriture (anti « uploader 2 fois »).
+                                      if (data.__fileId) updIa.file = data.__fileId;
                                       if (data.factureNo && !a.avoirNo) updIa.avoirNo = String(data.factureNo);
                                       const htA = htFromExtraction(data);
                                       if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
