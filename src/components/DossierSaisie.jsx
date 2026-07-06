@@ -1110,7 +1110,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
           className={`flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded border border-dashed bg-white text-[12px] cursor-pointer ${palette} ${uploading || extracting ? 'opacity-60' : ''}`}
         >
           <span>
-            {uploading ? '⏳ Upload…' : extracting ? '✨ Lecture IA…' : (onExtract ? `📎 Glisser PDF — l'IA lira la ${label} ✨` : `📎 Glisser PDF ${label} ou cliquer`)}
+            {uploading ? '⏳ Upload…' : extracting ? '✨ Lecture IA…' : (onExtract ? `📎 Glisser PDF — l'IA lira ${label === 'avoir' ? "l'avoir" : 'la ' + label} ✨` : `📎 Glisser PDF ${label} ou cliquer`)}
           </span>
           <input type="file" accept="application/pdf,image/*" className="hidden" disabled={uploading || extracting} onChange={(e) => handleUpload(e.target.files?.[0])} />
         </label>
@@ -20798,6 +20798,14 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                                   fileId={a.file || ''}
                                   onChange={(id) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, file: id } : av))}
                                   color="purple"
+                                  onOpenGmailSearch={onOpenGmailSearch}
+                                  gmailQuery={`${societe || formData[nomKey] || ''} avoir`.trim()}
+                                  gmailContextLabel={`Avoir ${a.avoirNo || ''} — ${societe || formData[nomKey] || ''}`.trim()}
+                                  gmailClientHint={societe || formData[nomKey] || ''}
+                                  gmailQueryModes={[
+                                    { label: '🧾 N° avoir', query: a.avoirNo || '' },
+                                    { label: '👥 Prestataire + avoir', query: `${societe || formData[nomKey] || ''} avoir`.trim() },
+                                  ]}
                                   label="avoir"
                                   autoExtract={true}
                                   onExtract={(data) => {
@@ -26714,6 +26722,14 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                     fileId={a.file || ''}
                                     onChange={(id) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, file: id } : av))}
                                     color="purple"
+                                    onOpenGmailSearch={onOpenGmailSearch}
+                                    gmailQuery={`${societe || d[nomKey] || ''} avoir`.trim()}
+                                    gmailContextLabel={`Avoir ${a.avoirNo || ''} — ${societe || d[nomKey] || ''}`.trim()}
+                                    gmailClientHint={societe || d[nomKey] || ''}
+                                    gmailQueryModes={[
+                                      { label: '🧾 N° avoir', query: a.avoirNo || '' },
+                                      { label: '👥 Prestataire + avoir', query: `${societe || d[nomKey] || ''} avoir`.trim() },
+                                    ]}
                                     label="avoir"
                                     autoExtract={true}
                                     onExtract={(data) => {
@@ -27221,6 +27237,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                     fileId={a.file || ''}
                                     onChange={(id) => updateAvoirFournisseur(i, aIdx, { file: id })}
                                     color="purple"
+                                    onOpenGmailSearch={onOpenGmailSearch}
+                                    gmailQuery={`${f.nom || ''} avoir`.trim()}
+                                    gmailContextLabel={`Avoir ${a.avoirNo || ''} — ${f.nom || 'Fournisseur'} chez ${dossier.nom || ''}`.trim()}
+                                    gmailClientHint={dossier.nom || ''}
+                                    gmailQueryModes={[
+                                      { label: '🧾 N° avoir', query: a.avoirNo || '' },
+                                      { label: '📦 Avoir + fournisseur', query: `${f.nom || ''} avoir`.trim() },
+                                      { label: '🏷 Fournisseur + client', query: `${f.nom || ''} ${dossier.nom || ''}`.trim() },
+                                    ]}
                                     label="avoir"
                                     autoExtract={true}
                                     onExtract={(data) => {
