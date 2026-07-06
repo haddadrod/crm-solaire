@@ -7572,11 +7572,20 @@ function RapprochementFournisseur({ dossiers, setDossiers, onOpenDossier = null 
     result.present.forEach(pr => (pr.hits || []).forEach(h => { if (h.localId && !h.paye) seen.add(`${h.localId}|${h.arrKey}|${h.idx}`); }));
     return seen.size;
   }, [result]);
+  // ⚠️ La comparaison est limitée au fournisseur sélectionné : un n° ECO
+  // NEGOCE ne compte PAS comme « présent » quand on rapproche BROTHER NEGOCE
+  // (chaque émetteur a sa propre numérotation).
   const isPresent = (raw) => {
     const n = norm(raw);
     if (!n) return null;
-    if (crmIndex.has(n)) return crmIndex.get(n);
-    if (n.length >= 6) { for (const [k, v] of crmIndex) { if (k.length >= 6 && (k.includes(n) || n.includes(k))) return v; } }
+    const tf = norm(targetFournisseur);
+    const filt = (arr) => (arr || []).filter(h => !tf || norm(h.fournisseur) === tf);
+    if (crmIndex.has(n)) { const hits = filt(crmIndex.get(n)); if (hits.length) return hits; }
+    if (n.length >= 6) {
+      for (const [k, v] of crmIndex) {
+        if (k.length >= 6 && (k.includes(n) || n.includes(k))) { const hits = filt(v); if (hits.length) return hits; }
+      }
+    }
     return null;
   };
   // Nom du client depuis « Référence Chantier » (ex : "PALAU – ELS 48150" → "PALAU").
@@ -7721,8 +7730,8 @@ function RapprochementFournisseur({ dossiers, setDossiers, onOpenDossier = null 
             <button onClick={check} className="px-3 py-1.5 bg-fuchsia-600 hover:bg-fuchsia-700 text-white rounded-lg text-xs font-bold">🔎 Vérifier lesquels manquent</button>
             {nomsFournisseurs.length > 0 && (
               <label className="flex items-center gap-1 text-[11px] text-slate-500">
-                cible :
-                <select value={targetFournisseur} onChange={(e) => setTargetFournisseur(e.target.value)} className="text-[11px] border border-slate-200 rounded-lg px-1.5 py-1 bg-white font-semibold" title="Fournisseur sur lequel importer les factures manquantes">
+                fournisseur :
+                <select value={targetFournisseur} onChange={(e) => { setTargetFournisseur(e.target.value); setResult(null); setImports({}); }} className="text-[11px] border border-slate-200 rounded-lg px-1.5 py-1 bg-white font-semibold" title="La vérification compare UNIQUEMENT les lignes de ce fournisseur (chaque émetteur a sa numérotation), et l'import des manquants se fait sur lui">
                   {nomsFournisseurs.map(n => <option key={n} value={n}>{n}</option>)}
                 </select>
               </label>
