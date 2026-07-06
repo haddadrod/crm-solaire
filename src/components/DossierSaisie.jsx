@@ -7492,7 +7492,14 @@ function RapprochementFournisseur({ dossiers, setDossiers }) {
 
   const norm = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
   const dossiersActifs = useMemo(() => (dossiers || []).filter(d => !d.archived), [dossiers]);
-  const labelOf = (d) => `${(d.nom || '').toUpperCase()} ${d.prenom || ''}`.trim() + (d.ville ? ` · ${d.ville}` : '') + (d.id ? ` · ${d.id}` : ` · ${d.localId}`);
+  // 🔎 Pour le rattachement, on propose TOUS les dossiers (archivés inclus,
+  // marqués 📦) : une facture fournisseur arrive souvent APRÈS l'archivage.
+  const dossiersRattachables = useMemo(() => {
+    const actifs = (dossiers || []).filter(d => !d.archived);
+    const archives = (dossiers || []).filter(d => d.archived);
+    return [...actifs, ...archives];
+  }, [dossiers]);
+  const labelOf = (d) => `${(d.nom || '').toUpperCase()} ${d.prenom || ''}`.trim() + (d.ville ? ` · ${d.ville}` : '') + (d.id ? ` · ${d.id}` : ` · ${d.localId}`) + (d.archived ? ' · 📦 archivé' : '');
 
   // 🏷️ Fournisseur cible pour l'import des manquants (ECO NEGOCE par défaut).
   const nomsFournisseurs = useMemo(() => {
@@ -7536,7 +7543,7 @@ function RapprochementFournisseur({ dossiers, setDossiers }) {
   };
   // Nom du client depuis « Référence Chantier » (ex : "PALAU – ELS 48150" → "PALAU").
   const parseClient = (ref) => { let sc = String(ref || '').split('–')[0].split(/\s[-]\s/)[0]; return sc.replace(/\d+/g, '').replace(/\s+/g, ' ').trim(); };
-  const matchDossier = (clientName) => { const cn = norm(clientName); if (cn.length < 3) return null; return dossiersActifs.find(d => { const nom = norm(d.nom); return nom.length >= 3 && (cn.includes(nom) || nom.includes(cn)); }) || null; };
+  const matchDossier = (clientName) => { const cn = norm(clientName); if (cn.length < 3) return null; return dossiersRattachables.find(d => { const nom = norm(d.nom); return nom.length >= 3 && (cn.includes(nom) || nom.includes(cn)); }) || null; };
 
   const parseNumbers = (txt) => Array.from(new Set(String(txt || '').split(/[\n\r\t,;]+/).map(x => x.trim()).filter(x => x.length >= 3)));
   const check = () => {
@@ -7615,7 +7622,21 @@ function RapprochementFournisseur({ dossiers, setDossiers }) {
     navigator.clipboard.writeText(txt).then(() => alert('Liste des manquants copiée ✅ — n° + commande + montant + client, en colonnes (colle dans Excel).')).catch(() => {});
   };
 
-  const setMatch = (factureNo, val) => { const m = dossiersActifs.find(d => labelOf(d) === val); setImports(prev => ({ ...prev, [factureNo]: { ...(prev[factureNo] || {}), matchLabel: val, matchLocalId: m ? m.localId : '' } })); };
+  const setMatch = (factureNo, val) => {
+    // 1. Sélection exacte depuis la liste déroulante.
+    let m = dossiersRattachables.find(d => labelOf(d) === val) || null;
+    // 2. Sinon : saisie libre — si UN SEUL dossier contient ce qu'on a tapé
+    //    (nom, prénom ou libellé), on le prend. Plusieurs → on attend d'être
+    //    plus précis (pas de choix arbitraire).
+    if (!m) {
+      const vn = norm(val);
+      if (vn.length >= 3) {
+        const cands = dossiersRattachables.filter(d => norm(d.nom).includes(vn) || norm(`${d.nom || ''}${d.prenom || ''}`).includes(vn) || norm(labelOf(d)).includes(vn));
+        if (cands.length === 1) m = cands[0];
+      }
+    }
+    setImports(prev => ({ ...prev, [factureNo]: { ...(prev[factureNo] || {}), matchLabel: m ? labelOf(m) : val, matchLocalId: m ? m.localId : '' } }));
+  };
   const doImport = (row) => {
     const st = imports[row.factureNo]; if (!st || !st.matchLocalId) return false;
     const cible = targetFournisseur || 'ECO NEGOCE';
@@ -7644,7 +7665,7 @@ function RapprochementFournisseur({ dossiers, setDossiers }) {
 
   return (
     <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-      <datalist id="rappro-dossiers">{dossiersActifs.slice(0, 2000).map(d => <option key={d.localId} value={labelOf(d)} />)}</datalist>
+      <datalist id="rappro-dossiers">{dossiersRattachables.slice(0, 3000).map(d => <option key={d.localId} value={labelOf(d)} />)}</datalist>
       <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-4 py-3 hover:bg-slate-50 text-left">
         <span className="text-lg">📊</span>
         <span className="font-bold text-slate-800 text-sm">Rapprochement fournisseur — quels n° me manquent ? (+ import)</span>
