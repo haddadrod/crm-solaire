@@ -729,7 +729,7 @@ function DebouncedInput({ value, onCommit, delay = 350, ...rest }) {
 // ou clic. Stocke le fichier inline (window.storage `file:<id>`) et garde
 // l'ID du fichier dans la prop `fileId`. Onglet 👁️ pour prévisualiser dans
 // un nouvel onglet.
-function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false, pennylaneInfo = null, onPennylaneSuccess = null, label = 'facture', onOpenGmailSearch = null, gmailQuery = '', gmailContextLabel = '', gmailClientHint = '', paye = null }) {
+function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null, autoExtract = false, pennylaneInfo = null, onPennylaneSuccess = null, label = 'facture', onOpenGmailSearch = null, gmailQuery = '', gmailContextLabel = '', gmailClientHint = '', gmailQueryModes = null, paye = null }) {
   const [uploading, setUploading] = useState(false);
   const [extracting, setExtracting] = useState(false);
   const [pushingPennylane, setPushingPennylane] = useState(false);
@@ -1060,7 +1060,8 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
                   gmailQuery,
                   gmailContextLabel || gmailQuery,
                   async (file) => { await handleUpload(file); },
-                  gmailClientHint
+                  gmailClientHint,
+                  gmailQueryModes
                 );
               }}
               className="px-1 py-0.5 hover:bg-blue-100 text-blue-600 rounded"
@@ -1123,7 +1124,8 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
                 gmailQuery,
                 gmailContextLabel || gmailQuery,
                 async (file) => { await handleUpload(file); },
-                gmailClientHint
+                gmailClientHint,
+                gmailQueryModes
               );
             }}
             disabled={uploading || extracting}
@@ -1915,8 +1917,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const [gmailSearchOpen, setGmailSearchOpen] = useState(null); // null | {query, contextLabel, onAttach?}
   const [pendingTriFacturesFiles, setPendingTriFacturesFiles] = useState([]); // Files à ingérer par TriFacturesPanel
   // Helper exposé aux enfants : ouvre la modale avec un onAttach custom.
-  const openGmailSearch = (query, contextLabel, onAttach, clientHint = '') => {
-    setGmailSearchOpen({ query, contextLabel, onAttach, clientHint });
+  const openGmailSearch = (query, contextLabel, onAttach, clientHint = '', queryModes = null) => {
+    setGmailSearchOpen({ query, contextLabel, onAttach, clientHint, queryModes });
   };
   const [showImport, setShowImport] = useState(false); // 📥 modal import dossiers
   // 📊 Vue Sheet globale — bouton dans la barre du haut. Ouvre la Sheet en
@@ -6699,6 +6701,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             initialQuery={gmailSearchOpen.query}
             contextLabel={gmailSearchOpen.contextLabel}
             clientHint={gmailSearchOpen.clientHint || ''}
+            queryModes={gmailSearchOpen.queryModes || null}
             onClose={() => setGmailSearchOpen(null)}
             onAttach={async (file) => {
               if (gmailSearchOpen.onAttach) {
@@ -20130,6 +20133,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             gmailQuery={`${r.nom || ''} ${formData.nom || ''}`.trim()}
                             gmailContextLabel={`${r.nom || 'Régie'} chez ${formData.nom || ''} ${formData.prenom || ''}`.trim()}
                             gmailClientHint={formData.nom || ''}
+                            gmailQueryModes={[
+                              { label: '🏷 Régie + client', query: `${r.nom || ''} ${formData.nom || ''}`.trim() },
+                              { label: '📦 N° commande / BL', query: r.bl || '' },
+                              { label: '🧾 N° facture', query: r.factureNo || '' },
+                            ]}
                           />
                         </div>
                       )}
@@ -20277,6 +20285,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           gmailQuery={`${p.nom || ''} ${formData.nom || ''}`.trim()}
                           gmailContextLabel={`${p.nom || 'Poseur'} chez ${formData.nom || ''} ${formData.prenom || ''}`.trim()}
                           gmailClientHint={formData.nom || ''}
+                          gmailQueryModes={[
+                            { label: '🏷 Poseur + client', query: `${p.nom || ''} ${formData.nom || ''}`.trim() },
+                            { label: '📦 N° commande / BL', query: p.bl || '' },
+                            { label: '🧾 N° facture', query: p.factureNo || '' },
+                          ]}
                         />
                       </div>
                     )}
@@ -20419,6 +20432,11 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           gmailQuery={`${f.nom || ''} ${formData.nom || ''}`.trim()}
                           gmailContextLabel={`${f.nom || 'Fournisseur'} chez ${formData.nom || ''} ${formData.prenom || ''}`.trim()}
                           gmailClientHint={formData.nom || ''}
+                          gmailQueryModes={[
+                            { label: '🏷 Fournisseur + client', query: `${f.nom || ''} ${formData.nom || ''}`.trim() },
+                            { label: '📦 N° commande / BL', query: f.bl || '' },
+                            { label: '🧾 N° facture', query: f.factureNo || '' },
+                          ]}
                         />
                       </div>
                     )}
@@ -26353,6 +26371,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               gmailQuery={`${r.nom || ''} ${dossier.nom || ''}`.trim()}
                               gmailContextLabel={`${r.nom || 'Régie'} chez ${dossier.nom || ''} ${dossier.prenom || ''}`.trim()}
                               gmailClientHint={dossier.nom || ''}
+                              gmailQueryModes={[
+                                { label: '🏷 Régie + client', query: `${r.nom || ''} ${dossier.nom || ''}`.trim() },
+                                { label: '📦 N° commande / BL', query: r.bl || '' },
+                                { label: '🧾 N° facture', query: r.factureNo || '' },
+                              ]}
                             />
                           </>
                         )}
@@ -26848,6 +26871,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         gmailQuery={`${p.nom || ''} ${dossier.nom || ''}`.trim()}
                         gmailContextLabel={`${p.nom || 'Poseur'} chez ${dossier.nom || ''} ${dossier.prenom || ''}`.trim()}
                         gmailClientHint={dossier.nom || ''}
+                        gmailQueryModes={[
+                          { label: '🏷 Poseur + client', query: `${p.nom || ''} ${dossier.nom || ''}`.trim() },
+                          { label: '📦 N° commande / BL', query: p.bl || '' },
+                          { label: '🧾 N° facture', query: p.factureNo || '' },
+                        ]}
                       />
                     </>
                   )}
@@ -27003,6 +27031,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         gmailQuery={`${f.nom || ''} ${dossier.nom || ''}`.trim()}
                         gmailContextLabel={`${f.nom || 'Fournisseur'} chez ${dossier.nom || ''} ${dossier.prenom || ''}`.trim()}
                         gmailClientHint={dossier.nom || ''}
+                        gmailQueryModes={[
+                          { label: '🏷 Fournisseur + client', query: `${f.nom || ''} ${dossier.nom || ''}`.trim() },
+                          { label: '📦 N° commande / BL', query: f.bl || '' },
+                          { label: '🧾 N° facture', query: f.factureNo || '' },
+                        ]}
                       />
                       {/* 🧾 Avoirs (notes de crédit) — viennent en déduction du coût
                           fournisseur. Ex : matériel récupéré chez le poseur puis
@@ -28401,7 +28434,7 @@ function AssistantIaModal({ dossiers, gmailOAuth, emailConfig, currentUser, onCl
 // et appelle onAttach(file) — le parent décide où placer le fichier
 // (ligne poseur, ligne fournisseur, etc.).
 
-function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose, onAttach }) {
+function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', queryModes = null, onClose, onAttach }) {
   const [query, setQuery] = useState(initialQuery || '');
   const [loading, setLoading] = useState(false);
   const [results, setResults] = useState(null); // {results, errors}
@@ -28714,6 +28747,23 @@ function GmailSearchModal({ initialQuery, contextLabel, clientHint = '', onClose
         </div>
 
         <div className="p-4 border-b border-slate-100 bg-slate-50 flex flex-col gap-2">
+          {/* 🎚️ Modes de recherche : fournisseur+client / n° commande / n° facture…
+              Un clic remplace la requête ET relance la recherche. */}
+          {Array.isArray(queryModes) && queryModes.filter(m => m && m.query).length > 1 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] font-semibold text-slate-500">Chercher par :</span>
+              {queryModes.filter(m => m && m.query).map((m, i) => (
+                <button
+                  key={i}
+                  onClick={() => { setQuery(m.query); runSearch(m.query); }}
+                  className={`px-2 py-1 rounded-full text-[12px] font-bold border transition-colors ${query === m.query ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-blue-700 border-blue-200 hover:bg-blue-50'}`}
+                  title={`Rechercher « ${m.query} »`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2">
             <input
               type="text"
