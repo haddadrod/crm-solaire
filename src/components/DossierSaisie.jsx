@@ -31282,6 +31282,8 @@ function DoublonsModal({ groupes, STATUTS, onClose, onSelect, onDelete, isAdmin 
 }
 
 function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onLogAction, onMarkAllCQDone, onOpenGmailSearch, onClose, onSelect }) {
+  // 🎚️ Filtre par type de prestataire — utilisé par « Factures manquantes ».
+  const [typePresta, setTypePresta] = useState('tous'); // 'tous' | 'poseurs' | 'regies' | 'fournisseurs'
   const config = {
     controleQualite: {
       title: '📋 Contrôle qualité — dossiers à valider',
@@ -31661,9 +31663,14 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
   if (!cfg) return null;
 
   // Tri : pour recup_tva on trie par urgence (jours restants croissants)
+  let itemsBase = cfg.items;
+  // 🎚️ Factures manquantes : filtre poseur / régie / fournisseur.
+  if (type === 'facturesManquantes' && typePresta !== 'tous') {
+    itemsBase = itemsBase.filter(r => (r[typePresta] || []).length > 0);
+  }
   const sortedItems = type === 'recup_tva'
-    ? [...cfg.items].sort((a, b) => a.joursRestants - b.joursRestants)
-    : [...cfg.items].sort((a, b) => b.jours - a.jours);
+    ? [...itemsBase].sort((a, b) => a.joursRestants - b.joursRestants)
+    : [...itemsBase].sort((a, b) => b.jours - a.jours);
 
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[60] flex items-start justify-center p-4 pt-16" onClick={onClose}>
@@ -31700,6 +31707,30 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
             </button>
           </div>
         </div>
+
+        {/* 🎚️ Filtre par type de prestataire (Factures manquantes) */}
+        {type === 'facturesManquantes' && (
+          <div className="px-4 py-2 border-b border-fuchsia-100 bg-fuchsia-50/50 flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-semibold text-slate-500">Afficher :</span>
+            {[
+              { key: 'tous', label: 'Tous' },
+              { key: 'poseurs', label: '🔧 Poseurs' },
+              { key: 'regies', label: '📣 Régies' },
+              { key: 'fournisseurs', label: '📦 Fournisseurs' },
+            ].map(f => {
+              const nb = f.key === 'tous' ? cfg.items.length : cfg.items.filter(r => (r[f.key] || []).length > 0).length;
+              return (
+                <button
+                  key={f.key}
+                  onClick={() => setTypePresta(f.key)}
+                  className={`px-2 py-1 rounded-full text-[12px] font-bold border transition-colors ${typePresta === f.key ? 'bg-fuchsia-600 text-white border-fuchsia-600' : 'bg-white text-fuchsia-700 border-fuchsia-200 hover:bg-fuchsia-50'}`}
+                >
+                  {f.label} ({nb})
+                </button>
+              );
+            })}
+          </div>
+        )}
 
         {/* LISTE */}
         <div className="flex-1 overflow-y-auto">
