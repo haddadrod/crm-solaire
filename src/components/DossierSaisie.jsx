@@ -13180,8 +13180,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                           >
                             <span className="text-xs font-semibold text-slate-700 truncate">
                               {d.nom} {d.prenom}
-                              {factureNo && <span className="text-[12px] text-slate-400 ml-1">· 🧾 {factureNo}</span>}
-                              {!factureNo && d.id && <span className="text-[12px] text-slate-400 ml-1">· #{d.id}</span>}
+                              {d.id && <span className="text-[12px] text-slate-400 ml-1">· #{d.id}</span>}
                             </span>
                           </button>
                           {age >= 0 && (
@@ -13189,7 +13188,11 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                               {age === 0 ? "auj." : age === 1 ? "1j" : `${age}j`}
                             </span>
                           )}
-                          <span className="text-[13px] font-bold text-slate-700 flex-shrink-0 whitespace-nowrap">
+                          {/* 🧾 Colonne n° de facture — largeur fixe pour un alignement net avec les montants */}
+                          <span className="w-32 text-right flex-shrink-0 whitespace-nowrap font-mono text-[11px] font-bold text-indigo-600" title={factureNo ? `N° de facture : ${factureNo}` : 'Pas de n° de facture saisi'}>
+                            {factureNo ? `🧾 ${factureNo}` : ''}
+                          </span>
+                          <span className="w-24 text-right text-[13px] font-bold text-slate-700 flex-shrink-0 whitespace-nowrap">
                             {formatEuro(amount)}
                           </span>
                           {canToggle ? (
