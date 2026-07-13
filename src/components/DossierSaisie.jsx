@@ -13222,22 +13222,20 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                     // n° facture + montant + date) — pour que le partenaire fasse
                     // son rapprochement de son côté. Séparateur ; + BOM → Excel FR.
                     const exportPayesCsv = () => {
-                      const rows = [['N° facture', 'Client', 'N° dossier', 'Montant TTC', 'Date de paiement']];
+                      // ⚠️ Demande utilisateur : UNIQUEMENT les n° de facture, un par
+                      // ligne, sans en-tête — prêt à coller dans l'outil du partenaire.
+                      const nums = [];
+                      let sansNumero = 0;
                       [...idsEncaisses, ...idsAttente].forEach(lid => {
                         const dd = dossierByLocalId.get(lid); if (!dd) return;
                         const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : p.kind === 'fournisseur' ? (dd.fournisseursDetail || []) : (dd.regiesDetail || []);
                         const it = list.find(x => x.nom === p.nom);
                         if (!it || !it.paye) return;
-                        rows.push([
-                          it.factureNo || '',
-                          `${dd.nom || ''} ${dd.prenom || ''}`.trim(),
-                          dd.id || '',
-                          (it.ttc || 0).toFixed(2).replace('.', ','),
-                          it.datePaye ? new Date(it.datePaye).toLocaleDateString('fr-FR') : '',
-                        ]);
+                        if (it.factureNo) nums.push(String(it.factureNo).trim()); else sansNumero++;
                       });
-                      if (rows.length === 1) { alert(`Aucune ligne payée pour ${p.nom}.`); return; }
-                      const csv = '\ufeff' + rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
+                      const uniques = [...new Set(nums)];
+                      if (uniques.length === 0) { alert(`Aucun n° de facture sur les lignes payées de ${p.nom}${sansNumero ? ` (${sansNumero} payée(s) sans n° saisi)` : ''}.`); return; }
+                      const csv = '\ufeff' + uniques.join('\n');
                       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
                       const url = URL.createObjectURL(blob);
                       const a = document.createElement('a');
@@ -13247,6 +13245,7 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                       a.click();
                       document.body.removeChild(a);
                       setTimeout(() => URL.revokeObjectURL(url), 10000);
+                      if (sansNumero > 0) alert(`📥 ${uniques.length} n° exportés — ⚠️ ${sansNumero} ligne(s) payée(s) SANS n° de facture saisi (non incluses).`);
                     };
                     return (
                       <>
