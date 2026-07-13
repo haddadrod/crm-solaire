@@ -13158,55 +13158,65 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                       const isSelected = selectedIds.has(lid);
                       // Couleur du badge d'ancienneté : plus c'est vieux, plus c'est rouge.
                       const ageColor = age >= 30 ? 'bg-rose-100 text-rose-700' : age >= 14 ? 'bg-orange-100 text-orange-700' : age >= 7 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-500';
+                      // 🧹 Certains n° importés contiennent le mot « facture » → on le
+                      // retire à l'affichage (le n° complet reste en tooltip).
+                      const factureNoAff = String(factureNo || '').replace(/^\s*factures?\s*:?\s*/i, '').trim();
                       return (
-                        <div key={lid} className={`flex items-center gap-2 py-1.5 px-2 rounded ${paye ? 'bg-emerald-50/50' : isSelected ? 'bg-blue-50' : ''}`}>
+                        // 📐 GRILLE à colonnes FIXES (vrai tableau) : case | client (flexible)
+                        // | âge | n° facture | montant | statut. Les colonnes ne bougent
+                        // jamais d'une ligne à l'autre ; le client et le n° trop longs sont
+                        // coupés avec « … » (jamais de chevauchement).
+                        <div key={lid} className={`grid grid-cols-[1.1rem_minmax(0,1fr)_3.2rem_10rem_6.5rem_9.5rem] items-center gap-2 py-1.5 px-2 rounded ${paye ? 'bg-emerald-50/50' : isSelected ? 'bg-blue-50' : ''}`}>
                           {allowSelection && canToggle && !paye ? (
                             <input
                               type="checkbox"
                               checked={isSelected}
                               onChange={(e) => { e.stopPropagation(); toggleSelected(lid); }}
                               onClick={(e) => e.stopPropagation()}
-                              className="w-4 h-4 accent-blue-600 cursor-pointer flex-shrink-0"
+                              className="w-4 h-4 accent-blue-600 cursor-pointer"
                               title="Cocher pour inclure dans le prochain virement"
                             />
-                          ) : canToggle ? (
-                            <span className="w-4 flex-shrink-0" />
-                          ) : null}
+                          ) : (
+                            <span />
+                          )}
                           <button
                             type="button"
                             onClick={(e) => { e.stopPropagation(); onShowQuick && onShowQuick(lid); }}
-                            className="flex-1 flex items-center gap-2 text-left hover:bg-white rounded px-1 py-0.5 transition-colors min-w-0"
+                            className="min-w-0 text-left hover:bg-white rounded px-1 py-0.5 transition-colors"
                             title="Cliquer pour ouvrir l'aperçu rapide du dossier"
                           >
-                            <span className="text-xs font-semibold text-slate-700 truncate">
+                            <span className="block text-xs font-semibold text-slate-700 truncate">
                               {d.nom} {d.prenom}
-                              {d.id && <span className="text-[12px] text-slate-400 ml-1">· #{d.id}</span>}
+                              {d.id && <span className="text-[12px] text-slate-400 ml-1 font-normal">· #{d.id}</span>}
                             </span>
                           </button>
-                          {age >= 0 && (
-                            <span className={`text-[12px] font-bold px-1.5 py-0.5 rounded flex-shrink-0 whitespace-nowrap ${ageColor}`} title="Ancienneté — les plus vieux sont en haut, à payer en priorité">
-                              {age === 0 ? "auj." : age === 1 ? "1j" : `${age}j`}
-                            </span>
-                          )}
-                          {/* 🧾 Colonne n° de facture — largeur fixe pour un alignement net avec les montants */}
-                          <span className="w-32 text-right flex-shrink-0 whitespace-nowrap font-mono text-[11px] font-bold text-indigo-600" title={factureNo ? `N° de facture : ${factureNo}` : 'Pas de n° de facture saisi'}>
-                            {factureNo ? `🧾 ${factureNo}` : ''}
+                          <span className="text-right">
+                            {age >= 0 && (
+                              <span className={`inline-block text-[12px] font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${ageColor}`} title="Ancienneté — les plus vieux sont en haut, à payer en priorité">
+                                {age === 0 ? "auj." : age === 1 ? "1j" : `${age}j`}
+                              </span>
+                            )}
                           </span>
-                          <span className="w-24 text-right text-[13px] font-bold text-slate-700 flex-shrink-0 whitespace-nowrap">
+                          <span className="min-w-0 text-right font-mono text-[11px] font-bold text-indigo-600 truncate" title={factureNo ? `N° de facture : ${factureNo}` : 'Pas de n° de facture saisi'}>
+                            {factureNoAff ? `🧾 ${factureNoAff}` : ''}
+                          </span>
+                          <span className="text-right text-[13px] font-bold text-slate-700 whitespace-nowrap">
                             {formatEuro(amount)}
                           </span>
-                          {canToggle ? (
-                            <button
-                              type="button"
-                              onClick={(e) => { e.stopPropagation(); onTogglePresta(lid, p.nom, p.kind); }}
-                              className={`text-[12px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${paye ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
-                              title={paye && detail?.datePaye ? `Payé le ${new Date(detail.datePaye).toLocaleDateString('fr-FR')} — clic pour repointer` : 'Pointer comme payé (rapide, sans groupe)'}
-                            >
-                              {paye ? `✓ Payé${detail?.datePaye ? ' ' + new Date(detail.datePaye).toLocaleDateString('fr-FR') : ''}` : '⏳ Non payé'}
-                            </button>
-                          ) : (
-                            d.dateInsta && <span className="text-[13px] text-slate-500 flex-shrink-0">📅 {new Date(d.dateInsta).toLocaleDateString('fr-FR')}</span>
-                          )}
+                          <span className="text-right">
+                            {canToggle ? (
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); onTogglePresta(lid, p.nom, p.kind); }}
+                                className={`inline-block text-[12px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap ${paye ? 'bg-emerald-500 text-white hover:bg-emerald-600' : 'bg-slate-200 text-slate-600 hover:bg-slate-300'}`}
+                                title={paye && detail?.datePaye ? `Payé le ${new Date(detail.datePaye).toLocaleDateString('fr-FR')} — clic pour repointer` : 'Pointer comme payé (rapide, sans groupe)'}
+                              >
+                                {paye ? `✓ Payé${detail?.datePaye ? ' ' + new Date(detail.datePaye).toLocaleDateString('fr-FR') : ''}` : '⏳ Non payé'}
+                              </button>
+                            ) : (
+                              d.dateInsta ? <span className="text-[13px] text-slate-500 whitespace-nowrap">📅 {new Date(d.dateInsta).toLocaleDateString('fr-FR')}</span> : null
+                            )}
+                          </span>
                         </div>
                       );
                     };
