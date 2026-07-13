@@ -651,6 +651,10 @@ const compressImageForUpload = (file, maxEdge = 2200, quality = 0.82) => new Pro
 //   utile pour les factures à TVA mixte (autoliquidation + 20% sur la
 //   même facture, ex : ERP fourniture+pose).
 // Compat : si l'ancien champ `tauxTva` vaut 0, on traite comme sansTva.
+// 🧹 Nettoie un n° de facture lu par l'IA : certains PDF donnent « facture
+// FAC-2026-0740 » → on retire le mot parasite pour ne garder que le n°.
+const cleanFactureNo = (v) => String(v || '').replace(/^\s*factures?\s*(n[°o]\s*)?:?\s*/i, '').trim();
+
 const computeTtcPresta = (ht, sansTva, legacyTauxTva, ttcCustom) => {
   const ttcOverride = parseFloat(ttcCustom);
   if (!isNaN(ttcOverride) && ttcCustom !== '' && ttcCustom !== null && ttcCustom !== undefined) {
@@ -2410,6 +2414,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
         }
         if (Array.isArray(dossier.regies) && dossier.regies.some(r => r && r.nom === 'OREN')) {
           dossier = { ...dossier, regies: dossier.regies.map(r => r && r.nom === 'OREN' ? { ...r, nom: 'FLEX' } : r) };
+        }
+        // 🧹 Migration : n° de facture pollués par l'IA (« facture FAC-2026-… »)
+        // → on retire le mot parasite sur toutes les lignes prestataires.
+        // Idempotent : un n° déjà propre ressort identique.
+        {
+          const needClean = (arr) => Array.isArray(arr) && arr.some(x => x && x.factureNo && cleanFactureNo(x.factureNo) !== x.factureNo);
+          if (needClean(dossier.fournisseurs) || needClean(dossier.regies) || needClean(dossier.poseurs)) {
+            const cleanArr = (arr) => (arr || []).map(x => (x && x.factureNo && cleanFactureNo(x.factureNo) !== x.factureNo) ? { ...x, factureNo: cleanFactureNo(x.factureNo) } : x);
+            dossier = { ...dossier, fournisseurs: cleanArr(dossier.fournisseurs), regies: cleanArr(dossier.regies), poseurs: cleanArr(dossier.poseurs) };
+          }
         }
         // ⚠️ Ne PAS auto-désarchiver les dossiers ANNULÉS : ils sont censés
         // rester archivés (avec leur archivedAt d'origine). Sinon la ligne
@@ -20389,7 +20403,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             autoExtract={true}
                             onExtract={(data) => {
                               const updIa = {};
-                              if (data.factureNo && !r.factureNo) updIa.factureNo = String(data.factureNo);
+                              if (data.factureNo && !r.factureNo) updIa.factureNo = cleanFactureNo(data.factureNo);
                               if (data.bl && !r.bl) updIa.bl = String(data.bl);
                               const sansTvaDetecte = (typeof data.tauxTva === 'number' && data.tauxTva === 0);
                               if (sansTvaDetecte && !r.sansTva) { updIa.sansTva = true; updIa.tauxTva = 0; }
@@ -20543,7 +20557,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           autoExtract={true}
                           onExtract={(data) => {
                             const updIa = {};
-                            if (data.factureNo && !p.factureNo) updIa.factureNo = String(data.factureNo);
+                            if (data.factureNo && !p.factureNo) updIa.factureNo = cleanFactureNo(data.factureNo);
                             if (data.bl && !p.bl) updIa.bl = String(data.bl);
                             const htP = htFromExtraction(data);
                             if (htP > 0 && !p.htCustom) updIa.htCustom = String(htP);
@@ -20688,7 +20702,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                           autoExtract={true}
                           onExtract={(data) => {
                             const updIa = {};
-                            if (data.factureNo && !f.factureNo) updIa.factureNo = String(data.factureNo);
+                            if (data.factureNo && !f.factureNo) updIa.factureNo = cleanFactureNo(data.factureNo);
                             if (data.bl && !f.bl) updIa.bl = String(data.bl);
                             const sansTvaDetecte = (typeof data.tauxTva === 'number' && data.tauxTva === 0);
                             if (sansTvaDetecte && !f.sansTva) { updIa.sansTva = true; updIa.tauxTva = 0; }
@@ -20900,7 +20914,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             autoExtract={true}
                             onExtract={(data) => {
                               const upd = {};
-                              if (data.factureNo && !formData[factureNoKey]) upd[factureNoKey] = String(data.factureNo);
+                              if (data.factureNo && !formData[factureNoKey]) upd[factureNoKey] = cleanFactureNo(data.factureNo);
                               if (data.bl && !formData[blKey]) upd[blKey] = String(data.bl);
                               // 🧾 TVA : si l'IA lit un taux, on coche/décoche « Sans TVA » (0 % → sans TVA).
                               if (typeof data.tauxTva === 'number') upd[sansTvaKey] = data.tauxTva === 0;
@@ -20953,7 +20967,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                                     const updIa = {};
                                     // 🔒 Re-pose le fichier dans la même écriture (anti « uploader 2 fois »).
                                     if (data.__fileId) updIa.file = data.__fileId;
-                                    if (data.factureNo && !a.avoirNo) updIa.avoirNo = String(data.factureNo);
+                                    if (data.factureNo && !a.avoirNo) updIa.avoirNo = cleanFactureNo(data.factureNo);
                                     const htA = htFromExtraction(data);
                                     if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
                                     if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
@@ -26635,7 +26649,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               onExtract={(data) => {
                                 // Pré-remplit les champs vides avec ce que l'IA a trouvé
                                 const upd = {};
-                                if (data.factureNo && !r.factureNo) upd.factureNo = String(data.factureNo);
+                                if (data.factureNo && !r.factureNo) upd.factureNo = cleanFactureNo(data.factureNo);
                                 if (data.bl && !r.bl) upd.bl = String(data.bl);
                                 const htR = htFromExtraction(data);
                                 if (htR > 0 && !r.htCustom) upd.htCustom = String(htR);
@@ -26823,7 +26837,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                               autoExtract={true}
                               onExtract={(data) => {
                                 const upd = {};
-                                if (data.factureNo && !d[factureNoKey]) upd[factureNoKey] = String(data.factureNo);
+                                if (data.factureNo && !d[factureNoKey]) upd[factureNoKey] = cleanFactureNo(data.factureNo);
                                 if (data.bl && !d[blKey]) upd[blKey] = String(data.bl);
                                 if (typeof data.tauxTva === 'number') upd[sansTvaKey] = data.tauxTva === 0;
                                 const htR = htFromExtraction(data);
@@ -26879,7 +26893,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                       const updIa = {};
                                       // 🔒 Re-pose le fichier dans la même écriture (anti « uploader 2 fois »).
                                       if (data.__fileId) updIa.file = data.__fileId;
-                                      if (data.factureNo && !a.avoirNo) updIa.avoirNo = String(data.factureNo);
+                                      if (data.factureNo && !a.avoirNo) updIa.avoirNo = cleanFactureNo(data.factureNo);
                                       const htA = htFromExtraction(data);
                                       if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
                                       if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
@@ -27149,7 +27163,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         autoExtract={true}
                         onExtract={(data) => {
                           const upd = {};
-                          if (data.factureNo && !p.factureNo) upd.factureNo = String(data.factureNo);
+                          if (data.factureNo && !p.factureNo) upd.factureNo = cleanFactureNo(data.factureNo);
                           if (data.bl && !p.bl) upd.bl = String(data.bl);
                           const htP = htFromExtraction(data);
                           if (htP > 0 && !p.htCustom) upd.htCustom = String(htP);
@@ -27305,7 +27319,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         autoExtract={true}
                         onExtract={(data) => {
                           const upd = {};
-                          if (data.factureNo && !f.factureNo) upd.factureNo = String(data.factureNo);
+                          if (data.factureNo && !f.factureNo) upd.factureNo = cleanFactureNo(data.factureNo);
                           if (data.bl && !f.bl) upd.bl = String(data.bl);
                           // Si sans TVA détecté → on le coche AVANT de calculer le HT
                           // (sinon htFromExtraction diviserait par 1.2 à tort).
@@ -27400,7 +27414,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                       const updIa = {};
                                       // 🔒 Re-pose le fichier dans la même écriture (anti « uploader 2 fois »).
                                       if (data.__fileId) updIa.file = data.__fileId;
-                                      if (data.factureNo && !a.avoirNo) updIa.avoirNo = String(data.factureNo);
+                                      if (data.factureNo && !a.avoirNo) updIa.avoirNo = cleanFactureNo(data.factureNo);
                                       const htA = htFromExtraction(data);
                                       if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
                                       if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
