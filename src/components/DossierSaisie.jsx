@@ -11551,6 +11551,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                             )}
                             {l.dossierId !== '—' && <span className="text-xs font-mono text-slate-500">#{l.dossierId}</span>}
                             <span className="font-medium text-slate-700 truncate">{l.client || '(sans nom)'}</span>
+                            {l.factureNo && <span className="text-[12px] font-mono font-bold text-indigo-600 whitespace-nowrap" title="N° de facture du prestataire">🧾 {l.factureNo}</span>}
                             <span className="text-[12px] text-slate-400">💳 {l.financement}</span>
                             {l.paye && l.datePaye && <span className="text-[12px] text-slate-500">📅 {formatDateForSheet(l.datePaye)}</span>}
                           </div>
@@ -13217,13 +13218,52 @@ function PerfList({ titre, data, dossiers = [], societes = [], onShowQuick, onTo
                     const totalEncaisses = sumGroup(showEncaisses);
                     const totalAttente = sumGroup(showAttente);
 
+                    // 📥 Export CSV des lignes PAYÉES de CE prestataire (client +
+                    // n° facture + montant + date) — pour que le partenaire fasse
+                    // son rapprochement de son côté. Séparateur ; + BOM → Excel FR.
+                    const exportPayesCsv = () => {
+                      const rows = [['N° facture', 'Client', 'N° dossier', 'Montant TTC', 'Date de paiement']];
+                      [...idsEncaisses, ...idsAttente].forEach(lid => {
+                        const dd = dossierByLocalId.get(lid); if (!dd) return;
+                        const list = p.kind === 'poseur' ? (dd.poseursDetail || []) : p.kind === 'fournisseur' ? (dd.fournisseursDetail || []) : (dd.regiesDetail || []);
+                        const it = list.find(x => x.nom === p.nom);
+                        if (!it || !it.paye) return;
+                        rows.push([
+                          it.factureNo || '',
+                          `${dd.nom || ''} ${dd.prenom || ''}`.trim(),
+                          dd.id || '',
+                          (it.ttc || 0).toFixed(2).replace('.', ','),
+                          it.datePaye ? new Date(it.datePaye).toLocaleDateString('fr-FR') : '',
+                        ]);
+                      });
+                      if (rows.length === 1) { alert(`Aucune ligne payée pour ${p.nom}.`); return; }
+                      const csv = '\ufeff' + rows.map(r => r.map(v => `"${String(v ?? '').replace(/"/g, '""')}"`).join(';')).join('\n');
+                      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `factures-payees_${String(p.nom || 'prestataire').replace(/[^\w-]+/g, '-')}_${new Date().toISOString().split('T')[0]}.csv`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      setTimeout(() => URL.revokeObjectURL(url), 10000);
+                    };
                     return (
                       <>
-                        {/* 👁️ Case « comme d'habitude » : cacher les clients déjà payés */}
-                        <label className="flex items-center gap-1.5 px-2 py-1.5 text-[12px] font-semibold text-slate-600 cursor-pointer select-none border-b border-slate-100">
-                          <input type="checkbox" checked={hidePaid} onChange={(e) => setHidePaid(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
-                          Cacher les clients payés — ne montrer que le reste à payer
-                        </label>
+                        {/* 👁️ Cacher les payés + 📥 export CSV des payés */}
+                        <div className="flex items-center justify-between gap-2 px-2 py-1.5 border-b border-slate-100 flex-wrap">
+                          <label className="flex items-center gap-1.5 text-[12px] font-semibold text-slate-600 cursor-pointer select-none">
+                            <input type="checkbox" checked={hidePaid} onChange={(e) => setHidePaid(e.target.checked)} className="w-4 h-4 accent-emerald-600" />
+                            Cacher les clients payés — ne montrer que le reste à payer
+                          </label>
+                          <button
+                            onClick={(e) => { e.stopPropagation(); exportPayesCsv(); }}
+                            className="px-2.5 py-1 rounded-lg text-[12px] font-bold bg-emerald-600 hover:bg-emerald-700 text-white whitespace-nowrap"
+                            title={`Télécharge un CSV (Excel) des clients PAYÉS de ${p.nom} : n° facture, client, n° dossier, montant, date de paiement — pour le rapprochement du partenaire`}
+                          >
+                            📥 Export payés (CSV)
+                          </button>
+                        </div>
                         {showEncaisses.length > 0 && (
                           <div>
                             <div className="flex items-center justify-between gap-2 px-2 py-2 bg-emerald-50 border-y border-emerald-200 sticky top-0 z-[1]">
