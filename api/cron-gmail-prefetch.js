@@ -304,7 +304,8 @@ Reply ONLY with a JSON object (no markdown, no explanation). Use "" for unknown 
   "emailClient": "<email if mentioned>",
   "numeroBl": "<BL / delivery note number>",
   "numeroCommande": "<PO / purchase order number>",
-  "description": "<short 1-line description, e.g. 'Installation panneaux 6kW' or 'Avoir - Commission client concernant facture F-2026-0512841'>"
+  "description": "<short 1-line description, e.g. 'Installation panneaux 6kW' or 'Avoir - Commission client concernant facture F-2026-0512841'>",
+  "societeFacturee": "<THE BILLED COMPANY = MY OWN company that the supplier is invoicing — the name shown in the « Facturé à » / « Client » / « Destinataire » / « Adresse de facturation » block (usually top of the document, NOT the header logo which is the supplier). This is one of my group companies: typically YOLICO, ELSUN, ELSOL, SARL ELSOL, SAS YOLICO, etc. Return the raw company name EXACTLY as written on the document. If you cannot find a clear billed-company block, return "".>"
 }`;
 
 // 🚫 Sociétés du client (= « facturé à »), JAMAIS un vrai fournisseur.
@@ -447,6 +448,10 @@ async function extractFromPdf(base64) {
     numeroBl: String(parsed.numeroBl || ''),
     numeroCommande: String(parsed.numeroCommande || ''),
     description,
+    // 🏢 Société de MON groupe à qui la facture est adressée (« facturé à »).
+    //    Sert à détecter les factures libellées à la mauvaise société
+    //    (ex : facturé YOLICO alors que le dossier est chez ELSUN).
+    societeFacturee: String(parsed.societeFacturee || ''),
   };
 }
 

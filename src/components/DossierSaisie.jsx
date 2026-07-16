@@ -13711,7 +13711,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS 
         <PennylaneKeysPanel societes={societes} />
       )}
 
-      {section === 'gmaildrive' && <GmailDrivePanel dossiers={dossiers} setDossiers={setDossiers} setShowQuickViewId={setShowQuickViewId} POSEURS={POSEURS} REGIES={REGIES} FOURNISSEURS={FOURNISSEURS} />}
+      {section === 'gmaildrive' && <GmailDrivePanel dossiers={dossiers} setDossiers={setDossiers} setShowQuickViewId={setShowQuickViewId} POSEURS={POSEURS} REGIES={REGIES} FOURNISSEURS={FOURNISSEURS} societes={societes} />}
 
       {section === 'expert' && (
         <ExpertToolsPanel
@@ -14460,7 +14460,7 @@ function GmailPrefetchFloatingBanner() {
 // 📦 Drive Factures : browse les PDFs Gmail archivés par le cron, rangés
 //    par fournisseur. Recherche locale dans tous les champs IA, prévisu PDF,
 //    téléchargement direct. Évite d'aller sur Supabase Dashboard.
-function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickViewId = null, POSEURS = [], REGIES = [], FOURNISSEURS = [] }) {
+function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickViewId = null, POSEURS = [], REGIES = [], FOURNISSEURS = [], societes = [] }) {
   const [attachOpen, setAttachOpen] = useState(null); // { inv, query, picking } — modal d'attachement
   const [attachInProgress, setAttachInProgress] = useState(null); // key en cours d'attach
   const [markingNotFacture, setMarkingNotFacture] = useState(null); // key en cours de mark
@@ -14483,6 +14483,10 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
   const [previewing, setPreviewing] = useState('');
   // 🙈 Filtre : cache les factures déjà attachées à un dossier
   const [hideAttached, setHideAttached] = useState(false);
+  // ⚠️ Filtre : ne montre que les factures dont la société de facturation
+  //    (« facturé à ») ne correspond PAS à la société du dossier client
+  //    (ex : facturé YOLICO alors que le dossier est chez ELSUN).
+  const [onlyMismatch, setOnlyMismatch] = useState(false);
   // 📅 Filtre par année : null = toutes, sinon string '2026', '2025'…
   //     Défaut : année courante pour ne voir que les factures de l'année.
   const [yearFilter, setYearFilter] = useState(String(new Date().getFullYear()));
@@ -14537,6 +14541,92 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
     }
     return map;
   }, [dossiers]);
+
+  // 🏢 Normalise un nom de société : sans accents, MAJ, sans forme juridique
+  //    (SARL/SAS…) ni ponctuation → "SAS YOLICO" et "yolico" deviennent "YOLICO".
+  const normSoc = (s) => String(s || '')
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .toUpperCase()
+    .replace(/\b(SARL|SASU|SAS|SA|EURL|SCI|EI|SNC)\b/g, ' ')
+    .replace(/[^A-Z0-9]/g, '');
+
+  // 🏢 Fait correspondre un nom de société lu sur une facture (« facturé à »)
+  //    à l'id d'une de MES sociétés (yolico / elsun…). null si aucune ne
+  //    correspond avec certitude → on n'alerte pas (évite les fausses alertes).
+  const matchSocieteId = (billedName) => {
+    const b = normSoc(billedName);
+    if (b.length < 3) return null;
+    for (const s of societes || []) {
+      const tokens = [s.id, s.label].map(normSoc).filter(t => t.length >= 3);
+      for (const t of tokens) {
+        if (b === t || b.includes(t) || t.includes(b)) return s.id;
+      }
+    }
+    return null;
+  };
+  const socLabel = (id) => (societes || []).find(s => s.id === id)?.label || id;
+
+  // 🗂️ Index { nomNormalisé → [dossiers] } pour retrouver le dossier d'une
+  //    facture NON encore attachée, via sa « Référence Chantier » (nom client).
+  const dossiersByNom = useMemo(() => {
+    const map = new Map();
+    const norm = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    for (const d of dossiers || []) {
+      const key = norm(d.nom);
+      if (key.length < 3) continue;
+      if (!map.has(key)) map.set(key, []);
+      map.get(key).push(d);
+    }
+    return map;
+  }, [dossiers]);
+
+  // ⚠️ Map { clé facture → { factureSocId, dossierSocId, factureLabel,
+  //    dossierLabel, clientName, attached } } pour toute facture dont la
+  //    société de facturation ≠ société du dossier client rattaché.
+  //    Dossier résolu par : (1) facture déjà attachée, sinon (2) match
+  //    de nom UNIQUE sur la Référence Chantier (sinon on n'alerte pas).
+  const mismatchMap = useMemo(() => {
+    const map = new Map();
+    const normName = (s) => String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const normF = (s) => String(s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+    const resolveDossier = (inv) => {
+      const att = attachedMap.get(normF(inv.factureNo));
+      if (att) return { dossier: att.dossier, attached: true };
+      // Repli : match de nom sur la Référence Chantier, seulement si UNIQUE.
+      const raw = String(inv.refChantier || '').trim();
+      if (!raw) return null;
+      const cands = new Set();
+      const tryKey = (k) => { if (k.length >= 3) { const arr = dossiersByNom.get(k); if (arr) arr.forEach(d => cands.add(d)); } };
+      const words = raw.split(/\s+/).filter(Boolean);
+      tryKey(normName(raw));
+      if (words.length > 1) { tryKey(normName(words[0])); tryKey(normName(words[words.length - 1])); }
+      if (cands.size === 1) return { dossier: [...cands][0], attached: false };
+      return null;
+    };
+    for (const f of folders || []) {
+      for (const inv of f.invoices || []) {
+        const factureSocId = matchSocieteId(inv.societeFacturee);
+        if (!factureSocId) continue; // société de facturation inconnue → pas d'alerte
+        const res = resolveDossier(inv);
+        if (!res || !res.dossier) continue;
+        const dossierSocId = res.dossier.societe || '';
+        if (!dossierSocId) continue;
+        if (factureSocId === dossierSocId) continue; // cohérent → OK
+        const key = `${inv.inboxEmail}|${inv.messageId}|${inv.attachmentId}`;
+        map.set(key, {
+          factureSocId, dossierSocId,
+          factureLabel: socLabel(factureSocId),
+          dossierLabel: socLabel(dossierSocId),
+          clientName: `${res.dossier.nom || ''} ${res.dossier.prenom || ''}`.trim(),
+          dossierLocalId: res.dossier.localId,
+          attached: res.attached,
+        });
+      }
+    }
+    return map;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [folders, attachedMap, dossiersByNom, societes]);
+  const invKey = (inv) => `${inv.inboxEmail}|${inv.messageId}|${inv.attachmentId}`;
 
   const fetchFolders = async () => {
     setLoading(true); setError('');
@@ -14617,6 +14707,7 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
     const applyFilters = (invs) => invs.filter(i => {
       if (hideAttached && isAttached(i)) return false;
       if (yearFilter && yearOf(i) !== yearFilter) return false;
+      if (onlyMismatch && !mismatchMap.has(invKey(i))) return false;
       return true;
     });
     if (!q) {
@@ -14643,7 +14734,7 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
     }
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [folders, query, hideAttached, yearFilter, attachedMap]);
+  }, [folders, query, hideAttached, yearFilter, onlyMismatch, attachedMap, mismatchMap]);
 
   // 📊 Compteur : combien sont déjà attachées au CRM (sur tout le drive)
   const attachedCount = useMemo(() => {
@@ -14652,6 +14743,9 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
     return c;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [folders, attachedMap]);
+
+  // 📊 Compteur : combien de factures avec société de facturation incohérente
+  const mismatchCount = mismatchMap.size;
 
   // Auto-ouvre tous les dossiers quand y a une recherche (sinon faut tout cliquer)
   useEffect(() => {
@@ -15036,6 +15130,25 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
               </>
             )}
           </div>
+          {/* ⚠️ Alerte société : factures libellées à la mauvaise société du
+              groupe (ex : facturé YOLICO alors que le dossier est chez ELSUN).
+              Les fournisseurs se trompent parfois de nom de facturation. */}
+          {mismatchCount > 0 && (
+            <div className="flex items-center gap-2 flex-wrap text-[12px] bg-rose-50 border border-rose-300 rounded-lg px-3 py-2">
+              <span className="text-rose-800">
+                ⚠️ <span className="font-bold">{mismatchCount} facture{mismatchCount > 1 ? 's' : ''}</span> {mismatchCount > 1 ? 'sont facturées' : 'est facturée'} à une <span className="font-bold">mauvaise société</span> (le nom de facturation ne correspond pas à la société du dossier client).
+              </span>
+              <label className="ml-auto flex items-center gap-1.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={onlyMismatch}
+                  onChange={(e) => setOnlyMismatch(e.target.checked)}
+                  className="accent-rose-600"
+                />
+                <span className="text-rose-800 font-semibold">🔎 N'afficher que ces factures</span>
+              </label>
+            </div>
+          )}
           {/* 📅 Filtre année — pills avec compteurs */}
           {availableYears.length > 1 && (
             <div className="flex items-center gap-1.5 flex-wrap">
@@ -15127,8 +15240,9 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
                     {folder.invoices.map(inv => {
                       const key = `${inv.inboxEmail}|${inv.messageId}|${inv.attachmentId}`;
                       const attachedInfo = attachedMap.get(normFact(inv.factureNo));
+                      const mismatch = mismatchMap.get(key);
                       return (
-                        <div key={key} className={`p-3 hover:bg-indigo-50/30 transition ${attachedInfo ? 'bg-emerald-50/40' : ''}`}>
+                        <div key={key} className={`p-3 transition ${mismatch ? 'bg-rose-50/70 hover:bg-rose-50' : attachedInfo ? 'bg-emerald-50/40 hover:bg-indigo-50/30' : 'hover:bg-indigo-50/30'}`}>
                           <div className="flex items-start gap-3">
                             <div className="text-2xl shrink-0">📄</div>
                             <div className="flex-1 min-w-0">
@@ -15158,6 +15272,14 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
                                   >
                                     ✅ {attachedInfo.kind === 'avoir' ? 'Avoir attaché' : 'Attachée'} à {attachedInfo.clientName}
                                   </button>
+                                )}
+                                {mismatch && (
+                                  <span
+                                    className="px-2 py-0.5 bg-rose-100 text-rose-800 rounded text-[11px] font-bold border border-rose-300 cursor-help"
+                                    title={`Cette facture est libellée au nom de « ${mismatch.factureLabel} » (société de facturation lue : ${inv.societeFacturee || '?'}), mais le dossier client${mismatch.clientName ? ` de ${mismatch.clientName}` : ''} est chez « ${mismatch.dossierLabel} ».\n${mismatch.attached ? 'Facture déjà attachée à ce dossier.' : 'Dossier deviné via la Référence Chantier — à vérifier.'}\n\nÀ faire vérifier / corriger auprès du fournisseur.`}
+                                  >
+                                    ⚠️ Facturé à {mismatch.factureLabel} · dossier {mismatch.dossierLabel}
+                                  </span>
                                 )}
                               </div>
                               <div className="mt-1 flex items-center gap-3 text-[12px] text-slate-600 flex-wrap">
