@@ -225,6 +225,33 @@ function normalizeDossierDates(d) {
 // chemins qui rapatrient l'état depuis Supabase : chargement initial, sync
 // Realtime, focus pull. Évite que la donnée brute (avec « 0026 ») écrase
 // notre état déjà nettoyé.
+// 🛡️ FUSION MULTI-POSTES — toute la base tient dans UNE clé (dossiers-data)
+// écrite en entier par chaque poste. Sans fusion, un poste avec des données
+// pas à jour ÉCRASAIT les modifications des autres (ex : un « payé » pointé
+// par la compta disparaissait quelques minutes plus tard). Ici on fusionne
+// DOSSIER PAR DOSSIER : pour chaque localId, la version au modifiedAt le plus
+// récent gagne. Un dossier absent d'un côté est conservé (sauf s'il a été
+// supprimé volontairement → tombstone).
+function mergeDossiersArrays(localArr, remoteArr, tombstones = new Set()) {
+  const ts = (x) => { const t = new Date((x && (x.modifiedAt || x.savedAt)) || 0).getTime(); return isNaN(t) ? 0 : t; };
+  const remoteById = new Map();
+  (remoteArr || []).forEach(r => { if (r && r.localId) remoteById.set(r.localId, r); });
+  const out = [];
+  const seen = new Set();
+  (localArr || []).forEach(l => {
+    if (!l || !l.localId) return;
+    seen.add(l.localId);
+    const r = remoteById.get(l.localId);
+    if (!r) { if (!tombstones.has(l.localId)) out.push(l); return; }
+    out.push(ts(r) > ts(l) ? r : l);
+  });
+  (remoteArr || []).forEach(r => {
+    if (!r || !r.localId || seen.has(r.localId)) return;
+    if (!tombstones.has(r.localId)) out.push(r);
+  });
+  return out;
+}
+
 function normalizeDossiers(list) {
   if (!Array.isArray(list)) return list;
   return list.map(d => {
@@ -1975,6 +2002,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Ref qui mémorise le dernier JSON écrit par CE client, pour ignorer les
   // évènements realtime qui correspondent à nos propres écritures.
   const lastWrittenDossiersJson = useRef(null);
+  // 🪦 Cache des suppressions volontaires — utilisé par la fusion multi-postes
+  // pour ne pas ressusciter un dossier supprimé.
+  const tombstonesRef = useRef(new Set());
+  useEffect(() => {
+    (async () => {
+      try {
+        const tRow = await window.storage.get('dossiers-deleted-tombstones');
+        const arr = JSON.parse(tRow?.value || '[]');
+        if (Array.isArray(arr)) tombstonesRef.current = new Set(arr);
+      } catch (e) {}
+    })();
+  }, []);
   // Idem pour les clés contacts/tarifs/email-config — évite que la sauvegarde
   // locale soit écrasée par un autre device avec un état stale.
   const lastWrittenSettings = useRef({});
@@ -2768,7 +2807,29 @@ export default function DossierSaisie({ authUser, onLogout }) {
     lastWrittenDossiersJson.current = json;
     (async () => {
       try {
-        await window.storage.set('dossiers-data', json);
+        // 🛡️ ANTI-ÉCRASEMENT MULTI-POSTES : avant d'écrire, on relit la base.
+        // Si un autre poste a écrit entre-temps (valeur ≠ notre dernière
+        // écriture), on FUSIONNE dossier par dossier (modifiedAt le plus
+        // récent gagne) au lieu d'écraser aveuglément. C'est ce qui faisait
+        // disparaître des « payé » pointés sur un autre poste.
+        let toWrite = json;
+        try {
+          const cur = await window.storage.get('dossiers-data');
+          const curV = cur?.value;
+          if (curV && curV !== json && curV !== lastWrittenDossiersJson.current) {
+            const remote = JSON.parse(curV);
+            if (Array.isArray(remote)) {
+              const merged = mergeDossiersArrays(dossiers, normalizeDossiers(remote), tombstonesRef.current);
+              const mergedJson = JSON.stringify(merged);
+              if (mergedJson !== json) {
+                toWrite = mergedJson;
+                lastWrittenDossiersJson.current = mergedJson;
+                setDossiers(merged); // réaligne l'état local sur la fusion
+              }
+            }
+          }
+        } catch (e) {}
+        await window.storage.set('dossiers-data', toWrite);
         // 🛡️ Backup snapshot : 1 max par TRANCHE DE 10 MIN (clé arrondie aux
         // 10 minutes → upsert sur la même clé pendant 10 min). Permet de
         // remonter dans le temps sans multiplier les écritures (avant c'était
@@ -2778,7 +2839,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         const pad = (n) => String(n).padStart(2, '0');
         const min10 = pad(Math.floor(now.getUTCMinutes() / 10) * 10);
         const bkKey = `dossiers-data-bk-${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}${pad(now.getUTCHours())}${min10}`;
-        await window.storage.set(bkKey, json);
+        await window.storage.set(bkKey, toWrite);
       } catch (e) {}
     })();
   }, [dossiers, loading]);
@@ -2945,7 +3006,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 const parsed = JSON.parse(v);
                 if (!Array.isArray(parsed)) return;
                 lastWrittenDossiersJson.current = v;
-                setDossiers(normalizeDossiers(parsed));
+                // 🛡️ Fusion par dossier — ne pas écraser nos modifs plus récentes.
+                setDossiers(prev => mergeDossiersArrays(prev, normalizeDossiers(parsed), tombstonesRef.current));
               } catch (e) {}
             })();
             return;
@@ -2957,9 +3019,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
             const parsed = JSON.parse(newValue);
             if (!Array.isArray(parsed)) return;
             lastWrittenDossiersJson.current = newValue;
-            // Normalise les dates avant d'écraser l'état local — sinon les
-            // dossiers cassés (« 0026-… ») d'un autre device reviennent.
-            setDossiers(normalizeDossiers(parsed));
+            // 🛡️ Fusion par dossier (modifiedAt le plus récent gagne) — ne pas
+            // écraser une modif locale plus fraîche avec la copie d'un autre poste.
+            setDossiers(prev => mergeDossiersArrays(prev, normalizeDossiers(parsed), tombstonesRef.current));
           } catch (e) {
             // parse échoué : on ignore (donnée corrompue côté DB).
           }
@@ -2997,7 +3059,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
         const parsed = JSON.parse(v);
         if (!Array.isArray(parsed)) return;
         lastWrittenDossiersJson.current = v;
-        setDossiers(normalizeDossiers(parsed));
+        // 🛡️ Fusion par dossier — même protection que le canal Realtime.
+        setDossiers(prev => mergeDossiersArrays(prev, normalizeDossiers(parsed), tombstonesRef.current));
       } catch (e) {
         // Silencieux
       }
@@ -3957,20 +4020,25 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // dossier — toggle paye + datePaye. Réutilisé par PerfList (Dashboard) et
   // PaiementsView (Rapport paiements).
   const handleTogglePresta = (localId, nom, kind) => {
+    // ⏱️ Horodatage OBLIGATOIRE : la fusion multi-postes départage par
+    // modifiedAt — sans lui, ce pointage perdrait contre n'importe quelle
+    // modif plus ancienne mais datée d'un autre poste.
+    const now = new Date().toISOString();
+    const stamp = { savedAt: now, modifiedAt: now, modifiedBy: currentUser || '(pointage)' };
     setDossiers(prev => prev.map(d => {
       if (d.localId !== localId) return d;
-      const today = new Date().toISOString().split('T')[0];
+      const today = now.split('T')[0];
       if (kind === 'poseur') {
         const poseurs = (d.poseurs || []).map(p => p && p.nom === nom ? { ...p, paye: !p.paye, datePaye: !p.paye ? today : '' } : p);
-        return { ...d, poseurs };
+        return { ...d, poseurs, ...stamp };
       }
       if (kind === 'regie') {
         const regies = (d.regies || []).map(r => r && r.nom === nom ? { ...r, paye: !r.paye, datePaye: !r.paye ? today : '' } : r);
-        return { ...d, regies };
+        return { ...d, regies, ...stamp };
       }
       if (kind === 'fournisseur') {
         const fournisseurs = (d.fournisseurs || []).map(f => f && f.nom === nom ? { ...f, paye: !f.paye, datePaye: !f.paye ? today : '' } : f);
-        return { ...d, fournisseurs };
+        return { ...d, fournisseurs, ...stamp };
       }
       return d;
     }));
@@ -3995,7 +4063,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const idxs = byId.get(d.localId);
       const wantAll = idxs.some(i => i === null || i === undefined);
       const arr = (d[arrKey] || []).map((x, i) => (x && x.nom === nom && !x.paye && (wantAll || idxs.includes(i))) ? { ...x, paye: true, datePaye: today } : x);
-      return { ...d, [arrKey]: arr };
+      const now = new Date().toISOString();
+      return { ...d, [arrKey]: arr, savedAt: now, modifiedAt: now, modifiedBy: currentUser || '(pointage groupé)' };
     }));
   };
 
@@ -4014,6 +4083,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
         payeClientDate: today,
         datePaiementBanque: d.datePaiementBanque || today,
         statut: 'W_DOSSIER_PAYER',
+        savedAt: new Date().toISOString(),
+        modifiedAt: new Date().toISOString(),
+        modifiedBy: currentUser || '(encaissement groupé)',
       };
     }));
   };
