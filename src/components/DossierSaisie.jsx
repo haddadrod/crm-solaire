@@ -1355,8 +1355,11 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
   }
   const regiesDetail = regiesList.map(r => {
     const autoHt = computeAutoTarif((tarifsRegies || {})[r.nom]);
-    const ht = (r.htCustom !== '' && r.htCustom !== undefined && r.htCustom !== null) ? (parseFloat(r.htCustom) || 0) : autoHt;
-    return { nom: r.nom, ht, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva, r.ttcCustom), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '' };
+    const baseHt = (r.htCustom !== '' && r.htCustom !== undefined && r.htCustom !== null) ? (parseFloat(r.htCustom) || 0) : autoHt;
+    // Avoirs (notes de crédit) → déduction du coût HT de la régie.
+    const avoirsHt = (r.avoirs || []).reduce((s, a) => s + (parseFloat(a.montantHt) || 0), 0);
+    const ht = baseHt - avoirsHt;
+    return { nom: r.nom, ht, baseHt, avoirsHt, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva, r.ttcCustom), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '' };
   });
   const regieHt = regiesDetail.reduce((s, r) => s + r.ht, 0);
   const regieTtc = regiesDetail.reduce((s, r) => s + r.ttc, 0);
@@ -1371,9 +1374,11 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
     // déplacé pour rien et nous facture quand même (500€ / 750€ / 1000€…).
     // S'ajoute au coût total du poseur — la marge HT se recalcule auto.
     const deplacementsHt = (p.deplacements || []).reduce((s, dep) => s + (parseFloat(dep?.montant) || 0), 0);
-    const ht = baseHt + surplus + deplacementsHt;
+    // Avoirs (notes de crédit) → déduction du coût HT du poseur.
+    const avoirsHt = (p.avoirs || []).reduce((s, a) => s + (parseFloat(a.montantHt) || 0), 0);
+    const ht = baseHt + surplus + deplacementsHt - avoirsHt;
     // Poseurs : jamais de TVA (toujours HT). TTC = HT.
-    return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, baseHt, surplus, deplacementsHt, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '' };
+    return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, baseHt, avoirsHt, surplus, deplacementsHt, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '' };
   });
   const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
   const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
@@ -3310,8 +3315,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     const regiesDetail = (formData.regies || []).map(r => {
       const autoHt = computeAutoTarif(tarifsRegies[r.nom]);
-      const ht = r.htCustom !== '' ? (parseFloat(r.htCustom) || 0) : autoHt;
-      return { nom: r.nom, ht, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva, r.ttcCustom), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '' };
+      const baseHt = r.htCustom !== '' ? (parseFloat(r.htCustom) || 0) : autoHt;
+      const avoirsHt = (r.avoirs || []).reduce((s, a) => s + (parseFloat(a.montantHt) || 0), 0);
+      const ht = baseHt - avoirsHt;
+      return { nom: r.nom, ht, baseHt, avoirsHt, ttc: computeTtcPresta(ht, !!r.sansTva, r.tauxTva, r.ttcCustom), sansTva: !!r.sansTva, paye: !!r.paye, datePaye: r.datePaye || '', autoHt, bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '' };
     });
     const regieHt = regiesDetail.reduce((s, r) => s + r.ht, 0);
     const regieTtc = regiesDetail.reduce((s, r) => s + r.ttc, 0);
@@ -3324,9 +3331,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // 🚗 Déplacements (RDV ratés où le poseur facture quand même). Voir
       // commentaire dans enrichDossier — coût qui s'ajoute au total poseur.
       const deplacementsHt = (p.deplacements || []).reduce((s, dep) => s + (parseFloat(dep?.montant) || 0), 0);
-      const ht = baseHt + surplus + deplacementsHt;
+      const avoirsHt = (p.avoirs || []).reduce((s, a) => s + (parseFloat(a.montantHt) || 0), 0);
+      const ht = baseHt + surplus + deplacementsHt - avoirsHt;
       // Poseurs : jamais de TVA (toujours HT). TTC = HT.
-      return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, baseHt, surplus, deplacementsHt, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '' };
+      return { nom: p.nom, ht, ttc: ht, sansTva: true, paye: !!p.paye, datePaye: p.datePaye || '', autoHt, baseHt, avoirsHt, surplus, deplacementsHt, bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '' };
     });
     const poseurHt = poseursDetail.reduce((s, p) => s + p.ht, 0);
     const poseurTtc = poseursDetail.reduce((s, p) => s + p.ttc, 0);
@@ -3686,7 +3694,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         : [],
       regie: d.regie || '', regieHtCustom: d.regieHtCustom || '',
       regies: (d.regies && d.regies.length > 0)
-        ? d.regies.map(r => ({ nom: r.nom || '', htCustom: r.htCustom || '', paye: r.paye || false, datePaye: r.datePaye || '', bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '' }))
+        ? d.regies.map(r => ({ ...r, nom: r.nom || '', htCustom: r.htCustom || '', paye: r.paye || false, datePaye: r.datePaye || '', bl: r.bl || '', factureNo: r.factureNo || '', facturePdfUrl: r.facturePdfUrl || '', factureExternalUrl: r.factureExternalUrl || '', avoirs: Array.isArray(r.avoirs) ? r.avoirs : [] }))
         : (d.regie ? [{ nom: d.regie, htCustom: d.regieHtCustom || '', paye: d.regiePaye || false, datePaye: d.regieDatePaye || '', bl: '', factureNo: '', facturePdfUrl: '', factureExternalUrl: '' }] : []),
       typeRegie: d.typeRegie || (d.regie ? 'externe' : 'externe'),
       teleprospecteur: d.teleprospecteur || '',
@@ -3742,7 +3750,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       provenanceLead: d.provenanceLead || '',
       regiePaye: d.regiePaye || false, regieDatePaye: d.regieDatePaye || '',
       poseurs: d.poseurs?.length > 0
-        ? d.poseurs.map(p => ({ nom: p.nom, htCustom: p.htCustom || '', paye: p.paye || false, datePaye: p.datePaye || '', bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '', surplus: p.surplus || 0, deplacements: Array.isArray(p.deplacements) ? p.deplacements : [] }))
+        ? d.poseurs.map(p => ({ ...p, nom: p.nom, htCustom: p.htCustom || '', paye: p.paye || false, datePaye: p.datePaye || '', bl: p.bl || '', factureNo: p.factureNo || '', facturePdfUrl: p.facturePdfUrl || '', factureExternalUrl: p.factureExternalUrl || '', surplus: p.surplus || 0, deplacements: Array.isArray(p.deplacements) ? p.deplacements : [], avoirs: Array.isArray(p.avoirs) ? p.avoirs : [] }))
         : (d.poseur
             ? [{ nom: d.poseur, htCustom: d.poseurHtCustom || '', paye: d.poseurPaye || false, datePaye: d.poseurDatePaye || '', bl: '', factureNo: '', facturePdfUrl: '', factureExternalUrl: '', surplus: 0 }]
             : []),
@@ -24454,6 +24462,35 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       return { fournisseurs: list };
     });
   };
+  // 🧾 Avoirs GÉNÉRIQUES (régies / poseurs) — même mécanique que les
+  // fournisseurs : imbriqués dans la ligne, déduits du coût HT. Patches
+  // fonctionnels pour ne pas écraser un update concurrent (IA, upload).
+  const addAvoirLigne = (arrKey, idx) => {
+    onUpdate((dCurrent) => {
+      const list = [...(dCurrent[arrKey] || [])];
+      const x = list[idx]; if (!x) return {};
+      list[idx] = { ...x, avoirs: [...(x.avoirs || []), { montantHt: '', avoirNo: '', date: new Date().toISOString().slice(0, 10), file: '' }] };
+      return { [arrKey]: list };
+    });
+  };
+  const updateAvoirLigne = (arrKey, idx, aIdx, updates) => {
+    onUpdate((dCurrent) => {
+      const list = [...(dCurrent[arrKey] || [])];
+      const x = list[idx]; if (!x) return {};
+      const avoirs = [...(x.avoirs || [])];
+      avoirs[aIdx] = { ...avoirs[aIdx], ...updates };
+      list[idx] = { ...x, avoirs };
+      return { [arrKey]: list };
+    });
+  };
+  const removeAvoirLigne = (arrKey, idx, aIdx) => {
+    onUpdate((dCurrent) => {
+      const list = [...(dCurrent[arrKey] || [])];
+      const x = list[idx]; if (!x) return {};
+      list[idx] = { ...x, avoirs: (x.avoirs || []).filter((_, i) => i !== aIdx) };
+      return { [arrKey]: list };
+    });
+  };
 
   return (
     <>
@@ -26888,6 +26925,84 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                             />
                           </>
                         )}
+                        {/* 🧾 AVOIRS / NOTES DE CRÉDIT — comme les fournisseurs : déduits du coût. */}
+                        {canSeeMarges && (() => {
+                          const avoirs = r.avoirs || [];
+                          const detail = d.regiesDetail?.[i];
+                          const avoirsHt = detail?.avoirsHt || 0;
+                          const baseHt = detail?.baseHt || 0;
+                          const netHt = detail?.ht ?? (baseHt - avoirsHt);
+                          return (
+                            <div className="mt-1.5 rounded-xl border-2 border-rose-300 bg-rose-50 p-2 space-y-1.5">
+                              <div className="flex items-center justify-between gap-1">
+                                <span className="text-[12px] font-extrabold text-rose-700 uppercase flex items-center gap-1">🧾 Avoirs / notes de crédit{avoirsHt > 0 ? ` · −${formatEuro(avoirsHt)}` : ''}</span>
+                                <button onClick={() => addAvoirLigne('regies', i)} className="text-[12px] font-extrabold text-white bg-rose-500 hover:bg-rose-600 px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm whitespace-nowrap">
+                                  <Plus className="w-3 h-3" />Ajouter un avoir
+                                </button>
+                              </div>
+                              {avoirsHt > 0 && (
+                                <div className="text-[12px] text-rose-700 font-semibold">Coût net : {formatEuro(baseHt)} − {formatEuro(avoirsHt)} = <span className="font-extrabold">{formatEuro(netHt)}</span> HT</div>
+                              )}
+                              {avoirs.map((a, aIdx) => {
+                                const montant = parseFloat(a.montantHt) || 0;
+                                const ttcAvoir = computeTtcPresta(montant, !!r.sansTva, r.tauxTva);
+                                return (
+                                  <div key={aIdx} className="rounded-lg border border-rose-200 bg-white p-1.5 space-y-1">
+                                    <div className="grid grid-cols-[1fr_1fr_auto] gap-1 items-center">
+                                      <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => updateAvoirLigne('regies', i, aIdx, { montantHt: e.target.value })} placeholder="Montant HT" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                      <input type="text" value={a.avoirNo || ''} onChange={(e) => updateAvoirLigne('regies', i, aIdx, { avoirNo: e.target.value })} placeholder="N° avoir" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                      <button onClick={() => removeAvoirLigne('regies', i, aIdx)} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
+                                        <Trash2 className="w-3 h-3" />
+                                      </button>
+                                    </div>
+                                    <input type="date" value={a.date || ''} onChange={(e) => updateAvoirLigne('regies', i, aIdx, { date: e.target.value })} className="w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px] text-rose-700" />
+                                    <FactureFileInput
+                                      fileId={a.file || ''}
+                                      onChange={(id) => updateAvoirLigne('regies', i, aIdx, { file: id })}
+                                      color="purple"
+                                      onOpenGmailSearch={onOpenGmailSearch}
+                                      gmailQuery={`${r.nom || ''} avoir`.trim()}
+                                      gmailContextLabel={`Avoir ${a.avoirNo || ''} — ${r.nom || 'Régie'} chez ${dossier.nom || ''}`.trim()}
+                                      gmailClientHint={dossier.nom || ''}
+                                      gmailQueryModes={[
+                                        { label: '🧾 N° avoir', query: a.avoirNo || '' },
+                                        { label: '📣 Avoir + régie', query: `${r.nom || ''} avoir`.trim() },
+                                        { label: '🏷 Régie + client', query: `${r.nom || ''} ${dossier.nom || ''}`.trim() },
+                                      ]}
+                                      label="avoir"
+                                      autoExtract={true}
+                                      onExtract={(data) => {
+                                        const updIa = {};
+                                        // 🔒 Re-pose le fichier dans la même écriture (anti « uploader 2 fois »).
+                                        if (data.__fileId) updIa.file = data.__fileId;
+                                        if (data.factureNo && !a.avoirNo) updIa.avoirNo = cleanFactureNo(data.factureNo);
+                                        const htA = htFromExtraction(data);
+                                        if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
+                                        if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
+                                        if (Object.keys(updIa).length > 0) updateAvoirLigne('regies', i, aIdx, updIa);
+                                      }}
+                                      pennylaneInfo={{
+                                        societe: d.societe || '',
+                                        supplierName: r.nom,
+                                        factureNo: a.avoirNo || `AVOIR-${r.factureNo || ''}`,
+                                        dateFacture: a.date || new Date().toISOString().slice(0, 10),
+                                        montantHt: -Math.abs(montant),
+                                        montantTtc: -Math.abs(ttcAvoir),
+                                        tauxTva: r.sansTva ? 0 : 20,
+                                        kind: 'avoir',
+                                        pushedId: a.pennylaneInvoiceId,
+                                      }}
+                                      onPennylaneSuccess={(id) => updateAvoirLigne('regies', i, aIdx, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                                    />
+                                  </div>
+                                );
+                              })}
+                              {avoirs.length === 0 && (
+                                <div className="text-[11px] text-rose-500 italic">Un avoir de régie ? Clique « Ajouter un avoir » pour saisir la note de crédit (déduite du coût).</div>
+                              )}
+                            </div>
+                          );
+                        })()}
                         {canCheckPaiements && (
                           <button onClick={() => updateRegie(i, { paye: !r.paye, datePaye: !r.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${r.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
                             {r.paye
@@ -27398,6 +27513,84 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       />
                     </>
                   )}
+                  {/* 🧾 AVOIRS / NOTES DE CRÉDIT — comme les fournisseurs : déduits du coût. */}
+                  {canSeeMarges && (() => {
+                    const avoirs = p.avoirs || [];
+                    const detail = d.poseursDetail?.[i];
+                    const avoirsHt = detail?.avoirsHt || 0;
+                    const baseHt = detail?.baseHt || 0;
+                    const netHt = detail?.ht ?? (baseHt - avoirsHt);
+                    return (
+                      <div className="mt-1.5 rounded-xl border-2 border-rose-300 bg-rose-50 p-2 space-y-1.5">
+                        <div className="flex items-center justify-between gap-1">
+                          <span className="text-[12px] font-extrabold text-rose-700 uppercase flex items-center gap-1">🧾 Avoirs / notes de crédit{avoirsHt > 0 ? ` · −${formatEuro(avoirsHt)}` : ''}</span>
+                          <button onClick={() => addAvoirLigne('poseurs', i)} className="text-[12px] font-extrabold text-white bg-rose-500 hover:bg-rose-600 px-2 py-1 rounded-lg flex items-center gap-1 shadow-sm whitespace-nowrap">
+                            <Plus className="w-3 h-3" />Ajouter un avoir
+                          </button>
+                        </div>
+                        {avoirsHt > 0 && (
+                          <div className="text-[12px] text-rose-700 font-semibold">Coût net : {formatEuro(baseHt)} − {formatEuro(avoirsHt)} = <span className="font-extrabold">{formatEuro(netHt)}</span> HT</div>
+                        )}
+                        {avoirs.map((a, aIdx) => {
+                          const montant = parseFloat(a.montantHt) || 0;
+                          const ttcAvoir = computeTtcPresta(montant, true, p.tauxTva);
+                          return (
+                            <div key={aIdx} className="rounded-lg border border-rose-200 bg-white p-1.5 space-y-1">
+                              <div className="grid grid-cols-[1fr_1fr_auto] gap-1 items-center">
+                                <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => updateAvoirLigne('poseurs', i, aIdx, { montantHt: e.target.value })} placeholder="Montant HT" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                <input type="text" value={a.avoirNo || ''} onChange={(e) => updateAvoirLigne('poseurs', i, aIdx, { avoirNo: e.target.value })} placeholder="N° avoir" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
+                                <button onClick={() => removeAvoirLigne('poseurs', i, aIdx)} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
+                                  <Trash2 className="w-3 h-3" />
+                                </button>
+                              </div>
+                              <input type="date" value={a.date || ''} onChange={(e) => updateAvoirLigne('poseurs', i, aIdx, { date: e.target.value })} className="w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px] text-rose-700" />
+                              <FactureFileInput
+                                fileId={a.file || ''}
+                                onChange={(id) => updateAvoirLigne('poseurs', i, aIdx, { file: id })}
+                                color="purple"
+                                onOpenGmailSearch={onOpenGmailSearch}
+                                gmailQuery={`${p.nom || ''} avoir`.trim()}
+                                gmailContextLabel={`Avoir ${a.avoirNo || ''} — ${p.nom || 'Poseur'} chez ${dossier.nom || ''}`.trim()}
+                                gmailClientHint={dossier.nom || ''}
+                                gmailQueryModes={[
+                                  { label: '🧾 N° avoir', query: a.avoirNo || '' },
+                                  { label: '🔧 Avoir + poseur', query: `${p.nom || ''} avoir`.trim() },
+                                  { label: '🏷 Poseur + client', query: `${p.nom || ''} ${dossier.nom || ''}`.trim() },
+                                ]}
+                                label="avoir"
+                                autoExtract={true}
+                                onExtract={(data) => {
+                                  const updIa = {};
+                                  // 🔒 Re-pose le fichier dans la même écriture (anti « uploader 2 fois »).
+                                  if (data.__fileId) updIa.file = data.__fileId;
+                                  if (data.factureNo && !a.avoirNo) updIa.avoirNo = cleanFactureNo(data.factureNo);
+                                  const htA = htFromExtraction(data);
+                                  if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
+                                  if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
+                                  if (Object.keys(updIa).length > 0) updateAvoirLigne('poseurs', i, aIdx, updIa);
+                                }}
+                                pennylaneInfo={{
+                                  societe: d.societe || '',
+                                  supplierName: p.nom,
+                                  factureNo: a.avoirNo || `AVOIR-${p.factureNo || ''}`,
+                                  dateFacture: a.date || new Date().toISOString().slice(0, 10),
+                                  montantHt: -Math.abs(montant),
+                                  montantTtc: -Math.abs(ttcAvoir),
+                                  tauxTva: 0,
+                                  kind: 'avoir',
+                                  pushedId: a.pennylaneInvoiceId,
+                                }}
+                                onPennylaneSuccess={(id) => updateAvoirLigne('poseurs', i, aIdx, { pennylaneInvoiceId: id, pennylanePushedAt: new Date().toISOString() })}
+                              />
+                            </div>
+                          );
+                        })}
+                        {avoirs.length === 0 && (
+                          <div className="text-[11px] text-rose-500 italic">Un avoir de poseur ? Clique « Ajouter un avoir » pour saisir la note de crédit (déduite du coût).</div>
+                        )}
+                      </div>
+                    );
+                  })()}
                   {canCheckPaiements && p.nom && (
                     <button onClick={() => updatePoseur(i, { paye: !p.paye, datePaye: !p.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded-lg text-[12px] font-bold ${p.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
                       {p.paye
