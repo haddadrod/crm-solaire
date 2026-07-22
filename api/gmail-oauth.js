@@ -1058,6 +1058,7 @@ export default async function handler(req, res) {
           numeroBl: ia.numeroBl || '',
           numeroCommande: ia.numeroCommande || '',
           description: ia.description || '',
+          societeFacturee: ia.societeFacturee || '',
           storagePath: ia.storagePath || '',
           originalFilename: ia.originalFilename || '',
           analyzedAt: ia.analyzedAt || r.updated_at || '',

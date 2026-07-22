@@ -97,7 +97,8 @@ Reply ONLY with a JSON object (no markdown). Use "" for unknown strings, 0 for u
   "emailClient": "<email if mentioned>",
   "numeroBl": "<BL number>",
   "numeroCommande": "<PO number>",
-  "description": "<short 1-line description>"
+  "description": "<short 1-line description>",
+  "societeFacturee": "<THE BILLED COMPANY = MY OWN company being invoiced — the « Facturé à » / « Client » / « Destinataire » / « Adresse de facturation » block (NOT the supplier logo). One of my group companies: YOLICO, ELSUN, ELSOL, SARL ELSOL, SAS YOLICO, etc. Return the raw name EXACTLY as written. If not found, return "".>"
 }`;
 
 const SUPPLIER_BLACKLIST = /^(elsol|sarl\s*elsol|sas\s*elsol|yolico|sas\s*yolico|sarl\s*yolico)\b/i;
@@ -229,6 +230,8 @@ async function extractFromPdf(base64) {
     numeroBl: String(parsed.numeroBl || ''),
     numeroCommande: String(parsed.numeroCommande || ''),
     description,
+    // 🏢 Société de MON groupe destinataire de la facture (« facturé à »).
+    societeFacturee: String(parsed.societeFacturee || ''),
   };
 }
 
