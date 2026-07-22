@@ -233,21 +233,37 @@ function normalizeDossierDates(d) {
 // récent gagne. Un dossier absent d'un côté est conservé (sauf s'il a été
 // supprimé volontairement → tombstone).
 function mergeDossiersArrays(localArr, remoteArr, tombstones = new Set()) {
-  const ts = (x) => { const t = new Date((x && (x.modifiedAt || x.savedAt)) || 0).getTime(); return isNaN(t) ? 0 : t; };
-  const remoteById = new Map();
-  (remoteArr || []).forEach(r => { if (r && r.localId) remoteById.set(r.localId, r); });
+  const now = Date.now();
+  // ⏰ Garde anti-horloge déréglée : un modifiedAt DANS LE FUTUR (> now + 2 min)
+  // vient d'un poste à l'heure fausse → on le traite comme « très vieux » pour
+  // qu'il ne gagne jamais contre une modif réelle (sinon un poste en avance
+  // écraserait éternellement les pointages des autres).
+  const ts = (x) => {
+    const t = new Date((x && (x.modifiedAt || x.savedAt)) || 0).getTime();
+    if (isNaN(t)) return 0;
+    if (t > now + 120000) return 0;
+    return t;
+  };
+  // 📐 Ordre de sortie = ordre DISTANT (la base partagée) + les locaux
+  // nouveaux à la fin. Indispensable pour que deux postes convergent vers le
+  // MÊME JSON : avec l'ordre local en tête, chaque poste réécrivait « sa »
+  // permutation à l'infini (ping-pong d'écritures).
+  const localById = new Map();
+  (localArr || []).forEach(l => { if (l && l.localId) localById.set(l.localId, l); });
   const out = [];
   const seen = new Set();
-  (localArr || []).forEach(l => {
-    if (!l || !l.localId) return;
-    seen.add(l.localId);
-    const r = remoteById.get(l.localId);
-    if (!r) { if (!tombstones.has(l.localId)) out.push(l); return; }
-    out.push(ts(r) > ts(l) ? r : l);
-  });
   (remoteArr || []).forEach(r => {
     if (!r || !r.localId || seen.has(r.localId)) return;
-    if (!tombstones.has(r.localId)) out.push(r);
+    seen.add(r.localId);
+    if (tombstones.has(r.localId)) return;
+    const l = localById.get(r.localId);
+    if (!l) { out.push(r); return; }
+    // Égalité de dates → le LOCAL gagne (c'est lui qu'on a sous les yeux).
+    out.push(ts(l) >= ts(r) ? l : r);
+  });
+  (localArr || []).forEach(l => {
+    if (!l || !l.localId || seen.has(l.localId)) return;
+    if (!tombstones.has(l.localId)) out.push(l);
   });
   return out;
 }
@@ -4027,7 +4043,42 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // 💰 Pointage rapide d'un prestataire (poseur/régie/fournisseur) sur un
   // dossier — toggle paye + datePaye. Réutilisé par PerfList (Dashboard) et
   // PaiementsView (Rapport paiements).
+  // 🗒️ JOURNAL DES POINTAGES — clé SÉPARÉE de dossiers-data : même si un poste
+  // écrase la base, le journal, lui, est append-only et ne peut pas être
+  // « dé-pointé ». C'est la trace de QUI a pointé QUOI et QUAND — et la preuve
+  // en cas d'écrasement (un payé journalisé qui redevient non payé sans ligne
+  // de dé-pointage = écrasé par un autre poste).
+  const logPaiement = async (entries) => {
+    try {
+      const list = (Array.isArray(entries) ? entries : [entries]).filter(Boolean);
+      if (!list.length) return;
+      const r = await window.storage.get('paiements-log');
+      let arr = [];
+      try { arr = JSON.parse(r?.value || '[]'); if (!Array.isArray(arr)) arr = []; } catch (e) { arr = []; }
+      const at = new Date().toISOString();
+      arr.push(...list.map(e => ({ at, par: currentUser || '(?)', ...e })));
+      if (arr.length > 1000) arr = arr.slice(-1000);
+      await window.storage.set('paiements-log', JSON.stringify(arr));
+    } catch (e) { /* le journal ne doit jamais bloquer le pointage */ }
+  };
+
   const handleTogglePresta = (localId, nom, kind) => {
+    // 🗒️ Journalise AVANT la mise à jour (état courant = avant bascule).
+    try {
+      const dRef = (dossiers || []).find(x => x.localId === localId);
+      if (dRef) {
+        const arrK = kind === 'poseur' ? 'poseurs' : kind === 'regie' ? 'regies' : 'fournisseurs';
+        const ligne = (dRef[arrK] || []).find(x => x && x.nom === nom);
+        logPaiement({
+          action: ligne && ligne.paye ? 'dé-pointé' : 'payé',
+          kind, prestataire: nom,
+          client: `${dRef.nom || ''} ${dRef.prenom || ''}`.trim(),
+          dossierId: dRef.id || dRef.localId,
+          factureNo: (ligne && ligne.factureNo) || '',
+          source: 'rapport (bouton ligne)',
+        });
+      }
+    } catch (e) {}
     // ⏱️ Horodatage OBLIGATOIRE : la fusion multi-postes départage par
     // modifiedAt — sans lui, ce pointage perdrait contre n'importe quelle
     // modif plus ancienne mais datée d'un autre poste.
@@ -4057,6 +4108,24 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // sur le dossier) OU de { localId, idx } (pointe UNIQUEMENT la ligne idx —
   // indispensable quand un dossier a 2 factures du même prestataire).
   const handleMarkPrestaPaye = (targets, nom, kind) => {
+    // 🗒️ Journal : une entrée par facture pointée par le virement groupé.
+    try {
+      const entries = (targets || []).map(t => {
+        const o = (t && typeof t === 'object') ? t : { localId: t, idx: null };
+        const dRef = (dossiers || []).find(x => x.localId === o.localId);
+        if (!dRef) return null;
+        const arrK = kind === 'poseur' ? 'poseurs' : kind === 'regie' ? 'regies' : 'fournisseurs';
+        const ligne = o.idx != null ? (dRef[arrK] || [])[o.idx] : (dRef[arrK] || []).find(x => x && x.nom === nom);
+        return {
+          action: 'payé', kind, prestataire: nom,
+          client: `${dRef.nom || ''} ${dRef.prenom || ''}`.trim(),
+          dossierId: dRef.id || dRef.localId,
+          factureNo: (ligne && ligne.factureNo) || '',
+          source: 'virement groupé',
+        };
+      });
+      logPaiement(entries);
+    } catch (e) {}
     const byId = new Map();
     (targets || []).forEach(t => {
       const o = (t && typeof t === 'object') ? t : { localId: t, idx: null };
@@ -4080,6 +4149,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // plusieurs dossiers d'un coup, on coche dans le rapport, on valide, et
   // tous passent en payeClient=true avec la date du jour.
   const handleMarkClientPaye = (localIds) => {
+    // 🗒️ Journal : encaissements client pointés en groupe.
+    try {
+      logPaiement((localIds || []).map(lid => {
+        const dRef = (dossiers || []).find(x => x.localId === lid);
+        if (!dRef || dRef.payeClient) return null;
+        return { action: 'encaissement client', kind: 'client', prestataire: '', client: `${dRef.nom || ''} ${dRef.prenom || ''}`.trim(), dossierId: dRef.id || dRef.localId, factureNo: '', source: 'encaissement groupé' };
+      }));
+    } catch (e) {}
     const idSet = new Set(localIds);
     const today = new Date().toISOString().split('T')[0];
     setDossiers(prev => prev.map(d => {
@@ -10963,6 +11040,52 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
 
 // ====================== AUTRES VUES (inchangées) ======================
 
+// 🗒️ JOURNAL DES POINTAGES — lit la clé append-only 'paiements-log' (séparée
+// de dossiers-data, donc insensible aux écrasements de la base). Permet de
+// prouver qui a pointé quoi et quand, et de repérer les pointages « disparus »
+// (payé journalisé mais redevenu non payé sans ligne de dé-pointage).
+function JournalPointagesPanel() {
+  const [open, setOpen] = useState(false);
+  const [entries, setEntries] = useState(null);
+  useEffect(() => {
+    if (!open || entries !== null) return;
+    (async () => {
+      try {
+        const r = await window.storage.get('paiements-log');
+        let arr = [];
+        try { arr = JSON.parse(r?.value || '[]'); if (!Array.isArray(arr)) arr = []; } catch (e) { arr = []; }
+        setEntries(arr.slice().reverse());
+      } catch (e) { setEntries([]); }
+    })();
+  }, [open, entries]);
+  return (
+    <div className="bg-white rounded-2xl border-2 border-slate-200 overflow-hidden">
+      <button onClick={() => { setOpen(o => !o); if (!open) setEntries(null); }} className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-slate-50 text-left">
+        <span className="text-lg">🗒️</span>
+        <span className="font-bold text-slate-800 text-sm">Journal des pointages — qui a pointé quoi, quand</span>
+        <span className="text-[11px] text-slate-400">(inviolable — ne peut pas être écrasé par un autre poste)</span>
+        <span className="ml-auto text-slate-400 text-xs">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="border-t border-slate-100 max-h-80 overflow-y-auto divide-y divide-slate-50">
+          {entries === null && <div className="p-3 text-[13px] text-slate-400">⏳ Chargement…</div>}
+          {entries !== null && entries.length === 0 && <div className="p-3 text-[13px] text-slate-400 italic">Aucun pointage journalisé pour l'instant (le journal démarre maintenant).</div>}
+          {(entries || []).map((e, i) => (
+            <div key={i} className="px-4 py-1.5 flex items-center gap-2 flex-wrap text-[12px]">
+              <span className="text-slate-400 font-mono whitespace-nowrap">{e.at ? new Date(e.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : ''}</span>
+              <span className={`font-bold px-1.5 py-0.5 rounded-full ${e.action === 'payé' ? 'bg-emerald-100 text-emerald-700' : e.action === 'dé-pointé' ? 'bg-rose-100 text-rose-700' : 'bg-blue-100 text-blue-700'}`}>{e.action}</span>
+              <span className="font-semibold text-slate-700">{e.client}</span>
+              {e.prestataire && <span className="text-slate-500">· {e.prestataire}</span>}
+              {e.factureNo && <span className="font-mono text-indigo-600">🧾 {e.factureNo}</span>}
+              <span className="ml-auto text-slate-400">👤 {e.par} · {e.source || ''}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexioCaps = {}, activeSociete = '', onShowQuick, onTogglePenalite, onToggleLitige, onMarkPrestaPaye, onMarkClientPaye }) {
   // 🎯 Filtre par défaut : ne montrer que les dossiers qu'on PEUT payer
   // maintenant (client a payé). Toggle pour voir aussi les "bloqués"
@@ -11101,6 +11224,8 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
   };
   return (
     <div className="space-y-4">
+      {/* 🗒️ Journal des pointages — trace inviolable de tous les pointages payé */}
+      <JournalPointagesPanel />
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-5 text-white shadow-lg">
           <div className="text-xs font-semibold opacity-90 uppercase">✅ Reçu des financeurs</div>
