@@ -3977,24 +3977,25 @@ export default function DossierSaisie({ authUser, onLogout }) {
   };
   // 💰 Validation d'un virement groupé : passe en payé tous les dossiers
   // sélectionnés (laisse intacts ceux déjà payés). Un seul setDossiers atomique.
-  const handleMarkPrestaPaye = (localIds, nom, kind) => {
-    const idSet = new Set(localIds);
+  // `targets` : tableau de localIds (héritage : pointe TOUTES les lignes du nom
+  // sur le dossier) OU de { localId, idx } (pointe UNIQUEMENT la ligne idx —
+  // indispensable quand un dossier a 2 factures du même prestataire).
+  const handleMarkPrestaPaye = (targets, nom, kind) => {
+    const byId = new Map();
+    (targets || []).forEach(t => {
+      const o = (t && typeof t === 'object') ? t : { localId: t, idx: null };
+      if (!byId.has(o.localId)) byId.set(o.localId, []);
+      byId.get(o.localId).push(o.idx);
+    });
+    const arrKey = kind === 'poseur' ? 'poseurs' : kind === 'regie' ? 'regies' : kind === 'fournisseur' ? 'fournisseurs' : null;
+    if (!arrKey) return;
     const today = new Date().toISOString().split('T')[0];
     setDossiers(prev => prev.map(d => {
-      if (!idSet.has(d.localId)) return d;
-      if (kind === 'poseur') {
-        const poseurs = (d.poseurs || []).map(p => p && p.nom === nom && !p.paye ? { ...p, paye: true, datePaye: today } : p);
-        return { ...d, poseurs };
-      }
-      if (kind === 'regie') {
-        const regies = (d.regies || []).map(r => r && r.nom === nom && !r.paye ? { ...r, paye: true, datePaye: today } : r);
-        return { ...d, regies };
-      }
-      if (kind === 'fournisseur') {
-        const fournisseurs = (d.fournisseurs || []).map(f => f && f.nom === nom && !f.paye ? { ...f, paye: true, datePaye: today } : f);
-        return { ...d, fournisseurs };
-      }
-      return d;
+      if (!byId.has(d.localId)) return d;
+      const idxs = byId.get(d.localId);
+      const wantAll = idxs.some(i => i === null || i === undefined);
+      const arr = (d[arrKey] || []).map((x, i) => (x && x.nom === nom && !x.paye && (wantAll || idxs.includes(i))) ? { ...x, paye: true, datePaye: today } : x);
+      return { ...d, [arrKey]: arr };
     }));
   };
 
@@ -4042,7 +4043,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const map = {};
     // Clé inclut la société → 'IONERGIK chez Yolico' et 'IONERGIK chez Elsun'
     // restent séparés même en vue 'Toutes'. C'est la réalité comptable.
-    const addEntry = (nom, type, ttc, paye, datePaye, dossier, factureNo = '') => {
+    const addEntry = (nom, type, ttc, paye, datePaye, dossier, factureNo = '', ligneIdx = null) => {
       if (!nom || !ttc) return;
       const soc = dossier.societe || '';
       const key = `${type}::${nom}::${soc}`;
@@ -4066,13 +4067,13 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (dossier.payeClient) map[key].totalAPayerMaintenant += ttc;
         else map[key].totalEnAttenteFinanceur += ttc;
       }
-      map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne, prestataireType: type, societe: soc, factureNo });
+      map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne, prestataireType: type, societe: soc, factureNo, ligneIdx });
     };
     dossiersFiltres.forEach(d => {
-      (d.fournisseursDetail || []).forEach(f => addEntry(f.nom, 'Fournisseur', f.ttc, f.paye, f.datePaye, d, f.factureNo || ''));
+      (d.fournisseursDetail || []).forEach((f, fi) => addEntry(f.nom, 'Fournisseur', f.ttc, f.paye, f.datePaye, d, f.factureNo || '', fi));
       // Multi-régies : itère sur regiesDetail
-      (d.regiesDetail || []).forEach(r => addEntry(r.nom, 'Régie', r.ttc, r.paye, r.datePaye, d, r.factureNo || ''));
-      (d.poseursDetail || []).forEach(p => addEntry(p.nom, 'Poseur', p.ttc, p.paye, p.datePaye, d, p.factureNo || ''));
+      (d.regiesDetail || []).forEach((r, ri) => addEntry(r.nom, 'Régie', r.ttc, r.paye, r.datePaye, d, r.factureNo || '', ri));
+      (d.poseursDetail || []).forEach((po, pi) => addEntry(po.nom, 'Poseur', po.ttc, po.paye, po.datePaye, d, po.factureNo || '', pi));
       // Commissions équipe interne — dès qu'un nom est rempli
       ROLES_INTERNES.forEach(role => {
         const nom = d[role.key];
@@ -10972,7 +10973,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
       const next = { ...prev };
       const set = new Set();
       lignes.forEach(l => {
-        if (!l.paye && l.financeurPaye && l.dossierLocalId) set.add(l.dossierLocalId);
+        if (!l.paye && l.financeurPaye && l.dossierLocalId) set.add(`${l.dossierLocalId}|${l.ligneIdx ?? 'x'}`);
       });
       if (set.size === 0) { delete next[key]; return next; }
       next[key] = set;
@@ -11458,7 +11459,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                         {kind && onMarkPrestaPaye && (() => {
                           const aPayer = lignesAffichees.filter(l => !l.paye && l.financeurPaye && l.dossierLocalId);
                           if (aPayer.length === 0) return null;
-                          const allChecked = aPayer.every(l => selSet.has(l.dossierLocalId));
+                          const allChecked = aPayer.every(l => selSet.has(`${l.dossierLocalId}|${l.ligneIdx ?? 'x'}`));
                           return (
                             <button
                               onClick={() => allChecked ? clearSelection(prestaKey) : selectAllAPayer(prestaKey, lignesAffichees)}
@@ -11493,9 +11494,11 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                       const toMark = [];
                       lignesFiltrees.forEach(l => {
                         if (l.paye) return;
-                        if (!selSet.has(l.dossierLocalId)) return;
+                        if (!selSet.has(`${l.dossierLocalId}|${l.ligneIdx ?? 'x'}`)) return;
                         totalSel += l.ttc || 0;
-                        toMark.push(l.dossierLocalId);
+                        // 🎯 On pointe LA ligne précise (index), pas tout le dossier :
+                        // un dossier peut avoir 2 factures du même prestataire.
+                        toMark.push({ localId: l.dossierLocalId, idx: l.ligneIdx ?? null });
                       });
                       if (toMark.length === 0) return null;
                       return (
@@ -11537,7 +11540,8 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                       const canOpen = !!(l.dossierLocalId && onShowQuick);
                       const handleOpen = () => canOpen && onShowQuick(l.dossierLocalId, scrollTargetFor(l.prestataireType || p.type));
                       const canCheck = !!(kind && onMarkPrestaPaye && etat === 'a_payer' && l.dossierLocalId);
-                      const isChecked = selSet.has(l.dossierLocalId);
+                      const selKey = `${l.dossierLocalId}|${l.ligneIdx ?? 'x'}`;
+                      const isChecked = selSet.has(selKey);
                       return (
                         <div
                           key={i}
@@ -11553,7 +11557,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                               <input
                                 type="checkbox"
                                 checked={isChecked}
-                                onChange={(e) => { e.stopPropagation(); toggleSelected(prestaKey, l.dossierLocalId); }}
+                                onChange={(e) => { e.stopPropagation(); toggleSelected(prestaKey, selKey); }}
                                 onClick={(e) => e.stopPropagation()}
                                 className="w-4 h-4 accent-blue-600 cursor-pointer flex-shrink-0"
                                 title="Cocher pour inclure dans le prochain virement"
