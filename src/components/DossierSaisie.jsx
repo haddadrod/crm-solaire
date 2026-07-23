@@ -11119,16 +11119,38 @@ function JournalPointagesPanel() {
 // (PDF mal classés par le Tri factures) qui masquent une vraie dette.
 function AuditAvoirsPanel({ dossiers, onShowQuick, onSupprimerAvoir }) {
   const [open, setOpen] = useState(false);
+  // 👁️ Ouvre un PDF stocké (facture ou avoir) dans un nouvel onglet.
+  const voirPdf = async (fileId) => {
+    if (!fileId) return;
+    const win = window.open('about:blank', '_blank');
+    try {
+      const r = await window.storage.get(`file:${fileId}`);
+      if (!r?.value) { if (win) win.close(); alert('❌ PDF introuvable.'); return; }
+      const data = JSON.parse(r.value);
+      const m = (data.dataUrl || '').match(/^data:([^;]+);base64,(.+)$/);
+      if (!m) { if (win) win.close(); alert('❌ PDF illisible.'); return; }
+      const bytes = atob(m[2]);
+      const arr = new Uint8Array(bytes.length);
+      for (let i = 0; i < bytes.length; i++) arr[i] = bytes.charCodeAt(i);
+      const url = URL.createObjectURL(new Blob([arr], { type: m[1] }));
+      if (win && !win.closed) win.location.href = url;
+      setTimeout(() => { try { URL.revokeObjectURL(url); } catch (e) {} }, 60000);
+    } catch (e) { if (win) try { win.close(); } catch (_) {} }
+  };
   const items = useMemo(() => {
     const out = [];
     (dossiers || []).forEach(d => {
       [['poseurs', '🔧 Poseur'], ['regies', '📣 Régie'], ['fournisseurs', '📦 Fournisseur']].forEach(([arrKey, cat]) => {
         (d[arrKey] || []).forEach((x, idx) => {
           (x && Array.isArray(x.avoirs) ? x.avoirs : []).forEach((a, aIdx) => {
+            const factureHt = parseFloat(x.htCustom) || 0;
+            const avoirHt = parseFloat(a && a.montantHt) || 0;
             out.push({
               localId: d.localId, client: `${d.nom || ''} ${d.prenom || ''}`.trim(), dossierId: d.id || '',
               cat, arrKey, idx, aIdx, nom: (x.nom || '(sans nom)'),
-              montantHt: parseFloat(a && a.montantHt) || 0, avoirNo: (a && a.avoirNo) || '', date: (a && a.date) || '',
+              montantHt: avoirHt, avoirNo: (a && a.avoirNo) || '', date: (a && a.date) || '',
+              avoirFile: (a && a.file) || '',
+              factureNo: x.factureNo || '', factureHt, factureFile: x.factureFile || '',
             });
           });
         });
@@ -11162,15 +11184,31 @@ function AuditAvoirsPanel({ dossiers, onShowQuick, onSupprimerAvoir }) {
                 <span className="text-[12px] font-bold text-rose-700">{g.cat} · {g.nom} ({g.items.length})</span>
                 <span className="text-[12px] font-bold text-rose-700">−{formatEuro(g.total)}</span>
               </div>
-              {g.items.map((it, ii) => (
-                <div key={ii} className="px-4 py-1.5 flex items-center gap-2 flex-wrap text-[12px] border-b border-slate-50">
-                  <button onClick={() => onShowQuick && onShowQuick(it.localId, it.arrKey)} className="font-semibold text-slate-700 hover:text-violet-700 hover:underline text-left" title="Ouvrir la fiche du dossier">{it.client}{it.dossierId ? ` · #${it.dossierId}` : ''}</button>
-                  {it.avoirNo && <span className="font-mono text-indigo-600">🧾 {it.avoirNo}</span>}
-                  {it.date && <span className="text-slate-400">📅 {new Date(it.date).toLocaleDateString('fr-FR')}</span>}
-                  <span className="ml-auto font-bold text-rose-700 whitespace-nowrap">−{formatEuro(it.montantHt)} HT</span>
-                  <button onClick={() => onSupprimerAvoir && onSupprimerAvoir(it.localId, it.arrKey, it.idx, it.aIdx)} className="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white whitespace-nowrap" title="Supprimer cet avoir — le montant redevient dû au prestataire">🗑 Supprimer</button>
+              {g.items.map((it, ii) => {
+                const net = it.factureHt - it.montantHt;
+                return (
+                <div key={ii} className="px-4 py-2 border-b border-slate-50 space-y-0.5">
+                  <div className="flex items-center gap-2 flex-wrap text-[12px]">
+                    <button onClick={() => onShowQuick && onShowQuick(it.localId, it.arrKey)} className="font-semibold text-slate-700 hover:text-violet-700 hover:underline text-left" title="Ouvrir la fiche du dossier">{it.client}{it.dossierId ? ` · #${it.dossierId}` : ''}</button>
+                    {it.date && <span className="text-slate-400">📅 {new Date(it.date).toLocaleDateString('fr-FR')}</span>}
+                    <button onClick={() => onSupprimerAvoir && onSupprimerAvoir(it.localId, it.arrKey, it.idx, it.aIdx)} className="ml-auto px-2 py-0.5 rounded-lg text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white whitespace-nowrap" title="Supprimer cet avoir — le montant redevient dû au prestataire">🗑 Supprimer l'avoir</button>
+                  </div>
+                  {/* 💡 Comparaison facture vs avoir : de quoi DÉCIDER. Un « avoir » dont
+                      le PDF est en réalité une facture = mal classé → à supprimer. */}
+                  <div className="flex items-center gap-2 flex-wrap text-[12px] pl-1">
+                    <span className="text-slate-600">Facture <span className="font-mono font-bold text-indigo-600">{it.factureNo || '(sans n°)'}</span> : <b>{it.factureHt > 0 ? formatEuro(it.factureHt) : 'montant auto'}</b></span>
+                    {it.factureFile && <button onClick={() => voirPdf(it.factureFile)} className="px-1.5 py-0.5 rounded bg-indigo-50 border border-indigo-200 text-indigo-700 font-bold text-[11px]" title="Voir le PDF de la FACTURE">👁 facture</button>}
+                    <span className="text-rose-700">− avoir <span className="font-mono font-bold">{it.avoirNo || '(sans n°)'}</span> : <b>{formatEuro(it.montantHt)}</b></span>
+                    {it.avoirFile ? (
+                      <button onClick={() => voirPdf(it.avoirFile)} className="px-1.5 py-0.5 rounded bg-rose-50 border border-rose-300 text-rose-700 font-bold text-[11px]" title="Voir le PDF de l'AVOIR — s'il ressemble à une facture normale, il est mal classé : supprime-le">👁 avoir</button>
+                    ) : (
+                      <span className="text-[11px] text-amber-600 font-semibold" title="Aucun PDF joint à cet avoir — suspect">⚠️ sans PDF</span>
+                    )}
+                    <span className={`ml-auto font-bold whitespace-nowrap ${it.factureHt > 0 && Math.abs(net) < 0.01 ? 'text-amber-600' : 'text-slate-700'}`}>= reste dû {it.factureHt > 0 ? formatEuro(net) : `−${formatEuro(it.montantHt)}`}{it.factureHt > 0 && Math.abs(net) < 0.01 ? ' ⚠️ tout annulé' : ''}</span>
+                  </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           ))}
         </div>
