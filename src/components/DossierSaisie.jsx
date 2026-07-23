@@ -4064,6 +4064,27 @@ export default function DossierSaisie({ authUser, onLogout }) {
     } catch (e) { /* le journal ne doit jamais bloquer le pointage */ }
   };
 
+  // 🗑️ Suppression d'un avoir depuis l'audit (Rapport paiements) — le montant
+  // redevient DÛ au prestataire. Journalisé.
+  const handleSupprimerAvoir = (localId, arrKey, idx, aIdx) => {
+    const dRef = (dossiers || []).find(x => x.localId === localId);
+    const ligne = dRef && (dRef[arrKey] || [])[idx];
+    const a = ligne && (ligne.avoirs || [])[aIdx];
+    if (!a) return;
+    if (!window.confirm(`Supprimer cet avoir de ${formatEuro(parseFloat(a.montantHt) || 0)} HT sur ${ligne.nom || ''} (${`${dRef.nom || ''} ${dRef.prenom || ''}`.trim()}) ?\n\n➡️ Le montant sera à nouveau DÛ au prestataire.`)) return;
+    try {
+      logPaiement({ action: 'avoir supprimé', kind: arrKey, prestataire: ligne.nom || '', client: `${dRef.nom || ''} ${dRef.prenom || ''}`.trim(), dossierId: dRef.id || localId, factureNo: a.avoirNo || '', source: 'audit avoirs' });
+    } catch (e) {}
+    const now = new Date().toISOString();
+    setDossiers(prev => prev.map(d => {
+      if (d.localId !== localId) return d;
+      const list = [...(d[arrKey] || [])];
+      const x = list[idx]; if (!x) return d;
+      list[idx] = { ...x, avoirs: (x.avoirs || []).filter((_, i) => i !== aIdx) };
+      return { ...d, [arrKey]: list, savedAt: now, modifiedAt: now, modifiedBy: currentUser || '(audit avoirs)' };
+    }));
+  };
+
   const handleTogglePresta = (localId, nom, kind) => {
     // 🗒️ Journalise AVANT la mise à jour (état courant = avant bascule).
     try {
@@ -6499,6 +6520,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           activeSociete={activeSociete}
           onMarkPrestaPaye={handleMarkPrestaPaye}
           onMarkClientPaye={handleMarkClientPaye}
+          onSupprimerAvoir={handleSupprimerAvoir}
           onShowQuick={(id, scrollTo) => { setShowQuickViewId(id); setQuickViewScrollTo(scrollTo || null); }}
           onTogglePenalite={(dossierLocalId, tentativeIdx) => {
             const now = new Date().toISOString();
@@ -11091,7 +11113,73 @@ function JournalPointagesPanel() {
   );
 }
 
-function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexioCaps = {}, activeSociete = '', onShowQuick, onTogglePenalite, onToggleLitige, onMarkPrestaPaye, onMarkClientPaye }) {
+// 🧾 AUDIT DES AVOIRS — liste TOUS les avoirs saisis sur les lignes
+// prestataires (poseurs / régies / fournisseurs), groupés par prestataire,
+// avec suppression en 1 clic. Indispensable pour repérer les FAUX avoirs
+// (PDF mal classés par le Tri factures) qui masquent une vraie dette.
+function AuditAvoirsPanel({ dossiers, onShowQuick, onSupprimerAvoir }) {
+  const [open, setOpen] = useState(false);
+  const items = useMemo(() => {
+    const out = [];
+    (dossiers || []).forEach(d => {
+      [['poseurs', '🔧 Poseur'], ['regies', '📣 Régie'], ['fournisseurs', '📦 Fournisseur']].forEach(([arrKey, cat]) => {
+        (d[arrKey] || []).forEach((x, idx) => {
+          (x && Array.isArray(x.avoirs) ? x.avoirs : []).forEach((a, aIdx) => {
+            out.push({
+              localId: d.localId, client: `${d.nom || ''} ${d.prenom || ''}`.trim(), dossierId: d.id || '',
+              cat, arrKey, idx, aIdx, nom: (x.nom || '(sans nom)'),
+              montantHt: parseFloat(a && a.montantHt) || 0, avoirNo: (a && a.avoirNo) || '', date: (a && a.date) || '',
+            });
+          });
+        });
+      });
+    });
+    out.sort((a, b) => (a.nom || '').localeCompare(b.nom || '') || b.montantHt - a.montantHt);
+    return out;
+  }, [dossiers]);
+  const total = items.reduce((sm, i) => sm + i.montantHt, 0);
+  if (items.length === 0) return null;
+  // Groupes par prestataire pour les sous-totaux
+  const groupes = [];
+  items.forEach(it => {
+    let g = groupes.find(x => x.nom === it.nom && x.cat === it.cat);
+    if (!g) { g = { nom: it.nom, cat: it.cat, items: [], total: 0 }; groupes.push(g); }
+    g.items.push(it); g.total += it.montantHt;
+  });
+  return (
+    <div className="bg-white rounded-2xl border-2 border-rose-200 overflow-hidden">
+      <button onClick={() => setOpen(o => !o)} className="w-full flex items-center gap-2 px-4 py-2.5 hover:bg-rose-50/50 text-left">
+        <span className="text-lg">🧾</span>
+        <span className="font-bold text-slate-800 text-sm">Audit des avoirs — {items.length} avoir{items.length > 1 ? 's' : ''} · −{formatEuro(total)} déduits des dettes</span>
+        <span className="text-[11px] text-rose-500 font-semibold">vérifie qu'ils sont tous légitimes — un faux avoir masque une vraie dette</span>
+        <span className="ml-auto text-slate-400 text-xs">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <div className="border-t border-rose-100 max-h-96 overflow-y-auto">
+          {groupes.map((g, gi) => (
+            <div key={gi}>
+              <div className="px-4 py-1.5 bg-rose-50 border-y border-rose-100 flex items-center justify-between sticky top-0">
+                <span className="text-[12px] font-bold text-rose-700">{g.cat} · {g.nom} ({g.items.length})</span>
+                <span className="text-[12px] font-bold text-rose-700">−{formatEuro(g.total)}</span>
+              </div>
+              {g.items.map((it, ii) => (
+                <div key={ii} className="px-4 py-1.5 flex items-center gap-2 flex-wrap text-[12px] border-b border-slate-50">
+                  <button onClick={() => onShowQuick && onShowQuick(it.localId, it.arrKey)} className="font-semibold text-slate-700 hover:text-violet-700 hover:underline text-left" title="Ouvrir la fiche du dossier">{it.client}{it.dossierId ? ` · #${it.dossierId}` : ''}</button>
+                  {it.avoirNo && <span className="font-mono text-indigo-600">🧾 {it.avoirNo}</span>}
+                  {it.date && <span className="text-slate-400">📅 {new Date(it.date).toLocaleDateString('fr-FR')}</span>}
+                  <span className="ml-auto font-bold text-rose-700 whitespace-nowrap">−{formatEuro(it.montantHt)} HT</span>
+                  <button onClick={() => onSupprimerAvoir && onSupprimerAvoir(it.localId, it.arrKey, it.idx, it.aIdx)} className="px-2 py-0.5 rounded-lg text-[11px] font-bold bg-rose-600 hover:bg-rose-700 text-white whitespace-nowrap" title="Supprimer cet avoir — le montant redevient dû au prestataire">🗑 Supprimer</button>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexioCaps = {}, activeSociete = '', onShowQuick, onTogglePenalite, onToggleLitige, onMarkPrestaPaye, onMarkClientPaye, onSupprimerAvoir }) {
   // 🎯 Filtre par défaut : ne montrer que les dossiers qu'on PEUT payer
   // maintenant (client a payé). Toggle pour voir aussi les "bloqués"
   // (en attente d'encaissement client) et les déjà payés.
@@ -11231,6 +11319,8 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
     <div className="space-y-4">
       {/* 🗒️ Journal des pointages — trace inviolable de tous les pointages payé */}
       <JournalPointagesPanel />
+      {/* 🧾 Audit des avoirs — repérer/supprimer les faux avoirs qui masquent une dette */}
+      <AuditAvoirsPanel dossiers={dossiers} onShowQuick={onShowQuick} onSupprimerAvoir={onSupprimerAvoir} />
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
         <div className="bg-gradient-to-br from-emerald-500 to-teal-500 rounded-2xl p-5 text-white shadow-lg">
           <div className="text-xs font-semibold opacity-90 uppercase">✅ Reçu des financeurs</div>
