@@ -829,7 +829,10 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
   // (ex : avoirs) puissent re-poser le fichier dans la MÊME écriture.
   // Sans ça : onChange(id) puis onExtract(listePérimée) → le PDF sautait
   // (il fallait uploader 2 fois).
-  const runExtraction = async (base64DataUrl, mimeType, extractedFileId = null) => {
+  // opts.manual : relecture déclenchée par le bouton ✨ sur un PDF déjà chargé
+  // → data.__manual = true chez les handlers, qui ÉCRASENT alors le montant
+  // existant avec celui lu sur la facture (au lieu de ne remplir que si vide).
+  const runExtraction = async (base64DataUrl, mimeType, extractedFileId = null, opts = {}) => {
     if (!onExtract) return;
     setExtracting(true);
     try {
@@ -847,7 +850,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       // Si le composant a été unmount entre temps (modale fermée par l'user),
       // on n'invoque pas onExtract (qui tenterait de mettre à jour des states
       // d'un parent peut-être démonté aussi).
-      if (isMountedRef.current) onExtract({ ...(payload.data || {}), __fileId: extractedFileId || fileId || '' });
+      if (isMountedRef.current) onExtract({ ...(payload.data || {}), __fileId: extractedFileId || fileId || '', __manual: !!opts.manual });
     } catch (e) {
       if (isMountedRef.current) alert(`Lecture IA de la facture : ${e.message}`);
     } finally {
@@ -892,7 +895,7 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       const r = await window.storage.get(`file:${fileId}`);
       if (!r?.value) { alert('❌ Fichier introuvable.'); return; }
       const data = JSON.parse(r.value);
-      await runExtraction(data.dataUrl, data.type || 'application/pdf');
+      await runExtraction(data.dataUrl, data.type || 'application/pdf', null, { manual: true });
     } catch (e) { alert('Erreur : ' + e.message); }
   };
 
@@ -20957,7 +20960,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                               const sansTvaDetecte = (typeof data.tauxTva === 'number' && data.tauxTva === 0);
                               if (sansTvaDetecte && !r.sansTva) { updIa.sansTva = true; updIa.tauxTva = 0; }
                               const htR = htFromExtraction(data);
-                              if (htR > 0 && !r.htCustom) updIa.htCustom = String(htR);
+                              if (htR > 0 && (data.__manual || !r.htCustom)) updIa.htCustom = String(htR);
                               if (data.dateFacture && !r.dateFacture) updIa.dateFacture = String(data.dateFacture);
                               if (Object.keys(updIa).length > 0) upd(updIa);
                               if (updIa.factureNo && !r.factureGroupee) {
@@ -21109,7 +21112,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             if (data.factureNo && !p.factureNo) updIa.factureNo = cleanFactureNo(data.factureNo);
                             if (data.bl && !p.bl) updIa.bl = String(data.bl);
                             const htP = htFromExtraction(data);
-                            if (htP > 0 && !p.htCustom) updIa.htCustom = String(htP);
+                            if (htP > 0 && (data.__manual || !p.htCustom)) updIa.htCustom = String(htP);
                             if (data.dateFacture && !p.dateFacture) updIa.dateFacture = String(data.dateFacture);
                             if (Object.keys(updIa).length > 0) upd(updIa);
                             if (updIa.factureNo) {
@@ -21256,7 +21259,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                             const sansTvaDetecte = (typeof data.tauxTva === 'number' && data.tauxTva === 0);
                             if (sansTvaDetecte && !f.sansTva) { updIa.sansTva = true; updIa.tauxTva = 0; }
                             const htF = htFromExtraction(data);
-                            if (htF > 0 && !f.htCustom) updIa.htCustom = String(htF);
+                            if (htF > 0 && (data.__manual || !f.htCustom)) updIa.htCustom = String(htF);
                             if (data.dateFacture && !f.dateFacture) updIa.dateFacture = String(data.dateFacture);
                             if (Object.keys(updIa).length > 0) upd(updIa);
                             if (updIa.factureNo) {
@@ -21469,7 +21472,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                               if (typeof data.tauxTva === 'number') upd[sansTvaKey] = data.tauxTva === 0;
                               const htR = htFromExtraction(data);
                               const montantVide = formData[montantKey] === '' || formData[montantKey] === undefined || formData[montantKey] === null;
-                              if (htR > 0 && montantVide) upd[montantKey] = String(htR);
+                              if (htR > 0 && (data.__manual || montantVide)) upd[montantKey] = String(htR);
                               if (Object.keys(upd).length > 0) setFormData({ ...formData, ...upd });
                             }}
                             label="facture"
@@ -21518,7 +21521,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                                     if (data.__fileId) updIa.file = data.__fileId;
                                     if (data.factureNo && !a.avoirNo) updIa.avoirNo = cleanFactureNo(data.factureNo);
                                     const htA = htFromExtraction(data);
-                                    if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
+                                    if (htA !== 0 && (data.__manual || !a.montantHt)) updIa.montantHt = String(Math.abs(htA));
                                     if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
                                     if (Object.keys(updIa).length > 0) setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, ...updIa } : av));
                                   }}
@@ -27230,7 +27233,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 if (data.factureNo && !r.factureNo) upd.factureNo = cleanFactureNo(data.factureNo);
                                 if (data.bl && !r.bl) upd.bl = String(data.bl);
                                 const htR = htFromExtraction(data);
-                                if (htR > 0 && !r.htCustom) upd.htCustom = String(htR);
+                                if (htR > 0 && (data.__manual || !r.htCustom)) upd.htCustom = String(htR);
                                 if (typeof data.tauxTva === 'number' && data.tauxTva === 0 && !r.sansTva) {
                                   upd.sansTva = true; upd.tauxTva = 0;
                                 }
@@ -27320,7 +27323,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                         if (data.__fileId) updIa.file = data.__fileId;
                                         if (data.factureNo && !a.avoirNo) updIa.avoirNo = cleanFactureNo(data.factureNo);
                                         const htA = htFromExtraction(data);
-                                        if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
+                                        if (htA !== 0 && (data.__manual || !a.montantHt)) updIa.montantHt = String(Math.abs(htA));
                                         if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
                                         if (Object.keys(updIa).length > 0) updateAvoirLigne('regies', i, aIdx, updIa);
                                       }}
@@ -27498,7 +27501,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 if (typeof data.tauxTva === 'number') upd[sansTvaKey] = data.tauxTva === 0;
                                 const htR = htFromExtraction(data);
                                 const vide = d[montantKey] === '' || d[montantKey] === undefined || d[montantKey] === null;
-                                if (htR > 0 && vide) upd[montantKey] = String(htR);
+                                if (htR > 0 && (data.__manual || vide)) upd[montantKey] = String(htR);
                                 if (Object.keys(upd).length > 0) onUpdate(upd);
                               }}
                               label="facture"
@@ -27551,7 +27554,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                       if (data.__fileId) updIa.file = data.__fileId;
                                       if (data.factureNo && !a.avoirNo) updIa.avoirNo = cleanFactureNo(data.factureNo);
                                       const htA = htFromExtraction(data);
-                                      if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
+                                      if (htA !== 0 && (data.__manual || !a.montantHt)) updIa.montantHt = String(Math.abs(htA));
                                       if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
                                       if (Object.keys(updIa).length > 0) setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, ...updIa } : av));
                                     }}
@@ -27822,7 +27825,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           if (data.factureNo && !p.factureNo) upd.factureNo = cleanFactureNo(data.factureNo);
                           if (data.bl && !p.bl) upd.bl = String(data.bl);
                           const htP = htFromExtraction(data);
-                          if (htP > 0 && !p.htCustom) upd.htCustom = String(htP);
+                          if (htP > 0 && (data.__manual || !p.htCustom)) upd.htCustom = String(htP);
                           if (data.dateFacture && !p.dateFacture) upd.dateFacture = String(data.dateFacture);
                           if (Object.keys(upd).length > 0) updatePoseur(i, upd);
                           if (upd.factureNo) {
@@ -27908,7 +27911,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                   if (data.__fileId) updIa.file = data.__fileId;
                                   if (data.factureNo && !a.avoirNo) updIa.avoirNo = cleanFactureNo(data.factureNo);
                                   const htA = htFromExtraction(data);
-                                  if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
+                                  if (htA !== 0 && (data.__manual || !a.montantHt)) updIa.montantHt = String(Math.abs(htA));
                                   if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
                                   if (Object.keys(updIa).length > 0) updateAvoirLigne('poseurs', i, aIdx, updIa);
                                 }}
@@ -28060,7 +28063,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           const sansTvaDetecte = (typeof data.tauxTva === 'number' && data.tauxTva === 0);
                           if (sansTvaDetecte && !f.sansTva) { upd.sansTva = true; upd.tauxTva = 0; }
                           const htF = htFromExtraction(data);
-                          if (htF > 0 && !f.htCustom) upd.htCustom = String(htF);
+                          if (htF > 0 && (data.__manual || !f.htCustom)) upd.htCustom = String(htF);
                           if (data.dateFacture && !f.dateFacture) upd.dateFacture = String(data.dateFacture);
                           if (Object.keys(upd).length > 0) updateFournisseur(i, upd);
                           if (upd.factureNo) {
@@ -28150,7 +28153,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                       if (data.__fileId) updIa.file = data.__fileId;
                                       if (data.factureNo && !a.avoirNo) updIa.avoirNo = cleanFactureNo(data.factureNo);
                                       const htA = htFromExtraction(data);
-                                      if (htA !== 0 && !a.montantHt) updIa.montantHt = String(Math.abs(htA));
+                                      if (htA !== 0 && (data.__manual || !a.montantHt)) updIa.montantHt = String(Math.abs(htA));
                                       if (data.dateFacture && !a.date) updIa.date = String(data.dateFacture);
                                       if (Object.keys(updIa).length > 0) updateAvoirFournisseur(i, aIdx, updIa);
                                     }}
