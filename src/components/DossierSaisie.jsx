@@ -234,14 +234,16 @@ function normalizeDossierDates(d) {
 // supprimé volontairement → tombstone).
 function mergeDossiersArrays(localArr, remoteArr, tombstones = new Set()) {
   const now = Date.now();
-  // ⏰ Garde anti-horloge déréglée : un modifiedAt DANS LE FUTUR (> now + 2 min)
-  // vient d'un poste à l'heure fausse → on le traite comme « très vieux » pour
-  // qu'il ne gagne jamais contre une modif réelle (sinon un poste en avance
-  // écraserait éternellement les pointages des autres).
+  // ⏰ Garde anti-horloge déréglée : un modifiedAt DANS LE FUTUR LOINTAIN
+  // (> now + 6 h) vient d'un poste à l'heure cassée → traité comme « très
+  // vieux ». ⚠️ Tolérance LARGE exprès : à 2 min, un simple décalage
+  // d'horloge entre 2 postes faisait rejeter les écritures récentes des
+  // autres (données qui « disparaissent »). 6 h ne bloque que les horloges
+  // réellement cassées (mauvais jour/année), pas les petits décalages.
   const ts = (x) => {
     const t = new Date((x && (x.modifiedAt || x.savedAt)) || 0).getTime();
     if (isNaN(t)) return 0;
-    if (t > now + 120000) return 0;
+    if (t > now + 6 * 3600 * 1000) return 0;
     return t;
   };
   // 📐 Ordre de sortie = ordre DISTANT (la base partagée) + les locaux
