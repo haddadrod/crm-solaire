@@ -254,10 +254,16 @@ function mergeDossiersArrays(localArr, remoteArr, tombstones = new Set()) {
   (localArr || []).forEach(l => { if (l && l.localId) localById.set(l.localId, l); });
   const out = [];
   const seen = new Set();
+  // 🚨 HOTFIX 03/07 : la fusion ne SUPPRIME plus JAMAIS un dossier. La liste
+  // « tombstones » (suppressions volontaires) contenait des dossiers VIVANTS
+  // (marqués par les anciennes alertes de perte de données) → la fusion les a
+  // effacés en masse (ECO NEGOCE 108 → 6 dossiers, IONERGIK disparu…).
+  // Conséquence assumée : une vraie suppression ne se propage plus entre
+  // postes automatiquement — c'est un moindre mal, les suppressions sont
+  // rares et refaisables. Les tombstones ne servent plus qu'aux alertes.
   (remoteArr || []).forEach(r => {
     if (!r || !r.localId || seen.has(r.localId)) return;
     seen.add(r.localId);
-    if (tombstones.has(r.localId)) return;
     const l = localById.get(r.localId);
     if (!l) { out.push(r); return; }
     // Égalité de dates → le LOCAL gagne (c'est lui qu'on a sous les yeux).
@@ -265,7 +271,7 @@ function mergeDossiersArrays(localArr, remoteArr, tombstones = new Set()) {
   });
   (localArr || []).forEach(l => {
     if (!l || !l.localId || seen.has(l.localId)) return;
-    if (!tombstones.has(l.localId)) out.push(l);
+    out.push(l);
   });
   return out;
 }
