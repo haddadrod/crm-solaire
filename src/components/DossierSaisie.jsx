@@ -11101,9 +11101,37 @@ function DocumentItem({ doc, onOpen, onDownload, onDelete, onUpdateMeta, subCats
 // de dossiers-data, donc insensible aux écrasements de la base). Permet de
 // prouver qui a pointé quoi et quand, et de repérer les pointages « disparus »
 // (payé journalisé mais redevenu non payé sans ligne de dé-pointage).
-function JournalPointagesPanel() {
+function JournalPointagesPanel({ dossiers = [], onMarkPrestaPaye = null }) {
   const [open, setOpen] = useState(false);
   const [entries, setEntries] = useState(null);
+  // ✅ VÉRIFICATION journal ↔ données : liste les « payé » journalisés dont la
+  // ligne n'est PLUS pointée payée dans les dossiers (perdus dans un
+  // écrasement / une restauration) — re-pointage en 1 clic. Créé pour
+  // l'incident du 03/07 (« tout ce que j'ai mis en paiement, je repointe ? »).
+  const manquants = useMemo(() => {
+    if (!entries || !entries.length) return [];
+    const kindToArr = { poseur: 'poseurs', regie: 'regies', fournisseur: 'fournisseurs', poseurs: 'poseurs', regies: 'regies', fournisseurs: 'fournisseurs' };
+    const out = [];
+    const dejaVu = new Set();
+    entries.forEach(e => {
+      if (e.action !== 'payé' || !e.prestataire) return;
+      const arrKey = kindToArr[e.kind];
+      if (!arrKey) return;
+      const d = dossiers.find(x => String(x.id || '') === String(e.dossierId || '') || x.localId === e.dossierId);
+      if (!d) return;
+      const arr = d[arrKey] || [];
+      let idx = -1;
+      if (e.factureNo) idx = arr.findIndex(x => x && x.nom === e.prestataire && String(x.factureNo || '').trim() === String(e.factureNo).trim());
+      if (idx < 0) idx = arr.findIndex(x => x && x.nom === e.prestataire);
+      if (idx < 0) return;
+      if (arr[idx].paye) return; // toujours pointé → OK
+      const k = `${d.localId}|${arrKey}|${idx}`;
+      if (dejaVu.has(k)) return;
+      dejaVu.add(k);
+      out.push({ e, localId: d.localId, client: `${d.nom || ''} ${d.prenom || ''}`.trim(), arrKey, idx, kind: arrKey === 'poseurs' ? 'poseur' : arrKey === 'regies' ? 'regie' : 'fournisseur', nom: e.prestataire, factureNo: arr[idx].factureNo || e.factureNo || '' });
+    });
+    return out;
+  }, [entries, dossiers]);
   useEffect(() => {
     if (!open || entries !== null) return;
     (async () => {
@@ -11123,6 +11151,33 @@ function JournalPointagesPanel() {
         <span className="text-[11px] text-slate-400">(inviolable — ne peut pas être écrasé par un autre poste)</span>
         <span className="ml-auto text-slate-400 text-xs">{open ? '▲' : '▼'}</span>
       </button>
+      {open && manquants.length > 0 && (
+        <div className="border-t border-amber-200 bg-amber-50 px-4 py-2">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-[13px] font-bold text-amber-800">⚠️ {manquants.length} pointage{manquants.length > 1 ? 's' : ''} journalisé{manquants.length > 1 ? 's' : ''} mais plus marqué{manquants.length > 1 ? 's' : ''} payé{manquants.length > 1 ? 's' : ''} dans les dossiers</span>
+            {onMarkPrestaPaye && (
+              <button
+                onClick={() => {
+                  if (!window.confirm(`Re-pointer PAYÉ les ${manquants.length} ligne(s) (journal à l'appui) ?`)) return;
+                  const parPresta = new Map();
+                  manquants.forEach(m => {
+                    const kk = `${m.nom}|${m.kind}`;
+                    if (!parPresta.has(kk)) parPresta.set(kk, { nom: m.nom, kind: m.kind, targets: [] });
+                    parPresta.get(kk).targets.push({ localId: m.localId, idx: m.idx });
+                  });
+                  parPresta.forEach(g => onMarkPrestaPaye(g.targets, g.nom, g.kind));
+                }}
+                className="px-2.5 py-1 rounded-lg text-[12px] font-bold bg-amber-600 hover:bg-amber-700 text-white"
+              >✓ Tout re-pointer ({manquants.length})</button>
+            )}
+          </div>
+          <div className="mt-1 max-h-32 overflow-y-auto space-y-0.5">
+            {manquants.map((m, i) => (
+              <div key={i} className="text-[12px] text-amber-800">• {m.client} · {m.nom}{m.factureNo ? ` · 🧾 ${m.factureNo}` : ''} <span className="text-amber-600">(pointé le {m.e.at ? new Date(m.e.at).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '?'} par {m.e.par})</span></div>
+            ))}
+          </div>
+        </div>
+      )}
       {open && (
         <div className="border-t border-slate-100 max-h-80 overflow-y-auto divide-y divide-slate-50">
           {entries === null && <div className="p-3 text-[13px] text-slate-400">⏳ Chargement…</div>}
@@ -11386,7 +11441,7 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
   return (
     <div className="space-y-4">
       {/* 🗒️ Journal des pointages — trace inviolable de tous les pointages payé */}
-      <JournalPointagesPanel />
+      <JournalPointagesPanel dossiers={dossiers} onMarkPrestaPaye={onMarkPrestaPaye} />
       {/* 🧾 Audit des avoirs — repérer/supprimer les faux avoirs qui masquent une dette */}
       <AuditAvoirsPanel dossiers={dossiers} onShowQuick={onShowQuick} onSupprimerAvoir={onSupprimerAvoir} />
       <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
