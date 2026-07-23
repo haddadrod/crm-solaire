@@ -2010,6 +2010,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   }, [darkMode]);
   const [showImportJson, setShowImportJson] = useState(false); // 📦 modal import dossiers JSON
   const [showModifRequest, setShowModifRequest] = useState(false); // 💡 modal « Demander une modif » (codage du CRM)
+  const [showRestauration, setShowRestauration] = useState(false); // 🚑 modal restauration d'urgence (backups dossiers-data-bk-*)
   const [showExportComptable, setShowExportComptable] = useState(false); // 📊 modal de choix des tiers pour l'export comptable
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
   // Plus de dropdown local — qui est connecté = qui agit.
@@ -5928,6 +5929,15 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 >
                   <span className="text-2xl leading-none">💡</span>
                 </button>
+                {isAdmin && (
+                  <button
+                    onClick={() => setShowRestauration(true)}
+                    className="bg-white hover:bg-rose-50 hover:border-rose-300 text-slate-700 px-3 py-2 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200"
+                    title="🚑 Restauration d'urgence — récupérer les dossiers depuis une sauvegarde automatique (toutes les 10 min, 7 jours)"
+                  >
+                    <span className="text-2xl leading-none">🚑</span>
+                  </button>
+                )}
                 {onLogout && (
                   <button
                     onClick={onLogout}
@@ -6877,6 +6887,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
             validée par l'admin avant mise en ligne. */}
         {showModifRequest && (
           <ModifRequestModal onClose={() => setShowModifRequest(false)} currentUser={currentUser} />
+        )}
+
+        {/* 🚑 RESTAURATION D'URGENCE — fusionne une sauvegarde avec l'état actuel
+            (n'écrase jamais une modif plus récente, ne supprime jamais rien). */}
+        {showRestauration && (
+          <RestaurationModal
+            dossiersActuels={dossiers}
+            onClose={() => setShowRestauration(false)}
+            onRestore={(merged, bkKey) => {
+              setShowRestauration(false);
+              setDossiers(merged);
+              showToast(`🚑 Restauration appliquée depuis ${bkKey} — ${merged.length} dossiers. Vérifie le rapport de paiements.`, 'success', 8000);
+            }}
+          />
         )}
 
         {/* 📊 EXPORT COMPTABLE — choix des tiers (ou tout) avant de générer le grand livre */}
@@ -28452,6 +28476,133 @@ function ExportComptableModal({ dossiersEnriched, societes = [], activeSociete =
               {zipEnCours ? '⏳ Préparation du ZIP…' : '💸 Télécharger les factures (ZIP)'}
             </button>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ===================== 🚑 RESTAURATION D'URGENCE =====================
+// Lit les sauvegardes automatiques `dossiers-data-bk-*` (1 toutes les 10 min,
+// 7 jours) et permet de FUSIONNER une sauvegarde avec l'état actuel :
+//  - un dossier présent dans la sauvegarde mais absent aujourd'hui → RESTAURÉ ;
+//  - un dossier présent des deux côtés → la version la plus récemment
+//    modifiée gagne (les pointages du jour ne sont pas perdus) ;
+//  - rien n'est jamais supprimé.
+// Créé suite à l'incident du 03/07 (fusion+tombstones qui a effacé des
+// dossiers en masse : ECO NEGOCE 108 → 6, IONERGIK disparu).
+function RestaurationModal({ dossiersActuels, onClose, onRestore }) {
+  const [keys, setKeys] = useState(null);
+  const [analyse, setAnalyse] = useState({}); // bkKey -> { nb, nbEco, duIonergik } | 'loading' | 'err'
+  const [restoring, setRestoring] = useState('');
+  const fmtKey = (k) => {
+    // dossiers-data-bk-YYYYMMDDHHMM → date lisible (heure UTC → locale approx.)
+    const m = String(k).match(/bk-(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})$/);
+    if (!m) return k;
+    const dt = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5]));
+    return dt.toLocaleString('fr-FR', { weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  };
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await window.storage.list('dossiers-data-bk-');
+        const ks = (r?.keys || []).filter(k => /bk-\d{12}$/.test(k)).sort().reverse();
+        setKeys(ks);
+      } catch (e) { setKeys([]); }
+    })();
+  }, []);
+  const statsOf = (arr) => {
+    const nb = arr.length;
+    let nbLignes = 0, duTotalPresta = 0;
+    const parPresta = new Map();
+    arr.forEach(d => {
+      [['poseurs'], ['regies'], ['fournisseurs']].forEach(([ak]) => {
+        (d[ak] || []).forEach(x => {
+          if (!x || !x.nom) return;
+          nbLignes++;
+          const ht = parseFloat(x.htCustom) || 0;
+          duTotalPresta += ht;
+          parPresta.set(x.nom, (parPresta.get(x.nom) || 0) + ht);
+        });
+      });
+    });
+    const top = [...parPresta.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+    return { nb, nbLignes, duTotalPresta, top };
+  };
+  const analyser = async (bkKey) => {
+    setAnalyse(prev => ({ ...prev, [bkKey]: 'loading' }));
+    try {
+      const r = await window.storage.get(bkKey);
+      const arr = JSON.parse(r?.value || '[]');
+      if (!Array.isArray(arr)) throw new Error('format');
+      setAnalyse(prev => ({ ...prev, [bkKey]: statsOf(arr) }));
+    } catch (e) {
+      setAnalyse(prev => ({ ...prev, [bkKey]: 'err' }));
+    }
+  };
+  const restaurer = async (bkKey) => {
+    if (!window.confirm(`🚑 Restaurer depuis la sauvegarde du ${fmtKey(bkKey)} ?\n\n• Les dossiers disparus REVIENNENT.\n• Les modifications plus récentes que la sauvegarde sont CONSERVÉES.\n• Rien n'est supprimé.\n\nUne copie de l'état actuel est d'abord mise de côté.`)) return;
+    setRestoring(bkKey);
+    try {
+      // 1. Copie de sécurité de l'état ACTUEL (avant restauration)
+      const pad = (n) => String(n).padStart(2, '0');
+      const now = new Date();
+      const preKey = `dossiers-data-prerestore-${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}${pad(now.getUTCHours())}${pad(now.getUTCMinutes())}${pad(now.getUTCSeconds())}`;
+      try { await window.storage.set(preKey, JSON.stringify(dossiersActuels || [])); } catch (e) {}
+      // 2. Lecture + fusion (union, le plus récent gagne, zéro suppression)
+      const r = await window.storage.get(bkKey);
+      const backup = JSON.parse(r?.value || '[]');
+      if (!Array.isArray(backup) || backup.length === 0) { alert('Sauvegarde vide ou illisible.'); return; }
+      const merged = mergeDossiersArrays(dossiersActuels || [], normalizeDossiers(backup));
+      onRestore(merged, fmtKey(bkKey));
+    } catch (e) {
+      alert('Erreur restauration : ' + (e?.message || e));
+    } finally {
+      setRestoring('');
+    }
+  };
+  const nbActuel = (dossiersActuels || []).length;
+  return (
+    <div className="fixed inset-0 bg-black/60 z-[70] flex items-start justify-center p-4 pt-14 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl border-2 border-rose-300 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+        <div className="bg-gradient-to-r from-rose-500 to-red-500 px-5 py-3 flex items-start justify-between gap-3">
+          <div>
+            <div className="text-white font-extrabold text-lg">🚑 Restauration d'urgence</div>
+            <div className="text-rose-50 text-[12px]">État actuel : <b>{nbActuel} dossiers</b>. Choisis une sauvegarde (1 toutes les 10 min, 7 jours), clique « Analyser » pour voir ce qu'elle contient, puis « Restaurer » : les dossiers disparus reviennent, tes modifs récentes sont conservées, rien n'est supprimé.</div>
+          </div>
+          <button onClick={onClose} className="text-white/80 hover:text-white text-2xl leading-none px-2">×</button>
+        </div>
+        <div className="flex-1 overflow-y-auto divide-y divide-slate-100">
+          {keys === null && <div className="p-4 text-sm text-slate-400">⏳ Chargement de la liste des sauvegardes…</div>}
+          {keys !== null && keys.length === 0 && <div className="p-4 text-sm text-rose-600 font-semibold">Aucune sauvegarde trouvée.</div>}
+          {(keys || []).map(k => {
+            const a = analyse[k];
+            return (
+              <div key={k} className="px-4 py-2 flex items-center gap-2 flex-wrap">
+                <span className="font-mono text-[12px] font-bold text-slate-700 whitespace-nowrap">📦 {fmtKey(k)}</span>
+                {a === undefined && <button onClick={() => analyser(k)} className="px-2 py-1 rounded-lg text-[11px] font-bold bg-slate-100 hover:bg-slate-200 text-slate-700">🔎 Analyser</button>}
+                {a === 'loading' && <span className="text-[11px] text-slate-400">⏳ lecture…</span>}
+                {a === 'err' && <span className="text-[11px] text-rose-600">❌ illisible</span>}
+                {a && typeof a === 'object' && (
+                  <>
+                    <span className={`text-[12px] font-bold ${a.nb > nbActuel ? 'text-emerald-700' : 'text-slate-500'}`}>{a.nb} dossiers{a.nb > nbActuel ? ` (+${a.nb - nbActuel} vs actuel)` : ''}</span>
+                    <span className="text-[11px] text-slate-500">· {a.nbLignes} lignes prestataires · {formatEuro(a.duTotalPresta)} HT saisis</span>
+                    {a.top.map(([nom, ht], i) => <span key={i} className="text-[11px] text-slate-400">· {nom} {formatEuro(ht)}</span>)}
+                  </>
+                )}
+                <button
+                  onClick={() => restaurer(k)}
+                  disabled={!!restoring}
+                  className="ml-auto px-2.5 py-1 rounded-lg text-[11px] font-bold bg-rose-600 hover:bg-rose-700 disabled:opacity-50 text-white whitespace-nowrap"
+                >
+                  {restoring === k ? '⏳ Restauration…' : '🚑 Restaurer (fusion)'}
+                </button>
+              </div>
+            );
+          })}
+        </div>
+        <div className="px-4 py-2 border-t border-slate-100 bg-slate-50 text-[11px] text-slate-500">
+          💡 Cherche la sauvegarde d'AVANT le problème (nombre de dossiers le plus haut). La restauration FUSIONNE : elle n'écrase pas tes pointages du jour et ne supprime jamais rien. Une copie de l'état actuel est mise de côté avant chaque restauration (clé « prerestore »).
         </div>
       </div>
     </div>
