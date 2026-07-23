@@ -4202,8 +4202,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const map = {};
     // Clé inclut la société → 'IONERGIK chez Yolico' et 'IONERGIK chez Elsun'
     // restent séparés même en vue 'Toutes'. C'est la réalité comptable.
-    const addEntry = (nom, type, ttc, paye, datePaye, dossier, factureNo = '', ligneIdx = null) => {
-      if (!nom || !ttc) return;
+    const addEntry = (nom, type, ttc, paye, datePaye, dossier, factureNo = '', ligneIdx = null, keepZero = false) => {
+      // ⚠️ Une ligne à 0 € est normalement ignorée (lignes vides), SAUF si un
+      // AVOIR l'a annulée : elle doit rester VISIBLE (sinon le prestataire
+      // « disparaît » du rapport alors que ses factures existent).
+      if (!nom || (!ttc && !keepZero)) return;
       const soc = dossier.societe || '';
       const key = `${type}::${nom}::${soc}`;
       if (!map[key]) map[key] = { nom, type, societe: soc, totalDu: 0, totalPaye: 0, totalRestant: 0, totalAPayerMaintenant: 0, totalEnAttenteFinanceur: 0, totalPayeAvance: 0, lignes: [] };
@@ -4229,10 +4232,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
       map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne, prestataireType: type, societe: soc, factureNo, ligneIdx });
     };
     dossiersFiltres.forEach(d => {
-      (d.fournisseursDetail || []).forEach((f, fi) => addEntry(f.nom, 'Fournisseur', f.ttc, f.paye, f.datePaye, d, f.factureNo || '', fi));
+      (d.fournisseursDetail || []).forEach((f, fi) => addEntry(f.nom, 'Fournisseur', f.ttc, f.paye, f.datePaye, d, f.factureNo || '', fi, (f.avoirsHt || 0) > 0));
       // Multi-régies : itère sur regiesDetail
-      (d.regiesDetail || []).forEach((r, ri) => addEntry(r.nom, 'Régie', r.ttc, r.paye, r.datePaye, d, r.factureNo || '', ri));
-      (d.poseursDetail || []).forEach((po, pi) => addEntry(po.nom, 'Poseur', po.ttc, po.paye, po.datePaye, d, po.factureNo || '', pi));
+      (d.regiesDetail || []).forEach((r, ri) => addEntry(r.nom, 'Régie', r.ttc, r.paye, r.datePaye, d, r.factureNo || '', ri, (r.avoirsHt || 0) > 0));
+      (d.poseursDetail || []).forEach((po, pi) => addEntry(po.nom, 'Poseur', po.ttc, po.paye, po.datePaye, d, po.factureNo || '', pi, (po.avoirsHt || 0) > 0));
       // Commissions équipe interne — dès qu'un nom est rempli
       ROLES_INTERNES.forEach(role => {
         const nom = d[role.key];
