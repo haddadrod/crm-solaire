@@ -232,6 +232,106 @@ function normalizeDossierDates(d) {
 // DOSSIER PAR DOSSIER : pour chaque localId, la version au modifiedAt le plus
 // récent gagne. Un dossier absent d'un côté est conservé (sauf s'il a été
 // supprimé volontairement → tombstone).
+// 🧬 FUSION FINE PAR LIGNE prestataire (poseurs/régies/fournisseurs).
+// Problème réel : 2 postes modifient le MÊME dossier à quelques minutes
+// d'écart (ou un formulaire « Tout éditer » resté ouvert est enregistré) →
+// la version la plus récente gagnait le dossier EN ENTIER et effaçait la
+// facture jointe / le pointage payé fait entre temps par l'autre poste
+// (cas Laura : « je mets une facture, elle s'enlève ; je pointe payé, ça
+// se remet non payé »). Ici, la version gagnante RÉCUPÈRE de la perdante
+// tout ce qui lui manque : facture jointe, n° facture/BL, montant saisi,
+// avoirs — et le pointage payé est arbitré par ligne via payeStampAt (le
+// pointage/dé-pointage le plus récent gagne, pas le dossier le plus récent).
+const LIGNE_FILL_FIELDS = ['factureFile', 'factureNo', 'bl', 'facturePdfUrl', 'factureExternalUrl', 'dateFacture', 'pennylaneInvoiceId', 'pennylanePushedAt', 'htCustom', 'ttcCustom'];
+function mergeLignesPresta(winList, loseList) {
+  const lose = Array.isArray(loseList) ? loseList : [];
+  if (!lose.length) return winList;
+  const win = Array.isArray(winList) ? winList.map(l => ({ ...(l || {}) })) : [];
+  const usedLose = new Set();
+  // Apparie une ligne gagnante à une perdante : même index si le nom colle,
+  // sinon nom unique. 2 lignes au même nom (CUVEELE ×2) → seul l'index vaut.
+  const findLose = (w, i) => {
+    if (lose[i] && !usedLose.has(i) && ((lose[i].nom || '') === (w.nom || ''))) return i;
+    let found = -1;
+    for (let j = 0; j < lose.length; j++) {
+      if (usedLose.has(j) || ((lose[j] && lose[j].nom) || '') !== (w.nom || '')) continue;
+      if (found !== -1) return -1;
+      found = j;
+    }
+    return found;
+  };
+  win.forEach((w, i) => {
+    const j = findLose(w, i);
+    if (j === -1 || !lose[j]) return;
+    usedLose.add(j);
+    const l = lose[j];
+    for (const f of LIGNE_FILL_FIELDS) {
+      const vide = w[f] === '' || w[f] === undefined || w[f] === null;
+      if (vide && l[f] !== '' && l[f] !== undefined && l[f] !== null) w[f] = l[f];
+    }
+    // Avoirs : union — un avoir présent d'un seul côté est conservé.
+    if (Array.isArray(l.avoirs) && l.avoirs.length) {
+      const wa = Array.isArray(w.avoirs) ? [...w.avoirs] : [];
+      const keyA = (a) => (a && a.avoirNo) ? `n:${a.avoirNo}` : `m:${(a && a.montantHt) || ''}|${(a && a.date) || ''}`;
+      const dejaLa = new Set(wa.map(keyA));
+      l.avoirs.forEach(a => { if (!dejaLa.has(keyA(a))) wa.push(a); });
+      w.avoirs = wa;
+    }
+    // Pointage payé : le pointage HORODATÉ le plus récent gagne (payeStampAt,
+    // posé à chaque bascule payé/non payé). Sans horodatage des 2 côtés
+    // (vieilles données) : un payé ne se perd jamais.
+    const sw = new Date(w.payeStampAt || 0).getTime() || 0;
+    const sl = new Date(l.payeStampAt || 0).getTime() || 0;
+    if (sl > sw) { w.paye = !!l.paye; w.datePaye = l.datePaye || ''; w.payeStampAt = l.payeStampAt; }
+    else if (!sw && !sl && !w.paye && l.paye) { w.paye = true; w.datePaye = l.datePaye || w.datePaye || ''; }
+  });
+  // Ligne présente UNIQUEMENT côté perdant : on ne la ressuscite que si elle
+  // porte de la vraie donnée (facture jointe ou payé) — sinon on respecte
+  // une suppression volontaire de ligne.
+  lose.forEach((l, j) => {
+    if (usedLose.has(j) || !l) return;
+    if (!(l.factureFile || l.paye)) return;
+    if (win.some(w => (w.nom || '') === (l.nom || '') && (w.factureNo || '') === (l.factureNo || ''))) return;
+    win.push({ ...l });
+  });
+  return win;
+}
+// Applique la fusion fine entre la version gagnante (dossier le plus récent)
+// et la perdante du même dossier. + arbitrage payeClient par payeClientStampAt.
+function mergeDossierFin(winner, loser) {
+  if (!loser || loser === winner) return winner;
+  const out = { ...winner };
+  out.poseurs = mergeLignesPresta(winner.poseurs, loser.poseurs);
+  out.regies = mergeLignesPresta(winner.regies, loser.regies);
+  out.fournisseurs = mergeLignesPresta(winner.fournisseurs, loser.fournisseurs);
+  const cw = new Date(winner.payeClientStampAt || 0).getTime() || 0;
+  const cl = new Date(loser.payeClientStampAt || 0).getTime() || 0;
+  if (cl > cw) { out.payeClient = !!loser.payeClient; out.payeClientDate = loser.payeClientDate || ''; out.payeClientStampAt = loser.payeClientStampAt; }
+  else if (!cw && !cl && !out.payeClient && loser.payeClient) { out.payeClient = true; out.payeClientDate = loser.payeClientDate || ''; }
+  // 👥 Rôles internes : champs À PLAT sur le dossier (<role>FactureFile,
+  // <role>Paye…) → même protection que les lignes prestataires.
+  ROLES_INTERNES.forEach(role => {
+    const k = role.key;
+    ['FactureFile', 'FactureNo', 'Bl', 'Montant', 'TtcCustom'].forEach(suf => {
+      const f = k + suf;
+      const vide = out[f] === '' || out[f] === undefined || out[f] === null;
+      if (vide && loser[f] !== '' && loser[f] !== undefined && loser[f] !== null) out[f] = loser[f];
+    });
+    const la = Array.isArray(loser[k + 'Avoirs']) ? loser[k + 'Avoirs'] : [];
+    if (la.length) {
+      const wa = Array.isArray(out[k + 'Avoirs']) ? [...out[k + 'Avoirs']] : [];
+      const keyA = (a) => (a && a.avoirNo) ? `n:${a.avoirNo}` : `m:${(a && a.montantHt) || ''}|${(a && a.date) || ''}`;
+      const dejaLa = new Set(wa.map(keyA));
+      la.forEach(a => { if (!dejaLa.has(keyA(a))) wa.push(a); });
+      out[k + 'Avoirs'] = wa;
+    }
+    const pw = new Date(out[k + 'PayeStampAt'] || 0).getTime() || 0;
+    const pl = new Date(loser[k + 'PayeStampAt'] || 0).getTime() || 0;
+    if (pl > pw) { out[k + 'Paye'] = !!loser[k + 'Paye']; out[k + 'DatePaye'] = loser[k + 'DatePaye'] || ''; out[k + 'PayeStampAt'] = loser[k + 'PayeStampAt']; }
+    else if (!pw && !pl && !out[k + 'Paye'] && loser[k + 'Paye']) { out[k + 'Paye'] = true; out[k + 'DatePaye'] = loser[k + 'DatePaye'] || ''; }
+  });
+  return out;
+}
 function mergeDossiersArrays(localArr, remoteArr, tombstones = new Set()) {
   const now = Date.now();
   // ⏰ Garde anti-horloge déréglée : un modifiedAt DANS LE FUTUR LOINTAIN
@@ -267,7 +367,9 @@ function mergeDossiersArrays(localArr, remoteArr, tombstones = new Set()) {
     const l = localById.get(r.localId);
     if (!l) { out.push(r); return; }
     // Égalité de dates → le LOCAL gagne (c'est lui qu'on a sous les yeux).
-    out.push(ts(l) >= ts(r) ? l : r);
+    // 🧬 Le gagnant récupère de la version perdante ce qui lui manque
+    // (facture jointe, n°, avoirs, pointage payé le plus récent par ligne).
+    out.push(ts(l) >= ts(r) ? mergeDossierFin(l, r) : mergeDossierFin(r, l));
   });
   (localArr || []).forEach(l => {
     if (!l || !l.localId || seen.has(l.localId)) return;
@@ -3525,7 +3627,14 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // Préserve createdBy si déjà présent
       dossier.createdBy = old?.createdBy || userTag;
       dossier.createdAt = old?.createdAt || now;
-      setDossiers(dossiers.map(d => d.localId === editingId ? { ...d, ...dossier, documents: d.documents || [] } : d));
+      setDossiers(dossiers.map(d => {
+        if (d.localId !== editingId) return d;
+        // 🛡️ Formulaire resté ouvert pendant qu'un autre poste (ou le panneau
+        // rapide) travaillait le MÊME dossier : sans ça, Enregistrer réécrivait
+        // tout depuis le snapshot d'ouverture et effaçait les factures jointes /
+        // pointages payés faits entre temps (fusion fine, comme entre postes).
+        return mergeDossierFin({ ...d, ...dossier, documents: d.documents || [] }, d);
+      }));
       showToast(`✓ Dossier ${dossier.nom || ''} ${dossier.prenom || ''} sauvegardé`, 'success');
     } else {
       // Nouveau dossier — première entrée d'historique = création
@@ -4121,15 +4230,15 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (d.localId !== localId) return d;
       const today = now.split('T')[0];
       if (kind === 'poseur') {
-        const poseurs = (d.poseurs || []).map(p => p && p.nom === nom ? { ...p, paye: !p.paye, datePaye: !p.paye ? today : '' } : p);
+        const poseurs = (d.poseurs || []).map(p => p && p.nom === nom ? { ...p, paye: !p.paye, datePaye: !p.paye ? today : '', payeStampAt: now } : p);
         return { ...d, poseurs, ...stamp };
       }
       if (kind === 'regie') {
-        const regies = (d.regies || []).map(r => r && r.nom === nom ? { ...r, paye: !r.paye, datePaye: !r.paye ? today : '' } : r);
+        const regies = (d.regies || []).map(r => r && r.nom === nom ? { ...r, paye: !r.paye, datePaye: !r.paye ? today : '', payeStampAt: now } : r);
         return { ...d, regies, ...stamp };
       }
       if (kind === 'fournisseur') {
-        const fournisseurs = (d.fournisseurs || []).map(f => f && f.nom === nom ? { ...f, paye: !f.paye, datePaye: !f.paye ? today : '' } : f);
+        const fournisseurs = (d.fournisseurs || []).map(f => f && f.nom === nom ? { ...f, paye: !f.paye, datePaye: !f.paye ? today : '', payeStampAt: now } : f);
         return { ...d, fournisseurs, ...stamp };
       }
       return d;
@@ -4172,7 +4281,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (!byId.has(d.localId)) return d;
       const idxs = byId.get(d.localId);
       const wantAll = idxs.some(i => i === null || i === undefined);
-      const arr = (d[arrKey] || []).map((x, i) => (x && x.nom === nom && !x.paye && (wantAll || idxs.includes(i))) ? { ...x, paye: true, datePaye: today } : x);
+      const arr = (d[arrKey] || []).map((x, i) => (x && x.nom === nom && !x.paye && (wantAll || idxs.includes(i))) ? { ...x, paye: true, datePaye: today, payeStampAt: new Date().toISOString() } : x);
       const now = new Date().toISOString();
       return { ...d, [arrKey]: arr, savedAt: now, modifiedAt: now, modifiedBy: currentUser || '(pointage groupé)' };
     }));
@@ -4199,6 +4308,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         ...d,
         payeClient: true,
         payeClientDate: today,
+        payeClientStampAt: new Date().toISOString(),
         datePaiementBanque: d.datePaiementBanque || today,
         statut: 'W_DOSSIER_PAYER',
         savedAt: new Date().toISOString(),
@@ -7792,7 +7902,7 @@ function RapprochementFournisseur({ dossiers, setDossiers, onOpenDossier = null 
       const nd = { ...d };
       mine.forEach(x => {
         const arr = [...(nd[x.arrKey] || [])];
-        if (arr[x.idx] && !arr[x.idx].paye) { arr[x.idx] = { ...arr[x.idx], paye: true, datePaye: today }; nd[x.arrKey] = arr; }
+        if (arr[x.idx] && !arr[x.idx].paye) { arr[x.idx] = { ...arr[x.idx], paye: true, datePaye: today, payeStampAt: now }; nd[x.arrKey] = arr; }
       });
       return { ...nd, savedAt: now, modifiedAt: now, modifiedBy: '[rapprochement payé]' };
     }));
@@ -15865,7 +15975,7 @@ function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setS
     setDossiers(prev => prev.map(d => {
       if (d.statut !== 'W_DOSSIER_PAYER') return d;
       if (d.payeClient) return d;
-      return { ...d, payeClient: true, payeClientDate: d.payeClientDate || todayIso };
+      return { ...d, payeClient: true, payeClientDate: d.payeClientDate || todayIso, payeClientStampAt: new Date().toISOString() };
     }));
     alert(`✅ ${candidats.length} dossier${candidats.length > 1 ? 's' : ''} marqué${candidats.length > 1 ? 's' : ''} comme « paiement reçu ».`);
   };
@@ -15979,7 +16089,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
       const list = [...(d[field] || [])];
       if (!list[idx]) return d;
       const next = !list[idx].paye;
-      list[idx] = { ...list[idx], paye: next, datePaye: next ? (list[idx].datePaye || new Date().toISOString().split('T')[0]) : '' };
+      list[idx] = { ...list[idx], paye: next, datePaye: next ? (list[idx].datePaye || new Date().toISOString().split('T')[0]) : '', payeStampAt: new Date().toISOString() };
       const now = new Date().toISOString();
       return { ...d, [field]: list, savedAt: now, modifiedAt: now };
     }));
@@ -16585,7 +16695,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
                     <input type="date" value={r.datePaiementBanque} onChange={(e) => updateDossier(lid, { datePaiementBanque: e.target.value })} className="bg-transparent focus:bg-yellow-100 focus:outline-none focus:ring-2 focus:ring-yellow-400 px-1 py-0.5 rounded w-full" />
                   </td>
                   <td className="px-2 py-3 text-center">
-                    <input type="checkbox" checked={r.payeClient} onChange={(e) => updateDossier(lid, { payeClient: e.target.checked, payeClientDate: e.target.checked ? (r.d.payeClientDate || new Date().toISOString().split('T')[0]) : '' })} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" />
+                    <input type="checkbox" checked={r.payeClient} onChange={(e) => updateDossier(lid, { payeClient: e.target.checked, payeClientDate: e.target.checked ? (r.d.payeClientDate || new Date().toISOString().split('T')[0]) : '', payeClientStampAt: new Date().toISOString() })} className="w-3.5 h-3.5 accent-emerald-600 cursor-pointer" />
                   </td>
                   <td className="px-2 py-3 text-right font-semibold">{r.puissance || ''}</td>
                   <td className="px-2 py-3 align-top"><PrestataireCell items={r.poseurs} kind="poseur" lid={lid} color="amber" options={allPoseurs} /></td>
@@ -20805,11 +20915,12 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         ...formData,
                         payeClient: true,
                         payeClientDate: formData.payeClientDate || today,
+                        payeClientStampAt: new Date().toISOString(),
                         datePaiementBanque: formData.datePaiementBanque || today,
                         statut: 'W_DOSSIER_PAYER',
                       });
                     } else {
-                      setFormData({ ...formData, payeClient: false, payeClientDate: '' });
+                      setFormData({ ...formData, payeClient: false, payeClientDate: '', payeClientStampAt: new Date().toISOString() });
                     }
                   }}
                 />
@@ -20926,7 +21037,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         </button>
                       </div>
                       {isAdmin && r.nom && (
-                        <button type="button" onClick={() => upd({ paye: !r.paye, datePaye: !r.paye ? new Date().toISOString().split('T')[0] : '' })} className={`mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-bold ${r.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                        <button type="button" onClick={() => upd({ paye: !r.paye, datePaye: !r.paye ? new Date().toISOString().split('T')[0] : '', payeStampAt: new Date().toISOString() })} className={`mt-2 w-full px-3 py-1.5 rounded-lg text-xs font-bold ${r.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
                           {r.paye
                             ? `✓ Payée le ${r.datePaye ? new Date(r.datePaye).toLocaleDateString('fr-FR') : '—'} (${formatEuro(ttcRegie)} TTC)`
                             : `⏳ Non payée (${formatEuro(ttcRegie)} TTC)`}
@@ -21067,7 +21178,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       {isAdmin && (
                         <div className="flex-1 min-w-[120px]">
                           <label className="block text-[12px] font-semibold text-slate-500 mb-1">Statut</label>
-                          <button type="button" onClick={() => { const np = !p.paye; upd({ paye: np, datePaye: np ? (p.datePaye || new Date().toISOString().split('T')[0]) : '' }); }} className={`w-full px-2 py-2 rounded-xl border-2 text-xs font-semibold flex items-center justify-center gap-1 ${p.paye ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                          <button type="button" onClick={() => { const np = !p.paye; upd({ paye: np, datePaye: np ? (p.datePaye || new Date().toISOString().split('T')[0]) : '', payeStampAt: new Date().toISOString() }); }} className={`w-full px-2 py-2 rounded-xl border-2 text-xs font-semibold flex items-center justify-center gap-1 ${p.paye ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
                             {p.paye ? <><Check className="w-3 h-3" strokeWidth={3} />Payé</> : '⏳ À payer'}
                           </button>
                         </div>
@@ -21210,7 +21321,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       {isAdmin && (
                         <div className="flex-1 min-w-[120px]">
                           <label className="block text-[12px] font-semibold text-slate-500 mb-1">Statut</label>
-                          <button type="button" onClick={() => { const np = !f.paye; upd({ paye: np, datePaye: np ? (f.datePaye || new Date().toISOString().split('T')[0]) : '' }); }} className={`w-full px-2 py-2 rounded-xl border-2 text-xs font-semibold flex items-center justify-center gap-1 ${f.paye ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
+                          <button type="button" onClick={() => { const np = !f.paye; upd({ paye: np, datePaye: np ? (f.datePaye || new Date().toISOString().split('T')[0]) : '', payeStampAt: new Date().toISOString() }); }} className={`w-full px-2 py-2 rounded-xl border-2 text-xs font-semibold flex items-center justify-center gap-1 ${f.paye ? 'bg-emerald-500 border-emerald-600 text-white' : 'bg-slate-50 border-slate-200 text-slate-500'}`}>
                             {f.paye ? <><Check className="w-3 h-3" strokeWidth={3} />Payé</> : '⏳ À payer'}
                           </button>
                         </div>
@@ -21529,7 +21640,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                               </div>
                             ))}
                           </div>
-                          <button type="button" onClick={() => setFormData({ ...formData, [payeKey]: !formData[payeKey], [dateKey]: !formData[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-3 py-1.5 rounded-lg text-xs font-bold ${formData[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                          <button type="button" onClick={() => setFormData({ ...formData, [payeKey]: !formData[payeKey], [dateKey]: !formData[payeKey] ? new Date().toISOString().split('T')[0] : '', [role.key + 'PayeStampAt']: new Date().toISOString() })} className={`w-full px-3 py-1.5 rounded-lg text-xs font-bold ${formData[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
                             {formData[payeKey] ? `✓ Payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})` : `⏳ Non payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})`}
                           </button>
                         </div>
@@ -22562,6 +22673,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                         datePaiementBanque: today,
                         payeClient: true,
                         payeClientDate: formData.payeClientDate || today,
+                        payeClientStampAt: new Date().toISOString(),
                         statut: 'W_DOSSIER_PAYER',
                       });
                     }} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[12px] font-bold whitespace-nowrap">Auj.</button>
@@ -26610,7 +26722,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     <input type="date" min="2000-01-01" max="2100-12-31" value={d.datePaiementBanque || ''} onChange={(e) => onUpdate({ datePaiementBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[12px]" />
                     <button onClick={() => {
                       const today = new Date().toISOString().split('T')[0];
-                      onUpdate({ datePaiementBanque: today, payeClient: true, payeClientDate: d.payeClientDate || today });
+                      onUpdate({ datePaiementBanque: today, payeClient: true, payeClientDate: d.payeClientDate || today, payeClientStampAt: new Date().toISOString() });
                     }} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[11px] font-bold whitespace-nowrap">Auj.</button>
                   </div>
                 </div>
@@ -26672,11 +26784,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   onUpdate({
                     payeClient: true,
                     payeClientDate: d.payeClientDate || today,
+                    payeClientStampAt: new Date().toISOString(),
                     datePaiementBanque: d.datePaiementBanque || today,
                     statut: 'W_DOSSIER_PAYER',
                   });
                 } else {
-                  onUpdate({ payeClient: false, payeClientDate: '' });
+                  onUpdate({ payeClient: false, payeClientDate: '', payeClientStampAt: new Date().toISOString() });
                 }
               }} className={`mt-2 w-full px-3 py-2 rounded-xl text-xs font-bold ${d.payeClient ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md' : 'bg-orange-100 hover:bg-orange-200 text-orange-700 border-2 border-orange-300'}`}>
                 {d.payeClient ? '✓ Client a payé — cliquer pour annuler' : '⏳ Client à recevoir — cliquer pour marquer payé'}
@@ -27350,7 +27463,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                           );
                         })()}
                         {canCheckPaiements && (
-                          <button onClick={() => updateRegie(i, { paye: !r.paye, datePaye: !r.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${r.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                          <button onClick={() => updateRegie(i, { paye: !r.paye, datePaye: !r.paye ? new Date().toISOString().split('T')[0] : '', payeStampAt: new Date().toISOString() })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${r.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
                             {r.paye
                               ? `✓ Payée le ${r.datePaye ? new Date(r.datePaye).toLocaleDateString('fr-FR') : '—'} (${formatEuro(ttcRegie)})`
                               : `⏳ Non payée (${formatEuro(ttcRegie)})`}
@@ -27562,7 +27675,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                 </div>
                               ))}
                             </div>
-                            <button onClick={() => onUpdate({ [payeKey]: !d[payeKey], [dateKey]: !d[payeKey] ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${d[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                            <button onClick={() => onUpdate({ [payeKey]: !d[payeKey], [dateKey]: !d[payeKey] ? new Date().toISOString().split('T')[0] : '', [role.key + 'PayeStampAt']: new Date().toISOString() })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${d[payeKey] ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
                               {d[payeKey] ? `✓ Payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})` : `⏳ Non payé (${formatEuro(ttc)}${sansTva ? '' : ' TTC'})`}
                             </button>
                           </div>
@@ -27938,7 +28051,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     );
                   })()}
                   {canCheckPaiements && p.nom && (
-                    <button onClick={() => updatePoseur(i, { paye: !p.paye, datePaye: !p.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded-lg text-[12px] font-bold ${p.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                    <button onClick={() => updatePoseur(i, { paye: !p.paye, datePaye: !p.paye ? new Date().toISOString().split('T')[0] : '', payeStampAt: new Date().toISOString() })} className={`w-full px-2 py-1 rounded-lg text-[12px] font-bold ${p.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
                       {p.paye
                         ? `✓ Payé le ${p.datePaye ? new Date(p.datePaye).toLocaleDateString('fr-FR') : '—'}`
                         : '⏳ Non payé'}
@@ -28183,7 +28296,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                     </>
                   )}
                   {canCheckPaiements && f.nom && (
-                    <button onClick={() => updateFournisseur(i, { paye: !f.paye, datePaye: !f.paye ? new Date().toISOString().split('T')[0] : '' })} className={`w-full px-2 py-1 rounded-lg text-[12px] font-bold ${f.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
+                    <button onClick={() => updateFournisseur(i, { paye: !f.paye, datePaye: !f.paye ? new Date().toISOString().split('T')[0] : '', payeStampAt: new Date().toISOString() })} className={`w-full px-2 py-1 rounded-lg text-[12px] font-bold ${f.paye ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-600'}`}>
                       {f.paye
                         ? `✓ Payé le ${f.datePaye ? new Date(f.datePaye).toLocaleDateString('fr-FR') : '—'}`
                         : '⏳ Non payé'}
