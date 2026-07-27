@@ -2140,6 +2140,28 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // 🪦 Cache des suppressions volontaires — utilisé par la fusion multi-postes
   // pour ne pas ressusciter un dossier supprimé.
   const tombstonesRef = useRef(new Set());
+  // ♻️ SUPPRESSION DOUCE : depuis le hotfix du 03/07 la fusion ne supprime
+  // plus jamais rien → un dossier supprimé (ex : doublon) RÉAPPARAISSAIT à
+  // chaque fusion avec la base ou un autre poste. Désormais, supprimer marque
+  // le dossier deleted:true (horodaté) : il SORT de l'état React (invisible
+  // partout, aucun filtre à ajouter dans les vues) mais reste écrit dans
+  // dossiers-data → la suppression se propage entre postes comme n'importe
+  // quelle modification (modifiedAt le plus récent gagne). Purge définitive
+  // au bout de 30 jours. deletedDossiersRef porte ces dossiers cachés.
+  const deletedDossiersRef = useRef([]);
+  const splitDeleted = (full) => {
+    const cutoff = Date.now() - 30 * 24 * 3600 * 1000;
+    const live = [], dead = [];
+    (Array.isArray(full) ? full : []).forEach(d => {
+      if (!d) return;
+      if (d.deleted) {
+        const t = new Date(d.deletedAt || d.modifiedAt || 0).getTime() || 0;
+        if (t > cutoff) dead.push(d); // au-delà de 30 j : purge définitive
+      } else live.push(d);
+    });
+    deletedDossiersRef.current = dead;
+    return live;
+  };
   useEffect(() => {
     (async () => {
       try {
@@ -2660,7 +2682,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (dossiersRes?.value) {
           const arr = JSON.parse(dossiersRes.value);
           const migrated = arr.map(migrateDossier);
-          setDossiers(migrated);
+          // ♻️ Les dossiers supprimés (deleted:true) sortent de l'état React
+          // mais restent portés par deletedDossiersRef (propagation + purge 30 j).
+          setDossiers(splitDeleted(migrated));
         }
         if (societesRes?.value) {
           const arr = JSON.parse(societesRes.value);
@@ -2932,7 +2956,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // Sauvegardes + backup snapshot (filet de sécurité)
   useEffect(() => {
     if (isInitialMount.current) { if (!loading) isInitialMount.current = false; return; }
-    const json = JSON.stringify(dossiers);
+    // ♻️ On écrit TOUJOURS l'état vivant + les supprimés doux (deleted:true)
+    // pour que la suppression se propage aux autres postes via la fusion.
+    const fullArr = [...dossiers, ...deletedDossiersRef.current];
+    const json = JSON.stringify(fullArr);
     // 🛡️ Garde anti-echo : si l'état actuel produit le MÊME JSON que ce qu'on
     // vient d'écrire (ou de recevoir via Realtime), inutile de réécrire. Sans
     // cette garde, chaque évènement Realtime déclenche une réécriture inutile
@@ -2954,12 +2981,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
           if (curV && curV !== json && curV !== lastWrittenDossiersJson.current) {
             const remote = JSON.parse(curV);
             if (Array.isArray(remote)) {
-              const merged = mergeDossiersArrays(dossiers, normalizeDossiers(remote), tombstonesRef.current);
+              const merged = mergeDossiersArrays(fullArr, normalizeDossiers(remote), tombstonesRef.current);
               const mergedJson = JSON.stringify(merged);
               if (mergedJson !== json) {
                 toWrite = mergedJson;
                 lastWrittenDossiersJson.current = mergedJson;
-                setDossiers(merged); // réaligne l'état local sur la fusion
+                setDossiers(splitDeleted(merged)); // réaligne l'état local sur la fusion
               }
             }
           }
@@ -3142,7 +3169,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 if (!Array.isArray(parsed)) return;
                 lastWrittenDossiersJson.current = v;
                 // 🛡️ Fusion par dossier — ne pas écraser nos modifs plus récentes.
-                setDossiers(prev => mergeDossiersArrays(prev, normalizeDossiers(parsed), tombstonesRef.current));
+                setDossiers(prev => splitDeleted(mergeDossiersArrays([...prev, ...deletedDossiersRef.current], normalizeDossiers(parsed), tombstonesRef.current)));
               } catch (e) {}
             })();
             return;
@@ -3156,7 +3183,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             lastWrittenDossiersJson.current = newValue;
             // 🛡️ Fusion par dossier (modifiedAt le plus récent gagne) — ne pas
             // écraser une modif locale plus fraîche avec la copie d'un autre poste.
-            setDossiers(prev => mergeDossiersArrays(prev, normalizeDossiers(parsed), tombstonesRef.current));
+            setDossiers(prev => splitDeleted(mergeDossiersArrays([...prev, ...deletedDossiersRef.current], normalizeDossiers(parsed), tombstonesRef.current)));
           } catch (e) {
             // parse échoué : on ignore (donnée corrompue côté DB).
           }
@@ -3195,7 +3222,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         if (!Array.isArray(parsed)) return;
         lastWrittenDossiersJson.current = v;
         // 🛡️ Fusion par dossier — même protection que le canal Realtime.
-        setDossiers(prev => mergeDossiersArrays(prev, normalizeDossiers(parsed), tombstonesRef.current));
+        setDossiers(prev => splitDeleted(mergeDossiersArrays([...prev, ...deletedDossiersRef.current], normalizeDossiers(parsed), tombstonesRef.current)));
       } catch (e) {
         // Silencieux
       }
@@ -3978,6 +4005,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (list.length > 1000) list = list.slice(-1000);
       await window.storage.set('dossiers-deleted-tombstones', JSON.stringify(list));
     } catch (e) { console.warn('[tombstone] save failed', e); }
+    // ♻️ Suppression DOUCE : le dossier est marqué deleted:true (horodaté) et
+    // passe dans deletedDossiersRef — il reste écrit dans dossiers-data pour
+    // que la suppression se PROPAGE entre postes (fini le doublon supprimé
+    // qui « réapparaît à chaque fois »). Purge définitive après 30 jours.
+    const delNow = new Date().toISOString();
+    const cible = dossiers.find(x => x.localId === id);
+    if (cible) {
+      deletedDossiersRef.current = [
+        ...deletedDossiersRef.current.filter(x => x.localId !== id),
+        { ...cible, deleted: true, deletedAt: delNow, deletedBy: currentUser || '', savedAt: delNow, modifiedAt: delNow, modifiedBy: currentUser || '(suppression)' },
+      ];
+    }
     setDossiers(dossiers.filter(x => x.localId !== id));
   };
 
