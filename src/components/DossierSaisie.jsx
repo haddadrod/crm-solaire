@@ -287,10 +287,17 @@ function mergeLignesPresta(winList, loseList) {
   });
   // Ligne présente UNIQUEMENT côté perdant : on ne la ressuscite que si elle
   // porte de la vraie donnée (facture jointe ou payé) — sinon on respecte
-  // une suppression volontaire de ligne.
+  // une suppression volontaire de ligne. Garde-fous anti-doublon :
+  // — une ligne SANS NOM (« — Choisir ») n'est jamais ressuscitée ;
+  // — si son n° de facture ou son PDF existe déjà sur une AUTRE ligne du
+  //   dossier, c'est un doublon supprimé exprès → on ne le recrée pas
+  //   (cas réel : ligne dupliquée FAC-2026-1885 qui revenait à chaque fusion).
   lose.forEach((l, j) => {
     if (usedLose.has(j) || !l) return;
     if (!(l.factureFile || l.paye)) return;
+    if (!(l.nom || '').trim()) return;
+    if (l.factureNo && win.some(w => (w.factureNo || '') === l.factureNo)) return;
+    if (l.factureFile && win.some(w => (w.factureFile || '') === l.factureFile)) return;
     if (win.some(w => (w.nom || '') === (l.nom || '') && (w.factureNo || '') === (l.factureNo || ''))) return;
     win.push({ ...l });
   });
