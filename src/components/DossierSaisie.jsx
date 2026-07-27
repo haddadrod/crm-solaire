@@ -243,7 +243,27 @@ function normalizeDossierDates(d) {
 // avoirs — et le pointage payé est arbitré par ligne via payeStampAt (le
 // pointage/dé-pointage le plus récent gagne, pas le dossier le plus récent).
 const LIGNE_FILL_FIELDS = ['factureFile', 'factureNo', 'bl', 'facturePdfUrl', 'factureExternalUrl', 'dateFacture', 'pennylaneInvoiceId', 'pennylanePushedAt', 'htCustom', 'ttcCustom'];
-function mergeLignesPresta(winList, loseList) {
+// 🪦 Marqueurs de suppression VOLONTAIRE d'une ligne ou d'un avoir, stockés
+// sur le dossier (lignesSupprimees, cap 60) et respectés par la fusion fine.
+// Sans eux, une ligne portant une facture était traitée comme « donnée
+// perdue » et RESSUSCITÉE à chaque fusion (« je supprime, il revient »).
+function noteSuppressionLigne(d, entry) {
+  const list = Array.isArray(d && d.lignesSupprimees) ? [...d.lignesSupprimees, entry] : [entry];
+  return list.slice(-60);
+}
+function ligneEstSupprimee(l, suppr) {
+  return (suppr || []).some(e => e && (
+    (e.factureFile && l.factureFile && e.factureFile === l.factureFile) ||
+    (((e.nom || '') === (l.nom || '')) && ((e.factureNo || '') === (l.factureNo || '')))
+  ));
+}
+function avoirEstSupprime(a, nomLigne, suppr) {
+  return (suppr || []).some(e => e && ((e.nom || '') === (nomLigne || '')) && (
+    (e.avoirNo && a && a.avoirNo && e.avoirNo === a.avoirNo) ||
+    (!e.avoirNo && !(a && a.avoirNo) && String(e.montantHt ?? '') === String((a && a.montantHt) ?? '') && ((e.date || '') === ((a && a.date) || '')))
+  ));
+}
+function mergeLignesPresta(winList, loseList, supprLignes = [], supprAvoirs = []) {
   const lose = Array.isArray(loseList) ? loseList : [];
   if (!lose.length) return winList;
   const win = Array.isArray(winList) ? winList.map(l => ({ ...(l || {}) })) : [];
@@ -269,12 +289,13 @@ function mergeLignesPresta(winList, loseList) {
       const vide = w[f] === '' || w[f] === undefined || w[f] === null;
       if (vide && l[f] !== '' && l[f] !== undefined && l[f] !== null) w[f] = l[f];
     }
-    // Avoirs : union — un avoir présent d'un seul côté est conservé.
+    // Avoirs : union — un avoir présent d'un seul côté est conservé, SAUF
+    // s'il a été supprimé volontairement (marqueur lignesSupprimees).
     if (Array.isArray(l.avoirs) && l.avoirs.length) {
       const wa = Array.isArray(w.avoirs) ? [...w.avoirs] : [];
       const keyA = (a) => (a && a.avoirNo) ? `n:${a.avoirNo}` : `m:${(a && a.montantHt) || ''}|${(a && a.date) || ''}`;
       const dejaLa = new Set(wa.map(keyA));
-      l.avoirs.forEach(a => { if (!dejaLa.has(keyA(a))) wa.push(a); });
+      l.avoirs.forEach(a => { if (!dejaLa.has(keyA(a)) && !avoirEstSupprime(a, w.nom, supprAvoirs)) wa.push(a); });
       w.avoirs = wa;
     }
     // Pointage payé : le pointage HORODATÉ le plus récent gagne (payeStampAt,
@@ -296,6 +317,7 @@ function mergeLignesPresta(winList, loseList) {
     if (usedLose.has(j) || !l) return;
     if (!(l.factureFile || l.paye)) return;
     if (!(l.nom || '').trim()) return;
+    if (ligneEstSupprimee(l, supprLignes)) return; // supprimée volontairement
     if (l.factureNo && win.some(w => (w.factureNo || '') === l.factureNo)) return;
     if (l.factureFile && win.some(w => (w.factureFile || '') === l.factureFile)) return;
     if (win.some(w => (w.nom || '') === (l.nom || '') && (w.factureNo || '') === (l.factureNo || ''))) return;
@@ -308,9 +330,20 @@ function mergeLignesPresta(winList, loseList) {
 function mergeDossierFin(winner, loser) {
   if (!loser || loser === winner) return winner;
   const out = { ...winner };
-  out.poseurs = mergeLignesPresta(winner.poseurs, loser.poseurs);
-  out.regies = mergeLignesPresta(winner.regies, loser.regies);
-  out.fournisseurs = mergeLignesPresta(winner.fournisseurs, loser.fournisseurs);
+  // 🪦 Union des marqueurs de suppression des 2 versions (dédupliqués).
+  const supprBrut = [...(Array.isArray(winner.lignesSupprimees) ? winner.lignesSupprimees : []), ...(Array.isArray(loser.lignesSupprimees) ? loser.lignesSupprimees : [])];
+  const vus = new Set(); const suppr = [];
+  supprBrut.forEach(e => {
+    if (!e) return;
+    const cle = [e.k || '', e.nom || '', e.factureNo || '', e.factureFile || '', e.avoirNo || '', String(e.montantHt ?? ''), e.date || ''].join('|');
+    if (vus.has(cle)) return; vus.add(cle); suppr.push(e);
+  });
+  if (suppr.length) out.lignesSupprimees = suppr.slice(-60);
+  const sFor = (k) => suppr.filter(e => e.k === k);
+  const aFor = (k) => suppr.filter(e => e.k === 'avoir:' + k);
+  out.poseurs = mergeLignesPresta(winner.poseurs, loser.poseurs, sFor('poseurs'), aFor('poseurs'));
+  out.regies = mergeLignesPresta(winner.regies, loser.regies, sFor('regies'), aFor('regies'));
+  out.fournisseurs = mergeLignesPresta(winner.fournisseurs, loser.fournisseurs, sFor('fournisseurs'), aFor('fournisseurs'));
   const cw = new Date(winner.payeClientStampAt || 0).getTime() || 0;
   const cl = new Date(loser.payeClientStampAt || 0).getTime() || 0;
   if (cl > cw) { out.payeClient = !!loser.payeClient; out.payeClientDate = loser.payeClientDate || ''; out.payeClientStampAt = loser.payeClientStampAt; }
@@ -329,7 +362,8 @@ function mergeDossierFin(winner, loser) {
       const wa = Array.isArray(out[k + 'Avoirs']) ? [...out[k + 'Avoirs']] : [];
       const keyA = (a) => (a && a.avoirNo) ? `n:${a.avoirNo}` : `m:${(a && a.montantHt) || ''}|${(a && a.date) || ''}`;
       const dejaLa = new Set(wa.map(keyA));
-      la.forEach(a => { if (!dejaLa.has(keyA(a))) wa.push(a); });
+      const supprRole = suppr.filter(e => e.k === 'avoir:role:' + k);
+      la.forEach(a => { if (!dejaLa.has(keyA(a)) && !avoirEstSupprime(a, '', supprRole)) wa.push(a); });
       out[k + 'Avoirs'] = wa;
     }
     const pw = new Date(out[k + 'PayeStampAt'] || 0).getTime() || 0;
@@ -4245,8 +4279,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
       if (d.localId !== localId) return d;
       const list = [...(d[arrKey] || [])];
       const x = list[idx]; if (!x) return d;
+      const av = (x.avoirs || [])[aIdx];
       list[idx] = { ...x, avoirs: (x.avoirs || []).filter((_, i) => i !== aIdx) };
-      return { ...d, [arrKey]: list, savedAt: now, modifiedAt: now, modifiedBy: currentUser || '(audit avoirs)' };
+      const out = { ...d, [arrKey]: list, savedAt: now, modifiedAt: now, modifiedBy: currentUser || '(audit avoirs)' };
+      // 🪦 Marqueur : la fusion fine ne ressuscitera pas cet avoir.
+      if (av) out.lignesSupprimees = noteSuppressionLigne(d, { k: 'avoir:' + arrKey, nom: x.nom || '', avoirNo: av.avoirNo || '', montantHt: av.montantHt ?? '', date: av.date || '', at: now });
+      return out;
     }));
   };
 
@@ -16097,6 +16135,11 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
   const [sortKey, setSortKey] = useState('dateInsta');
   const [sortDir, setSortDir] = useState('desc');
   const [filter, setFilter] = useState('');
+  // 📄 Pagination — la vue rendait les ~900 dossiers d'un coup (des dizaines
+  // de milliers de cellules/inputs) → l'onglet Chrome finissait par manquer
+  // de mémoire (« Aïe aïe aïe », écran noir). On affiche 150 lignes et un
+  // bouton « Afficher plus » ; les TOTAUX restent calculés sur TOUT le filtré.
+  const [sheetLimit, setSheetLimit] = useState(150);
   // 🔎 Filtres de paiement — MULTI-SÉLECTION (AND). Vide = pas de filtre.
   // Permet de croiser : « Yolico » + « Poseur à payer » + « Régie à payer »
   // → vue ultra-ciblée des urgences compta.
@@ -16176,8 +16219,13 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
     const field = kindToField(kind);
     setDossiers(prev => prev.map(d => {
       if (d.localId !== localId) return d;
+      const l = (d[field] || [])[idx];
       const list = (d[field] || []).filter((_, i) => i !== idx);
-      return { ...d, [field]: list, savedAt: new Date().toISOString(), modifiedAt: new Date().toISOString() };
+      const now = new Date().toISOString();
+      const out = { ...d, [field]: list, savedAt: now, modifiedAt: now };
+      // 🪦 Marqueur : la fusion fine ne ressuscitera pas cette ligne.
+      if (l) out.lignesSupprimees = noteSuppressionLigne(d, { k: field, nom: l.nom || '', factureNo: l.factureNo || '', factureFile: l.factureFile || '', at: now });
+      return out;
     }));
   };
 
@@ -16704,7 +16752,7 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
             </tr>
           </thead>
           <tbody>
-            {rows.map((r, i) => {
+            {rows.slice(0, sheetLimit).map((r, i) => {
               const s = statutMap[r.statut];
               const statutCls = s
                 ? `${s.bg || 'bg-slate-100'} ${s.text || 'text-slate-700'} font-bold`
@@ -16757,6 +16805,15 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
             })}
             {rows.length === 0 && (
               <tr><td colSpan={19} className="text-center text-slate-400 italic py-6">Aucun dossier {filter || paySelected.size > 0 || societeSelected.size > 0 ? 'correspondant aux filtres' : ''}.</td></tr>
+            )}
+            {rows.length > sheetLimit && (
+              <tr>
+                <td colSpan={19} className="text-center py-3">
+                  <button onClick={() => setSheetLimit(l => l + 300)} className="px-4 py-2 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded-xl text-sm font-bold">
+                    ⬇️ Afficher 300 de plus ({rows.length - sheetLimit} restants — totaux calculés sur tout)
+                  </button>
+                </td>
+              </tr>
             )}
           </tbody>
           {/* 📊 LIGNE SOUS-TOTAL — agrégats sur les lignes affichées (= filtrées). */}
@@ -21057,7 +21114,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   // setFormData FONCTIONNEL : évite l'écrasement quand upload
                   // (factureFile) et IA (factureNo) s'enchaînent sur la même ligne.
                   const upd = (u) => setFormData(prev => { const l = [...prev.regies]; l[idx] = { ...l[idx], ...u }; return { ...prev, regies: l }; });
-                  const rm = () => { setFormData({ ...formData, regies: formData.regies.filter((_, i) => i !== idx) }); };
+                  const rm = () => { const l = formData.regies[idx]; setFormData({ ...formData, regies: formData.regies.filter((_, i) => i !== idx), ...(l ? { lignesSupprimees: noteSuppressionLigne(formData, { k: 'regies', nom: l.nom || '', factureNo: l.factureNo || '', factureFile: l.factureFile || '', at: new Date().toISOString() }) } : {}) }); };
                   const tarifAuto = calculs.regiesDetail[idx]?.autoHt || 0;
                   const ttcRegie = calculs.regiesDetail[idx]?.ttc || 0;
                   return (
@@ -21201,7 +21258,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               )}
               {formData.poseurs.map((p, idx) => {
                 const upd = (u) => setFormData(prev => { const l = [...prev.poseurs]; l[idx] = { ...l[idx], ...u }; return { ...prev, poseurs: l }; });
-                const rm = () => { setFormData({ ...formData, poseurs: formData.poseurs.filter((_, i) => i !== idx) }); };
+                const rm = () => { const l = formData.poseurs[idx]; setFormData({ ...formData, poseurs: formData.poseurs.filter((_, i) => i !== idx), ...(l ? { lignesSupprimees: noteSuppressionLigne(formData, { k: 'poseurs', nom: l.nom || '', factureNo: l.factureNo || '', factureFile: l.factureFile || '', at: new Date().toISOString() }) } : {}) }); };
                 const tarifAuto = calculs.poseursDetail[idx]?.autoHt || 0;
                 return (
                   <div key={idx} className={`rounded-xl border p-3 ${p.paye ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-amber-200'}`}>
@@ -21345,7 +21402,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               )}
               {formData.fournisseurs.map((f, idx) => {
                 const upd = (u) => setFormData(prev => { const l = [...prev.fournisseurs]; l[idx] = { ...l[idx], ...u }; return { ...prev, fournisseurs: l }; });
-                const rm = () => { setFormData({ ...formData, fournisseurs: formData.fournisseurs.filter((_, i) => i !== idx) }); };
+                const rm = () => { const l = formData.fournisseurs[idx]; setFormData({ ...formData, fournisseurs: formData.fournisseurs.filter((_, i) => i !== idx), ...(l ? { lignesSupprimees: noteSuppressionLigne(formData, { k: 'fournisseurs', nom: l.nom || '', factureNo: l.factureNo || '', factureFile: l.factureFile || '', at: new Date().toISOString() }) } : {}) }); };
                 return (
                   <div key={idx} className={`rounded-xl border p-3 ${f.paye ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-amber-200'}`}>
                     <div className="flex items-end gap-2 flex-wrap">
@@ -21567,7 +21624,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                       const avoirs = Array.isArray(formData[avoirsKey]) ? formData[avoirsKey] : [];
                       const avoirsHt = avoirs.reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
                       const htNet = montantEffectif - avoirsHt;
-                      const setAvoirs = (list) => setFormData({ ...formData, [avoirsKey]: list });
+                      const setAvoirs = (list, delA) => setFormData({ ...formData, [avoirsKey]: list, ...(delA ? { lignesSupprimees: noteSuppressionLigne(formData, { k: 'avoir:role:' + role.key, nom: '', avoirNo: delA.avoirNo || '', montantHt: delA.montantHt ?? '', date: delA.date || '', at: new Date().toISOString() }) } : {}) });
                       const sansTva = formData[sansTvaKey] === undefined ? true : !!formData[sansTvaKey];
                       const ttc = computeTtcPresta(htNet, sansTva, undefined, formData[ttcCustomKey]);
                       const societe = (internesContacts[formData[nomKey]] || {}).societe || '';
@@ -21653,7 +21710,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                                 <div className="grid grid-cols-[1fr_1fr_auto] gap-1 items-center">
                                   <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, montantHt: e.target.value } : av))} placeholder="Montant HT" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
                                   <input type="text" value={a.avoirNo || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, avoirNo: e.target.value } : av))} placeholder="N° avoir" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
-                                  <button type="button" onClick={() => setAvoirs(avoirs.filter((_, i) => i !== aIdx))} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
+                                  <button type="button" onClick={() => setAvoirs(avoirs.filter((_, i) => i !== aIdx), avoirs[aIdx])} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
                                     <Trash2 className="w-3 h-3" />
                                   </button>
                                 </div>
@@ -24911,9 +24968,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
     }));
   };
   const removePoseur = (idx) => {
-    onUpdate((dCurrent) => ({
-      poseurs: (dCurrent.poseurs || []).filter((_, i) => i !== idx),
-    }));
+    onUpdate((dCurrent) => {
+      const l = (dCurrent.poseurs || [])[idx];
+      const upd = { poseurs: (dCurrent.poseurs || []).filter((_, i) => i !== idx) };
+      if (l) upd.lignesSupprimees = noteSuppressionLigne(dCurrent, { k: 'poseurs', nom: l.nom || '', factureNo: l.factureNo || '', factureFile: l.factureFile || '', at: new Date().toISOString() });
+      return upd;
+    });
   };
 
   const updateFournisseur = (idx, updates) => {
@@ -24929,9 +24989,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
     }));
   };
   const removeFournisseur = (idx) => {
-    onUpdate((dCurrent) => ({
-      fournisseurs: (dCurrent.fournisseurs || []).filter((_, i) => i !== idx),
-    }));
+    onUpdate((dCurrent) => {
+      const l = (dCurrent.fournisseurs || [])[idx];
+      const upd = { fournisseurs: (dCurrent.fournisseurs || []).filter((_, i) => i !== idx) };
+      if (l) upd.lignesSupprimees = noteSuppressionLigne(dCurrent, { k: 'fournisseurs', nom: l.nom || '', factureNo: l.factureNo || '', factureFile: l.factureFile || '', at: new Date().toISOString() });
+      return upd;
+    });
   };
   // Avoirs fournisseur (notes de crédit) — imbriqués dans chaque fournisseur.
   // Un avoir vient en déduction du coût HT du fournisseur (ex : matériel
@@ -24961,9 +25024,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
     onUpdate((dCurrent) => {
       const list = [...(dCurrent.fournisseurs || [])];
       const f = list[idx]; if (!f) return {};
+      const av = (f.avoirs || [])[aIdx];
       const avoirs = (f.avoirs || []).filter((_, i) => i !== aIdx);
       list[idx] = { ...f, avoirs };
-      return { fournisseurs: list };
+      const upd = { fournisseurs: list };
+      if (av) upd.lignesSupprimees = noteSuppressionLigne(dCurrent, { k: 'avoir:fournisseurs', nom: f.nom || '', avoirNo: av.avoirNo || '', montantHt: av.montantHt ?? '', date: av.date || '', at: new Date().toISOString() });
+      return upd;
     });
   };
   // 🧾 Avoirs GÉNÉRIQUES (régies / poseurs) — même mécanique que les
@@ -24991,8 +25057,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
     onUpdate((dCurrent) => {
       const list = [...(dCurrent[arrKey] || [])];
       const x = list[idx]; if (!x) return {};
+      const av = (x.avoirs || [])[aIdx];
       list[idx] = { ...x, avoirs: (x.avoirs || []).filter((_, i) => i !== aIdx) };
-      return { [arrKey]: list };
+      const upd = { [arrKey]: list };
+      if (av) upd.lignesSupprimees = noteSuppressionLigne(dCurrent, { k: 'avoir:' + arrKey, nom: x.nom || '', avoirNo: av.avoirNo || '', montantHt: av.montantHt ?? '', date: av.date || '', at: new Date().toISOString() });
+      return upd;
     });
   };
 
@@ -27600,7 +27669,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                         const avoirs = Array.isArray(d[avoirsKey]) ? d[avoirsKey] : [];
                         const avoirsHt = avoirs.reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
                         const htNet = montantEffectif - avoirsHt;
-                        const setAvoirs = (list) => onUpdate({ [avoirsKey]: list });
+                        const setAvoirs = (list, delA) => onUpdate((dCurrent) => ({ [avoirsKey]: list, ...(delA ? { lignesSupprimees: noteSuppressionLigne(dCurrent, { k: 'avoir:role:' + role.key, nom: '', avoirNo: delA.avoirNo || '', montantHt: delA.montantHt ?? '', date: delA.date || '', at: new Date().toISOString() }) } : {}) }));
                         const sansTva = d[sansTvaKey] === undefined ? true : !!d[sansTvaKey];
                         const ttc = computeTtcPresta(htNet, sansTva, undefined, d[ttcCustomKey]);
                         const societe = (internesContacts[d[nomKey]] || {}).societe || '';
@@ -27688,7 +27757,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                                   <div className="grid grid-cols-[1fr_1fr_auto] gap-1 items-center">
                                     <input type="number" step="0.01" value={a.montantHt || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, montantHt: e.target.value } : av))} placeholder="Montant HT" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
                                     <input type="text" value={a.avoirNo || ''} onChange={(e) => setAvoirs(avoirs.map((av, i) => i === aIdx ? { ...av, avoirNo: e.target.value } : av))} placeholder="N° avoir" className="min-w-0 w-full px-2 py-1 bg-white border border-rose-200 rounded text-[12px]" />
-                                    <button onClick={() => setAvoirs(avoirs.filter((_, i) => i !== aIdx))} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
+                                    <button onClick={() => setAvoirs(avoirs.filter((_, i) => i !== aIdx), avoirs[aIdx])} className="p-1 text-rose-500 hover:bg-rose-100 rounded" title="Supprimer cet avoir">
                                       <Trash2 className="w-3 h-3" />
                                     </button>
                                   </div>
