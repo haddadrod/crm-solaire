@@ -201,6 +201,88 @@ async function uploadPdfAttachment(apiKey, base64, fileName) {
   return id;
 }
 
+// ───────────────────────── VosFactures (greffé ici) ─────────────────────────
+// Facturation CLIENT via l'API vosfactures.fr — même montage que sur le CRM
+// POSE : le proxy vit dans cette fonction (pas de nouveau fichier /api), le
+// handler principal route quand body.provider === 'vosfactures'.
+// Variables d'env Vercel : VOSFACTURES_TOKEN, VOSFACTURES_HOST
+//   (+ overrides par société : VOSFACTURES_TOKEN_<SOCIETE> / VOSFACTURES_HOST_<SOCIETE>)
+// Body : { provider:'vosfactures', action:'ping'|'demo'|'create', societe?, invoice?, departmentId? }
+function vfCleanHost(h) {
+  return String(h || '').trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+}
+
+function pickVfConfig(societe) {
+  const norm = String(societe || '').toUpperCase().trim().replace(/[^A-Z0-9]/g, '');
+  let token = null, host = null, source = null;
+  if (norm) { const t = process.env[`VOSFACTURES_TOKEN_${norm}`]; if (t) { token = t; source = `VOSFACTURES_TOKEN_${norm}`; } }
+  if (!token) { token = process.env.VOSFACTURES_TOKEN || null; if (token) source = source || 'VOSFACTURES_TOKEN'; }
+  if (norm) host = process.env[`VOSFACTURES_HOST_${norm}`] || null;
+  if (!host) host = process.env.VOSFACTURES_HOST || null;
+  return { token, host: vfCleanHost(host), source };
+}
+
+async function vfFetch(host, path, options = {}) {
+  const r = await fetch(`https://${host}${path}`, options);
+  let payload = null;
+  try { payload = await r.json(); } catch (e) {}
+  return { ok: r.ok, status: r.status, payload };
+}
+
+async function handleVosFactures(res, body) {
+  const action = body.action || 'create';
+  const { token, host, source } = pickVfConfig(body.societe);
+  if (!token || !host) {
+    return json(res, 503, {
+      error: 'VosFactures non configuré côté Vercel. Ajoute VOSFACTURES_TOKEN (code d\'autorisation API) et VOSFACTURES_HOST (ex "monentreprise.vosfactures.fr") dans les variables d\'environnement du projet, puis redéploie.',
+    });
+  }
+  try {
+    // Test lecture : liste des départements (= émetteurs). Read-only, sûr.
+    if (action === 'departments' || action === 'ping') {
+      const { ok, status, payload } = await vfFetch(host, `/departments.json?api_token=${encodeURIComponent(token)}`, { method: 'GET' });
+      if (!ok) return json(res, 502, { error: `VosFactures GET /departments.json ${status} : ${JSON.stringify(payload)}` });
+      const list = Array.isArray(payload) ? payload : (payload?.departments || []);
+      return json(res, 200, { data: { host, source, departments: list.map((d) => ({ id: d.id, name: d.name || d.shortcut || '' })) } });
+    }
+    let invoice;
+    if (action === 'demo') {
+      invoice = {
+        kind: 'proforma', // proforma = pas une vraie facture fiscale → test sans risque
+        issue_date: new Date().toISOString().slice(0, 10),
+        buyer_name: 'TEST CRM — proforma à supprimer',
+        buyer_company: true,
+        positions: [{ name: 'Test de connexion CRM (proforma)', quantity: 1, tax: 20, total_price_gross: 1.2 }],
+      };
+      if (body.departmentId) invoice.department_id = body.departmentId;
+    } else if (action === 'create') {
+      invoice = body.invoice;
+      if (!invoice || typeof invoice !== 'object') return json(res, 400, { error: 'invoice (objet) requis pour action=create.' });
+    } else {
+      return json(res, 400, { error: `Action inconnue : ${action}` });
+    }
+    const { ok, status, payload } = await vfFetch(host, '/invoices.json', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_token: token, invoice }),
+    });
+    if (!ok) return json(res, 502, { error: `VosFactures POST /invoices.json ${status} : ${JSON.stringify(payload)}` });
+    // PDF de la facture créée (best effort) → l'app le range dans le dossier.
+    let pdfBase64 = null;
+    if (payload?.id) {
+      try {
+        const pdfRes = await fetch(`https://${host}/invoices/${payload.id}.pdf?api_token=${encodeURIComponent(token)}`);
+        if (pdfRes.ok) pdfBase64 = Buffer.from(await pdfRes.arrayBuffer()).toString('base64');
+      } catch (e) {}
+    }
+    const viewUrl = payload?.view_url || (payload?.id && payload?.token ? `https://${host}/invoice/${payload.id}/${payload.token}` : '');
+    return json(res, 200, { data: { id: payload?.id, number: payload?.number, kind: payload?.kind, price_gross: payload?.price_gross, viewUrl, source, pdfBase64 } });
+  } catch (e) {
+    console.error('vosfactures error:', e?.message || e);
+    return json(res, 502, { error: e?.message || 'Erreur VosFactures' });
+  }
+}
+
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     res.setHeader('Allow', 'POST');
@@ -211,6 +293,9 @@ export default async function handler(req, res) {
   if (!caller) return json(res, 401, { error: 'Connexion requise.' });
 
   const body = req.body || {};
+
+  // 🧾 Route VosFactures (facturation client) — greffée ici, cf. bloc ci-dessus.
+  if (body.provider === 'vosfactures') return handleVosFactures(res, body);
   const {
     societe,
     supplierName,

@@ -4483,6 +4483,91 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // 💰 Pointage groupé d'encaissements client : quand la banque vire pour
   // plusieurs dossiers d'un coup, on coche dans le rapport, on valide, et
   // tous passent en payeClient=true avec la date du jour.
+  // 📤 ENVOI GROUPÉ PENNYLANE — depuis l'alerte « À envoyer à Pennylane » :
+  // pousse d'un coup toutes les factures prestataires prêtes (dossier payé,
+  // PDF uploadé, n° de facture renseigné, montant > 0, pas encore poussées).
+  // Les lignes sans n° ou à 0 € sont IGNORÉES et listées dans le bilan final.
+  const [bulkPennylaneBusy, setBulkPennylaneBusy] = useState(false);
+  const handleBulkPennylane = async (rappels) => {
+    const jobs = [];
+    (rappels || []).forEach(r => {
+      const d = r.dossier;
+      if (!d) return;
+      [['poseurs', 'poseursDetail'], ['regies', 'regiesDetail'], ['fournisseurs', 'fournisseursDetail']].forEach(([arrKey, detKey]) => {
+        (d[arrKey] || []).forEach((x, idx) => {
+          if (!x || !x.nom || !x.factureFile || x.pennylaneInvoiceId) return;
+          const det = (Array.isArray(d[detKey]) ? d[detKey] : [])[idx] || {};
+          const ht = (det.baseHt ?? det.ht) || parseFloat(x.htCustom) || 0;
+          const ttc = det.ttc || (x.sansTva ? ht : Math.round(ht * 1.2 * 100) / 100);
+          jobs.push({ d, arrKey, idx, x, ht, ttc });
+        });
+      });
+    });
+    if (!jobs.length) { alert('Rien à envoyer : toutes les factures sont déjà poussées ou sans PDF.'); return; }
+    const sansNo = jobs.filter(j => !j.x.factureNo);
+    const zero = jobs.filter(j => j.x.factureNo && !(j.ht > 0));
+    const prets = jobs.filter(j => j.x.factureNo && j.ht > 0);
+    if (!prets.length) { alert(`Aucune facture prête :\n${sansNo.length ? `⚠️ ${sansNo.length} sans n° de facture\n` : ''}${zero.length ? `⚠️ ${zero.length} à montant 0 €` : ''}`); return; }
+    if (!window.confirm(
+      `📤 Envoyer ${prets.length} facture${prets.length > 1 ? 's' : ''} à Pennylane d'un coup ?`
+      + (sansNo.length ? `\n\n⚠️ ${sansNo.length} ligne${sansNo.length > 1 ? 's' : ''} SANS n° de facture ser${sansNo.length > 1 ? 'ont' : 'a'} ignorée${sansNo.length > 1 ? 's' : ''}.` : '')
+      + (zero.length ? `\n⚠️ ${zero.length} à montant 0 € ignorée${zero.length > 1 ? 's' : ''}.` : '')
+    )) return;
+    setBulkPennylaneBusy(true);
+    const ok = [], ko = [];
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      for (const j of prets) {
+        try {
+          const rFile = await window.storage.get(`file:${j.x.factureFile}`);
+          if (!rFile?.value) throw new Error('PDF introuvable dans le storage');
+          const fdata = JSON.parse(rFile.value);
+          const fileBase64 = (fdata.dataUrl || '').split(',')[1] || '';
+          const res = await fetch('/api/pennylane-push-facture', {
+            method: 'POST', headers,
+            body: JSON.stringify({
+              societe: j.d.societe || '',
+              supplierName: j.x.nom,
+              factureNo: j.x.factureNo,
+              dateFacture: j.x.dateFacture || j.x.datePaye || new Date().toISOString().slice(0, 10),
+              montantHt: j.ht,
+              montantTtc: j.ttc,
+              tauxTva: j.x.sansTva ? 0 : 20,
+              fileBase64,
+              fileName: fdata.name || 'facture.pdf',
+            }),
+          });
+          const payload = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+          const pid = payload.data?.pennylaneInvoiceId;
+          if (pid) {
+            const now = new Date().toISOString();
+            setDossiers(prev => prev.map(dd => {
+              if (dd.localId !== j.d.localId) return dd;
+              const list = [...(dd[j.arrKey] || [])];
+              if (!list[j.idx]) return dd;
+              list[j.idx] = { ...list[j.idx], pennylaneInvoiceId: pid, pennylanePushedAt: now };
+              return { ...dd, [j.arrKey]: list, savedAt: now, modifiedAt: now, modifiedBy: currentUser || '(pennylane groupé)' };
+            }));
+          }
+          ok.push(`${j.x.nom} ${j.x.factureNo} — ${j.d.nom || ''}`);
+        } catch (e) {
+          ko.push(`${j.x.nom} ${j.x.factureNo || '(sans n°)'} — ${j.d.nom || ''} : ${e.message}`);
+        }
+      }
+    } finally {
+      setBulkPennylaneBusy(false);
+    }
+    alert(
+      `📤 Envoi groupé Pennylane terminé.\n\n✅ ${ok.length} envoyée${ok.length > 1 ? 's' : ''}`
+      + (sansNo.length ? `\n⚠️ ${sansNo.length} ignorée${sansNo.length > 1 ? 's' : ''} (pas de n° de facture)` : '')
+      + (zero.length ? `\n⚠️ ${zero.length} ignorée${zero.length > 1 ? 's' : ''} (montant 0 €)` : '')
+      + (ko.length ? `\n❌ ${ko.length} erreur${ko.length > 1 ? 's' : ''} :\n- ${ko.slice(0, 6).join('\n- ')}${ko.length > 6 ? '\n…' : ''}` : '')
+    );
+  };
+
   const handleMarkClientPaye = (localIds) => {
     // 🗒️ Journal : encaissements client pointés en groupe.
     try {
@@ -7360,6 +7445,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
           <AlertesModal
             type={showAlertesType}
             dashboard={dashboard}
+            onBulkPennylane={handleBulkPennylane}
+            bulkPennylaneBusy={bulkPennylaneBusy}
             STATUTS={STATUTS}
             poseursContacts={effectivePoseursContacts}
             regiesContacts={effectiveRegiesContacts}
@@ -24970,6 +25057,64 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
     setConfirmClose(false);
     onClose();
   };
+  // 🧾 Facturation CLIENT via VosFactures (même logiciel que le CRM pose).
+  // Crée la facture de vente (TTC, TVA du dossier) au nom du client, mémorise
+  // n°/lien/date sur le dossier et range le PDF renvoyé dans un fichier.
+  const [vfEnCours, setVfEnCours] = useState(false);
+  const facturerClientVosFactures = async () => {
+    const dd = dossier;
+    const ttc = parseFloat(dd.montantTotal) || 0;
+    if (ttc <= 0) { alert('❌ Montant TTC du dossier vide — renseigne la vente avant de facturer.'); return; }
+    // Taux de TVA : celui du dossier (recalculé depuis HT/TTC si absent).
+    let taux = parseFloat(dd.tauxTvaVente);
+    if (isNaN(taux)) {
+      const ht = parseFloat(dd.montantHt) || 0;
+      taux = ht > 0 ? Math.round(((ttc - ht) / ht) * 1000) / 10 : 20;
+    }
+    const produitsTxt = (dd.produits || []).map(p => `${p.type || ''}${p.puissance ? ` ${p.puissance} Wc` : ''}${p.quantite > 1 ? ` ×${p.quantite}` : ''}`.trim()).filter(Boolean).join(' + ') || 'Installation photovoltaïque';
+    if (!window.confirm(`Créer la facture VosFactures pour ${dd.nom || ''} ${dd.prenom || ''} ?\n\n${produitsTxt}\nTTC : ${formatEuro(ttc)} (TVA ${taux} %)\nSociété émettrice : ${dd.societe || '(défaut)'}\n\n⚠️ C'est une vraie facture fiscale (numérotée) dans VosFactures.`)) return;
+    setVfEnCours(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+      const invoice = {
+        issue_date: new Date().toISOString().slice(0, 10),
+        buyer_name: `${dd.nom || ''} ${dd.prenom || ''}`.trim(),
+        buyer_company: false,
+        buyer_street: dd.adresse || '',
+        buyer_post_code: dd.codePostal || '',
+        buyer_city: dd.ville || '',
+        buyer_email: dd.email || '',
+        buyer_phone: dd.telephone || '',
+        positions: [{ name: `${produitsTxt} — fourniture et pose`, quantity: 1, tax: taux, total_price_gross: ttc }],
+      };
+      const r = await fetch('/api/pennylane-push-facture', { method: 'POST', headers, body: JSON.stringify({ provider: 'vosfactures', action: 'create', societe: dd.societe || '', invoice }) });
+      const p = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(p.error || `Erreur ${r.status}`);
+      const upd = { vfClientId: p.data?.id || '', vfClientNo: p.data?.number || '', vfClientUrl: p.data?.viewUrl || '', vfClientDate: new Date().toISOString() };
+      if (p.data?.pdfBase64) {
+        const fid = `${Date.now()}_vfclient`;
+        const okSet = await window.storage.set(`file:${fid}`, JSON.stringify({ dataUrl: `data:application/pdf;base64,${p.data.pdfBase64}`, name: `facture_${p.data?.number || 'client'}.pdf`, type: 'application/pdf' }));
+        if (okSet) upd.vfClientFileId = fid;
+      }
+      onUpdate(upd);
+      alert(`✅ Facture ${p.data?.number || ''} créée dans VosFactures pour ${dd.nom || ''} ${dd.prenom || ''}.`);
+    } catch (e) {
+      alert('❌ Facturation VosFactures : ' + e.message);
+    } finally {
+      setVfEnCours(false);
+    }
+  };
+  const voirPdfFichier = async (fileId) => {
+    try {
+      const r = await window.storage.get(`file:${fileId}`);
+      if (!r?.value) { alert('❌ Fichier introuvable.'); return; }
+      const data = JSON.parse(r.value);
+      const win = window.open('', '_blank');
+      if (win) win.document.write(`<iframe src="${data.dataUrl}" style="width:100%;height:100%;border:0" title="PDF"></iframe>`);
+    } catch (e) { alert('Erreur : ' + e.message); }
+  };
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
   const canSeeMarges = isAdmin || permissions?.voirMarges === true;
@@ -27122,6 +27267,27 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               }} className={`mt-2 w-full px-3 py-2 rounded-xl text-xs font-bold ${d.payeClient ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md' : 'bg-orange-100 hover:bg-orange-200 text-orange-700 border-2 border-orange-300'}`}>
                 {d.payeClient ? '✓ Client a payé — cliquer pour annuler' : '⏳ Client à recevoir — cliquer pour marquer payé'}
               </button>
+
+              {/* 🧾 FACTURATION CLIENT — VosFactures (même logiciel que le CRM pose).
+                  Crée la facture de vente au client dans VosFactures, mémorise
+                  n° + lien, et range le PDF dans les documents du dossier. */}
+              {isAdmin && (
+                <div className="mt-2 p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl">
+                  <div className="text-[11px] font-bold text-indigo-700 uppercase mb-1.5">🧾 Facturation client (VosFactures)</div>
+                  {d.vfClientNo ? (
+                    <div className="flex items-center gap-2 flex-wrap text-[12px]">
+                      <span className="font-mono font-bold text-indigo-800">{d.vfClientNo}</span>
+                      {d.vfClientUrl && <a href={d.vfClientUrl} target="_blank" rel="noreferrer" className="px-2 py-0.5 bg-indigo-600 text-white rounded-lg font-semibold">👁 Voir</a>}
+                      {d.vfClientFileId && <button onClick={() => voirPdfFichier(d.vfClientFileId)} className="px-2 py-0.5 bg-white border border-indigo-300 text-indigo-700 rounded-lg font-semibold">📄 PDF</button>}
+                      <span className="text-slate-400">créée{d.vfClientDate ? ` le ${new Date(d.vfClientDate).toLocaleDateString('fr-FR')}` : ''}</span>
+                    </div>
+                  ) : (
+                    <button onClick={facturerClientVosFactures} disabled={vfEnCours} className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold disabled:opacity-50">
+                      {vfEnCours ? '⏳ Création en cours…' : `🧾 Créer la facture client — ${formatEuro(d.montantTotal || 0)} TTC`}
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* 💰 RÉCUP TVA — visible seulement si client payé */}
               {d.payeClient && (() => {
@@ -32652,7 +32818,7 @@ function DoublonsModal({ groupes, STATUTS, onClose, onSelect, onDelete, isAdmin 
   );
 }
 
-function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onLogAction, onMarkAllCQDone, onOpenGmailSearch, onClose, onSelect }) {
+function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContacts, onLogAction, onMarkAllCQDone, onOpenGmailSearch, onClose, onSelect, onBulkPennylane = null, bulkPennylaneBusy = false }) {
   // 🎚️ Filtre par type de prestataire — utilisé par « Factures manquantes ».
   const [typePresta, setTypePresta] = useState('tous'); // 'tous' | 'poseurs' | 'regies' | 'fournisseurs'
   const config = {
@@ -33053,6 +33219,18 @@ function AlertesModal({ type, dashboard, STATUTS, poseursContacts, regiesContact
             <p className="text-xs text-slate-600 mt-1">{cfg.subtitle}</p>
           </div>
           <div className="flex items-center gap-2">
+            {/* 📤 Envoi GROUPÉ Pennylane — pousse d'un coup toutes les factures
+                prêtes (n° + PDF + montant) au lieu de dossier par dossier. */}
+            {type === 'pennylaneAEnvoyer' && onBulkPennylane && sortedItems.length > 0 && (
+              <button
+                onClick={() => onBulkPennylane(sortedItems)}
+                disabled={bulkPennylaneBusy}
+                className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white rounded-xl text-xs font-bold disabled:opacity-50 whitespace-nowrap"
+                title="Envoie toutes les factures prêtes à Pennylane (celles sans n° de facture ou à 0 € sont ignorées)"
+              >
+                {bulkPennylaneBusy ? '⏳ Envoi en cours…' : `📤 Tout envoyer (${sortedItems.length})`}
+              </button>
+            )}
             {type === 'controleQualite' && onMarkAllCQDone && (() => {
               const importes = sortedItems.filter(r => r.dossier?.createdBy === 'import_sheet');
               if (importes.length === 0) return null;
