@@ -1027,7 +1027,13 @@ function FactureFileInput({ fileId, onChange, color = 'orange', onExtract = null
       const dataUrl = await readFileAsDataURL(file);
       const id = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const ok = await window.storage.set(`file:${id}`, JSON.stringify({ dataUrl, name: file.name, type: file.type }));
-      if (!ok) { if (isMountedRef.current) alert('❌ Échec du stockage du fichier.'); return; }
+      if (!ok) {
+        // 🩺 Affiche la VRAIE raison (session expirée, quota, réseau…) au lieu
+        // d'un échec muet — et invite à simplement réessayer.
+        const raison = window.storage.lastError?.message ? `\n\nRaison : ${window.storage.lastError.message}` : '';
+        if (isMountedRef.current) alert(`❌ Échec du stockage du fichier.${raison}\n\n➡️ Réessaie dans quelques secondes. Si ça persiste, recharge la page (Ctrl+Maj+R).`);
+        return;
+      }
       if (fileId) { try { await window.storage.delete(`file:${fileId}`); } catch (e) {} }
       if (!isMountedRef.current) return; // composant démonté pendant l'upload
       onChange(id);
@@ -2180,6 +2186,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // etat: 'ok' | 'saving' | 'error' ; at = heure du dernier enregistrement réussi.
   const [saveStatus, setSaveStatus] = useState({ etat: 'ok', at: null });
   const [saveTick, setSaveTick] = useState(0); // bump → force une écriture
+  const [realtimeResubTick, setRealtimeResubTick] = useState(0); // 📡 bump → réabonne le canal Realtime (mort en silence après veille/coupure)
   const forcerEnregistrement = () => { lastWrittenDossiersJson.current = null; setSaveTick(t => t + 1); };
   const [showExportComptable, setShowExportComptable] = useState(false); // 📊 modal de choix des tiers pour l'export comptable
   // Identité de l'utilisateur courant : dérivée de la session Supabase (authUser).
@@ -3233,6 +3240,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // en "Maximum call stack size exceeded" dans la lib (filterBindings →
     // trigger → filterBindings → …). On reste sur l'abonnement simple,
     // et le focus pull en dessous rattrape les coupures longues.
+    let realtimeAnnule = false;
+    let realtimeRetryTimer = null;
     const channel = supabase
       .channel('dossiers-sync')
       .on(
@@ -3276,9 +3285,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
           }
         }
       )
-      .subscribe();
-    return () => { try { supabase.removeChannel(channel); } catch (e) {} };
-  }, [loading]);
+      .subscribe((status) => {
+        // 📡 Un canal Realtime peut MOURIR EN SILENCE (veille de l'ordi,
+        // coupure réseau) → le poste ne recevait plus AUCUNE modif des autres
+        // jusqu'au rechargement (« pourquoi je ne vois pas sa modification ? »).
+        // On se réabonne automatiquement 5 s après une erreur/fermeture.
+        if (realtimeAnnule) return;
+        if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
+          if (!realtimeRetryTimer) realtimeRetryTimer = setTimeout(() => { realtimeRetryTimer = null; setRealtimeResubTick(t => t + 1); }, 5000);
+        }
+      });
+    return () => { realtimeAnnule = true; if (realtimeRetryTimer) clearTimeout(realtimeRetryTimer); try { supabase.removeChannel(channel); } catch (e) {} };
+  }, [loading, realtimeResubTick]);
 
   // 🔁 Rafraîchissement de secours — UNIQUEMENT quand l'utilisateur revient
   // sur l'onglet (visibilitychange / focus). PLUS de polling périodique.
@@ -4359,17 +4377,23 @@ export default function DossierSaisie({ authUser, onLogout }) {
     setDossiers(prev => prev.map(d => {
       if (d.localId !== localId) return d;
       const today = now.split('T')[0];
+      // 📜 Entrée d'historique LISIBLE : avant, ce pointage n'écrivait RIEN
+      // dans l'historique → invisible dans le panneau d'activité (« je ne
+      // vois pas ce qu'elle vient de modifier »).
+      const av = (d[kind === 'poseur' ? 'poseurs' : kind === 'regie' ? 'regies' : 'fournisseurs'] || []).find(x => x && x.nom === nom);
+      const versPaye = av ? !av.paye : true;
+      const histo = [...(d.historique || []), { date: now, action: 'pointage', user: currentUser || '', label: `${nom} (${kind}) → ${versPaye ? 'payé ✓' : 'non payé'}` }];
       if (kind === 'poseur') {
         const poseurs = (d.poseurs || []).map(p => p && p.nom === nom ? { ...p, paye: !p.paye, datePaye: !p.paye ? today : '', payeStampAt: stampApres(p.payeStampAt) } : p);
-        return { ...d, poseurs, ...stamp };
+        return { ...d, poseurs, historique: histo, ...stamp };
       }
       if (kind === 'regie') {
         const regies = (d.regies || []).map(r => r && r.nom === nom ? { ...r, paye: !r.paye, datePaye: !r.paye ? today : '', payeStampAt: stampApres(r.payeStampAt) } : r);
-        return { ...d, regies, ...stamp };
+        return { ...d, regies, historique: histo, ...stamp };
       }
       if (kind === 'fournisseur') {
         const fournisseurs = (d.fournisseurs || []).map(f => f && f.nom === nom ? { ...f, paye: !f.paye, datePaye: !f.paye ? today : '', payeStampAt: stampApres(f.payeStampAt) } : f);
-        return { ...d, fournisseurs, ...stamp };
+        return { ...d, fournisseurs, historique: histo, ...stamp };
       }
       return d;
     }));
@@ -4413,7 +4437,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const wantAll = idxs.some(i => i === null || i === undefined);
       const arr = (d[arrKey] || []).map((x, i) => (x && x.nom === nom && !x.paye && (wantAll || idxs.includes(i))) ? { ...x, paye: true, datePaye: today, payeStampAt: stampApres(x.payeStampAt) } : x);
       const now = new Date().toISOString();
-      return { ...d, [arrKey]: arr, savedAt: now, modifiedAt: now, modifiedBy: currentUser || '(pointage groupé)' };
+      const histo = [...(d.historique || []), { date: now, action: 'pointage', user: currentUser || '', label: `${nom} → payé ✓ (virement groupé)` }];
+      return { ...d, [arrKey]: arr, historique: histo, savedAt: now, modifiedAt: now, modifiedBy: currentUser || '(pointage groupé)' };
     }));
   };
 
@@ -4439,6 +4464,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
         payeClient: true,
         payeClientDate: today,
         payeClientStampAt: stampApres(d.payeClientStampAt),
+        historique: [...(d.historique || []), { date: new Date().toISOString(), action: 'pointage', user: currentUser || '', label: 'Client → payé ✓ (encaissement groupé)' }],
         datePaiementBanque: d.datePaiementBanque || today,
         statut: 'W_DOSSIER_PAYER',
         savedAt: new Date().toISOString(),
@@ -7154,7 +7180,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             pointages « payé » se perdaient sans que personne ne le sache. */}
         {saveStatus.etat === 'error' && (
           <div className="fixed top-0 left-0 right-0 z-[200] bg-red-600 text-white text-center py-2.5 px-4 font-bold shadow-xl flex items-center justify-center gap-3 flex-wrap">
-            <span>⚠️ ENREGISTREMENT ÉCHOUÉ — vos dernières modifications ne sont PAS sauvegardées (connexion ?)</span>
+            <span>⚠️ ENREGISTREMENT ÉCHOUÉ — vos dernières modifications ne sont PAS sauvegardées{window.storage?.lastError?.message ? ` (${window.storage.lastError.message})` : ' (connexion ?)'}</span>
             <button onClick={forcerEnregistrement} className="px-3 py-1 bg-white text-red-700 rounded-lg font-bold hover:bg-red-50">💾 Réessayer maintenant</button>
           </div>
         )}
@@ -13282,6 +13308,10 @@ function ActiviteParUtilisateur({ dossiers = [], registeredUsers = [], onShowQui
             u.modified++; touch(u, h.date);
             u.entries.push({ date: h.date, type: 'modification', localId: d.localId, client: clientLabel(d), changes: h.changes || [] });
             break;
+          case 'pointage':
+            u.modified++; touch(u, h.date);
+            u.entries.push({ date: h.date, type: 'pointage', localId: d.localId, client: clientLabel(d), label: h.label || '' });
+            break;
           case 'changement_statut':
             u.statusChanges++; touch(u, h.date);
             u.entries.push({ date: h.date, type: 'statut', localId: d.localId, client: clientLabel(d), from: h.from, to: h.to });
@@ -13449,7 +13479,7 @@ function ActiviteParUtilisateur({ dossiers = [], registeredUsers = [], onShowQui
                           >
                             <div className="flex items-center justify-between gap-2 flex-wrap">
                               <span className="text-[13px] font-bold text-slate-700 truncate flex items-center gap-1.5">
-                                {e.type === 'création' ? '✨ Créé' : e.type === 'modification' ? '✏️ Modifié' : e.type === 'statut' ? '🔄 Statut' : '📞 Relance'} · {e.client}
+                                {e.type === 'création' ? '✨ Créé' : e.type === 'modification' ? '✏️ Modifié' : e.type === 'statut' ? '🔄 Statut' : e.type === 'pointage' ? '💰 Pointage' : '📞 Relance'} · {e.client}
                                 {(() => { const st = STATUTS.find(s => s.id === statutParLocalId[e.localId]); return st ? <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${st.bg} ${st.text}`}>{st.emoji} {st.label}</span> : null; })()}
                               </span>
                               <span className="text-[11px] text-slate-400 flex-shrink-0">{formatEntryDate(e.date)}</span>
@@ -13469,6 +13499,9 @@ function ActiviteParUtilisateur({ dossiers = [], registeredUsers = [], onShowQui
                               ) : (
                                 <div className="mt-0.5 text-[12px] text-slate-400 italic">ajustement interne</div>
                               )
+                            )}
+                            {e.type === 'pointage' && (
+                              <div className="mt-0.5 text-[12px] font-semibold text-emerald-700">{e.label}</div>
                             )}
                             {e.type === 'statut' && (
                               <div className="mt-0.5 text-[12px] text-slate-500">
@@ -16260,7 +16293,8 @@ function SheetView({ dossiers, setDossiers, STATUTS = [], societes = [], POSEURS
       const next = !list[idx].paye;
       list[idx] = { ...list[idx], paye: next, datePaye: next ? (list[idx].datePaye || new Date().toISOString().split('T')[0]) : '', payeStampAt: stampApres(list[idx].payeStampAt) };
       const now = new Date().toISOString();
-      return { ...d, [field]: list, savedAt: now, modifiedAt: now };
+      const histo = [...(d.historique || []), { date: now, action: 'pointage', user: currentUser || '', label: `${list[idx].nom || ''} (${kind}) → ${next ? 'payé ✓' : 'non payé'}` }];
+      return { ...d, [field]: list, historique: histo, savedAt: now, modifiedAt: now };
     }));
   };
   // ✏️ Change le nom d'un prestataire (sélection dans la liste configurée).

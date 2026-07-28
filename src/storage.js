@@ -30,21 +30,35 @@ export function setupStorage() {
     },
 
     /**
-     * Stocke une valeur dans Supabase (upsert)
+     * Stocke une valeur dans Supabase (upsert).
+     * 🩺 Diagnostic : en cas d'échec, window.storage.lastError contient la
+     * vraie raison (session expirée, quota, réseau…) pour l'afficher à
+     * l'utilisateur au lieu d'un échec muet.
+     * 🔄 Auto-réparation : si l'erreur ressemble à une session expirée (JWT),
+     * on rafraîchit la session et on réessaie UNE fois — cause la plus
+     * fréquente des « ça ne s'enregistre pas » sur un onglet resté ouvert
+     * toute la journée.
      */
     async set(key, value) {
+      const tenter = () => supabase
+        .from('storage')
+        .upsert({ key, value, updated_at: new Date().toISOString() });
       try {
-        const { error } = await supabase
-          .from('storage')
-          .upsert({ key, value, updated_at: new Date().toISOString() });
-
+        let { error } = await tenter();
+        if (error && /jwt|token|expired|401/i.test(`${error.message || ''} ${error.code || ''} ${error.status || ''}`)) {
+          try { await supabase.auth.refreshSession(); } catch (e2) {}
+          ({ error } = await tenter());
+        }
         if (error) {
           console.error('storage.set error:', error);
+          window.storage.lastError = { key, message: error.message || String(error), code: error.code || '', at: new Date().toISOString() };
           return null;
         }
+        window.storage.lastError = null;
         return { key, value };
       } catch (e) {
         console.error('storage.set exception:', e);
+        window.storage.lastError = { key, message: e?.message || String(e), code: 'exception', at: new Date().toISOString() };
         return null;
       }
     },
