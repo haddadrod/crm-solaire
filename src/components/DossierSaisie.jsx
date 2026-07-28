@@ -6940,6 +6940,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             onEdit={() => { startEdit(currentQuickDossier); setShowQuickViewId(null); setQuickViewScrollTo(null); }}
             onShowDocs={() => { setShowDocsForId(currentQuickDossier.localId); setShowQuickViewId(null); setQuickViewScrollTo(null); }}
             onShowHist={() => { setShowHistForId(currentQuickDossier.localId); setShowQuickViewId(null); setQuickViewScrollTo(null); }}
+            onForceSave={forcerEnregistrement}
             onUpdate={(updatesOrFn) => {
               const now = new Date().toISOString();
               const userTag = currentUser || '(anonyme)';
@@ -24867,7 +24868,36 @@ function BLMaterielBlock({ d, onUpdate }) {
   );
 }
 
-function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, internesContacts = {}, emailConfig, gmailOAuth, societes = [], messageTemplates = [], dossiers = [], onOpenGmailSearch = null }) {
+function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShowHist, onUpdate, STATUTS, STATUTS_ORDERED, FINANCEMENTS, POSEURS, REGIES, FOURNISSEURS, tarifsInternes, nomsInternes, setNomsInternes, produits, isAdmin, permissions, poseursContacts, regiesContacts, internesContacts = {}, emailConfig, gmailOAuth, societes = [], messageTemplates = [], dossiers = [], onOpenGmailSearch = null, onForceSave = null }) {
+  // 💾 CONFIRMATION À LA FERMETURE (demande utilisateur) : snapshot du dossier
+  // à l'OUVERTURE ; si quelque chose a changé au moment de fermer, une petite
+  // fenêtre demande « Enregistrer les modifications ? » :
+  //   ✓ Enregistrer et fermer  → force une écriture immédiate en base ;
+  //   ↩️ Annuler mes modifications → remet le dossier comme à l'ouverture ;
+  //   Continuer la saisie      → reste sur le dossier.
+  // (La sauvegarde automatique continue de tourner — ce dialogue est la
+  // confirmation visible que l'utilisateur voulait.)
+  const [confirmClose, setConfirmClose] = useState(false);
+  const [enregistreA, setEnregistreA] = useState(null); // heure du dernier « Enregistrer » manuel
+  const openSnapshotRef = useRef(null);
+  useEffect(() => { openSnapshotRef.current = JSON.stringify(dossier); setConfirmClose(false); setEnregistreA(null); }, [dossier?.localId]);
+  const enregistrerManuel = () => {
+    if (onForceSave) onForceSave();
+    openSnapshotRef.current = JSON.stringify(dossier); // considéré « à jour »
+    setEnregistreA(new Date());
+  };
+  const demanderFermeture = () => {
+    if (JSON.stringify(dossier) === openSnapshotRef.current) { onClose(); return; }
+    setConfirmClose(true);
+  };
+  const annulerModifs = () => {
+    try {
+      const snap = JSON.parse(openSnapshotRef.current);
+      if (snap && snap.localId) onUpdate(() => snap); // remet tous les champs de l'ouverture
+    } catch (e) {}
+    setConfirmClose(false);
+    onClose();
+  };
   // Permissions effectives — admin a tout, sinon on lit dans permissions.
   // Fallback safe : si permissions n'est pas passé, isAdmin gate tout (rétrocompat).
   const canSeeMarges = isAdmin || permissions?.voirMarges === true;
@@ -25149,8 +25179,40 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       {/* Overlay transparent (capture juste les clics pour fermer) */}
       <div
         className="fixed inset-0 z-[70]"
-        onClick={onClose}
+        onClick={demanderFermeture}
       />
+
+      {/* 💾 Badge CLIGNOTANT dès la 1ʳᵉ modification (demande utilisateur) :
+          en haut au centre de l'écran, sert de bouton « Enregistrer ». Après
+          clic → vert « ✓ Enregistré à HH:MM » jusqu'à la prochaine modif. */}
+      {JSON.stringify(dossier) !== openSnapshotRef.current ? (
+        <button
+          onClick={enregistrerManuel}
+          className="fixed top-2 left-1/2 -translate-x-1/2 z-[90] px-4 py-2.5 bg-amber-400 hover:bg-amber-500 text-amber-950 rounded-2xl font-bold text-sm shadow-2xl animate-pulse border-2 border-amber-500"
+          title="Des modifications ont été faites sur ce dossier — cliquer pour forcer l'enregistrement immédiat en base"
+        >
+          💾 Enregistrer les modifications
+        </button>
+      ) : enregistreA ? (
+        <div className="fixed top-2 left-1/2 -translate-x-1/2 z-[90] px-4 py-2 bg-emerald-500 text-white rounded-2xl font-bold text-sm shadow-xl">
+          ✓ Enregistré à {enregistreA.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+        </div>
+      ) : null}
+
+      {/* 💾 Dialogue « Enregistrer les modifications ? » à la fermeture */}
+      {confirmClose && (
+        <div className="fixed inset-0 z-[95] bg-black/40 flex items-center justify-center p-4" onClick={() => setConfirmClose(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl p-5 w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+            <div className="text-lg font-bold text-slate-800 mb-1">💾 Enregistrer les modifications ?</div>
+            <p className="text-sm text-slate-500 mb-4">Tu as modifié ce dossier ({d.nom} {d.prenom}).</p>
+            <div className="space-y-2">
+              <button onClick={() => { enregistrerManuel(); setConfirmClose(false); onClose(); }} className="w-full px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold">✓ Enregistrer et fermer</button>
+              <button onClick={annulerModifs} className="w-full px-4 py-2 bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 rounded-xl font-semibold">↩️ Annuler mes modifications</button>
+              <button onClick={() => setConfirmClose(false)} className="w-full px-4 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-semibold">Continuer la saisie</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Panneau coulissant — étroit pour laisser voir la liste.
           z-[80] : au-dessus de la Sheet modale (z-60) pour que clic « Voir »
@@ -25162,7 +25224,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
       >
         {/* HEADER avec sélecteur de statut éditable */}
         <div className={`p-4 border-b border-slate-100 bg-gradient-to-br ${statut?.color || 'from-slate-400 to-slate-500'} text-white relative`}>
-          <button onClick={onClose} className="absolute top-3 right-3 p-1.5 hover:bg-white/20 rounded-lg" title="Fermer">
+          <button onClick={demanderFermeture} className="absolute top-3 right-3 p-1.5 hover:bg-white/20 rounded-lg" title="Fermer">
             <X className="w-5 h-5" />
           </button>
           <div className="flex items-start gap-3">
