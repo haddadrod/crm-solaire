@@ -434,10 +434,43 @@ function mergeDossiersArrays(localArr, remoteArr, tombstones = new Set()) {
   return out;
 }
 
+// 🪶 Valeur d'historique ALLÉGÉE : avant, chaque entrée « modification »
+// stockait des COPIES COMPLÈTES des listes modifiées (poseurs, régies,
+// fournisseurs — avec factures, avoirs…) dans from/to. Avec des milliers de
+// modifs, dossiers-data enflait jusqu'à faire ÉCHOUER les écritures
+// (« ENREGISTREMENT ÉCHOUÉ »). On ne garde que les valeurs simples courtes.
+function lightHistVal(v) {
+  if (v === undefined || v === null) return v;
+  if (Array.isArray(v) || typeof v === 'object') return '(modifié)';
+  if (typeof v === 'string' && v.length > 300) return v.slice(0, 300) + '…';
+  return v;
+}
+// Compacte l'historique d'un dossier : entrées lourdes allégées + cap 120.
+function compactHistorique(hist) {
+  if (!Array.isArray(hist) || hist.length === 0) return hist;
+  let h = hist.length > 120 ? hist.slice(-120) : hist;
+  let changed = h !== hist;
+  h = h.map(e => {
+    if (e && e.action === 'modification' && Array.isArray(e.changes)) {
+      let heavy = false;
+      const ch = e.changes.map(c => {
+        const lf = lightHistVal(c && c.from), lt = lightHistVal(c && c.to);
+        if (lf !== (c && c.from) || lt !== (c && c.to)) { heavy = true; return { field: c && c.field, from: lf, to: lt }; }
+        return c;
+      });
+      if (heavy) { changed = true; return { ...e, changes: ch }; }
+    }
+    return e;
+  });
+  return changed ? h : hist;
+}
 function normalizeDossiers(list) {
   if (!Array.isArray(list)) return list;
   return list.map(d => {
     let n = normalizeDossierDates(d);
+    // 🪶 Migration idempotente : allège les historiques lourds existants.
+    const hc = compactHistorique(n && n.historique);
+    if (n && hc !== n.historique) n = { ...n, historique: hc };
     // 💰 Sync legacy : statut PAYÉ implique payeClient=true. Beaucoup de
     //   dossiers ont été mis au statut W_DOSSIER_PAYER sans payeClient
     //   (import sheet ou manipulation). On force la cohérence au chargement.
@@ -2753,7 +2786,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
         ]);
         if (dossiersRes?.value) {
           const arr = JSON.parse(dossiersRes.value);
-          const migrated = arr.map(migrateDossier);
+          // 🪶 Compaction de l'historique dès le chargement (migration
+          // idempotente) : la PROCHAINE écriture repart légère.
+          const migrated = arr.map(migrateDossier).map(d => {
+            const hc = compactHistorique(d && d.historique);
+            return (d && hc !== d.historique) ? { ...d, historique: hc } : d;
+          });
           // ♻️ Les dossiers supprimés (deleted:true) sortent de l'état React
           // mais restent portés par deletedDossiersRef (propagation + purge 30 j).
           setDossiers(splitDeleted(migrated));
@@ -3078,10 +3116,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
         }
         if (!ecritOk) {
           lastWrittenDossiersJson.current = null; // la prochaine modif ré-essaiera
-          setSaveStatus({ etat: 'error', at: null });
+          setSaveStatus({ etat: 'error', at: null, taille: toWrite.length });
           return;
         }
-        setSaveStatus({ etat: 'ok', at: new Date() });
+        setSaveStatus({ etat: 'ok', at: new Date(), taille: toWrite.length });
         // 🛡️ Backup snapshot : 1 max par TRANCHE DE 10 MIN (clé arrondie aux
         // 10 minutes → upsert sur la même clé pendant 10 min). Permet de
         // remonter dans le temps sans multiplier les écritures (avant c'était
@@ -3742,7 +3780,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           const before = old[key];
           const after = dossier[key];
           if (JSON.stringify(before) === JSON.stringify(after)) continue;
-          fieldChanges.push({ field: key, from: before, to: after });
+          fieldChanges.push({ field: key, from: lightHistVal(before), to: lightHistVal(after) });
         }
       }
       let newHist = oldHist;
@@ -6997,7 +7035,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   const before = d[key];
                   const after = updates[key];
                   if (JSON.stringify(before) === JSON.stringify(after)) continue;
-                  fieldChanges.push({ field: key, from: before, to: after });
+                  fieldChanges.push({ field: key, from: lightHistVal(before), to: lightHistVal(after) });
                 }
                 if (fieldChanges.length > 0) {
                   merged.historique = [...(merged.historique || []), { date: now, action: 'modification', user: userTag, changes: fieldChanges }];
@@ -7180,7 +7218,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
             pointages « payé » se perdaient sans que personne ne le sache. */}
         {saveStatus.etat === 'error' && (
           <div className="fixed top-0 left-0 right-0 z-[200] bg-red-600 text-white text-center py-2.5 px-4 font-bold shadow-xl flex items-center justify-center gap-3 flex-wrap">
-            <span>⚠️ ENREGISTREMENT ÉCHOUÉ — vos dernières modifications ne sont PAS sauvegardées{window.storage?.lastError?.message ? ` (${window.storage.lastError.message})` : ' (connexion ?)'}</span>
+            <span>⚠️ ENREGISTREMENT ÉCHOUÉ — vos dernières modifications ne sont PAS sauvegardées{window.storage?.lastError?.message ? ` (${window.storage.lastError.message})` : ' (connexion ?)'}{saveStatus.taille ? ` — données : ${(saveStatus.taille / 1048576).toFixed(1)} Mo` : ''}</span>
             <button onClick={forcerEnregistrement} className="px-3 py-1 bg-white text-red-700 rounded-lg font-bold hover:bg-red-50">💾 Réessayer maintenant</button>
           </div>
         )}
