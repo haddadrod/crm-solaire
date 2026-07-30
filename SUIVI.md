@@ -18,6 +18,9 @@
 
 ## 🗓️ Journal (plus récent en haut)
 
+### 2026-07-25
+- ✅ **📚 Création rapide EN SÉRIE** (« mettre plusieurs dossiers en même temps, sans approfondir ») : bouton « 📚 En série » à côté de « Nouveau dossier » → on colle une liste de clients (une ligne par client, copiée d'Excel ou tapée ; séparateurs tab/;), détection auto NOM MAJUSCULES + Prénom, téléphone (≥9 chiffres), email (@), code postal (5 chiffres), ville ; aperçu des lignes reconnues + choix de la société → crée N dossiers « squelettes » d'un coup (statut EN COURS, horodatés, entrée d'historique création) à compléter plus tard.
+
 ### 2026-07-24
 - ✅ **🧾 Facturation CLIENT via VosFactures (comme le CRM pose)** : proxy VosFactures greffé dans `api/pennylane-push-facture.js` (`provider:'vosfactures'`, actions ping/demo/create, récupération du PDF) — config par variables d'env Vercel `VOSFACTURES_TOKEN` + `VOSFACTURES_HOST` (+ `_<SOCIETE>` par société). Sur la fiche rapide (admin), bloc « 🧾 Facturation client (VosFactures) » : bouton « Créer la facture client — X € TTC » (client = nom/adresse du dossier, 1 ligne produits+pose, TVA du dossier, confirmation avant création car vraie facture fiscale) → mémorise `vfClientId/No/Url/Date`, range le PDF (`vfClientFileId`), affiche n° + 👁 Voir + 📄 PDF. ⚠️ Reste à faire par l'utilisateur : ajouter les 2 variables d'env sur le projet Vercel crm-solaire.
 - ✅ **📤 Envoi GROUPÉ Pennylane** (« je peux envoyer les Pennylane en une seule fois ? ») : bouton « 📤 Tout envoyer (N) » dans l'alerte « À envoyer à Pennylane » — pousse séquentiellement toutes les factures prestataires prêtes (n° + PDF + montant > 0), marque `pennylaneInvoiceId` ligne par ligne, bilan final (envoyées / ignorées sans n° ou à 0 € / erreurs détaillées).

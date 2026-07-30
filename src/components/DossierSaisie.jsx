@@ -4487,6 +4487,25 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // pousse d'un coup toutes les factures prestataires prêtes (dossier payé,
   // PDF uploadé, n° de facture renseigné, montant > 0, pas encore poussées).
   // Les lignes sans n° ou à 0 € sont IGNORÉES et listées dans le bilan final.
+  // 📚 Création rapide en série — crée N dossiers « squelettes » d'un coup
+  // (statut EN COURS), chacun horodaté + entrée d'historique « création ».
+  const [showCreationRapide, setShowCreationRapide] = useState(false);
+  const handleCreationRapide = (rows, societe) => {
+    const now = new Date().toISOString();
+    const base = Date.now();
+    const userTag = currentUser || '(anonyme)';
+    const news = rows.map((r, i) => ({
+      ...emptyForm,
+      ...r,
+      societe: societe || '',
+      localId: (base + i).toString(),
+      createdBy: userTag, createdAt: now, modifiedBy: userTag, modifiedAt: now, savedAt: now,
+      historique: [{ date: now, from: null, to: emptyForm.statut || 'A_EN_COURS', action: 'création', user: userTag }],
+    }));
+    setDossiers(prev => [...news, ...prev]);
+    showToast(`✅ ${news.length} dossier${news.length > 1 ? 's' : ''} créé${news.length > 1 ? 's' : ''} — complète-les quand tu veux.`, 'success', 6000);
+  };
+
   const [bulkPennylaneBusy, setBulkPennylaneBusy] = useState(false);
   const handleBulkPennylane = async (rappels) => {
     const jobs = [];
@@ -6209,6 +6228,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
             <button onClick={() => { setShowForm(true); setEditingId(null); setFormData(emptyForm); }} className="bg-gradient-to-r from-violet-500 to-pink-500 text-white px-5 py-3 rounded-2xl font-semibold shadow-lg hover:shadow-xl transition-all hover:scale-105 flex items-center gap-2 whitespace-nowrap flex-shrink-0">
               <Plus className="w-5 h-5" />Nouveau dossier
             </button>
+            {/* 📚 Création en série : colle une liste → tous les dossiers créés d'un coup */}
+            <button onClick={() => setShowCreationRapide(true)} title="Créer plusieurs dossiers d'un coup en collant une liste de clients (Excel, notes…)" className="bg-white border-2 border-violet-300 text-violet-700 hover:bg-violet-50 px-3 py-3 rounded-2xl font-semibold shadow-md transition-all flex items-center gap-1.5 whitespace-nowrap flex-shrink-0 text-sm">
+              📚 En série
+            </button>
             <div className="flex gap-2 items-center flex-wrap lg:flex-nowrap flex-1 lg:justify-end">
               {/* 🏢 Sélecteur société — placé avant le badge utilisateur pour
                   qu'on choisisse SA marque avant de regarder qui on est */}
@@ -7313,6 +7336,16 @@ export default function DossierSaisie({ authUser, onLogout }) {
             validée par l'admin avant mise en ligne. */}
         {showModifRequest && (
           <ModifRequestModal onClose={() => setShowModifRequest(false)} currentUser={currentUser} />
+        )}
+
+        {/* 📚 Création rapide en série — colle une liste, N dossiers créés d'un coup */}
+        {showCreationRapide && (
+          <CreationRapideModal
+            societes={societes}
+            defaultSociete={activeSociete || ''}
+            onCreate={handleCreationRapide}
+            onClose={() => setShowCreationRapide(false)}
+          />
         )}
 
         {/* 🚑 RESTAURATION D'URGENCE — fusionne une sauvegarde avec l'état actuel
@@ -32813,6 +32846,86 @@ function DoublonsModal({ groupes, STATUTS, onClose, onSelect, onDelete, isAdmin 
             </div>
           ))}
         </div>
+      </div>
+    </div>
+  );
+}
+
+// 📚 CRÉATION RAPIDE EN SÉRIE — colle une liste de clients (une ligne par
+// client, copiée d'Excel ou tapée), le CRM crée tous les dossiers d'un coup
+// en version « squelette » (nom/prénom/tél/email/CP/ville), à compléter plus
+// tard. Détection automatique des colonnes : email (@), téléphone (chiffres),
+// code postal (5 chiffres), NOM en MAJUSCULES + Prénom.
+function CreationRapideModal({ societes = [], defaultSociete = '', onCreate, onClose }) {
+  const [texte, setTexte] = useState('');
+  const [societe, setSociete] = useState(defaultSociete || societes[0]?.id || '');
+  const parseLigne = (l) => {
+    let cells = l.split(/\t|;/).map(c => c.trim()).filter(Boolean);
+    if (cells.length === 1) cells = [l.trim()];
+    let nom = '', prenom = '', telephone = '', email = '', codePostal = '', ville = '';
+    const rest = [];
+    cells.forEach(c => {
+      if (!email && /\S+@\S+\.\S+/.test(c)) { email = c; return; }
+      if (!telephone && /^[\d +().-]+$/.test(c) && c.replace(/\D/g, '').length >= 9) { telephone = c; return; }
+      if (!codePostal && /^\d{5}$/.test(c)) { codePostal = c; return; }
+      rest.push(c);
+    });
+    if (rest.length) {
+      const mots = rest[0].split(/\s+/).filter(Boolean);
+      const majs = [], autres = [];
+      mots.forEach(m => ((m === m.toUpperCase() && /[A-ZÀ-Ü]/.test(m)) ? majs : autres).push(m));
+      if (majs.length && autres.length) { nom = majs.join(' '); prenom = autres.join(' '); }
+      else { nom = mots[0] || ''; prenom = mots.slice(1).join(' '); }
+    }
+    if (rest.length > 1) ville = rest.slice(1).find(c => /^[A-Za-zÀ-ÿ' -]+$/.test(c)) || '';
+    return { nom, prenom, telephone, email, codePostal, ville };
+  };
+  const lignes = texte.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(parseLigne).filter(r => r.nom);
+  return (
+    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-start justify-center p-4 pt-12" onClick={onClose}>
+      <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-1">
+          <h2 className="text-lg font-bold text-slate-800">📚 Créer plusieurs dossiers d'un coup</h2>
+          <button onClick={onClose} className="p-2 hover:bg-slate-100 rounded-lg"><X className="w-5 h-5 text-slate-600" /></button>
+        </div>
+        <p className="text-xs text-slate-500 mb-3">Colle ta liste (une ligne par client — copiée d'Excel ou tapée). Le CRM reconnaît tout seul : NOM Prénom, téléphone, email, code postal, ville. Les dossiers sont créés « EN COURS », à compléter plus tard.</p>
+        <textarea
+          value={texte}
+          onChange={(e) => setTexte(e.target.value)}
+          placeholder={"Exemples :\nDUPONT Jean\t0612345678\t76000\tRouen\nMARTIN Sophie ; 0698765432 ; sophie.martin@gmail.com\nBERNARD Michel"}
+          rows={8}
+          className="w-full px-3 py-2 border-2 border-violet-200 rounded-xl text-sm font-mono focus:border-violet-400 outline-none"
+        />
+        {societes.length > 1 && (
+          <div className="flex items-center gap-2 mt-3">
+            <span className="text-xs font-bold text-slate-600">Société :</span>
+            {societes.map(s => (
+              <button key={s.id} onClick={() => setSociete(s.id)} className={`px-3 py-1 rounded-xl text-xs font-bold border-2 ${societe === s.id ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200'}`}>{s.nom || s.label || s.id}</button>
+            ))}
+          </div>
+        )}
+        {lignes.length > 0 && (
+          <div className="mt-3 border border-slate-200 rounded-xl overflow-hidden">
+            <div className="bg-slate-50 px-3 py-1.5 text-[11px] font-bold text-slate-500 uppercase">Aperçu — {lignes.length} dossier{lignes.length > 1 ? 's' : ''}</div>
+            <div className="max-h-48 overflow-y-auto divide-y divide-slate-100">
+              {lignes.map((r, i) => (
+                <div key={i} className="px-3 py-1.5 text-[13px] flex items-center gap-2 flex-wrap">
+                  <span className="font-bold text-slate-800">{r.nom} {r.prenom}</span>
+                  {r.telephone && <span className="text-slate-500">📞 {r.telephone}</span>}
+                  {r.email && <span className="text-slate-500">✉️ {r.email}</span>}
+                  {(r.codePostal || r.ville) && <span className="text-slate-500">📍 {r.codePostal} {r.ville}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        <button
+          onClick={() => { if (lignes.length) { onCreate(lignes, societe); onClose(); } }}
+          disabled={lignes.length === 0}
+          className="mt-4 w-full px-4 py-3 bg-gradient-to-r from-violet-500 to-pink-500 text-white rounded-2xl font-bold disabled:opacity-40"
+        >
+          ✨ Créer {lignes.length || ''} dossier{lignes.length > 1 ? 's' : ''}
+        </button>
       </div>
     </div>
   );
