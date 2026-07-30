@@ -18,7 +18,7 @@
 
 ## 🗓️ Journal (plus récent en haut)
 
-### 2026-07-25
+### 2026-07-30
 - ✅ **📚 Création rapide EN SÉRIE** (« mettre plusieurs dossiers en même temps, sans approfondir ») : bouton « 📚 En série » à côté de « Nouveau dossier » → on colle une liste de clients (une ligne par client, copiée d'Excel ou tapée ; séparateurs tab/;), détection auto NOM MAJUSCULES + Prénom, téléphone (≥9 chiffres), email (@), code postal (5 chiffres), ville ; aperçu des lignes reconnues + choix de la société → crée N dossiers « squelettes » d'un coup (statut EN COURS, horodatés, entrée d'historique création) à compléter plus tard.
 
 ### 2026-07-24
