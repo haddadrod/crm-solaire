@@ -4494,14 +4494,28 @@ export default function DossierSaisie({ authUser, onLogout }) {
     const now = new Date().toISOString();
     const base = Date.now();
     const userTag = currentUser || '(anonyme)';
-    const news = rows.map((r, i) => ({
-      ...emptyForm,
-      ...r,
-      societe: societe || '',
-      localId: (base + i).toString(),
-      createdBy: userTag, createdAt: now, modifiedBy: userTag, modifiedAt: now, savedAt: now,
-      historique: [{ date: now, from: null, to: emptyForm.statut || 'A_EN_COURS', action: 'création', user: userTag }],
-    }));
+    const news = rows.map((r, i) => {
+      const { __doc, ...champs } = r || {};
+      const dossier = {
+        ...emptyForm,
+        ...champs,
+        // Société : celle détectée sur le PDF si valide, sinon celle choisie.
+        societe: champs.societe || societe || '',
+        localId: (base + i).toString(),
+        createdBy: userTag, createdAt: now, modifiedBy: userTag, modifiedAt: now, savedAt: now,
+        historique: [{ date: now, from: null, to: emptyForm.statut || 'A_EN_COURS', action: 'création', user: userTag }],
+      };
+      // 📄 PDF scanné → rangé directement dans les documents du dossier.
+      if (__doc && __doc.fileId && __doc.bucketPath) {
+        dossier.documents = [{
+          id: __doc.fileId, name: __doc.name, size: __doc.size, type: __doc.type,
+          storage: 'bucket', storagePath: __doc.bucketPath,
+          category: 'client', subCategory: null, uploadedAt: now, montant: null, datePiece: null,
+          note: '📸 Importé par scan IA (création en série)',
+        }];
+      }
+      return dossier;
+    });
     setDossiers(prev => [...news, ...prev]);
     showToast(`✅ ${news.length} dossier${news.length > 1 ? 's' : ''} créé${news.length > 1 ? 's' : ''} — complète-les quand tu veux.`, 'success', 6000);
   };
@@ -32864,6 +32878,73 @@ function DoublonsModal({ groupes, STATUTS, onClose, onSelect, onDelete, isAdmin 
 function CreationRapideModal({ societes = [], defaultSociete = '', onCreate, onClose }) {
   const [texte, setTexte] = useState('');
   const [societe, setSociete] = useState(defaultSociete || societes[0]?.id || '');
+  // 📄 Mode PDF EN LOT : on dépose plusieurs bons de commande (PDF/photos),
+  // l'IA lit chacun (même extraction que le scan du formulaire) et chaque
+  // fichier devient un dossier pré-rempli, avec le PDF rangé en document.
+  const [pdfJobs, setPdfJobs] = useState([]); // {name, status:'attente'|'analyse'|'ok'|'erreur', champs, doc, err}
+  const [scanEnCours, setScanEnCours] = useState(false);
+  const pdfInputRef = useRef(null);
+  const mapBon = (d) => {
+    const out = {};
+    if (d.nom) out.nom = String(d.nom).toUpperCase();
+    if (d.prenom) out.prenom = String(d.prenom);
+    if (d.adresse) out.adresse = String(d.adresse);
+    if (d.codePostal) out.codePostal = String(d.codePostal);
+    if (d.ville) out.ville = String(d.ville).toUpperCase();
+    if (d.telephone) out.telephone = String(d.telephone);
+    if (d.email) out.email = String(d.email);
+    if (d.financement) out.financement = String(d.financement).toUpperCase();
+    if (d.dateSignature) out.dateSignature = normalizeDateToIso(String(d.dateSignature));
+    if (d.societe && societes.find(s => s.id === d.societe)) out.societe = String(d.societe);
+    const ttc = parseFloat(d.montantTTC); if (!isNaN(ttc) && ttc > 0) out.montantTotal = String(ttc);
+    const ht = parseFloat(d.montantHT); if (!isNaN(ht) && ht > 0) out.montantHtCustom = String(ht);
+    return out;
+  };
+  const lancerScanPdfs = async (files) => {
+    const liste = Array.from(files || []).filter(f => f && (f.type === 'application/pdf' || f.type.startsWith('image/')));
+    if (!liste.length) return;
+    setScanEnCours(true);
+    const debut = pdfJobs.length;
+    setPdfJobs(prev => [...prev, ...liste.map(f => ({ name: f.name, status: 'attente', champs: null, doc: null, err: '' }))]);
+    const { data: { session } } = await supabase.auth.getSession();
+    const headers = { 'Content-Type': 'application/json' };
+    if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
+    for (let i = 0; i < liste.length; i++) {
+      const file = liste[i];
+      const idx = debut + i;
+      setPdfJobs(prev => prev.map((j, k) => k === idx ? { ...j, status: 'analyse' } : j));
+      try {
+        let mediaType, fileName, fileSize, fileToUpload;
+        if (file.type === 'application/pdf') {
+          mediaType = 'application/pdf'; fileName = file.name || 'bon-commande.pdf'; fileSize = file.size; fileToUpload = file;
+        } else {
+          const compressed = await compressImageForUpload(file);
+          mediaType = compressed.mediaType;
+          fileName = (file.name || 'bon-commande.jpg').replace(/\.[^.]+$/, '') + '.jpg';
+          fileSize = Math.round(compressed.base64.length * 0.75);
+          const bytes = atob(compressed.base64);
+          const arr = new Uint8Array(bytes.length);
+          for (let b = 0; b < bytes.length; b++) arr[b] = bytes.charCodeAt(b);
+          fileToUpload = new window.File([arr], fileName, { type: mediaType });
+        }
+        const scanFileId = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const { path: bucketPath, error: upErr } = await uploadFileToBucket(fileToUpload, scanFileId);
+        if (upErr || !bucketPath) throw new Error(`Upload impossible : ${upErr?.message || 'inconnu'}`);
+        const res = await fetch('/api/extract-pdf', {
+          method: 'POST', headers,
+          body: JSON.stringify({ type: 'bon', storagePath: bucketPath, mediaType, availableSocietes: (societes || []).map(s => ({ id: s.id, label: s.label })) }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
+        const champs = mapBon(payload.data || {});
+        if (!champs.nom) throw new Error('Nom du client non reconnu sur le document');
+        setPdfJobs(prev => prev.map((j, k) => k === idx ? { ...j, status: 'ok', champs, doc: { fileId: scanFileId, bucketPath, name: fileName, type: mediaType, size: fileSize } } : j));
+      } catch (e) {
+        setPdfJobs(prev => prev.map((j, k) => k === idx ? { ...j, status: 'erreur', err: e?.message || 'Erreur' } : j));
+      }
+    }
+    setScanEnCours(false);
+  };
   const parseLigne = (l) => {
     let cells = l.split(/\t|;/).map(c => c.trim()).filter(Boolean);
     if (cells.length === 1) cells = [l.trim()];
@@ -32886,6 +32967,8 @@ function CreationRapideModal({ societes = [], defaultSociete = '', onCreate, onC
     return { nom, prenom, telephone, email, codePostal, ville };
   };
   const lignes = texte.split(/\r?\n/).map(l => l.trim()).filter(Boolean).map(parseLigne).filter(r => r.nom);
+  const pdfOk = pdfJobs.filter(j => j.status === 'ok');
+  const totalACreer = lignes.length + pdfOk.length;
   return (
     <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-[70] flex items-start justify-center p-4 pt-12" onClick={onClose}>
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-y-auto p-5" onClick={(e) => e.stopPropagation()}>
@@ -32901,6 +32984,33 @@ function CreationRapideModal({ societes = [], defaultSociete = '', onCreate, onC
           rows={8}
           className="w-full px-3 py-2 border-2 border-violet-200 rounded-xl text-sm font-mono focus:border-violet-400 outline-none"
         />
+        {/* 📄 Dépôt de PDF EN LOT — chaque bon de commande devient un dossier */}
+        <div
+          className="mt-3 border-2 border-dashed border-indigo-300 rounded-xl p-3 bg-indigo-50/50 text-center cursor-pointer hover:bg-indigo-50"
+          onClick={() => pdfInputRef.current?.click()}
+          onDragOver={(e) => e.preventDefault()}
+          onDrop={(e) => { e.preventDefault(); lancerScanPdfs(e.dataTransfer?.files); }}
+        >
+          <input ref={pdfInputRef} type="file" multiple accept="application/pdf,image/*" className="hidden" onChange={(e) => { lancerScanPdfs(e.target.files); e.target.value = ''; }} />
+          <div className="text-sm font-bold text-indigo-700">📄 Ou dépose ici tes PDF de bons de commande (plusieurs d'un coup)</div>
+          <div className="text-[11px] text-indigo-500 mt-0.5">L'IA lit chaque document (nom, adresse, téléphone, montants, financement…) → 1 dossier par PDF, le document rangé dans le dossier.</div>
+        </div>
+        {pdfJobs.length > 0 && (
+          <div className="mt-2 border border-slate-200 rounded-xl overflow-hidden">
+            <div className="bg-slate-50 px-3 py-1.5 text-[11px] font-bold text-slate-500 uppercase">PDF analysés — {pdfOk.length}/{pdfJobs.length} prêt{pdfOk.length > 1 ? 's' : ''}</div>
+            <div className="max-h-40 overflow-y-auto divide-y divide-slate-100">
+              {pdfJobs.map((j, i) => (
+                <div key={i} className="px-3 py-1.5 text-[13px] flex items-center gap-2 flex-wrap">
+                  <span>{j.status === 'ok' ? '✅' : j.status === 'analyse' ? '⏳' : j.status === 'erreur' ? '❌' : '·'}</span>
+                  <span className="text-slate-500 truncate max-w-[160px]">{j.name}</span>
+                  {j.champs && <span className="font-bold text-slate-800">→ {j.champs.nom} {j.champs.prenom || ''}</span>}
+                  {j.champs?.montantTotal && <span className="text-slate-500">{formatEuro(parseFloat(j.champs.montantTotal))}</span>}
+                  {j.err && <span className="text-rose-600 text-[12px]">{j.err}</span>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
         {societes.length > 1 && (
           <div className="flex items-center gap-2 mt-3">
             <span className="text-xs font-bold text-slate-600">Société :</span>
@@ -32925,11 +33035,16 @@ function CreationRapideModal({ societes = [], defaultSociete = '', onCreate, onC
           </div>
         )}
         <button
-          onClick={() => { if (lignes.length) { onCreate(lignes, societe); onClose(); } }}
-          disabled={lignes.length === 0}
+          onClick={() => {
+            if (!totalACreer || scanEnCours) return;
+            const depuisPdf = pdfOk.map(j => ({ ...j.champs, __doc: j.doc }));
+            onCreate([...lignes, ...depuisPdf], societe);
+            onClose();
+          }}
+          disabled={totalACreer === 0 || scanEnCours}
           className="mt-4 w-full px-4 py-3 bg-gradient-to-r from-violet-500 to-pink-500 text-white rounded-2xl font-bold disabled:opacity-40"
         >
-          ✨ Créer {lignes.length || ''} dossier{lignes.length > 1 ? 's' : ''}
+          {scanEnCours ? '⏳ Analyse des PDF en cours…' : `✨ Créer ${totalACreer || ''} dossier${totalACreer > 1 ? 's' : ''}`}
         </button>
       </div>
     </div>
