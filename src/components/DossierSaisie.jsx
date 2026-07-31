@@ -12284,6 +12284,11 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                     </div>
                     <div className="flex items-center gap-3 flex-wrap">
                       <SmallStat label="Dû" value={formatEuro(p.totalDu)} color="text-slate-700" />
+                      {/* Ø Prix moyen par pose = total dû ÷ nb de poses facturées (les lignes à 0 € — ex. annulées par avoir — ne comptent pas) */}
+                      {(() => {
+                        const nbPoses = p.lignes.filter(l => l.ttc > 0).length;
+                        return <SmallStat label="Ø Moy./pose" value={nbPoses ? formatEuro(p.totalDu / nbPoses) : '—'} color="text-indigo-600" />;
+                      })()}
                       <SmallStat label="Payé" value={formatEuro(p.totalPaye)} color="text-emerald-600" />
                       <SmallStat label="🔥 À payer" value={formatEuro(p.totalAPayerMaintenant)} color={p.totalAPayerMaintenant > 0 ? "text-orange-600" : "text-slate-400"} />
                       <SmallStat label="💜 Avance" value={formatEuro(p.totalPayeAvance)} color={p.totalPayeAvance > 0 ? "text-purple-600" : "text-slate-400"} />
