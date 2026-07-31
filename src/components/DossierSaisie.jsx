@@ -33005,6 +33005,10 @@ function CreationRapideModal({ societes = [], defaultSociete = '', onCreate, onC
                   <span className="text-slate-500 truncate max-w-[160px]">{j.name}</span>
                   {j.champs && <span className="font-bold text-slate-800">→ {j.champs.nom} {j.champs.prenom || ''}</span>}
                   {j.champs?.montantTotal && <span className="text-slate-500">{formatEuro(parseFloat(j.champs.montantTotal))}</span>}
+                  {/* 🏢 Société lue par l'IA sur le PDF — prioritaire sur le choix manuel */}
+                  {j.champs && (j.champs.societe
+                    ? <span className="px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 text-[11px] font-bold">🤖 {(societes.find(s => s.id === j.champs.societe)?.nom) || (societes.find(s => s.id === j.champs.societe)?.label) || j.champs.societe}</span>
+                    : <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 text-[11px] font-bold" title="Société non reconnue sur le PDF — celle choisie ci-dessous sera utilisée">société non lue</span>)}
                   {j.err && <span className="text-rose-600 text-[12px]">{j.err}</span>}
                 </div>
               ))}
@@ -33012,8 +33016,8 @@ function CreationRapideModal({ societes = [], defaultSociete = '', onCreate, onC
           </div>
         )}
         {societes.length > 1 && (
-          <div className="flex items-center gap-2 mt-3">
-            <span className="text-xs font-bold text-slate-600">Société :</span>
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            <span className="text-xs font-bold text-slate-600">Société <span className="font-normal text-slate-400">(pour la liste collée, et si l'IA ne la lit pas sur un PDF — sinon c'est ce que l'IA détecte 🤖 qui compte)</span> :</span>
             {societes.map(s => (
               <button key={s.id} onClick={() => setSociete(s.id)} className={`px-3 py-1 rounded-xl text-xs font-bold border-2 ${societe === s.id ? 'bg-violet-600 text-white border-violet-600' : 'bg-white text-slate-600 border-slate-200'}`}>{s.nom || s.label || s.id}</button>
             ))}
