@@ -262,6 +262,25 @@ function tsStamp(v) {
   const t = new Date(v || 0).getTime() || 0;
   return t > Date.now() + 6 * 3600 * 1000 ? 0 : t;
 }
+// 🧹 Horodate CHAQUE édition d'une ligne prestataire (editStampAt) et marque
+// les champs VIDÉS volontairement (non-vide → vide) dans line.cleared[f].
+// Sans ça, la fusion « comble les vides » remettait la valeur effacée depuis
+// l'ancienne version (« j'efface, ça revient, j'efface, ça revient »).
+function stampLigneEdit(prev, updates) {
+  const nowIso = new Date().toISOString();
+  const out = { ...updates, editStampAt: nowIso };
+  const cleared = { ...((prev && prev.cleared) || {}) };
+  let touche = false;
+  for (const f of LIGNE_FILL_FIELDS) {
+    if (!(f in updates)) continue;
+    const avait = prev && prev[f] !== '' && prev[f] !== undefined && prev[f] !== null;
+    const devient = updates[f] === '' || updates[f] === null;
+    if (avait && devient) { cleared[f] = nowIso; touche = true; } // vidé volontairement
+    else if (!devient && cleared[f]) { delete cleared[f]; touche = true; } // re-rempli → marqueur levé
+  }
+  if (touche || (prev && prev.cleared)) out.cleared = cleared;
+  return out;
+}
 function noteSuppressionLigne(d, entry) {
   const list = Array.isArray(d && d.lignesSupprimees) ? [...d.lignesSupprimees, entry] : [entry];
   return list.slice(-60);
@@ -300,9 +319,20 @@ function mergeLignesPresta(winList, loseList, supprLignes = [], supprAvoirs = []
     if (j === -1 || !lose[j]) return;
     usedLose.add(j);
     const l = lose[j];
+    // Union des marqueurs « champ vidé » (le plus récent par champ).
+    if (l.cleared || w.cleared) {
+      const c = { ...(l.cleared || {}) };
+      Object.entries(w.cleared || {}).forEach(([f, at]) => { if (!c[f] || tsStamp(at) > tsStamp(c[f])) c[f] = at; });
+      w.cleared = c;
+    }
     for (const f of LIGNE_FILL_FIELDS) {
       const vide = w[f] === '' || w[f] === undefined || w[f] === null;
-      if (vide && l[f] !== '' && l[f] !== undefined && l[f] !== null) w[f] = l[f];
+      if (!vide || l[f] === '' || l[f] === undefined || l[f] === null) continue;
+      // 🧹 Champ vidé volontairement : on ne le re-remplit QUE si la ligne
+      // perdante a été éditée APRÈS le vidage (nouvelle valeur légitime).
+      const videAt = tsStamp(w.cleared && w.cleared[f]);
+      if (videAt && tsStamp(l.editStampAt) <= videAt) continue;
+      w[f] = l[f];
     }
     // Avoirs : union — un avoir présent d'un seul côté est conservé, SAUF
     // s'il a été supprimé volontairement (marqueur lignesSupprimees).
@@ -21423,7 +21453,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 {formData.regies.map((r, idx) => {
                   // setFormData FONCTIONNEL : évite l'écrasement quand upload
                   // (factureFile) et IA (factureNo) s'enchaînent sur la même ligne.
-                  const upd = (u) => setFormData(prev => { const l = [...prev.regies]; l[idx] = { ...l[idx], ...u }; return { ...prev, regies: l }; });
+                  const upd = (u) => setFormData(prev => { const l = [...prev.regies]; l[idx] = { ...l[idx], ...stampLigneEdit(l[idx], u) }; return { ...prev, regies: l }; });
                   const rm = () => { const l = formData.regies[idx]; setFormData({ ...formData, regies: formData.regies.filter((_, i) => i !== idx), ...(l ? { lignesSupprimees: noteSuppressionLigne(formData, { k: 'regies', nom: l.nom || '', factureNo: l.factureNo || '', factureFile: l.factureFile || '', at: new Date().toISOString() }) } : {}) }); };
                   const tarifAuto = calculs.regiesDetail[idx]?.autoHt || 0;
                   const ttcRegie = calculs.regiesDetail[idx]?.ttc || 0;
@@ -21567,7 +21597,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </button>
               )}
               {formData.poseurs.map((p, idx) => {
-                const upd = (u) => setFormData(prev => { const l = [...prev.poseurs]; l[idx] = { ...l[idx], ...u }; return { ...prev, poseurs: l }; });
+                const upd = (u) => setFormData(prev => { const l = [...prev.poseurs]; l[idx] = { ...l[idx], ...stampLigneEdit(l[idx], u) }; return { ...prev, poseurs: l }; });
                 const rm = () => { const l = formData.poseurs[idx]; setFormData({ ...formData, poseurs: formData.poseurs.filter((_, i) => i !== idx), ...(l ? { lignesSupprimees: noteSuppressionLigne(formData, { k: 'poseurs', nom: l.nom || '', factureNo: l.factureNo || '', factureFile: l.factureFile || '', at: new Date().toISOString() }) } : {}) }); };
                 const tarifAuto = calculs.poseursDetail[idx]?.autoHt || 0;
                 return (
@@ -21711,7 +21741,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </button>
               )}
               {formData.fournisseurs.map((f, idx) => {
-                const upd = (u) => setFormData(prev => { const l = [...prev.fournisseurs]; l[idx] = { ...l[idx], ...u }; return { ...prev, fournisseurs: l }; });
+                const upd = (u) => setFormData(prev => { const l = [...prev.fournisseurs]; l[idx] = { ...l[idx], ...stampLigneEdit(l[idx], u) }; return { ...prev, fournisseurs: l }; });
                 const rm = () => { const l = formData.fournisseurs[idx]; setFormData({ ...formData, fournisseurs: formData.fournisseurs.filter((_, i) => i !== idx), ...(l ? { lignesSupprimees: noteSuppressionLigne(formData, { k: 'fournisseurs', nom: l.nom || '', factureNo: l.factureNo || '', factureFile: l.factureFile || '', at: new Date().toISOString() }) } : {}) }); };
                 return (
                   <div key={idx} className={`rounded-xl border p-3 ${f.paye ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-amber-200'}`}>
@@ -25355,7 +25385,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const updatePoseur = (idx, updates) => {
     onUpdate((dCurrent) => {
       const list = [...(dCurrent.poseurs || [])];
-      list[idx] = { ...list[idx], ...updates };
+      list[idx] = { ...list[idx], ...stampLigneEdit(list[idx], updates) };
       return { poseurs: list };
     });
   };
@@ -25376,7 +25406,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   const updateFournisseur = (idx, updates) => {
     onUpdate((dCurrent) => {
       const list = [...(dCurrent.fournisseurs || [])];
-      list[idx] = { ...list[idx], ...updates };
+      list[idx] = { ...list[idx], ...stampLigneEdit(list[idx], updates) };
       return { fournisseurs: list };
     });
   };
@@ -27817,12 +27847,13 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                 const updateRegie = (idx, upd) => {
                   onUpdate((dCurrent) => {
                     const list = [...(dCurrent.regies || [])];
-                    list[idx] = { ...list[idx], ...upd };
+                    list[idx] = { ...list[idx], ...stampLigneEdit(list[idx], upd) };
                     return { regies: list };
                   });
                 };
                 const rmRegie = (idx) => {
                   onUpdate((dCurrent) => ({
+                    ...( (dCurrent.regies || [])[idx] ? { lignesSupprimees: noteSuppressionLigne(dCurrent, { k: 'regies', nom: (dCurrent.regies[idx].nom) || '', factureNo: (dCurrent.regies[idx].factureNo) || '', factureFile: (dCurrent.regies[idx].factureFile) || '', at: new Date().toISOString() }) } : {} ),
                     regies: (dCurrent.regies || []).filter((_, j) => j !== idx),
                   }));
                 };
