@@ -2219,6 +2219,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // etat: 'ok' | 'saving' | 'error' ; at = heure du dernier enregistrement réussi.
   const [saveStatus, setSaveStatus] = useState({ etat: 'ok', at: null });
   const [saveTick, setSaveTick] = useState(0); // bump → force une écriture
+  const lastBackupWriteRef = useRef(null); // ⏳ throttle 2 min des snapshots backup (4+ Mo chacun)
   const [realtimeResubTick, setRealtimeResubTick] = useState(0); // 📡 bump → réabonne le canal Realtime (mort en silence après veille/coupure)
   const forcerEnregistrement = () => { lastWrittenDossiersJson.current = null; setSaveTick(t => t + 1); };
   const [showExportComptable, setShowExportComptable] = useState(false); // 📊 modal de choix des tiers pour l'export comptable
@@ -3076,9 +3077,18 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // — et avec 2 onglets ouverts ça produit un ping-pong infini visible sous
     // forme de compteurs/dates qui « bougent toutes les 2 secondes ».
     if (json === lastWrittenDossiersJson.current) return;
+    // ⏳ REGROUPEMENT DES ÉCRITURES (debounce 800 ms) : la base fait 4+ Mo et
+    // AVANT, chaque petite modification (chaque lettre tapée dans une note !)
+    // déclenchait immédiatement une écriture complète → rafales de Mo qui
+    // étouffaient la machine Supabase (Failed to fetch, base « vide »).
+    // Désormais on attend une courte pause de saisie : une rafale de modifs
+    // = UNE seule écriture avec l'état final. Si une nouvelle modif arrive
+    // avant l'envoi, le minuteur repart (cleanup) — rien n'est perdu, le
+    // dernier état est toujours celui envoyé.
+    setSaveStatus(s => (s.etat === 'saving' ? s : { ...s, etat: 'saving' }));
+    const debounceTimer = setTimeout(() => {
     lastWrittenDossiersJson.current = json;
     (async () => {
-      setSaveStatus(s => ({ ...s, etat: 'saving' }));
       try {
         // 🛡️ ANTI-ÉCRASEMENT MULTI-POSTES : avant d'écrire, on relit la base.
         // Si un autre poste a écrit entre-temps (valeur ≠ notre dernière
@@ -3124,18 +3134,27 @@ export default function DossierSaisie({ authUser, onLogout }) {
         // 10 minutes → upsert sur la même clé pendant 10 min). Permet de
         // remonter dans le temps sans multiplier les écritures (avant c'était
         // 1/minute, ce qui pesait lourd sur le quota Supabase).
+        // ⏳ + Throttle 2 min : même dans la tranche, on n'upserte le backup
+        // (4+ Mo lui aussi) qu'au plus toutes les 2 minutes — il doublait
+        // chaque écriture, pour un filet de sécurité qui n'a pas besoin
+        // d'être à la seconde près.
         // Cleanup auto des backups > 7 jours au chargement de l'app.
         const now = new Date();
-        const pad = (n) => String(n).padStart(2, '0');
-        const min10 = pad(Math.floor(now.getUTCMinutes() / 10) * 10);
-        const bkKey = `dossiers-data-bk-${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}${pad(now.getUTCHours())}${min10}`;
-        await window.storage.set(bkKey, toWrite);
+        if (!lastBackupWriteRef.current || (now - lastBackupWriteRef.current) > 120000) {
+          lastBackupWriteRef.current = now;
+          const pad = (n) => String(n).padStart(2, '0');
+          const min10 = pad(Math.floor(now.getUTCMinutes() / 10) * 10);
+          const bkKey = `dossiers-data-bk-${now.getUTCFullYear()}${pad(now.getUTCMonth() + 1)}${pad(now.getUTCDate())}${pad(now.getUTCHours())}${min10}`;
+          await window.storage.set(bkKey, toWrite);
+        }
       } catch (e) {
         // Exception inattendue pendant l'écriture → même traitement qu'un échec.
         lastWrittenDossiersJson.current = null;
         setSaveStatus({ etat: 'error', at: null });
       }
     })();
+    }, 800);
+    return () => clearTimeout(debounceTimer);
   }, [dossiers, loading, saveTick]);
 
   // 🧹 Nettoyage des backups > 7 jours, au chargement de l'app (1 fois par session)
