@@ -19,10 +19,16 @@ Ouvrir `index.html` dans un navigateur, ou depuis la racine du dépôt :
 npx serve site-amieco
 ```
 
-## Mettre en ligne
+## Mettre en ligne (Vercel)
 
-Le dossier se déploie tel quel sur n'importe quel hébergeur statique
-(Netlify, Vercel, GitHub Pages, OVH, o2switch…) : publier le contenu de `site-amieco/`.
+1. Sur vercel.com : « Add New… » → « Project » → choisir le dépôt `haddadrod/crm-solaire`.
+2. **Root Directory** : `site-amieco`. Framework Preset : « Other ». Build Command et Output Directory vides.
+3. « Deploy ». Le fichier `vercel.json` du dossier active les URL propres (`/mentions-legales`) et
+   quelques en-têtes de sécurité.
+4. Settings → Domains : ajouter le nom de domaine et reporter chez le registrar les enregistrements DNS
+   affichés par Vercel (un A sur le domaine nu, un CNAME sur `www`). HTTPS est automatique.
+
+Le projet Vercel du site est distinct de celui du CRM : même dépôt, dossier racine différent.
 
 ## À compléter avant la mise en ligne
 
