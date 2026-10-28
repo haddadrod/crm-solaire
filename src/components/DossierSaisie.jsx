@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useReducer } from 'react';
 import { Plus, Copy, Trash2, Check, Search, Sparkles, Zap, X, Edit3, FileText, TrendingUp, Euro, Calendar, Download, Filter, BarChart3, AlertTriangle, Bell, Award, Activity, Flame, Settings, ArrowUp, ArrowDown, RotateCcw, Paperclip, Upload, Eye, FileImage, File, LayoutGrid, MessageCircle, Home, ArrowLeft } from 'lucide-react';
 import { supabase, uploadFileToBucket, getSignedUrl, deleteFileFromBucket } from '../supabase.js';
 import { TEMPLATES_CATALOG } from '../pdfTemplates.js';
+import { DpMairieButton } from './DpMairieModal.jsx';
 
 // Listes par défaut — VIDES volontairement. Chaque installation (CRM Solaire,
 // CRM LMR, …) configure SES poseurs/régies/fournisseurs dans Réglages ; ils
@@ -22394,6 +22395,16 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 </div>
               </div>
 
+              {/* 🏛️ Création de la déclaration préalable (plans DP + Cerfa) */}
+              <div className="mt-3">
+                <DpMairieButton
+                  dossier={formData}
+                  produits={produits}
+                  societes={societes}
+                  onAttach={(id) => setFormData(prev => ({ ...prev, dossierEnvoiMairieFileId: id }))}
+                />
+              </div>
+
               {/* Upload du PDF du dossier envoyé à la mairie */}
               <div className="mt-3 p-2 bg-white border border-indigo-200 rounded-lg">
                 <div className="text-[12px] font-semibold text-indigo-700 uppercase mb-1.5">📤 Dossier envoyé à la mairie (PDF)</div>
@@ -26097,6 +26108,16 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <button onClick={() => onUpdate({ dateAccordMairie: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[11px] font-bold whitespace-nowrap">Auj.</button>
                     </div>
                   </div>
+                </div>
+                {/* 🏛️ Création de la déclaration préalable (plans DP + Cerfa) */}
+                <div className="mb-1.5">
+                  <DpMairieButton
+                    small
+                    dossier={d}
+                    produits={produits}
+                    societes={societes}
+                    onAttach={(id) => onUpdate({ dossierEnvoiMairieFileId: id })}
+                  />
                 </div>
                 {/* Upload PDF du dossier envoyé à la mairie */}
                 <div className="px-2 py-1.5 bg-white border border-indigo-200 rounded mb-1.5">
