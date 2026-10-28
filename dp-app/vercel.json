@@ -1,3 +1,0 @@
-{
-  "rewrites": [{ "source": "/((?!api/|cerfa/|assets/).*)", "destination": "/index.html" }]
-}
