@@ -1,82 +1,74 @@
-// 💶 CRM Finances — session + navigation simple (hash) :
-//   #/            → liste des clients
-//   #/client/<id> → fiche client (vente, matériel, dépenses, marge)
-//   #/synthese    → synthèse : encaissements, prestataires à payer, mois par mois
-//   #/reglages    → listes de noms (financeurs, fournisseurs, sous-traitants…)
-
-import React, { useEffect, useState } from 'react';
-import { supabase, supabaseConfigOk } from './supabase.js';
+import React, { useState, useEffect } from 'react';
+import { supabase } from './supabase.js';
+import { setupStorage } from './storage.js';
 import Login from './Login.jsx';
-import ClientsList from './ClientsList.jsx';
-import ClientPage from './ClientPage.jsx';
-import Synthese from './Synthese.jsx';
-import Reglages from './Reglages.jsx';
-import { go } from './nav.js';
+import DossierSaisie from './components/DossierSaisie.jsx';
+import ChantierPoseurView from './components/ChantierPoseurView.jsx';
 
-function useHashRoute() {
-  const [hash, setHash] = useState(() => window.location.hash || '#/');
-  useEffect(() => {
-    const on = () => setHash(window.location.hash || '#/');
-    window.addEventListener('hashchange', on);
-    return () => window.removeEventListener('hashchange', on);
-  }, []);
-  return hash.replace(/^#/, '') || '/';
+// Initialise window.storage avant le rendu
+setupStorage();
+
+// Lien public envoyé au poseur : `?chantier=TOKEN`. Si on a un token dans
+// l'URL, on bypasse l'auth et on rend la page chantier (lecture seule + upload
+// photos). Le token sert d'authentification.
+const chantierToken = (typeof window !== 'undefined')
+  ? new URLSearchParams(window.location.search).get('chantier')
+  : null;
+
+// Extrait un prénom lisible depuis le user Supabase :
+// display_name s'il est propre (sans point/espace) sinon partie avant le 1er point/espace,
+// capitalisée. Fallback : partie avant @ de l'email, même règle.
+function firstNameOf(user) {
+  if (!user) return 'Utilisateur';
+  const raw = (user.user_metadata?.display_name || (user.email ? user.email.split('@')[0] : '') || '').trim();
+  if (!raw) return 'Utilisateur';
+  const first = raw.split(/[.\s_-]+/)[0] || raw;
+  return first.charAt(0).toUpperCase() + first.slice(1).toLowerCase();
 }
 
 export default function App() {
-  const [session, setSession] = useState(undefined);
-  const route = useHashRoute();
+  const [user, setUser] = useState(null);
+  const [loading, setLoading] = useState(true);
 
+  // Au démarrage, vérifie si l'utilisateur est déjà connecté
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session || null));
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s || null));
-    return () => sub.subscription.unsubscribe();
+    // En mode lien public chantier, on n'a pas besoin de session Supabase.
+    if (chantierToken) { setLoading(false); return; }
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUser(session?.user || null);
+      setLoading(false);
+    });
+    // Écoute les changements d'authentification (login/logout)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
+    });
+    return () => subscription.unsubscribe();
   }, []);
 
-  if (!supabaseConfigOk) {
+  // Lien public chantier → on rend la vue poseur sans login.
+  if (chantierToken) {
+    return <ChantierPoseurView token={chantierToken} />;
+  }
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+  };
+
+  if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <div className="max-w-md bg-white rounded-2xl shadow p-6 text-sm text-slate-700">
-          <div className="text-lg font-bold mb-2">⚙️ Configuration manquante</div>
-          Ajoute <code>VITE_SUPABASE_URL</code> et <code>VITE_SUPABASE_ANON_KEY</code> dans les variables d'environnement Vercel, puis redéploie.
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-violet-50 via-pink-50 to-orange-50">
+        <div className="text-center">
+          <div className="text-4xl mb-2">☀️</div>
+          <div className="text-sm text-slate-500">Chargement...</div>
         </div>
       </div>
     );
   }
-  if (session === undefined) return <div className="min-h-screen flex items-center justify-center text-slate-500">⏳ Chargement…</div>;
-  if (!session) return <Login />;
 
-  const clientMatch = route.match(/^\/client\/([0-9a-f-]+)/i);
-  const onglet = clientMatch ? 'clients' : route === '/synthese' ? 'synthese' : route === '/reglages' ? 'reglages' : 'clients';
-  const tab = (id, label, path) => (
-    <button type="button" onClick={() => go(path)}
-      className={`px-3 py-1.5 rounded-lg font-semibold ${onglet === id ? 'bg-white/25' : 'hover:bg-white/15'}`}>{label}</button>
-  );
+  if (!user) {
+    return <Login onLogin={setUser} />;
+  }
 
-  return (
-    <div className="min-h-screen">
-      <header className="bg-gradient-to-r from-emerald-600 via-teal-600 to-sky-600 text-white">
-        <div className="max-w-7xl mx-auto px-4 py-3 flex flex-wrap items-center gap-3">
-          <button type="button" onClick={() => go('/')} className="flex items-center gap-2 font-bold text-lg">
-            <span className="text-2xl">💶</span> CRM Finances
-          </button>
-          <nav className="flex gap-1 text-sm">
-            {tab('clients', '👥 Clients', '/')}
-            {tab('synthese', '📊 Synthèse', '/synthese')}
-            {tab('reglages', '⚙️ Réglages', '/reglages')}
-          </nav>
-          <div className="ml-auto flex items-center gap-3 text-xs">
-            <span className="hidden sm:inline opacity-90">{session.user.email}</span>
-            <button type="button" onClick={() => supabase.auth.signOut()} className="px-2.5 py-1.5 rounded-lg bg-white/15 hover:bg-white/25 font-semibold">Déconnexion</button>
-          </div>
-        </div>
-      </header>
-      <main className="max-w-7xl mx-auto p-4">
-        {clientMatch ? <ClientPage id={clientMatch[1]} key={clientMatch[1]} />
-          : onglet === 'synthese' ? <Synthese />
-          : onglet === 'reglages' ? <Reglages />
-          : <ClientsList />}
-      </main>
-    </div>
-  );
+  return <DossierSaisie authUser={user} onLogout={handleLogout} />;
 }

@@ -1,0 +1,23 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron-gmail-prefetch",
+      "schedule": "*/15 * * * *"
+    }
+  ],
+  "functions": {
+    "api/cron-gmail-prefetch.js": {
+      "maxDuration": 300
+    },
+    "api/gmail-oauth.js": {
+      "maxDuration": 60
+    },
+    "api/classify-dossier.js": {
+      "maxDuration": 300,
+      "memory": 3009
+    },
+    "api/extract-pdf.js": {
+      "maxDuration": 120
+    }
+  }
+}

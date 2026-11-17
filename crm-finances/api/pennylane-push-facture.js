@@ -1,0 +1,432 @@
+// Fonction serverless Vercel : pousse une facture prestataire (fournisseur,
+// poseur, régie) vers Pennylane via leur API REST v2.
+//
+// Multi-société : la clé Pennylane est choisie en fonction du champ
+// `societe` envoyé dans le body. Convention env Vercel :
+//   PENNYLANE_API_KEY_YOLICO  → société Yolico
+//   PENNYLANE_API_KEY_ELSUN   → société Elsun
+//   PENNYLANE_API_KEY         → fallback générique (compat ancienne config)
+//
+// Workflow :
+//   1. Cherche le fournisseur par nom dans Pennylane (GET /suppliers)
+//   2. Upload le PDF de la facture (POST /file_attachments, multipart)
+//   3. Crée la facture fournisseur (POST /supplier_invoices/import) avec
+//      file_attachment_id + supplier_id + montants
+//
+// Variables d'environnement requises côté Vercel :
+//   - PENNYLANE_API_KEY_YOLICO / PENNYLANE_API_KEY_ELSUN / PENNYLANE_API_KEY
+//   - SUPABASE_URL          : pour valider le JWT appelant
+//   - SUPABASE_SERVICE_KEY  : clé service_role Supabase
+
+import { createClient } from '@supabase/supabase-js';
+
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
+const PL_BASE = 'https://app.pennylane.com/api/external/v2';
+
+// Choisit la clé Pennylane en fonction de la société émettrice du dossier.
+// Convention : PENNYLANE_API_KEY_<SOCIETE>. Fallback sur PENNYLANE_API_KEY
+// pour ne pas casser les pousses existantes le temps que la config Vercel
+// soit mise à jour.
+function pickApiKey(societe) {
+  const norm = String(societe || '').toUpperCase().trim();
+  if (norm) {
+    const specific = process.env[`PENNYLANE_API_KEY_${norm}`];
+    if (specific) return { key: specific, source: `PENNYLANE_API_KEY_${norm}` };
+  }
+  const generic = process.env.PENNYLANE_API_KEY;
+  if (generic) return { key: generic, source: 'PENNYLANE_API_KEY (fallback)' };
+  return { key: null, source: null };
+}
+
+// 🔐 Tente de lire la clé Pennylane stockée DANS Supabase (configurable depuis
+// le CRM par un admin via /api/pennylane-keys). Si trouvée → on l'utilise.
+// Sinon → fallback sur pickApiKey() (variables d'env Vercel).
+//
+// Préfixe `secret-` : exclu de la lecture authenticated par la nouvelle
+// politique RLS (SUPABASE_SECRETS_RLS.sql), donc seul le serveur (service_role)
+// peut lire ces valeurs.
+async function resolveApiKey(societe) {
+  if (SUPABASE_URL && SUPABASE_SERVICE_KEY) {
+    const norm = String(societe || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+    if (norm) {
+      try {
+        const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        });
+        const { data } = await admin.from('storage').select('value').eq('key', `secret-pennylane-${norm}`).maybeSingle();
+        const v = data?.value;
+        if (v && String(v).trim()) {
+          return { key: String(v).trim(), source: `CRM (secret-pennylane-${norm})` };
+        }
+      } catch (e) {
+        console.error('resolveApiKey from Supabase failed:', e?.message);
+      }
+    }
+  }
+  return pickApiKey(societe);
+}
+
+// 🧾 Récupère le `ledger_account_id` (compte de charges Pennylane) configuré
+//    pour cette société dans Supabase. Sans ça, Pennylane applique un compte
+//    par défaut qui n'est pas forcément le bon (cf. bug remonté par le user :
+//    factures classées dans le mauvais compte).
+//
+//    Clé Supabase : `secret-pennylane-<societe>-ledger` (entier ou chaîne).
+//    L'admin la pose via Réglages → 🔐 Clés Pennylane.
+async function resolveLedgerAccountId(societe) {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_KEY) return null;
+  const norm = String(societe || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (!norm) return null;
+  try {
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data } = await admin.from('storage').select('value').eq('key', `secret-pennylane-${norm}-ledger`).maybeSingle();
+    const v = data?.value;
+    if (!v) return null;
+    // Pennylane accepte un entier ou un UUID-like — on garde la string tel
+    // quel après trim, le caller la passe brut dans le body JSON.
+    const s = String(v).trim();
+    if (!s) return null;
+    // Si numérique pur, on convertit en number (Pennylane attend INTEGER pour
+    // ledger_account_id dans la majorité des comptes). Sinon on garde string.
+    if (/^\d+$/.test(s)) return parseInt(s, 10);
+    return s;
+  } catch (e) {
+    console.error('resolveLedgerAccountId from Supabase failed:', e?.message);
+    return null;
+  }
+}
+
+function json(res, status, body) {
+  res.status(status).setHeader('Content-Type', 'application/json');
+  res.send(JSON.stringify(body));
+}
+
+async function getCaller(req) {
+  const authHeader = req.headers['authorization'] || req.headers['Authorization'];
+  if (!authHeader || !authHeader.startsWith('Bearer ')) return null;
+  const token = authHeader.slice('Bearer '.length).trim();
+  if (!token || !SUPABASE_URL || !SUPABASE_SERVICE_KEY) return null;
+  try {
+    const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
+    const { data, error } = await admin.auth.getUser(token);
+    if (error || !data?.user) return null;
+    return data.user;
+  } catch (e) {
+    return null;
+  }
+}
+
+// Conversion taux TVA → code Pennylane (codes français)
+function vatRateCode(tauxTva) {
+  const r = parseFloat(tauxTva);
+  if (!r || r === 0) return 'exempt';
+  if (r === 20) return 'FR_200';
+  if (r === 10) return 'FR_100';
+  if (r === 5.5 || r === 5) return 'FR_055';
+  if (r === 2.1) return 'FR_021';
+  return 'FR_200'; // fallback raisonnable
+}
+
+// Helper : appel HTTP authentifié à l'API Pennylane.
+// La clé est passée explicitement (multi-société) pour éviter une variable
+// globale qui se ferait écraser entre 2 invocations Vercel concurrentes.
+async function plFetch(apiKey, path, options = {}) {
+  const res = await fetch(`${PL_BASE}${path}`, {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      ...(options.headers || {}),
+    },
+  });
+  let payload = null;
+  try { payload = await res.json(); } catch (e) {}
+  return { ok: res.ok, status: res.status, payload };
+}
+
+// Cherche un fournisseur par nom (insensitive). Renvoie son id ou null.
+async function findSupplierByName(apiKey, name) {
+  const target = String(name || '').trim().toLowerCase();
+  if (!target) return null;
+  for (let page = 1; page <= 10; page++) {
+    const { ok, status, payload } = await plFetch(apiKey, `/suppliers?page=${page}&per_page=100`);
+    if (!ok) throw new Error(`Pennylane GET /suppliers ${status} : ${JSON.stringify(payload)}`);
+    const items = payload?.items || payload?.data || payload?.suppliers || (Array.isArray(payload) ? payload : []);
+    if (!items || items.length === 0) return null;
+    const found = items.find((s) => String(s.name || '').trim().toLowerCase() === target);
+    if (found) return found.id;
+    if (items.length < 100) return null;
+  }
+  return null;
+}
+
+// Crée un fournisseur dans Pennylane (compte de la société) → renvoie son id.
+// Appelé quand le fournisseur n'existe pas encore. Pennylane n'exige que le
+// `name` (les autres champs comme le pays ne sont pas acceptés ici).
+async function createSupplier(apiKey, name) {
+  const supplierBody = {
+    name: String(name || '').trim(),
+  };
+  const { ok, status, payload } = await plFetch(apiKey, `/suppliers`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(supplierBody),
+  });
+  if (!ok) throw new Error(`Pennylane POST /suppliers ${status} : ${JSON.stringify(payload)}`);
+  const id = payload?.id || payload?.supplier?.id || payload?.data?.id;
+  if (!id) throw new Error(`Pennylane : id fournisseur manquant après création`);
+  return id;
+}
+
+// Upload un PDF en multipart vers /file_attachments → renvoie l'id du fichier.
+async function uploadPdfAttachment(apiKey, base64, fileName) {
+  const bytes = Buffer.from(base64, 'base64');
+  const form = new FormData();
+  const blob = new Blob([bytes], { type: 'application/pdf' });
+  form.append('file', blob, fileName || 'facture.pdf');
+  const res = await fetch(`${PL_BASE}/file_attachments`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${apiKey}` },
+    body: form,
+  });
+  let payload = null;
+  try { payload = await res.json(); } catch (e) {}
+  if (!res.ok) throw new Error(`Pennylane POST /file_attachments ${res.status} : ${JSON.stringify(payload)}`);
+  const id = payload?.id || payload?.file_attachment?.id || payload?.data?.id;
+  if (!id) throw new Error(`Pennylane file_attachment id manquant dans la réponse`);
+  return id;
+}
+
+// ───────────────────────── VosFactures (greffé ici) ─────────────────────────
+// Facturation CLIENT via l'API vosfactures.fr — même montage que sur le CRM
+// POSE : le proxy vit dans cette fonction (pas de nouveau fichier /api), le
+// handler principal route quand body.provider === 'vosfactures'.
+// Variables d'env Vercel : VOSFACTURES_TOKEN, VOSFACTURES_HOST
+//   (+ overrides par société : VOSFACTURES_TOKEN_<SOCIETE> / VOSFACTURES_HOST_<SOCIETE>)
+// Body : { provider:'vosfactures', action:'ping'|'demo'|'create', societe?, invoice?, departmentId? }
+function vfCleanHost(h) {
+  return String(h || '').trim().replace(/^https?:\/\//, '').replace(/\/+$/, '');
+}
+
+function pickVfConfig(societe) {
+  const norm = String(societe || '').toUpperCase().trim().replace(/[^A-Z0-9]/g, '');
+  let token = null, host = null, source = null;
+  if (norm) { const t = process.env[`VOSFACTURES_TOKEN_${norm}`]; if (t) { token = t; source = `VOSFACTURES_TOKEN_${norm}`; } }
+  if (!token) { token = process.env.VOSFACTURES_TOKEN || null; if (token) source = source || 'VOSFACTURES_TOKEN'; }
+  if (norm) host = process.env[`VOSFACTURES_HOST_${norm}`] || null;
+  if (!host) host = process.env.VOSFACTURES_HOST || null;
+  return { token, host: vfCleanHost(host), source };
+}
+
+async function vfFetch(host, path, options = {}) {
+  const r = await fetch(`https://${host}${path}`, options);
+  let payload = null;
+  try { payload = await r.json(); } catch (e) {}
+  return { ok: r.ok, status: r.status, payload };
+}
+
+async function handleVosFactures(res, body) {
+  const action = body.action || 'create';
+  const { token, host, source } = pickVfConfig(body.societe);
+  if (!token || !host) {
+    return json(res, 503, {
+      error: 'VosFactures non configuré côté Vercel. Ajoute VOSFACTURES_TOKEN (code d\'autorisation API) et VOSFACTURES_HOST (ex "monentreprise.vosfactures.fr") dans les variables d\'environnement du projet, puis redéploie.',
+    });
+  }
+  try {
+    // Test lecture : liste des départements (= émetteurs). Read-only, sûr.
+    if (action === 'departments' || action === 'ping') {
+      const { ok, status, payload } = await vfFetch(host, `/departments.json?api_token=${encodeURIComponent(token)}`, { method: 'GET' });
+      if (!ok) return json(res, 502, { error: `VosFactures GET /departments.json ${status} : ${JSON.stringify(payload)}` });
+      const list = Array.isArray(payload) ? payload : (payload?.departments || []);
+      return json(res, 200, { data: { host, source, departments: list.map((d) => ({ id: d.id, name: d.name || d.shortcut || '' })) } });
+    }
+    let invoice;
+    if (action === 'demo') {
+      invoice = {
+        kind: 'proforma', // proforma = pas une vraie facture fiscale → test sans risque
+        issue_date: new Date().toISOString().slice(0, 10),
+        buyer_name: 'TEST CRM — proforma à supprimer',
+        buyer_company: true,
+        positions: [{ name: 'Test de connexion CRM (proforma)', quantity: 1, tax: 20, total_price_gross: 1.2 }],
+      };
+      if (body.departmentId) invoice.department_id = body.departmentId;
+    } else if (action === 'create') {
+      invoice = body.invoice;
+      if (!invoice || typeof invoice !== 'object') return json(res, 400, { error: 'invoice (objet) requis pour action=create.' });
+    } else {
+      return json(res, 400, { error: `Action inconnue : ${action}` });
+    }
+    const { ok, status, payload } = await vfFetch(host, '/invoices.json', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ api_token: token, invoice }),
+    });
+    if (!ok) return json(res, 502, { error: `VosFactures POST /invoices.json ${status} : ${JSON.stringify(payload)}` });
+    // PDF de la facture créée (best effort) → l'app le range dans le dossier.
+    let pdfBase64 = null;
+    if (payload?.id) {
+      try {
+        const pdfRes = await fetch(`https://${host}/invoices/${payload.id}.pdf?api_token=${encodeURIComponent(token)}`);
+        if (pdfRes.ok) pdfBase64 = Buffer.from(await pdfRes.arrayBuffer()).toString('base64');
+      } catch (e) {}
+    }
+    const viewUrl = payload?.view_url || (payload?.id && payload?.token ? `https://${host}/invoice/${payload.id}/${payload.token}` : '');
+    return json(res, 200, { data: { id: payload?.id, number: payload?.number, kind: payload?.kind, price_gross: payload?.price_gross, viewUrl, source, pdfBase64 } });
+  } catch (e) {
+    console.error('vosfactures error:', e?.message || e);
+    return json(res, 502, { error: e?.message || 'Erreur VosFactures' });
+  }
+}
+
+export default async function handler(req, res) {
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST');
+    return json(res, 405, { error: 'Method Not Allowed' });
+  }
+
+  const caller = await getCaller(req);
+  if (!caller) return json(res, 401, { error: 'Connexion requise.' });
+
+  const body = req.body || {};
+
+  // 🧾 Route VosFactures (facturation client) — greffée ici, cf. bloc ci-dessus.
+  if (body.provider === 'vosfactures') return handleVosFactures(res, body);
+  const {
+    societe,
+    supplierName,
+    factureNo,
+    dateFacture,
+    montantHt,
+    montantTtc,
+    tauxTva,
+    fileBase64,
+    fileName,
+    storagePath,
+    ledgerAccountId: ledgerOverride, // override par push (rare) — sinon on lit depuis Supabase
+  } = body;
+
+  // Sélection de la clé selon la société émettrice — d'abord Supabase (CRM),
+  // sinon variables d'env Vercel (legacy).
+  const { key: apiKey, source: keySource } = await resolveApiKey(societe);
+  if (!apiKey) {
+    return json(res, 503, {
+      error: societe
+        ? `Pennylane non configuré pour la société "${societe}". Va dans Réglages → 🔐 Clés Pennylane pour la renseigner.`
+        : 'Pennylane non configuré. Va dans Réglages → 🔐 Clés Pennylane.',
+    });
+  }
+
+  if (!supplierName) return json(res, 400, { error: 'supplierName requis.' });
+  if (!factureNo) return json(res, 400, { error: 'factureNo requis (N° de la facture).' });
+  if (!dateFacture) return json(res, 400, { error: 'dateFacture requis (AAAA-MM-JJ).' });
+  if (!fileBase64 && !storagePath) return json(res, 400, { error: 'Fichier requis (fileBase64 ou storagePath).' });
+
+  // Récupère le PDF en base64 (depuis le body ou depuis le bucket)
+  let pdfBase64 = fileBase64;
+  if (!pdfBase64 && storagePath) {
+    try {
+      const admin = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+        auth: { autoRefreshToken: false, persistSession: false },
+      });
+      const { data: blob, error: dlErr } = await admin.storage.from('dossier-documents').download(storagePath);
+      if (dlErr || !blob) return json(res, 502, { error: `Lecture bucket impossible : ${dlErr?.message || 'inconnu'}` });
+      const ab = await blob.arrayBuffer();
+      pdfBase64 = Buffer.from(ab).toString('base64');
+    } catch (e) {
+      return json(res, 502, { error: `Téléchargement bucket échoué : ${e.message}` });
+    }
+  }
+
+  try {
+    // 1. Cherche le fournisseur Pennylane par nom (dans le compte de la société).
+    //    S'il n'existe pas, on le crée automatiquement avec ce nom.
+    let supplierId = await findSupplierByName(apiKey, supplierName);
+    let supplierCreated = false;
+    if (!supplierId) {
+      supplierId = await createSupplier(apiKey, supplierName);
+      supplierCreated = true;
+    }
+
+    // 2. Upload le PDF
+    const fileAttachmentId = await uploadPdfAttachment(apiKey, pdfBase64, fileName || `${factureNo}.pdf`);
+
+    // 3. Crée la facture fournisseur. La somme des invoice_lines doit
+    //    correspondre au currency_amount sinon Pennylane renvoie 422.
+    const ht = (parseFloat(montantHt) || 0).toFixed(2);
+    const ttc = (parseFloat(montantTtc) || 0).toFixed(2);
+    const tax = (parseFloat(montantTtc - montantHt) || 0).toFixed(2);
+    const vatCode = vatRateCode(tauxTva);
+    // Échéance par défaut : 30 jours après date facture
+    const deadline = (() => {
+      try {
+        const d = new Date(dateFacture);
+        d.setDate(d.getDate() + 30);
+        return d.toISOString().slice(0, 10);
+      } catch (e) { return dateFacture; }
+    })();
+
+    // 🧾 Compte de charges : override du body sinon valeur configurée pour la
+    //    société. Si aucun → on omet le champ (Pennylane mettra un défaut,
+    //    souvent faux → la facture devra être recatégorisée manuellement).
+    const resolvedLedger = ledgerOverride
+      ? (/^\d+$/.test(String(ledgerOverride).trim()) ? parseInt(String(ledgerOverride).trim(), 10) : String(ledgerOverride).trim())
+      : await resolveLedgerAccountId(societe);
+
+    const invoiceLine = {
+      currency_amount: ttc,
+      currency_tax: tax,
+      vat_rate: vatCode,
+    };
+    // N'ajoute la clé que si on a une valeur — Pennylane refuse `null`.
+    if (resolvedLedger !== null && resolvedLedger !== undefined && resolvedLedger !== '') {
+      invoiceLine.ledger_account_id = resolvedLedger;
+    }
+
+    const invoiceBody = {
+      supplier_id: supplierId,
+      file_attachment_id: fileAttachmentId,
+      date: dateFacture,
+      deadline,
+      currency_amount_before_tax: ht,
+      currency_tax: tax,
+      currency_amount: ttc,
+      label: factureNo,
+      // 🛑 Importée en "Pré-traité" → vérif humaine obligatoire avant
+      //    validation. Sans ce flag, Pennylane marque la facture comme
+      //    déjà traitée et personne ne la revoit.
+      import_as_incomplete: true,
+      invoice_lines: [invoiceLine],
+    };
+
+    const { ok, status, payload } = await plFetch(apiKey, `/supplier_invoices/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(invoiceBody),
+    });
+    if (!ok) {
+      return json(res, 502, {
+        error: `Pennylane POST /supplier_invoices/import ${status} : ${JSON.stringify(payload)}`,
+      });
+    }
+    const invoiceId = payload?.id || payload?.invoice?.id || payload?.data?.id;
+    return json(res, 200, {
+      data: {
+        pennylaneInvoiceId: invoiceId,
+        pennylaneSupplierId: supplierId,
+        pennylaneSupplierCreated: supplierCreated, // true si on l'a créé à la volée
+        pennylaneStatus: payload?.status || 'imported',
+        pennylaneAccount: keySource, // utile pour vérifier qu'on a tapé sur le bon compte
+        pennylaneLedgerAccountId: resolvedLedger || null,
+        importedAsIncomplete: true,
+      },
+    });
+  } catch (e) {
+    console.error('pennylane-push-facture error:', e?.message || e);
+    return json(res, 502, { error: e?.message || 'Erreur Pennylane' });
+  }
+}
