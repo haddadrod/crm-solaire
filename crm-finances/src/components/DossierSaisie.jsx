@@ -657,6 +657,92 @@ function patchTvaAuto(d, produits) {
   return { tauxTvaVente: 20, montantHtCustom: '' };
 }
 
+// ===================== 💶 CRM Finances — DÉPLACEMENT SANS POSE =====================
+// Cas : le poseur s'est déplacé mais RIEN n'a été installé (client a refusé…).
+//   • on ne doit RIEN au fournisseur ni à la régie, et pas le prix de la pose ;
+//   • on doit seulement un DÉPLACEMENT au poseur ;
+//   • ce déplacement est refacturé à la régie sous forme de PÉNALITÉ.
+// Données (déjà gérées par le rapport paiements) :
+//   d.deplacementSansPose (ou statut Z_DEPLACEMENT) → dossier « déplacement »
+//   poseurs[0].deplacements = [{ montant, date }]     → dû au poseur
+//   tentativesPose = [{ date, motif, penalite, regie }] → pénalité due par la régie
+function estDeplacement(d) {
+  return !!(d && (d.deplacementSansPose || d.statut === 'Z_DEPLACEMENT'));
+}
+function montantDeplacement(d) {
+  const dep = d && d.poseurs && d.poseurs[0] && (d.poseurs[0].deplacements || [])[0];
+  if (dep && dep.montant !== undefined && dep.montant !== '') return dep.montant;
+  const t = d && (d.tentativesPose || [])[0];
+  return t && t.penalite !== undefined && t.penalite !== null ? t.penalite : '';
+}
+function dateDeplacement(d) {
+  return (d && ((d.tentativesPose || [])[0]?.date || d.dateDeplacement)) || '';
+}
+// Renvoie les champs à modifier pour passer un dossier en déplacement (actif)
+// avec ce montant / cette date, ou pour annuler (actif = false).
+function patchDeplacement(d, { actif, montant, date }) {
+  if (!actif) {
+    return {
+      deplacementSansPose: false,
+      statut: (d.statutAvantDeplacement && d.statutAvantDeplacement !== 'Z_DEPLACEMENT') ? d.statutAvantDeplacement : 'A_EN_COURS',
+      dateDeplacement: '',
+      tentativesPose: [],
+      poseurs: (d.poseurs || []).map((p, i) => i === 0 ? { ...p, deplacements: [] } : p),
+    };
+  }
+  const m = (montant === '' || montant === undefined || montant === null) ? '' : montant;
+  const mNum = parseFloat(m) || 0;
+  const dt = date || '';
+  const regieNom = ((d.regies || []).find(r => r.nom)?.nom) || d.regie || '';
+  const ancienne = (d.tentativesPose || [])[0] || {};
+  return {
+    deplacementSansPose: true,
+    statutPose: '', // rien n'a été posé
+    statutAvantDeplacement: d.statut !== 'Z_DEPLACEMENT' ? (d.statut || '') : (d.statutAvantDeplacement || ''),
+    statut: 'Z_DEPLACEMENT',
+    dateDeplacement: dt,
+    poseurs: (d.poseurs || []).map((p, i) => i === 0 ? { ...p, deplacements: m === '' ? [] : [{ montant: m, date: dt }] } : p),
+    tentativesPose: m === '' ? [] : [{ ...ancienne, date: dt, motif: ancienne.motif || 'client_refuse', penalite: mNum, regie: regieNom, definitif: true }],
+  };
+}
+function DeplacementEditor({ d, onPatch, compact = false }) {
+  const actif = estDeplacement(d);
+  const montant = montantDeplacement(d);
+  const date = dateDeplacement(d);
+  const poseurNom = (d.poseurs || [])[0]?.nom || '';
+  const regieNom = ((d.regies || []).find(r => r.nom)?.nom) || d.regie || '';
+  const inp = (compact
+    ? 'w-full px-2 py-1 border border-purple-200 rounded-lg text-[12px] bg-white h-8'
+    : 'w-full px-3 py-2 border border-purple-200 rounded-xl text-sm bg-white h-10');
+  const lab = 'block text-[11px] font-semibold text-slate-600 mb-0.5 whitespace-nowrap truncate';
+  const mNum = parseFloat(montant) || 0;
+  return (
+    <div className={`border-2 rounded-xl ${actif ? 'bg-purple-50 border-purple-300' : 'bg-white border-slate-200'} ${compact ? 'p-2 mb-2' : 'p-3'}`}>
+      <button type="button" onClick={() => onPatch(patchDeplacement(d, actif ? { actif: false } : { actif: true, montant, date: date || new Date().toISOString().split('T')[0] }))} className={`w-full flex items-center justify-between gap-2 px-2 rounded-lg font-bold border-2 transition-all ${compact ? 'py-1.5 text-[12px]' : 'py-2 text-sm'} ${actif ? 'bg-purple-600 text-white border-purple-700 shadow-md' : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'}`}>
+        <span>🚗 Déplacement sans pose</span>
+        <span className="text-[11px] font-semibold opacity-90">{actif ? 'OUI — cliquer pour annuler' : 'cliquer si rien n\'a été installé'}</span>
+      </button>
+      {actif && (<>
+        <div className="grid grid-cols-2 gap-2 mt-2 items-start">
+          <div>
+            <label className={lab}>Date du déplacement</label>
+            <input type="date" min="2000-01-01" max="2100-12-31" value={date} onChange={(e) => onPatch(patchDeplacement(d, { actif: true, montant, date: e.target.value }))} className={inp} />
+          </div>
+          <div>
+            <label className={lab}>Montant du déplacement (€)</label>
+            <input type="number" step="0.01" value={montant ?? ''} placeholder="0,00" onChange={(e) => onPatch(patchDeplacement(d, { actif: true, montant: e.target.value, date }))} className={inp} />
+          </div>
+        </div>
+        <div className="mt-2 text-[12px] text-slate-700 space-y-0.5">
+          <div>🔧 Tu dois <span className="font-bold text-amber-700">{formatEuro(mNum)}</span> au poseur {poseurNom ? <span className="font-bold">{poseurNom}</span> : <span className="font-bold text-rose-600">(aucun poseur sur le dossier — ajoute-le dans « Poseurs »)</span>}.</div>
+          <div>🤝 La régie {regieNom ? <span className="font-bold">{regieNom}</span> : <span className="font-bold text-rose-600">(aucune régie sur le dossier)</span>} te doit <span className="font-bold text-emerald-700">{formatEuro(mNum)}</span> de pénalité.</div>
+          <div className="text-slate-500">Rien n'est dû au fournisseur ni à la régie, et le prix de la pose n'est pas compté.</div>
+        </div>
+      </>)}
+    </div>
+  );
+}
+
 // ===================== 💶 CRM Finances — AUTRES FRAIS (Consuel, Mairie) =====================
 // Coûts liés au dossier en plus des poseurs / régies / fournisseurs :
 //   • consuel : frais de dossier Consuel (toujours la même somme → le montant
@@ -1914,6 +2000,28 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
   const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt - interneHt - autresFraisHt);
   const tva = margeTtc - margeHt;
 
+  // 💶 CRM Finances — DÉPLACEMENT SANS POSE : pas de vente, rien dû au fournisseur
+  // ni à la régie ; le poseur n'est payé que de son déplacement ; la marge est
+  // la pénalité régie moins ce déplacement (et les autres frais éventuels).
+  if (estDeplacement(d)) {
+    const aZero = (x) => ({ ...x, ht: 0, ttc: 0, baseHt: 0 });
+    const pD = poseursDetail.map(x => { const ht = (x.deplacementsHt || 0) - (x.avoirsHt || 0); return { ...x, ht, ttc: ht, baseHt: 0, surplus: 0 }; });
+    const pHt = pD.reduce((sum, x) => sum + x.ht, 0);
+    const penaliteRegie = (d.tentativesPose || []).reduce((sum, t) => sum + (parseFloat(t.penalite) || 0), 0);
+    const marge = penaliteRegie - pHt - autresFraisHt;
+    return {
+      ...d,
+      estDeplacement: true, penaliteRegie,
+      montantHt: 0, tvaVente: 0, tauxTva: 0, tva: 0,
+      fournisseursDetail: fournisseursDetail.map(aZero), fournisseurHt: 0, fournisseurTtc: 0,
+      regiesDetail: regiesDetail.map(aZero), regieAutoHt: 0, regieHt: 0, regieTtc: 0,
+      poseursDetail: pD, poseurHt: pHt, poseurTtc: pHt,
+      interneHt: 0, interneTtc: 0, internesDetail: [],
+      autresFraisDetail, autresFraisHt, autresFraisTtc,
+      margeTtc: marge, margeHt: marge,
+      puissance: d.puissance || totalPuissance,
+    };
+  }
   return {
     ...d,
     montantHt, tvaVente, tauxTva, tva,
@@ -3981,7 +4089,20 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // useAutoTarif : indique si AU MOINS un produit a un tarif auto défini quelque part
     const hasAnyAutoTarif = regiesDetail.some(r => r.autoHt > 0) || poseursDetail.some(p => p.autoHt > 0);
 
-    return { montantTotal, montantHt, tvaVente, tauxTva, fournisseursDetail, fournisseurHt, fournisseurTtc, regiesDetail, regieHt, regieAutoHt, regieTtc, poseursDetail, poseurHt, poseurTtc, interneHt, interneTtc, margeTtc, margeHt, tva, puissance: totalPuissance, useAutoTarif: hasAnyAutoTarif, computeAutoTarif };
+    const __res = { montantTotal, montantHt, tvaVente, tauxTva, fournisseursDetail, fournisseurHt, fournisseurTtc, regiesDetail, regieHt, regieAutoHt, regieTtc, poseursDetail, poseurHt, poseurTtc, interneHt, interneTtc, margeTtc, margeHt, tva, puissance: totalPuissance, useAutoTarif: hasAnyAutoTarif, computeAutoTarif };
+    // 💶 Déplacement sans pose : mêmes règles que dans enrichDossier.
+    if (estDeplacement(formData)) {
+      const aZero = (x) => ({ ...x, ht: 0, ttc: 0, baseHt: 0 });
+      const pD = __res.poseursDetail.map(x => { const ht = (x.deplacementsHt || 0) - (x.avoirsHt || 0); return { ...x, ht, ttc: ht, baseHt: 0, surplus: 0 }; });
+      const pHt = pD.reduce((sum, x) => sum + x.ht, 0);
+      const penaliteRegie = (formData.tentativesPose || []).reduce((sum, t) => sum + (parseFloat(t.penalite) || 0), 0);
+      const marge = penaliteRegie - pHt - autresFraisHt;
+      return { ...__res, montantHt: 0, tvaVente: 0, tauxTva: 0, tva: 0,
+        fournisseursDetail: __res.fournisseursDetail.map(aZero), fournisseurHt: 0, fournisseurTtc: 0,
+        regiesDetail: __res.regiesDetail.map(aZero), regieHt: 0, regieAutoHt: 0, regieTtc: 0,
+        poseursDetail: pD, poseurHt: pHt, poseurTtc: pHt, interneHt: 0, interneTtc: 0, margeTtc: marge, margeHt: marge };
+    }
+    return __res;
   }, [formData, tarifsPoseurs, tarifsRegies, produits, tarifsFournisseurs, tarifsInternes]);
 
   const resetForm = () => { setFormData(emptyForm); setEditingId(null); setShowForm(false); };
@@ -5021,7 +5142,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
       // ⚠️ Un montant NÉGATIF marqué payé = remboursement de pénalité (la régie
       // t'a rendu de l'argent via HT négatif), ce n'est PAS une avance. On
       // l'exclut donc du « payé d'avance ».
-      const payeAvance = paye && !dossier.payeClient && ttc > 0;
+      const exigible = !!(dossier.payeClient || dossier.estDeplacement); // déplacement : pas de financeur à attendre
+      const payeAvance = paye && !exigible && ttc > 0;
       if (paye) {
         map[key].totalPaye += ttc;
         if (payeAvance) map[key].totalPayeAvance += ttc;
@@ -5032,10 +5154,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
         // était comptée due dès la saisie du nom → le « à décaisser » et le
         // solde prévisionnel explosaient avec des commissions pas encore
         // exigibles.
-        if (dossier.payeClient) map[key].totalAPayerMaintenant += ttc;
+        if (exigible) map[key].totalAPayerMaintenant += ttc;
         else map[key].totalEnAttenteFinanceur += ttc;
       }
-      map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: !!dossier.payeClient, financement: dossier.financement, payeAvance, isInterne, prestataireType: type, societe: soc, factureNo, ligneIdx });
+      map[key].lignes.push({ dossierId: dossier.id || '—', dossierLocalId: dossier.localId, client: `${dossier.nom} ${dossier.prenom || ''}`.trim(), date: dossier.dateInsta, ttc, paye, datePaye, financeurPaye: exigible, financement: dossier.financement, payeAvance, isInterne, prestataireType: type, societe: soc, factureNo, ligneIdx });
     };
     dossiersFiltres.forEach(d => {
       (d.fournisseursDetail || []).forEach((f, fi) => addEntry(f.nom, 'Fournisseur', f.ttc, f.paye, f.datePaye, d, f.factureNo || '', fi, (f.avoirsHt || 0) > 0));
@@ -7265,6 +7387,19 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     {!confirmBulkDelete ? (<>
                       <span className="text-sm font-bold text-rose-800">{selectedDeleteIds.size} dossier{selectedDeleteIds.size > 1 ? 's' : ''} coché{selectedDeleteIds.size > 1 ? 's' : ''}</span>
                       <button onClick={() => setConfirmBulkDelete(true)} className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-bold">🗑️ Supprimer</button>
+                      <button onClick={() => {
+                        // 🚗 Passe les dossiers cochés en « déplacement sans pose » : le montant
+                        // saisi pour le poseur devient le montant du déplacement (et la pénalité régie).
+                        const ids = new Set(selectedDeleteIds);
+                        setDossiers(prev => prev.map(x => {
+                          if (!ids.has(x.localId) || estDeplacement(x)) return x;
+                          const p0 = (x.poseurs || [])[0];
+                          const montant = p0 && p0.htCustom !== '' && p0.htCustom !== undefined && p0.htCustom !== null ? p0.htCustom : '';
+                          const now = new Date().toISOString();
+                          return { ...x, ...patchDeplacement(x, { actif: true, montant, date: x.dateInsta || '' }), savedAt: now, modifiedAt: now, modifiedBy: currentUser || '' };
+                        }));
+                        setSelectedDeleteIds(new Set());
+                      }} title="Rien n'a été installé : seul un déplacement est dû au poseur, refacturé en pénalité à la régie" className="px-3 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-bold">🚗 Passer en déplacement</button>
                       <button onClick={() => setSelectedDeleteIds(new Set())} className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg text-sm font-semibold">Tout décocher</button>
                     </>) : (<>
                       <span className="text-sm font-bold text-rose-800">⚠️ Supprimer {selectedDeleteIds.size} dossier{selectedDeleteIds.size > 1 ? 's' : ''} ? {(() => { const noms = dossiers.filter(x => selectedDeleteIds.has(x.localId)).map(x => `${x.nom || '(sans nom)'}${x.prenom ? ' ' + x.prenom : ''}`); const uniques = [...new Set(noms)]; return uniques.length <= 4 ? `(${uniques.join(', ')})` : `(${uniques.slice(0, 4).join(', ')}… et ${uniques.length - 4} autres noms)`; })()}</span>
@@ -8139,10 +8274,12 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           ? <span className="font-bold text-slate-800">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</span>
           : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 hover:text-violet-600 hover:underline truncate max-w-full" title="Ouvrir la fiche du dossier">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>}
       </div>
-      <div className="min-w-0 truncate text-slate-700" title="Date de pose">{datePoseRow ? formatDateForSheet(datePoseRow) : <span className="text-slate-300">—</span>}</div>
+      <div className="min-w-0 truncate text-slate-700" title={d.estDeplacement ? 'Déplacement sans pose' : 'Date de pose'}>{d.estDeplacement ? <span className="text-purple-700 font-semibold">🚗 {dateDeplacement(d) ? formatDateForSheet(dateDeplacement(d)) : 'Dépl.'}</span> : datePoseRow ? formatDateForSheet(datePoseRow) : <span className="text-slate-300">—</span>}</div>
       {!readOnly && <div className="min-w-0 truncate text-violet-700 font-semibold" title="Financeur">{d.financement || [...new Set(paiementsRecusDe(d).map(x => x.payeur).filter(Boolean))].map(x => x === PAYEUR_CLIENT ? 'Client' : x).join(' + ') || <span className="text-slate-300 font-normal">—</span>}</div>}
-      {!readOnly && <div className="font-bold text-blue-600 truncate" title="Prix de vente TTC">{formatEuro(d.montantTotal)}</div>}
-      {!readOnly && <div className="text-center truncate">{d.payeClient
+      {!readOnly && <div className="font-bold text-blue-600 truncate" title="Prix de vente TTC">{d.estDeplacement ? <span className="text-slate-300 font-normal">—</span> : formatEuro(d.montantTotal)}</div>}
+      {!readOnly && <div className="text-center truncate">{d.estDeplacement
+        ? <span className="px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 font-bold" title={`Déplacement sans pose — pénalité régie : ${formatEuro(d.penaliteRegie || 0)}`}>🚗 Déplacement</span>
+        : d.payeClient
         ? <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold" title={(d.payeClientDate ? `Payé le ${formatDateForSheet(d.payeClientDate)}` : 'Payé') + (delaiPaiement !== null && datePayeRow ? ` — ${delaiPaiement} jour(s) après la pose` : '')}>✓ Payé{delaiPaiement !== null && datePayeRow ? ` · ${delaiPaiement} j` : ''}</span>
         : recuTotal > 0
           ? <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold" title={`Reçu ${formatEuro(recuTotal)}` + (delaiPaiement !== null ? ` — posé depuis ${delaiPaiement} jour(s)` : '')}>Reste {formatEuro(resteARecevoir)}{delaiPaiement !== null ? ` · ${delaiPaiement} j` : ''}</span>
@@ -22572,6 +22709,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             </Section>
           )}
 
+          {/* 💶 CRM Finances : déplacement sans pose (rien installé) */}
+          <DeplacementEditor d={formData} onPatch={(patch) => setFormData({ ...formData, ...patch })} />
+
           {/* 💶 CRM Finances : autres frais du dossier (Consuel, prestataire mairie). */}
           <AutresFraisEditor d={formData} dossiers={dossiers} onPatch={(patch) => setFormData({ ...formData, ...patch })} />
 
@@ -23389,6 +23529,8 @@ function ImportDossiersModal({ onClose, onImport, onUpdateExisting, existingDoss
             case 'payeClient':
               d[field] = parseBool(val); break;
             case 'statut': {
+              // 💶 « Z DEPLACEMENT » / « Déplacement » → dossier déplacement sans pose.
+              if (/deplacement/.test(String(val).toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, ''))) { d.statut = 'Z_DEPLACEMENT'; break; }
               const matched = (STATUTS_ORDERED || []).find(s => s && s.id && (String(s.id).toLowerCase() === val.toLowerCase() || (s.label && String(s.label).toLowerCase().includes(val.toLowerCase())) || val.toLowerCase().includes(String(s.label || '').toLowerCase())));
               d.statut = matched ? matched.id : 'M_ATT_DOSSIER';
               if (!matched && val) warnings.push(`Ligne ${rIdx + 1}: statut "${val}" non reconnu, mis sur "Manque attestation"`);
@@ -23448,9 +23590,10 @@ function ImportDossiersModal({ onClose, onImport, onUpdateExisting, existingDoss
           montantTotal: d.montantTotal || 0,
           montantHtCustom: d.montantHtCustom || '',
           dateInsta: d.dateInsta || '', dateAccord: d.dateAccord || '', dateConsuel: d.dateConsuel || '',
-          // 💶 CRM Finances : une date de pose importée = dossier posé ce jour-là.
-          statutPose: d.dateInsta ? 'visite_ok' : '',
-          dateEnvoiPose: d.dateInsta || '',
+          // 💶 CRM Finances : une date de pose importée = dossier posé ce jour-là
+          // (sauf déplacement sans pose : la date est celle du déplacement).
+          statutPose: (d.dateInsta && d.statut !== 'Z_DEPLACEMENT') ? 'visite_ok' : '',
+          dateEnvoiPose: (d.dateInsta && d.statut !== 'Z_DEPLACEMENT') ? d.dateInsta : '',
           produits: [{
             type: d.produit || 'PANNEAU_SOLAIRE',
             puissance: d.puissance || 6000,
@@ -23460,7 +23603,8 @@ function ImportDossiersModal({ onClose, onImport, onUpdateExisting, existingDoss
           regie: d.regie || '',
           regieHtCustom: d.regieHt || '', regiePaye: false, regieDatePaye: '',
           regies: (d.regie || d.regieHt) ? [{ nom: d.regie || '', htCustom: d.regieHt || '', paye: false, datePaye: '' }] : [],
-          poseurs: (d.poseur || d.poseurHt) ? [{ nom: d.poseur || '', htCustom: d.poseurHt || '', paye: false, datePaye: '' }] : [],
+          poseurs: (d.poseur || d.poseurHt) ? [{ nom: d.poseur || '', htCustom: d.statut === 'Z_DEPLACEMENT' ? 0 : (d.poseurHt || ''), paye: false, datePaye: '', ...(d.statut === 'Z_DEPLACEMENT' && d.poseurHt ? { deplacements: [{ montant: d.poseurHt, date: d.dateInsta || '' }] } : {}) }] : [],
+          ...(d.statut === 'Z_DEPLACEMENT' ? { deplacementSansPose: true, dateDeplacement: d.dateInsta || '', tentativesPose: d.poseurHt ? [{ date: d.dateInsta || '', motif: 'client_refuse', penalite: parseFloat(d.poseurHt) || 0, regie: d.regie || '', definitif: true }] : [] } : {}),
           fournisseurs: (d.fournisseur || d.fournisseurHt || d.bl || d.factureNo || d.facturePdfUrl) ? [{ nom: d.fournisseur || (FOURNISSEURS && FOURNISSEURS[0]) || 'AUTRE', htCustom: d.fournisseurHt || '', paye: false, datePaye: '', bl: d.bl || '', factureNo: d.factureNo || '', facturePdfUrl: d.facturePdfUrl || '' }] : [],
           payeClient: !!d.payeClient,
           payeClientDate: '',
@@ -25721,6 +25865,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
             )}
           </div>
+
+          {/* 💶 CRM Finances : déplacement sans pose (rien installé) */}
+          {isAdmin && <DeplacementEditor d={d} onPatch={onUpdate} compact />}
 
           {/* 💶 CRM Finances — MONTANTS : une seule carte pliable (comme Régies / Poseurs)
               qui regroupe le prix de vente, la marge ET les paiements reçus. */}
