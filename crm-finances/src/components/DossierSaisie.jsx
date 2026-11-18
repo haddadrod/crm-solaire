@@ -907,12 +907,15 @@ function isSafeMediaUrl(url) {
 }
 
 // Rôles équipe interne (régie interne) — payés au dossier
+// 💶 CRM Finances : ordre demandé — commercial, responsable envoi pose,
+// téléprospecteur, confirmateur, contrôle qualité (nouveau rôle).
 const ROLES_INTERNES = [
+  { key: 'commercial', label: 'Commercial', emoji: '💼', defaultTarif: 300 },
+  { key: 'responsableEnvoiPose', label: 'Responsable envoi pose', emoji: '📦', defaultTarif: 40 },
   { key: 'teleprospecteur', label: 'Téléprospecteur', emoji: '📞', defaultTarif: 50 },
   { key: 'confirmateur', label: 'Confirmateur', emoji: '✅', defaultTarif: 30 },
-  { key: 'commercial', label: 'Commercial', emoji: '💼', defaultTarif: 300 },
+  { key: 'agentControleQualite', label: 'Contrôle qualité', emoji: '🔍', defaultTarif: 0 },
   { key: 'coordinateurProjet', label: 'Coordinateur projet', emoji: '🛠️', defaultTarif: 80 },
-  { key: 'responsableEnvoiPose', label: 'Responsable envoi pose', emoji: '📦', defaultTarif: 40 },
 ];
 const TARIFS_INTERNES_DEFAULT = ROLES_INTERNES.reduce((acc, r) => ({ ...acc, [r.key]: r.defaultTarif }), {});
 const NOMS_INTERNES_DEFAULT = ROLES_INTERNES.reduce((acc, r) => ({ ...acc, [r.key]: [] }), {});
