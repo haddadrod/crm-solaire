@@ -6409,20 +6409,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                 </>
               )}
               {/* Boutons d'action — collés à droite du sélecteur société */}
-              {isAdmin && dossiers.length > 0 && (
-                <button onClick={exportCSV} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200 whitespace-nowrap flex-shrink-0">
-                  <Download className="w-4 h-4" />Export CSV
-                </button>
-              )}
-              {(isAdmin || currentUserRole === 'compta') && dossiers.length > 0 && (
-                <button
-                  onClick={() => setShowExportComptable(true)}
-                  title="Grand livre comptable : choisis quels poseurs / régies / fournisseurs exporter, ou tout"
-                  className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-emerald-200 whitespace-nowrap flex-shrink-0"
-                >
-                  📊 Export comptable
-                </button>
-              )}
+              {/* 📤 Boutons « Export CSV » et « Export comptable » déplacés dans Réglages → 🛠 Outils experts. */}
               {/* 📥 Bouton « Importer » déplacé dans Réglages → 🛠 Outils experts. */}
               {/* 📊 Vue Sheet — accès direct depuis la barre du haut, pas besoin de
                   passer par Réglages → Outils experts. */}
@@ -7173,7 +7160,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           <ReglagesView
             statutsOrder={statutsOrder} setStatutsOrder={setStatutsOrder} STATUTS_ORDERED={STATUTS_ORDERED} STATUTS={STATUTS} dossiers={dossiers} dossiersEnriched={dossiersEnriched}
             POSEURS={POSEURS} REGIES={REGIES} FOURNISSEURS={FOURNISSEURS}
-            setDossiers={setDossiers} setShowImport={setShowImport} setShowImportJson={setShowImportJson} setShowQuickViewId={setShowQuickViewId}
+            setDossiers={setDossiers} setShowImport={setShowImport} onExportCSV={exportCSV} onExportComptable={() => setShowExportComptable(true)} setShowImportJson={setShowImportJson} setShowQuickViewId={setShowQuickViewId}
             tarifsPoseurs={tarifsPoseurs} setTarifsPoseurs={setTarifsPoseurs}
             tarifsRegies={tarifsRegies} setTarifsRegies={setTarifsRegies}
             tarifsInternes={tarifsInternes} setTarifsInternes={setTarifsInternes}
@@ -14652,7 +14639,7 @@ function BanquePerfList({ data, dossiers = [], societes = [], onShowQuick }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS = [], dossiers, dossiersEnriched = null, POSEURS = [], REGIES = [], FOURNISSEURS = [], setDossiers, setShowImport, setShowImportJson, setShowQuickViewId = null, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, internesContacts = {}, setInternesContacts = () => {}, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS = [], dossiers, dossiersEnriched = null, POSEURS = [], REGIES = [], FOURNISSEURS = [], setDossiers, setShowImport, onExportCSV, onExportComptable, setShowImportJson, setShowQuickViewId = null, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, internesContacts = {}, setInternesContacts = () => {}, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
   // Init depuis le hash URL pour qu'un refresh garde la sous-section.
   // Format : #reglages/utilisateurs → section = 'utilisateurs'
   const sectionFromHash = (typeof window !== 'undefined' && window.location.hash)
@@ -14824,6 +14811,8 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS 
           dossiersEnriched={dossiersEnriched}
           setDossiers={setDossiers}
           setShowImport={setShowImport}
+          onExportCSV={onExportCSV}
+          onExportComptable={onExportComptable}
           setShowImportJson={setShowImportJson}
           STATUTS={STATUTS}
           societes={societes}
@@ -16485,7 +16474,7 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
 // suppression d'import sheet, validation CQ massive, sync paiement client).
 // Volontairement regroupés ici (hors barre principale) pour éviter qu'un
 // utilisateur ne déclenche par erreur une action irréversible.
-function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setShowImport, setShowImportJson, STATUTS = [], societes = [], POSEURS = [], REGIES = [], FOURNISSEURS = [], onShowQuick }) {
+function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setShowImport, onExportCSV, onExportComptable, setShowImportJson, STATUTS = [], societes = [], POSEURS = [], REGIES = [], FOURNISSEURS = [], onShowQuick }) {
   const [showSheet, setShowSheet] = useState(false);
   const handleBackup = () => {
     try {
@@ -16573,6 +16562,24 @@ function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setS
           >
             <div className="flex items-center gap-2 font-bold">📥 Importer des dossiers</div>
             <div className="text-[13px] text-slate-500 mt-0.5">Colle des lignes depuis Google Sheet ou Excel pour créer des dossiers en masse.</div>
+          </button>
+          <button
+            onClick={() => onExportCSV && onExportCSV()}
+            disabled={dossiers.length === 0}
+            className="bg-white hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400 text-slate-700 px-4 py-3 rounded-xl font-semibold border border-slate-200 text-left disabled:cursor-not-allowed"
+            title="Télécharge tous les dossiers dans un fichier CSV (ouvrable dans Excel)."
+          >
+            <div className="flex items-center gap-2 font-bold">📤 Export CSV</div>
+            <div className="text-[13px] text-slate-500 mt-0.5">Télécharge la liste des dossiers en fichier CSV (Excel).</div>
+          </button>
+          <button
+            onClick={() => onExportComptable && onExportComptable()}
+            disabled={dossiers.length === 0}
+            className="bg-white hover:bg-emerald-50 disabled:bg-slate-50 disabled:text-slate-400 text-emerald-700 px-4 py-3 rounded-xl font-semibold border border-emerald-200 disabled:border-slate-200 text-left disabled:cursor-not-allowed"
+            title="Grand livre comptable : choisis quels poseurs / régies / fournisseurs exporter, ou tout."
+          >
+            <div className="flex items-center gap-2 font-bold">📊 Export comptable</div>
+            <div className="text-[13px] text-slate-500 mt-0.5">Grand livre comptable : poseurs, régies, fournisseurs — au choix ou tout.</div>
           </button>
           <button
             onClick={() => setShowImportJson(true)}
