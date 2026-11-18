@@ -7857,23 +7857,23 @@ function SocieteBadge({ societe, variant = 'inline', active = false, onClick = n
 // de la liste et chaque ligne dossier, pour que les intitulés tombent pile
 // au-dessus des valeurs).
 function financeRowCols(isAdmin, readOnly) {
-  return ['20px', '1.5fr', '0.8fr', !readOnly && '0.9fr', !readOnly && '0.9fr', !readOnly && '1.1fr', isAdmin && '1.4fr', isAdmin && '1.4fr', isAdmin && '1.4fr', isAdmin && '1.2fr', isAdmin && '1fr', !readOnly && '24px'].filter(Boolean).join(' ');
+  return ['34px', '1.5fr', '0.8fr', !readOnly && '0.9fr', !readOnly && '0.9fr', !readOnly && '1.1fr', isAdmin && '1.4fr', isAdmin && '1.4fr', isAdmin && '1.4fr', isAdmin && '1.2fr', isAdmin && '1fr', !readOnly && '40px'].filter(Boolean).join(' ');
 }
 function DossierListHeader({ isAdmin, readOnly, withCheckbox = false }) {
   return (
     <div className={`hidden md:block ${withCheckbox ? 'pl-6' : ''}`}>
-      <div className="grid gap-2 items-center px-2 py-1 border-l-4 border-transparent text-[11px] font-bold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: financeRowCols(isAdmin, readOnly) }}>
+      <div className="grid items-center py-1.5 border-l-4 border-transparent bg-slate-100 rounded-lg text-[11px] font-bold uppercase tracking-wide text-slate-600 [&>*]:px-2 [&>*]:text-center [&>*]:justify-center [&>*:not(:first-child)]:border-l [&>*:not(:first-child)]:border-slate-200" style={{ gridTemplateColumns: financeRowCols(isAdmin, readOnly) }}>
         <span></span>
         <span>👤 Client</span>
         <span>📅 Pose</span>
         {!readOnly && <span>💳 Financeur</span>}
-        {!readOnly && <span className="text-right">Prix TTC</span>}
-        {!readOnly && <span className="text-center">Paiement</span>}
+        {!readOnly && <span>Prix TTC</span>}
+        {!readOnly && <span>Paiement</span>}
         {isAdmin && <span>🔧 Poseur</span>}
         {isAdmin && <span>🤝 Régie</span>}
         {isAdmin && <span>📦 Fournisseur</span>}
         {isAdmin && <span>⚡ Consuel / 🏛️ Mairie</span>}
-        {isAdmin && <span className="text-right">Marge HT</span>}
+        {isAdmin && <span>Marge HT</span>}
         {!readOnly && <span></span>}
       </div>
     </div>
@@ -7968,16 +7968,16 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
     );
   };
   const financeRow = (
-    <div className="px-2 py-1.5 grid gap-2 items-center text-[12px] leading-tight" style={{ gridTemplateColumns: financeRowCols(isAdmin, readOnly) }}>
+    <div className="py-1.5 grid items-center text-[12px] leading-tight [&>*]:px-2 [&>*]:text-center [&>*]:justify-center [&>*:not(:first-child)]:border-l [&>*:not(:first-child)]:border-slate-200" style={{ gridTemplateColumns: financeRowCols(isAdmin, readOnly) }}>
       <button onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }} title={open ? 'Replier' : 'Voir plus de détails (téléphone, mail, adresse…)'} aria-label={open ? 'Replier le dossier' : 'Déplier le dossier'} className="w-5 h-5 rounded text-slate-400 hover:text-violet-600 hover:bg-violet-50 text-[10px]">{open ? '▼' : '▶'}</button>
       <div className="min-w-0 truncate">
         {readOnly
           ? <span className="font-bold text-slate-800">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</span>
-          : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 hover:text-violet-600 hover:underline text-left truncate max-w-full" title="Ouvrir la fiche du dossier">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>}
+          : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 hover:text-violet-600 hover:underline truncate max-w-full" title="Ouvrir la fiche du dossier">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>}
       </div>
       <div className="min-w-0 truncate text-slate-700" title="Date de pose">{datePoseRow ? formatDateForSheet(datePoseRow) : <span className="text-slate-300">—</span>}</div>
       {!readOnly && <div className="min-w-0 truncate text-violet-700 font-semibold" title="Financeur">{d.financement || [...new Set(paiementsRecusDe(d).map(x => x.payeur).filter(Boolean))].map(x => x === PAYEUR_CLIENT ? 'Client' : x).join(' + ') || <span className="text-slate-300 font-normal">—</span>}</div>}
-      {!readOnly && <div className="text-right font-bold text-blue-600 truncate" title="Prix de vente TTC">{formatEuro(d.montantTotal)}</div>}
+      {!readOnly && <div className="font-bold text-blue-600 truncate" title="Prix de vente TTC">{formatEuro(d.montantTotal)}</div>}
       {!readOnly && <div className="text-center truncate">{d.payeClient
         ? <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold" title={(d.payeClientDate ? `Payé le ${formatDateForSheet(d.payeClientDate)}` : 'Payé') + (delaiPaiement !== null && datePayeRow ? ` — ${delaiPaiement} jour(s) après la pose` : '')}>✓ Payé{delaiPaiement !== null && datePayeRow ? ` · ${delaiPaiement} j` : ''}</span>
         : recuTotal > 0
@@ -7987,7 +7987,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
       {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.regiesDetail} total={d.regieHt} color="text-purple-700" /></div>}
       {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.fournisseursDetail} total={d.fournisseurHt} color="text-orange-700" /></div>}
       {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.autresFraisDetail} total={d.autresFraisHt} color="text-cyan-700" /></div>}
-      {isAdmin && <div className={`text-right font-bold truncate ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} title="Marge HT">{formatEuro(d.margeHt)}</div>}
+      {isAdmin && <div className={`font-bold truncate ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} title="Marge HT">{formatEuro(d.margeHt)}</div>}
       {!readOnly && <button onClick={() => onEdit(d)} aria-label="Modifier le dossier" title="Modifier le dossier" className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded"><Edit3 className="w-3.5 h-3.5" /></button>}
     </div>
   );
