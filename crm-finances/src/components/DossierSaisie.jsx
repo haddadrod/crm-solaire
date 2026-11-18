@@ -637,6 +637,84 @@ function fmtFieldVal(v) {
 const PROJEXIO_CAP_MENSUEL_PAR_SOCIETE = {};
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
+// ===================== 💶 CRM Finances — AUTRES FRAIS (Consuel, Mairie) =====================
+// Coûts liés au dossier en plus des poseurs / régies / fournisseurs :
+//   • consuel : frais de dossier Consuel (toujours la même somme → le montant
+//     du dernier Consuel saisi est repris automatiquement) ;
+//   • mairie  : prestataire qui prépare les dossiers mairie (nom + montant).
+// Stocké dans d.autresFrais = [{ id, type, nom, ht, paye, datePaye }].
+const AUTRES_FRAIS_TYPES = [
+  { type: 'consuel', titre: '⚡ Consuel (frais de dossier)', avecNom: false, box: 'bg-cyan-50 border-cyan-200', txt: 'text-cyan-700', btn: 'bg-cyan-100 hover:bg-cyan-200 text-cyan-700', brd: 'border-cyan-200' },
+  { type: 'mairie', titre: '🏛️ Mairie (prestataire)', avecNom: true, box: 'bg-indigo-50 border-indigo-200', txt: 'text-indigo-700', btn: 'bg-indigo-100 hover:bg-indigo-200 text-indigo-700', brd: 'border-indigo-200' },
+];
+// Dernière ligne saisie de ce type dans les autres dossiers → sert de valeur
+// par défaut (même montant / même prestataire à chaque fois).
+function dernierAutreFrais(dossiers, type, exceptLocalId) {
+  let best = null; let bestAt = '';
+  (dossiers || []).forEach(o => {
+    if (!o || o.localId === exceptLocalId) return;
+    const l = (o.autresFrais || []).filter(x => x.type === type && (parseFloat(x.ht) || 0) > 0).pop();
+    if (!l) return;
+    const at = String(o.savedAt || o.createdAt || '');
+    if (!best || at >= bestAt) { best = l; bestAt = at; }
+  });
+  return best;
+}
+function AutresFraisEditor({ d, dossiers = [], onPatch, compact = false }) {
+  const list = d.autresFrais || [];
+  const apply = (next) => onPatch({ autresFrais: next });
+  const setLine = (id, patch) => apply(list.map(x => x.id === id ? { ...x, ...patch } : x));
+  const add = (type) => {
+    const prev = list.filter(x => x.type === type).pop() || dernierAutreFrais(dossiers, type, d.localId);
+    apply([...list, { id: 'f' + Date.now().toString(36), type, nom: type === 'consuel' ? 'Consuel' : (prev?.nom || ''), ht: prev?.ht ?? '', paye: false, datePaye: '' }]);
+  };
+  const inp = (brd) => compact
+    ? `w-full px-2 py-1 border ${brd} rounded-lg text-[12px] bg-white`
+    : `w-full px-3 py-2 border ${brd} rounded-xl text-sm bg-white`;
+  return (
+    <div className={compact ? 'space-y-2 mb-2' : 'space-y-3'}>
+      {AUTRES_FRAIS_TYPES.map(t => {
+        const lignes = list.filter(x => x.type === t.type);
+        const total = lignes.reduce((sum, x) => sum + (parseFloat(x.ht) || 0), 0);
+        return (
+          <div key={t.type} className={`border-2 rounded-xl ${t.box} ${compact ? 'p-2' : 'p-3'}`}>
+            <div className="flex items-center justify-between flex-wrap gap-2">
+              <span className={`font-bold uppercase ${t.txt} ${compact ? 'text-[12px]' : 'text-[13px]'}`}>
+                {t.titre} ({lignes.length}){lignes.length > 0 && <span className="normal-case font-semibold text-slate-600"> — {formatEuro(total)} HT</span>}
+              </span>
+              <button type="button" onClick={() => add(t.type)} className={`px-3 py-1 rounded-lg text-[12px] font-bold ${t.btn}`}>+ Ajouter</button>
+            </div>
+            {lignes.map((x, i) => (
+              <div key={x.id} className="grid grid-cols-12 gap-1.5 mt-1.5 items-end">
+                {t.avecNom && (
+                  <div className="col-span-4">
+                    {i === 0 && <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Prestataire</label>}
+                    <input type="text" value={x.nom || ''} placeholder="Nom du prestataire" onChange={(e) => setLine(x.id, { nom: e.target.value })} className={inp(t.brd)} />
+                  </div>
+                )}
+                <div className={t.avecNom ? 'col-span-3' : 'col-span-4'}>
+                  {i === 0 && <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Montant HT (€)</label>}
+                  <input type="number" step="0.01" value={x.ht ?? ''} placeholder="0,00" onChange={(e) => setLine(x.id, { ht: e.target.value })} className={inp(t.brd)} />
+                </div>
+                <div className={t.avecNom ? 'col-span-4' : 'col-span-7'}>
+                  {i === 0 && <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Payé le</label>}
+                  <div className="flex items-center gap-1.5">
+                    <input type="checkbox" checked={!!x.paye} title="Coche quand tu as payé ce frais" onChange={(e) => setLine(x.id, e.target.checked ? { paye: true, datePaye: x.datePaye || new Date().toISOString().split('T')[0] } : { paye: false, datePaye: '' })} className="w-4 h-4 accent-emerald-600 flex-shrink-0 cursor-pointer" />
+                    <input type="date" min="2000-01-01" max="2100-12-31" value={x.datePaye || ''} onChange={(e) => setLine(x.id, { datePaye: e.target.value, paye: !!e.target.value })} className={inp(t.brd)} />
+                  </div>
+                </div>
+                <div className="col-span-1">
+                  <button type="button" title="Supprimer cette ligne" onClick={() => apply(list.filter(y => y.id !== x.id))} className="w-full py-1 text-rose-500 hover:bg-rose-50 rounded-lg text-sm font-bold">✕</button>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 // ===================== 💶 CRM Finances — PAIEMENTS REÇUS =====================
 // Un dossier peut être payé en plusieurs fois et par plusieurs payeurs (une
 // partie par le financeur, une partie par le client). Chaque ligne =
@@ -1747,8 +1825,16 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
 
   // Marge nulle si pas de vente (TTC=0). Sinon = vente − coûts (fournisseur +
   // régie + poseur + équipe interne).
-  const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc - interneTtc);
-  const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt - interneHt);
+  // 💶 CRM Finances — autres frais du dossier (Consuel, prestataire mairie) :
+  // des coûts en plus des poseurs / régies / fournisseurs, déduits de la marge.
+  const autresFraisDetail = (d.autresFrais || []).map(x => {
+    const ht = parseFloat(x.ht) || 0;
+    return { type: x.type, nom: x.nom || (x.type === 'consuel' ? 'Consuel' : ''), ht, ttc: ht * 1.2, paye: !!x.paye, datePaye: x.datePaye || '' };
+  });
+  const autresFraisHt = autresFraisDetail.reduce((sum, x) => sum + x.ht, 0);
+  const autresFraisTtc = autresFraisDetail.reduce((sum, x) => sum + x.ttc, 0);
+  const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc - interneTtc - autresFraisTtc);
+  const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt - interneHt - autresFraisHt);
   const tva = margeTtc - margeHt;
 
   return {
@@ -1758,6 +1844,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
     regiesDetail, regieAutoHt, regieHt, regieTtc,
     poseursDetail, poseurHt, poseurTtc,
     interneHt, interneTtc,
+    autresFraisDetail, autresFraisHt, autresFraisTtc,
     margeTtc, margeHt,
     puissance: d.puissance || totalPuissance,
   };
@@ -7758,7 +7845,7 @@ function SocieteBadge({ societe, variant = 'inline', active = false, onClick = n
 // de la liste et chaque ligne dossier, pour que les intitulés tombent pile
 // au-dessus des valeurs).
 function financeRowCols(isAdmin, readOnly) {
-  return ['20px', '1.5fr', !readOnly && '0.9fr', isAdmin && '1.5fr', isAdmin && '1.5fr', isAdmin && '1.5fr', !readOnly && '0.9fr', isAdmin && '1.1fr', !readOnly && '0.9fr', !readOnly && '24px'].filter(Boolean).join(' ');
+  return ['20px', '1.5fr', !readOnly && '0.9fr', isAdmin && '1.4fr', isAdmin && '1.4fr', isAdmin && '1.4fr', isAdmin && '1.2fr', !readOnly && '0.9fr', isAdmin && '1fr', !readOnly && '0.9fr', !readOnly && '24px'].filter(Boolean).join(' ');
 }
 function DossierListHeader({ isAdmin, readOnly, withCheckbox = false }) {
   return (
@@ -7770,6 +7857,7 @@ function DossierListHeader({ isAdmin, readOnly, withCheckbox = false }) {
         {isAdmin && <span>🔧 Poseur</span>}
         {isAdmin && <span>🤝 Régie</span>}
         {isAdmin && <span>📦 Fournisseur</span>}
+        {isAdmin && <span>⚡ Consuel / 🏛️ Mairie</span>}
         {!readOnly && <span className="text-right">Prix TTC</span>}
         {isAdmin && <span className="text-right">Marge HT</span>}
         {!readOnly && <span className="text-center">Paiement</span>}
@@ -7869,6 +7957,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
       {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.poseursDetail} total={d.poseurHt} color="text-amber-700" /></div>}
       {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.regiesDetail} total={d.regieHt} color="text-purple-700" /></div>}
       {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.fournisseursDetail} total={d.fournisseurHt} color="text-orange-700" /></div>}
+      {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.autresFraisDetail} total={d.autresFraisHt} color="text-cyan-700" /></div>}
       {!readOnly && <div className="text-right font-bold text-blue-600 truncate" title="Prix de vente TTC">{formatEuro(d.montantTotal)}</div>}
       {isAdmin && <div className={`text-right font-bold truncate ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} title="Marge HT">{formatEuro(d.margeHt)}</div>}
       {!readOnly && <div className="text-center truncate">{d.payeClient
@@ -22270,6 +22359,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             </Section>
           )}
 
+          {/* 💶 CRM Finances : autres frais du dossier (Consuel, prestataire mairie). */}
+          <AutresFraisEditor d={formData} dossiers={dossiers} onPatch={(patch) => setFormData({ ...formData, ...patch })} />
+
           <Section
             title="🔧 Pose"
             color="blue"
@@ -26504,6 +26596,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
             )}
           </div>
+
+          {/* 💶 CRM Finances : autres frais du dossier (Consuel, prestataire mairie). */}
+          {isAdmin && <AutresFraisEditor d={d} dossiers={dossiers} onPatch={onUpdate} compact />}
 
           {/* ============ 📞 CLIENT À RAPPELER — étape annexe, visible si hasRappel ============ */}
           {d.hasRappel && (() => {
