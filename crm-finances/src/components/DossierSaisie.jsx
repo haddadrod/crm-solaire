@@ -810,7 +810,9 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, 
         {list.length > 0 && (
           <span className="text-[12px] font-semibold text-slate-600">
             Reçu : <span className="text-emerald-700 font-bold">{formatEuro(total)}</span>
-            {ttc > 0 && <> sur {formatEuro(ttc)} — {reste > 0.005 ? <span className="text-amber-700 font-bold">reste {formatEuro(reste)}</span> : <span className="text-emerald-700 font-bold">soldé</span>}</>}
+            {ttc > 0 && <> sur {formatEuro(ttc)} — {list.every(p => p.montant === '' || p.montant === undefined || p.montant === null)
+              ? <span className="text-slate-500 font-semibold">montant non saisi</span>
+              : reste > 0.005 ? <span className="text-amber-700 font-bold">reste {formatEuro(reste)}</span> : <span className="text-emerald-700 font-bold">soldé</span>}</>}
           </span>
         )}
       </div>
@@ -21674,31 +21676,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             <div className="mt-3">
               <PaiementsRecusEditor d={formData} FINANCEMENTS={FINANCEMENTS} onPatch={(patch) => setFormData({ ...formData, ...patch })} />
             </div>
-            {/* 💶 CRM Finances : case masquée à la CRÉATION du dossier (personne ne
-                doit la cocher à ce moment-là) — visible seulement en modification, admin. */}
-            {isAdmin && editingId && (
-              <div className="mt-3">
-                <Toggle
-                  label={`✅ Payé par le financeur (${formData.financement})${formData.payeClient && formData.payeClientDate ? ` — le ${new Date(formData.payeClientDate).toLocaleDateString('fr-FR')}` : ''}`}
-                  checked={formData.payeClient}
-                  onChange={(v) => {
-                    const today = new Date().toISOString().split('T')[0];
-                    if (v) {
-                      setFormData({
-                        ...formData,
-                        payeClient: true,
-                        payeClientDate: formData.payeClientDate || today,
-                        payeClientStampAt: stampApres(formData.payeClientStampAt),
-                        datePaiementBanque: formData.datePaiementBanque || today,
-                        statut: 'W_DOSSIER_PAYER',
-                      });
-                    } else {
-                      setFormData({ ...formData, payeClient: false, payeClientDate: '', payeClientStampAt: stampApres(formData.payeClientStampAt) });
-                    }
-                  }}
-                />
-              </div>
-            )}
+            {/* 💶 CRM Finances : case « Payé par le financeur » retirée — le paiement se saisit uniquement dans « Paiements reçus ». */}
 
             {/* Bloc « Détails du prêt » retiré du CRM Finances. */}
           </Section>
