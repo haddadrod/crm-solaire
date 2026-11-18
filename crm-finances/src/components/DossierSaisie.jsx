@@ -21323,7 +21323,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                 <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-sm font-semibold text-blue-700">{calculs.tauxTva > 0 ? `${calculs.tauxTva.toFixed(2)} %` : '—'}</div>
               </Field>
             </div>
-            {isAdmin && (
+            {/* 💶 CRM Finances : case masquée à la CRÉATION du dossier (personne ne
+                doit la cocher à ce moment-là) — visible seulement en modification, admin. */}
+            {isAdmin && editingId && (
               <div className="mt-3">
                 <Toggle
                   label={`✅ Payé par le financeur (${formData.financement})${formData.payeClient && formData.payeClientDate ? ` — le ${new Date(formData.payeClientDate).toLocaleDateString('fr-FR')}` : ''}`}
