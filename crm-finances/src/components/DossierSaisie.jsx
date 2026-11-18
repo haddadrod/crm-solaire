@@ -3881,8 +3881,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
       return s + computeTtcPresta(ht - avoirsHt, sansTva, undefined, formData[role.key + 'TtcCustom']);
     }, 0);
 
-    const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc - interneTtc);
-    const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt - interneHt);
+    // 💶 CRM Finances — autres frais (Consuel, prestataire mairie), comme dans enrichDossier.
+    const autresFraisHt = (formData.autresFrais || []).reduce((sum, x) => sum + (parseFloat(x.ht) || 0), 0);
+    const autresFraisTtc = autresFraisHt * 1.2;
+    const margeTtc = montantTotal === 0 ? 0 : (montantTotal - fournisseurTtc - regieTtc - poseurTtc - interneTtc - autresFraisTtc);
+    const margeHt = montantTotal === 0 ? 0 : (montantHt - fournisseurHt - regieHt - poseurHt - interneHt - autresFraisHt);
     const tva = margeTtc - margeHt;
 
     // useAutoTarif : indique si AU MOINS un produit a un tarif auto défini quelque part
