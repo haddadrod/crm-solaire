@@ -23243,8 +23243,6 @@ function suggestField(header) {
     { keys: ['ht', 'montantht'], field: 'montantHtCustom' },
     { keys: ['datepose', 'datinsta', 'datinst', 'dateinstall', 'dateinsta', 'pose'], field: 'dateInsta' },
     { keys: ['visite', 'visiteclient', 'rendezvous', 'rdv'], field: 'dateVisitePose' },
-    { keys: ['dateaccord', 'accord'], field: 'dateAccord' },
-    { keys: ['dateconsuel', 'consuel'], field: 'dateConsuel' },
     { keys: ['regie', 'commercial', 'agence'], field: 'regie' },
     { keys: ['poseur', 'installateur'], field: 'poseur' },
     { keys: ['fournisseur', 'supplier'], field: 'fournisseur' },
@@ -23280,17 +23278,18 @@ const IMPORT_FIELDS = [
   { id: 'adresse', label: '🏠 Adresse' },
   { id: 'codePostal', label: '📮 Code postal' },
   { id: 'ville', label: '🏘️ Ville' },
-  { id: 'societe', label: '🏢 Société (Yolico / Elsun)' },
+  { id: 'societe', label: '🏢 Société' },
   { id: 'statut', label: '📊 Statut' },
-  { id: 'financement', label: '💳 Financement' },
+  { id: 'financement', label: '💳 Financeur' },
   { id: 'montantTotal', label: '💰 Montant TTC (€)' },
   { id: 'montantHtCustom', label: '💵 Montant HT (€) (optionnel)' },
-  { id: 'dateInsta', label: '📅 Date pose' },
-  { id: 'dateAccord', label: '📅 Date accord' },
-  { id: 'dateConsuel', label: '📅 Date Consuel' },
-  { id: 'regie', label: '🤝 Régie' },
-  { id: 'poseur', label: '🔧 Poseur' },
+  { id: 'dateInsta', label: '📅 Date de pose' },
+  { id: 'regie', label: '🤝 Régie (nom)' },
+  { id: 'regieHt', label: '🤝 Régie — montant HT (€)' },
+  { id: 'poseur', label: '🔧 Poseur (nom)' },
+  { id: 'poseurHt', label: '🔧 Poseur — montant HT (€)' },
   { id: 'fournisseur', label: '📦 Fournisseur (nom)' },
+  { id: 'fournisseurHt', label: '📦 Fournisseur — montant HT (€)' },
   { id: 'bl', label: '📦 N° BL (bordereau)' },
   { id: 'factureNo', label: '🧾 N° facture' },
   { id: 'facturePdfUrl', label: '🔗 Lien PDF facture (URL Drive)' },
@@ -23317,12 +23316,34 @@ function ImportDossiersModal({ onClose, onImport, onUpdateExisting, existingDoss
   const enterMapping = () => {
     setErrorMsg('');
     if (parsed.length === 0) { setErrorMsg('Aucune donnée détectée. Colle ton tableau dans la zone.'); return; }
-    const dataRows = hasHeaders ? parsed.slice(1) : parsed;
-    const headerRow = hasHeaders ? parsed[0] : parsed[0].map((_, i) => `Colonne ${i + 1}`);
+    // 💶 CRM Finances : si la 1re ligne contient déjà des données (une date, un
+    // montant en €), ce n'est PAS une ligne d'en-têtes → on ne la saute pas,
+    // sinon le premier dossier du tableau serait perdu.
+    const estDate = (c) => /^\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4}$/.test(String(c || '').trim());
+    const estMontant = (c) => /^-?\d[\d\s\u00a0\u202f.,]*\s?€$/.test(String(c || '').trim());
+    const premiereLigneEstDesDonnees = parsed[0].some(c => estDate(c) || estMontant(c));
+    const avecEntetes = hasHeaders && !premiereLigneEstDesDonnees;
+    if (hasHeaders && !avecEntetes) setHasHeaders(false);
+    const dataRows = avecEntetes ? parsed.slice(1) : parsed;
+    const headerRow = avecEntetes ? parsed[0] : parsed[0].map((c, i) => `Colonne ${i + 1}`);
     const initialMapping = {};
-    headerRow.forEach((h, i) => {
-      initialMapping[i] = hasHeaders ? suggestField(h) : '';
-    });
+    if (avecEntetes) {
+      headerRow.forEach((h, i) => { initialMapping[i] = suggestField(h); });
+    } else {
+      // Pas d'en-têtes : on propose un champ d'après le CONTENU de la colonne
+      // (date → date de pose, financeur connu → financement, 1er montant → TTC,
+      // 2e montant → HT). Le reste est à choisir à la main.
+      const pris = new Set();
+      const propose = (i, champ) => { if (!pris.has(champ)) { initialMapping[i] = champ; pris.add(champ); } };
+      parsed[0].forEach((_, i) => {
+        initialMapping[i] = '';
+        const vals = dataRows.slice(0, 8).map(r => String(r[i] || '').trim()).filter(Boolean);
+        if (vals.length === 0) return;
+        if (vals.every(estDate)) propose(i, 'dateInsta');
+        else if (vals.every(v => FINANCEMENTS.some(f => f.toLowerCase() === v.toLowerCase()))) propose(i, 'financement');
+        else if (vals.every(estMontant)) propose(i, pris.has('montantTotal') ? 'montantHtCustom' : 'montantTotal');
+      });
+    }
     setHeaders(headerRow);
     setRows(dataRows);
     setMapping(initialMapping);
@@ -23341,6 +23362,9 @@ function ImportDossiersModal({ onClose, onImport, onUpdateExisting, existingDoss
           if (!val) return;
           switch (field) {
             case 'montantTotal':
+            case 'regieHt':
+            case 'poseurHt':
+            case 'fournisseurHt':
             case 'montantHtCustom':
               d[field] = parseNumber(val); break;
             case 'puissance': {
@@ -23416,21 +23440,25 @@ function ImportDossiersModal({ onClose, onImport, onUpdateExisting, existingDoss
           telephone: d.telephone || '', mobile: d.mobile || '', email: d.email || '',
           adresse: d.adresse || '', codePostal: d.codePostal || '', ville: d.ville || '',
           societe: d.societe || '',
-          statut: d.statut || 'M_ATT_DOSSIER',
-          financement: d.financement || 'AUTRE',
+          statut: d.statut || 'A_EN_COURS',
+          financement: d.financement || '',
           montantTotal: d.montantTotal || 0,
           montantHtCustom: d.montantHtCustom || '',
           dateInsta: d.dateInsta || '', dateAccord: d.dateAccord || '', dateConsuel: d.dateConsuel || '',
+          // 💶 CRM Finances : une date de pose importée = dossier posé ce jour-là.
+          statutPose: d.dateInsta ? 'visite_ok' : '',
+          dateEnvoiPose: d.dateInsta || '',
           produits: [{
             type: d.produit || 'PANNEAU_SOLAIRE',
             puissance: d.puissance || 6000,
             description: '', quantite: 1
           }],
           puissance: d.puissance || 6000,
-          regie: d.regie || ((REGIES && REGIES[0]) || ''),
-          regieHtCustom: '', regiePaye: false, regieDatePaye: '',
-          poseurs: d.poseur ? [{ nom: d.poseur, htCustom: '', paye: false, datePaye: '' }] : [],
-          fournisseurs: (d.fournisseur || d.bl || d.factureNo || d.facturePdfUrl) ? [{ nom: d.fournisseur || (FOURNISSEURS && FOURNISSEURS[0]) || 'AUTRE', htCustom: '', paye: false, datePaye: '', bl: d.bl || '', factureNo: d.factureNo || '', facturePdfUrl: d.facturePdfUrl || '' }] : [],
+          regie: d.regie || '',
+          regieHtCustom: d.regieHt || '', regiePaye: false, regieDatePaye: '',
+          regies: (d.regie || d.regieHt) ? [{ nom: d.regie || '', htCustom: d.regieHt || '', paye: false, datePaye: '' }] : [],
+          poseurs: (d.poseur || d.poseurHt) ? [{ nom: d.poseur || '', htCustom: d.poseurHt || '', paye: false, datePaye: '' }] : [],
+          fournisseurs: (d.fournisseur || d.fournisseurHt || d.bl || d.factureNo || d.facturePdfUrl) ? [{ nom: d.fournisseur || (FOURNISSEURS && FOURNISSEURS[0]) || 'AUTRE', htCustom: d.fournisseurHt || '', paye: false, datePaye: '', bl: d.bl || '', factureNo: d.factureNo || '', facturePdfUrl: d.facturePdfUrl || '' }] : [],
           payeClient: !!d.payeClient,
           payeClientDate: '',
           observations: d.observations || '',
