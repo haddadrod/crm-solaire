@@ -21650,7 +21650,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <label className="block text-xs font-semibold text-slate-600 mb-2">Type de régie</label>
               <div className="grid grid-cols-2 gap-2">
                 <button type="button" onClick={() => setFormData({ ...formData, typeRegie: 'externe' })} className={`px-3 py-2 rounded-xl text-sm font-bold border-2 transition-all ${formData.typeRegie === 'externe' ? 'bg-purple-500 text-white border-purple-600 shadow-md' : 'bg-white text-purple-600 border-purple-200 hover:bg-purple-50'}`}>🏢 Régie externe</button>
-                <button type="button" onClick={() => setFormData({ ...formData, typeRegie: 'interne' })} className={`px-3 py-2 rounded-xl text-sm font-bold border-2 transition-all ${formData.typeRegie === 'interne' ? 'bg-fuchsia-500 text-white border-fuchsia-600 shadow-md' : 'bg-white text-fuchsia-600 border-fuchsia-200 hover:bg-fuchsia-50'}`}>👥 Régie interne</button>
+                <button type="button" onClick={() => setFormData({ ...formData, typeRegie: 'interne' })} className={`px-3 py-2 rounded-xl text-sm font-bold border-2 transition-all ${formData.typeRegie === 'interne' ? 'bg-fuchsia-500 text-white border-fuchsia-600 shadow-md' : 'bg-white text-fuchsia-600 border-fuchsia-200 hover:bg-fuchsia-50'}`}>👥 Commercial interne</button>
               </div>
             </div>
 
@@ -25505,6 +25505,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           {/* Les sections LITIGE et SAV ont été DÉPLACÉES dans le panneau
               « Process du dossier » au-dessus (sous forme d'étapes annexes
               pliables, visibles si hasLitige / hasSav). */}
+
+          {/* 💶 CRM Finances : qui a apporté la vente ? Régie externe = un seul montant
+              à payer (bloc Régies). Commercial interne = ouvre l'équipe interne
+              (téléprospecteur, confirmateur, commercial…), chacun avec son montant. */}
+          {(isAdmin || canCheckPaiements) && (
+            <div className="mb-2">
+              <div className="text-[11px] font-bold text-slate-500 uppercase mb-1">Vente apportée par</div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <button onClick={() => onUpdate({ typeRegie: 'externe' })} className={`px-2 py-1.5 rounded-xl text-[12px] font-bold border-2 transition-all ${d.typeRegie !== 'interne' ? 'bg-purple-500 text-white border-purple-600 shadow-md' : 'bg-white text-purple-600 border-purple-200 hover:bg-purple-50'}`}>🏢 Régie externe</button>
+                <button onClick={() => onUpdate({ typeRegie: 'interne' })} className={`px-2 py-1.5 rounded-xl text-[12px] font-bold border-2 transition-all ${d.typeRegie === 'interne' ? 'bg-fuchsia-500 text-white border-fuchsia-600 shadow-md' : 'bg-white text-fuchsia-600 border-fuchsia-200 hover:bg-fuchsia-50'}`}>👥 Commercial interne</button>
+              </div>
+            </div>
+          )}
 
           {/* RÉGIES — multi, éditables (cachées si équipe interne) */}
           {d.typeRegie !== 'interne' && (
