@@ -2396,6 +2396,11 @@ export default function DossierSaisie({ authUser, onLogout }) {
   // 📦 Sélection multiple sur l'onglet Archivés — pour désarchiver en masse
   // sans cliquer un par un. Set des localId cochés.
   const [selectedArchiveIds, setSelectedArchiveIds] = useState(() => new Set());
+  // 🗑️ CRM Finances — sélection multiple pour SUPPRIMER plusieurs dossiers d'un coup
+  // (admin). confirmBulkDelete = l'utilisateur a cliqué « Supprimer », on attend
+  // sa confirmation explicite avant de supprimer.
+  const [selectedDeleteIds, setSelectedDeleteIds] = useState(() => new Set());
+  const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [statutsOrder, setStatutsOrder] = useState(STATUTS.map(s => s.id));
   const [tarifsPoseurs, setTarifsPoseurs] = useState(TARIFS_POSEURS_DEFAULT);
   const [poseursContacts, setPoseursContacts] = useState({}); // { nomPoseur: 'téléphone' } — pour l'envoi WhatsApp
@@ -3833,6 +3838,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // Vide la sélection multi-archivage dès qu'on quitte l'onglet Archivés.
     if (activeTab !== 'archives' && selectedArchiveIds.size > 0) setSelectedArchiveIds(new Set());
   }, [permissions, activeTab]);
+  // 🗑️ Vide la sélection de suppression en masse quand on change d'onglet.
+  useEffect(() => { setSelectedDeleteIds(new Set()); setConfirmBulkDelete(false); }, [activeTab]);
 
   // Persiste l'onglet courant dans le hash URL pour que F5 / refresh garde
   // la position. On préserve la sous-section après '/' (gérée dans ReglagesView).
@@ -4472,6 +4479,41 @@ export default function DossierSaisie({ authUser, onLogout }) {
       ];
     }
     setDossiers(dossiers.filter(x => x.localId !== id));
+  };
+
+  // 🗑️ Suppression de plusieurs dossiers d'un coup (après confirmation dans
+  // l'interface). Même mécanique que deleteDossier : fichiers supprimés,
+  // tombstones, suppression douce (récupérable 30 jours via la restauration).
+  const deleteDossiersEnMasse = async (ids) => {
+    if (!isAdmin) { alert('🔒 Suppression réservée à l\'admin.'); return; }
+    const idSet = new Set(ids);
+    const cibles = dossiers.filter(x => idSet.has(x.localId));
+    if (cibles.length === 0) return;
+    for (const d of cibles) {
+      const bucketPaths = new Set(); const kvIds = new Set();
+      for (const doc of (d.documents || [])) {
+        if (doc.storage === 'bucket' && doc.storagePath) bucketPaths.add(doc.storagePath); else kvIds.add(doc.id);
+      }
+      for (const path of bucketPaths) { try { await deleteFileFromBucket(path); } catch (e) {} }
+      for (const kid of kvIds) { try { await window.storage.delete(`file:${kid}`); } catch (e) {} }
+    }
+    try {
+      const existing = await window.storage.get('dossiers-deleted-tombstones');
+      let list = [];
+      try { list = JSON.parse(existing?.value || '[]'); } catch (e) {}
+      if (!Array.isArray(list)) list = [];
+      cibles.forEach(d => { if (!list.includes(d.localId)) list.push(d.localId); });
+      if (list.length > 1000) list = list.slice(-1000);
+      await window.storage.set('dossiers-deleted-tombstones', JSON.stringify(list));
+    } catch (e) { console.warn('[tombstone] save failed', e); }
+    const delNow = new Date().toISOString();
+    deletedDossiersRef.current = [
+      ...deletedDossiersRef.current.filter(x => !idSet.has(x.localId)),
+      ...cibles.map(c => ({ ...c, deleted: true, deletedAt: delNow, deletedBy: currentUser || '', savedAt: delNow, modifiedAt: delNow, modifiedBy: currentUser || '(suppression)' })),
+    ];
+    setDossiers(prev => prev.filter(x => !idSet.has(x.localId)));
+    setSelectedDeleteIds(new Set());
+    setConfirmBulkDelete(false);
   };
 
   // Mise à jour ciblée d'un dossier (utilisé par le modal documents)
@@ -7217,7 +7259,31 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <p className="text-slate-500 text-sm">{dossiers.length === 0 ? 'Cliquez sur "Nouveau dossier" pour commencer' : 'Modifiez vos filtres'}</p>
                 </div>
               ) : (<>
-                <DossierListHeader isAdmin={isAdmin} readOnly={isPoseur || isRegie} withCheckbox={activeTab === 'archives'} />
+                {/* 🗑️ Barre de suppression en masse — visible dès qu'un dossier est coché */}
+                {isAdmin && selectedDeleteIds.size > 0 && (
+                  <div className="sticky top-2 z-20 flex items-center gap-2 flex-wrap px-3 py-2 bg-rose-50 border-2 border-rose-300 rounded-xl shadow-md">
+                    {!confirmBulkDelete ? (<>
+                      <span className="text-sm font-bold text-rose-800">{selectedDeleteIds.size} dossier{selectedDeleteIds.size > 1 ? 's' : ''} coché{selectedDeleteIds.size > 1 ? 's' : ''}</span>
+                      <button onClick={() => setConfirmBulkDelete(true)} className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-sm font-bold">🗑️ Supprimer</button>
+                      <button onClick={() => setSelectedDeleteIds(new Set())} className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg text-sm font-semibold">Tout décocher</button>
+                    </>) : (<>
+                      <span className="text-sm font-bold text-rose-800">⚠️ Supprimer {selectedDeleteIds.size} dossier{selectedDeleteIds.size > 1 ? 's' : ''} ? {(() => { const noms = dossiers.filter(x => selectedDeleteIds.has(x.localId)).map(x => `${x.nom || '(sans nom)'}${x.prenom ? ' ' + x.prenom : ''}`); const uniques = [...new Set(noms)]; return uniques.length <= 4 ? `(${uniques.join(', ')})` : `(${uniques.slice(0, 4).join(', ')}… et ${uniques.length - 4} autres noms)`; })()}</span>
+                      <button onClick={() => deleteDossiersEnMasse([...selectedDeleteIds])} className="px-3 py-1.5 bg-rose-700 hover:bg-rose-800 text-white rounded-lg text-sm font-bold">Oui, supprimer</button>
+                      <button onClick={() => setConfirmBulkDelete(false)} className="px-3 py-1.5 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-lg text-sm font-semibold">Non, annuler</button>
+                    </>)}
+                  </div>
+                )}
+                <DossierListHeader
+                  isAdmin={isAdmin} readOnly={isPoseur || isRegie} withCheckbox={activeTab === 'archives' || isAdmin}
+                  onToggleAll={isAdmin && activeTab !== 'archives' ? () => {
+                    const ids = filteredDossiers.map(x => x.localId);
+                    const tous = ids.length > 0 && ids.every(id => selectedDeleteIds.has(id));
+                    setConfirmBulkDelete(false);
+                    setSelectedDeleteIds(tous ? new Set() : new Set(ids));
+                  } : null}
+                  allChecked={filteredDossiers.length > 0 && filteredDossiers.every(x => selectedDeleteIds.has(x.localId))}
+                  someChecked={filteredDossiers.some(x => selectedDeleteIds.has(x.localId))}
+                />
                 {filteredDossiers.map(d => {
                   const dArch = isArchived(d);
                   // 🏷️ Badge « provenance » quand on est en recherche globale
@@ -7236,10 +7302,29 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   // Archivés (pas pour les actifs qu'on voit en mode recherche).
                   const wrapWithSelection = activeTab === 'archives' && dArch;
                   if (!wrapWithSelection) {
+                    // 🗑️ Admin : case à cocher pour la suppression en masse.
+                    if (!isAdmin) {
+                      return (
+                        <div key={d.localId} className="relative">
+                          {provenanceBadge}
+                          <DossierCard d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} doublonInfo={doublonsIndex.get(d.localId)} />
+                        </div>
+                      );
+                    }
                     return (
-                      <div key={d.localId} className="relative">
+                      <div key={d.localId} className="flex items-start gap-2 relative">
                         {provenanceBadge}
-                        <DossierCard d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} doublonInfo={doublonsIndex.get(d.localId)} />
+                        <label className="flex-shrink-0 mt-2 cursor-pointer" title="Cocher pour sélectionner ce dossier (suppression en masse)">
+                          <input
+                            type="checkbox"
+                            checked={selectedDeleteIds.has(d.localId)}
+                            onChange={() => { setConfirmBulkDelete(false); setSelectedDeleteIds(prev => { const next = new Set(prev); if (next.has(d.localId)) next.delete(d.localId); else next.add(d.localId); return next; }); }}
+                            className="w-4 h-4 accent-rose-600 cursor-pointer"
+                          />
+                        </label>
+                        <div className="flex-1 min-w-0">
+                          <DossierCard d={d} statut={STATUTS.find(s => s.id === d.statut)} isCopied={copiedId === d.localId} onCopy={copyToClipboard} onEdit={startEdit} onDelete={deleteDossier} onShowDocs={setShowDocsForId} onShowHist={setShowHistForId} onShowQuick={setShowQuickViewId} viewMode={viewMode} isAdmin={isAdmin} produits={produits} readOnly={isPoseur || isRegie} societes={societes} doublonInfo={doublonsIndex.get(d.localId)} />
+                        </div>
                       </div>
                     );
                   }
@@ -7933,9 +8018,13 @@ function SocieteBadge({ societe, variant = 'inline', active = false, onClick = n
 function financeRowCols(isAdmin, readOnly) {
   return ['34px', '1.5fr', '0.8fr', !readOnly && '0.9fr', !readOnly && '0.9fr', !readOnly && '1.1fr', isAdmin && '1.4fr', isAdmin && '1.4fr', isAdmin && '1.4fr', isAdmin && '1.2fr', isAdmin && '1fr', !readOnly && '40px'].filter(Boolean).join(' ');
 }
-function DossierListHeader({ isAdmin, readOnly, withCheckbox = false }) {
+function DossierListHeader({ isAdmin, readOnly, withCheckbox = false, onToggleAll = null, allChecked = false, someChecked = false }) {
   return (
-    <div className={`hidden md:block ${withCheckbox ? 'pl-6' : ''}`}>
+    <div className={`hidden md:flex items-center gap-2 ${withCheckbox && !onToggleAll ? 'pl-6' : ''}`}>
+      {onToggleAll && (
+        <input type="checkbox" checked={allChecked} ref={el => { if (el) el.indeterminate = !allChecked && someChecked; }} onChange={onToggleAll} title="Tout cocher / tout décocher" aria-label="Tout cocher ou tout décocher" className="w-4 h-4 accent-rose-600 cursor-pointer flex-shrink-0" />
+      )}
+      <div className="flex-1 min-w-0">
       <div className="grid items-center py-1.5 border-l-4 border-transparent bg-slate-100 rounded-lg text-[11px] font-bold uppercase tracking-wide text-slate-600 [&>*]:px-2 [&>*]:text-center [&>*]:justify-center [&>*:not(:first-child)]:border-l [&>*:not(:first-child)]:border-slate-200" style={{ gridTemplateColumns: financeRowCols(isAdmin, readOnly) }}>
         <span></span>
         <span>👤 Client</span>
@@ -7949,6 +8038,7 @@ function DossierListHeader({ isAdmin, readOnly, withCheckbox = false }) {
         {isAdmin && <span>⚡ Consuel / 🏛️ Mairie</span>}
         {isAdmin && <span>Marge HT</span>}
         {!readOnly && <span></span>}
+      </div>
       </div>
     </div>
   );
