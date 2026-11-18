@@ -21347,44 +21347,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               </div>
             )}
 
-            {/* 🏦 Détails du financement bancaire — visible seulement si une banque
-                est choisie (pas COMPTANT). Récupérable via scan IA du BC ou saisie
-                manuelle. Sert à pré-remplir la zone "PAIEMENT AVEC FINANCEMENT" du BC PDF. */}
-            {formData.financement && formData.financement !== 'COMPTANT' && (
-              <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
-                <div className="text-[13px] font-bold text-blue-700 uppercase mb-2">🏦 Détails du prêt — {formData.financement}</div>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                  <Field label="Montant du prêt (€)">
-                    <input type="number" step="0.01" value={formData.montantPret} onChange={(e) => setFormData({ ...formData, montantPret: e.target.value })} placeholder="35900" className={inputCls} />
-                  </Field>
-                  <Field label="Report (mois)">
-                    <input type="number" step="1" value={formData.reportMois} onChange={(e) => setFormData({ ...formData, reportMois: e.target.value })} placeholder="6" className={inputCls} />
-                  </Field>
-                  <Field label="Taux débiteur fixe (%)">
-                    <input type="number" step="0.01" value={formData.tauxDebiteur} onChange={(e) => setFormData({ ...formData, tauxDebiteur: e.target.value })} placeholder="6.39" className={inputCls} />
-                  </Field>
-                  <Field label="TAEG (%)">
-                    <input type="number" step="0.01" value={formData.taeg} onChange={(e) => setFormData({ ...formData, taeg: e.target.value })} placeholder="6.58" className={inputCls} />
-                  </Field>
-                  <Field label="Nombre d'échéances">
-                    <input type="number" step="1" value={formData.nbEcheances} onChange={(e) => setFormData({ ...formData, nbEcheances: e.target.value })} placeholder="180" className={inputCls} />
-                  </Field>
-                  <Field label="Montant échéance (€)">
-                    <input type="number" step="0.01" value={formData.montantEcheance} onChange={(e) => setFormData({ ...formData, montantEcheance: e.target.value })} placeholder="312" className={inputCls} />
-                  </Field>
-                  <Field label="Périodicité">
-                    <select value={formData.periodicite} onChange={(e) => setFormData({ ...formData, periodicite: e.target.value })} className={inputCls}>
-                      <option value="Mensuelle">Mensuelle</option>
-                      <option value="Bimestrielle">Bimestrielle</option>
-                      <option value="Trimestrielle">Trimestrielle</option>
-                      <option value="Semestrielle">Semestrielle</option>
-                      <option value="Annuelle">Annuelle</option>
-                    </select>
-                  </Field>
-                </div>
-                <p className="text-[12px] text-slate-500 mt-2">💡 Ces infos sont extraites automatiquement quand tu scannes un BC avec l'IA. Tu peux aussi les saisir à la main ici.</p>
-              </div>
-            )}
+            {/* Bloc « Détails du prêt » retiré du CRM Finances. */}
           </Section>
 
           <Section
