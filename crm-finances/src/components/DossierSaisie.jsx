@@ -21256,7 +21256,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
           >
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
               <Field label="Prix de vente TTC (€) *"><input type="number" step="0.01" value={formData.montantTotal} onChange={(e) => setFormData({ ...formData, montantTotal: e.target.value })} placeholder="29900" className={inputCls + ' font-bold text-lg'} /></Field>
-              <Field label="Mode de financement">
+              <Field label="Financeur (maison de financement)">
                 <select value={formData.financement} onChange={(e) => setFormData({ ...formData, financement: e.target.value })} className={inputCls}>
                   <option value="">— Choisir un financement —</option>
                   {FINANCEMENTS.map(f => <option key={f} value={f}>{f}</option>)}
@@ -21337,6 +21337,9 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                     setFormData({ ...formData, datePaiementBanque: today, payeClient: true, payeClientDate: today, payeClientStampAt: stampApres(formData.payeClientStampAt), statut: 'W_DOSSIER_PAYER' });
                   }} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[12px] font-bold whitespace-nowrap">Auj.</button>
                 </div>
+              </Field>
+              <Field label="💰 Montant reçu (€)">
+                <input type="number" step="0.01" value={formData.montantPaiementRecu ?? ''} placeholder={formData.montantTotal ? String(formData.montantTotal) : '0,00'} onChange={(e) => setFormData({ ...formData, montantPaiementRecu: e.target.value })} className={inputCls} />
               </Field>
             </div>
             {/* 💶 CRM Finances : case masquée à la CRÉATION du dossier (personne ne
@@ -24872,6 +24875,19 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                   const today = new Date().toISOString().split('T')[0];
                   onUpdate({ datePaiementBanque: today, payeClient: true, payeClientDate: today, payeClientStampAt: stampApres(d.payeClientStampAt), statut: 'W_DOSSIER_PAYER' });
                 }} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-[12px] font-bold whitespace-nowrap">Auj.</button>
+              </div>
+              <div className="grid grid-cols-2 gap-2 mt-2">
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Montant reçu (€)</label>
+                  <input type="number" step="0.01" value={d.montantPaiementRecu ?? ''} placeholder={d.montantTotal ? String(d.montantTotal) : '0,00'} onChange={(e) => onUpdate({ montantPaiementRecu: e.target.value })} className="w-full px-2 py-1 border border-emerald-200 rounded-lg text-[12px] bg-white" />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Payé par (financeur)</label>
+                  <select value={d.financement || ''} onChange={(e) => onUpdate({ financement: e.target.value })} className="w-full px-2 py-1 border border-emerald-200 rounded-lg text-[12px] bg-white">
+                    <option value="">— Choisir —</option>
+                    {(FINANCEMENTS || []).map(f => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
               </div>
             </div>
 
