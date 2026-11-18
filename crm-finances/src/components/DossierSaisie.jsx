@@ -6277,12 +6277,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
     // statut DÉPLACEMENT, client rétracté.
     const rappelsMaterielNonRendu = [];
     dossiersDash.forEach(d => {
-      if (d.createdBy === 'import_sheet') return;
+      // 💶 CRM Finances : les dossiers importés comptent aussi (la case BL est cochée à la main).
       if (!d.blMaterielPoseur) return;
       if (d.materielRendu) return;
       const annule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
       const tentativeRatee = Array.isArray(d.tentativesPose) && d.tentativesPose.length > 0;
-      const deplacement = d.statut === 'Z_DEPLACEMENT';
+      const deplacement = estDeplacement(d); // statut Z_DEPLACEMENT ou case « Déplacement sans pose »
       const retracte = !!d.hasRetractation;
       if (!annule && !tentativeRatee && !deplacement && !retracte) return;
       const ref = (annule ? (d.archivedAt || d.blMaterielDate) : (tentativeRatee ? (d.tentativesPose[d.tentativesPose.length - 1]?.date) : null)) || d.blMaterielDate || d.savedAt;
@@ -29764,7 +29764,7 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsRefi
       colorBg: 'bg-orange-50',
       colorBorder: 'border-orange-200',
       colorText: 'text-orange-700',
-      tooltip: 'Dossiers annulés/refusés où le poseur a encore le matériel livré via BL — à récupérer',
+      tooltip: 'Déplacements sans pose, dossiers annulés ou refusés où le poseur a encore le matériel (BL) — à faire rendre',
     },
   ];
 
