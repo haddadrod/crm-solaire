@@ -20843,7 +20843,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
 
           <div className="p-6 space-y-5">
           {/* SCAN IA — bon de commande manuscrit */}
-          {!editingId && (
+          {/* 💶 CRM Finances : scan retiré */ false && !editingId && (
             <div
               onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f && !scanBusy) handleScanBon(f); }}
               onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
@@ -20883,7 +20883,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
           )}
 
           {/* SCAN IA — Dossier client complet (multi-pages PDF) */}
-          {!editingId && (
+          {/* 💶 CRM Finances : scan retiré */ false && !editingId && (
             <div
               onDrop={(e) => { e.preventDefault(); e.stopPropagation(); const f = e.dataTransfer.files?.[0]; if (f && !dossierScanBusy) handleScanDossier(f); }}
               onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
