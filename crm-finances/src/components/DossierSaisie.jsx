@@ -801,11 +801,11 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, 
         <span>{embedded ? 'Paiements reçus' : '💰 Paiements reçus'}</span>
         {d.payeClient && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 normal-case">✓ Soldé</span>}
       </div>
-      <div className={`grid gap-2 items-end mb-2 pb-2 border-b border-emerald-100 ${hideFinanceur ? 'grid-cols-1' : 'grid-cols-2'}`}>
+      <div className={`grid gap-2 items-start mb-2 pb-2 border-b border-emerald-100 ${hideFinanceur ? 'grid-cols-1' : 'grid-cols-2'}`}>
         {!hideFinanceur && (
           <div>
             <label className="block text-[11px] font-semibold text-slate-600 mb-0.5 whitespace-nowrap truncate">Qui doit payer</label>
-            <select value={d.financement || ''} onChange={(e) => onPatch({ financement: e.target.value })} className={inp}>
+            <select value={d.financement || ''} onChange={(e) => onPatch({ financement: e.target.value })} className={inp + (compact ? ' h-8' : ' h-10')}>
               <option value="">— Choisir —</option>
               {FINANCEMENTS.map(f => <option key={f} value={f}>{f === 'COMPTANT' ? 'COMPTANT (le client paie tout)' : f}</option>)}
             </select>
@@ -814,7 +814,7 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, 
         {d.financement !== 'COMPTANT' && (
           <div>
             <label className="block text-[11px] font-semibold text-slate-600 mb-0.5 whitespace-nowrap truncate" title="Montant payé par le client lui-même (le reste est payé par le financeur)">Part du client (€)</label>
-            <input type="number" step="0.01" value={d.apportClient ?? ''} placeholder="0,00" onChange={(e) => onPatch({ apportClient: e.target.value })} className={inp} />
+            <input type="number" step="0.01" value={d.apportClient ?? ''} placeholder="0,00" onChange={(e) => onPatch({ apportClient: e.target.value })} className={inp + (compact ? ' h-8' : ' h-10')} />
           </div>
         )}
       </div>
@@ -828,18 +828,18 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, 
         <div className="text-[12px] text-slate-500 mb-2">Aucun paiement reçu pour l'instant.</div>
       )}
       {list.map((p, i) => (
-        <div key={p.id || i} className="grid grid-cols-12 gap-1.5 mb-1.5 items-end">
+        <div key={p.id || i} className="grid grid-cols-12 gap-1.5 mb-1.5 items-end [&_label]:whitespace-nowrap">
           <div className="col-span-4">
             {i === 0 && <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Reçu le</label>}
-            <input type="date" min="2000-01-01" max="2100-12-31" value={p.date || ''} onChange={(e) => setLine(i, { date: e.target.value })} className={inp} />
+            <input type="date" min="2000-01-01" max="2100-12-31" value={p.date || ''} onChange={(e) => setLine(i, { date: e.target.value })} className={inp + (compact ? ' h-8' : ' h-10')} />
           </div>
           <div className="col-span-3">
             {i === 0 && <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Montant (€)</label>}
-            <input type="number" step="0.01" value={p.montant ?? ''} placeholder="0,00" onChange={(e) => setLine(i, { montant: e.target.value })} className={inp} />
+            <input type="number" step="0.01" value={p.montant ?? ''} placeholder="0,00" onChange={(e) => setLine(i, { montant: e.target.value })} className={inp + (compact ? ' h-8' : ' h-10')} />
           </div>
           <div className="col-span-4">
             {i === 0 && <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Payé par</label>}
-            <select value={p.payeur || ''} onChange={(e) => setLine(i, { payeur: e.target.value })} className={inp}>
+            <select value={p.payeur || ''} onChange={(e) => setLine(i, { payeur: e.target.value })} className={inp + (compact ? ' h-8' : ' h-10')}>
               <option value="">— Choisir —</option>
               {payeurs.map(f => <option key={f} value={f}>{f === PAYEUR_CLIENT ? '👤 Client' : f}</option>)}
             </select>
