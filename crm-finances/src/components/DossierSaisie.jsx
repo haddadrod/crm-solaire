@@ -29321,7 +29321,10 @@ function AlertesBar({ rappelsControleQualite, rappelsAEnvoyerBanque, rappelsRefi
   // applique la liste blanche du rôle si elle existe.
   const whitelist = !isAdmin && currentUserRole ? ALERTES_PAR_ROLE[currentUserRole] : null;
   // Badges autorisés pour ce rôle (avant filtre sur le count).
+  // 💶 CRM Finances : alertes retirées (plus de suivi commercial / administratif ici).
+  const ALERTES_RETIREES = ['Fraude', 'Contrôle qualité', 'Mairie', 'À envoyer banque', 'Refinancement', 'Manque docs', 'À envoyer pose', 'Poseur à assigner', 'Pose non finie', 'À envoyer Consuel', 'Raccordement', 'Originaux', 'Contrôle livraison', 'Récup. TVA', 'Litiges', 'SAV', 'À rappeler'];
   const eligibles = badges.filter(b => {
+    if (ALERTES_RETIREES.includes(b.label)) return false;
     if (!isAdmin && b.adminOnly) return false;
     if (whitelist && !whitelist.includes(b.type)) return false;
     return true;
