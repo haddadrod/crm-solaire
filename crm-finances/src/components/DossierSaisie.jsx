@@ -22102,97 +22102,31 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
           )}
 
           <Section
-            title="📅 Process du dossier"
+            title="🔧 Pose"
             color="blue"
             collapsible={true}
-            defaultCollapsed={!editingId}
-            summary={(() => {
-              const cqOk = formData.statutControleQualite === 'ok';
-              const finOk = formData.statutFin === 'accepté';
-              const poseOk = formData.statutPose === 'visite_ok';
-              const consuelOk = formData.statutConsuel === 'accepté';
-              const payeOk = formData.payeClient;
-              const steps = [];
-              if (cqOk) steps.push('CQ ✓');
-              if (finOk) steps.push('Banque ✓');
-              if (poseOk) steps.push('Pose ✓');
-              if (consuelOk) steps.push('Consuel ✓');
-              if (payeOk) steps.push('Payé ✓');
-              return steps.length > 0 ? `▶️ ${steps.join(' · ')}` : '▶️ Pas encore commencé — clique pour ouvrir';
-            })()}
+            defaultCollapsed={false}
+            summary={(formData.statutPose === 'visite_ok' && formData.dateInsta)
+              ? `▶️ Posé le ${new Date(formData.dateInsta).toLocaleDateString('fr-FR')}`
+              : '▶️ Pas encore posé — clique pour saisir la date'}
           >
             {/* Étape « Contrôle qualité » retirée du CRM Finances. */}
             {/* Étapes « Mairie et Financement » retirées du CRM Finances. */}
-            {/* ============ ÉTAPE 2 : POSE ============ */}
-            <div className={`border-2 rounded-xl p-3 mb-3 ${formData.statutPose === 'client_refuse' ? 'bg-rose-50 border-rose-300' : 'bg-amber-50 border-amber-200'}`}>
-              <button type="button" onClick={() => toggleStep('pose')} className={`w-full text-[13px] font-bold text-amber-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.pose ? '' : 'mb-2'}`}>
-                <span className="flex items-center gap-1.5">
-                  <span className="text-amber-600 text-[11px]">{foldedSteps.pose ? '▶' : '▼'}</span>
-                  <span>🔧 Pose chez le client</span>
-                </span>
-                {formData.statutPose && (
-                  <span className={`text-[12px] font-bold px-2 py-1 rounded-full ${
-                    formData.statutPose === 'visite_ok' ? 'bg-emerald-100 text-emerald-700' :
-                    formData.statutPose === 'client_refuse' ? 'bg-rose-100 text-rose-700' :
-                    'bg-amber-100 text-amber-700'
-                  }`}>
-                    {formData.statutPose === 'visite_ok' ? '✓ Client OK' :
-                     formData.statutPose === 'client_refuse' ? '✗ Client refuse' : '⏳ Visite prévue'}
-                  </span>
-                )}
-              </button>
-
-              {!foldedSteps.pose && (<>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[12px] font-semibold text-slate-600 mb-1">📅 Date de pose</label>
-                  <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateEnvoiPose || ''} onChange={(e) => setFormData({ ...formData, dateEnvoiPose: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: formData.statutPose || 'envoyé' })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[12px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[12px] font-semibold text-slate-600 mb-1">📞 Visite client</label>
-                  <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateVisitePose || ''} onChange={(e) => setFormData({ ...formData, dateVisitePose: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateVisitePose: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[12px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[12px] font-semibold text-slate-600 mb-1">✅ Posé le</label>
-                  <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.statutPose === 'visite_ok' ? (formData.dateInsta || '') : ''} onChange={(e) => setFormData({ ...formData, dateInsta: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[12px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
-                </div>
+            {/* 💶 CRM Finances : étape Pose réduite à la seule date de pose (jour où on a posé). */}
+            <div className="bg-amber-50 border-2 border-amber-200 rounded-xl p-3 mb-3">
+              <label className="block text-[13px] font-bold text-amber-700 uppercase mb-2">🔧 Date de pose (jour où on a posé)</label>
+              <div className="flex gap-1 max-w-xs">
+                <input type="date" min="2000-01-01" max="2100-12-31" value={formData.statutPose === 'visite_ok' ? (formData.dateInsta || '') : ''} onChange={(e) => {
+                  const v = e.target.value;
+                  setFormData(v
+                    ? { ...formData, dateInsta: v, dateEnvoiPose: v, statutPose: 'visite_ok' }
+                    : { ...formData, dateInsta: '', dateEnvoiPose: '', statutPose: '' });
+                }} className={inputCls} />
+                <button type="button" onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  setFormData({ ...formData, dateInsta: today, dateEnvoiPose: today, statutPose: 'visite_ok' });
+                }} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-xl text-[12px] font-bold whitespace-nowrap">Auj.</button>
               </div>
-
-              {/* Boutons d'action visite */}
-              {/* 3 boutons toggleables — toujours visibles */}
-              <div className="mt-3">
-                <div className="text-[12px] font-semibold text-slate-500 uppercase mb-1.5">Décision pose (clique pour changer)</div>
-                <div className="grid grid-cols-3 gap-2">
-                  <button type="button" onClick={() => setFormData({ ...formData, statutPose: 'envoyé' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${!formData.statutPose || formData.statutPose === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ En attente</button>
-                  <button type="button" onClick={() => {
-                    const today = new Date().toISOString().split('T')[0];
-                    setFormData({ ...formData, statutPose: 'visite_ok', dateEnvoiPose: formData.dateEnvoiPose || today, dateInsta: formData.dateInsta || today });
-                  }} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutPose === 'visite_ok' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Posé</button>
-                  <button type="button" onClick={() => setFormData({ ...formData, statutPose: 'client_refuse', statut: 'W2_ANNULER' })} className={`px-2 py-2 rounded-xl text-xs font-bold border-2 transition-all ${formData.statutPose === 'client_refuse' ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Client refuse</button>
-                </div>
-              </div>
-
-              {formData.statutPose === 'visite_ok' && formData.dateInsta && (
-                <div className="mt-2 p-2 bg-emerald-100 border border-emerald-300 rounded-lg text-[13px] text-emerald-800 font-bold">
-                  ✅ Posé le {new Date(formData.dateInsta).toLocaleDateString('fr-FR')} — tu peux passer au Consuel
-                </div>
-              )}
-
-              {formData.statutPose === 'client_refuse' && (
-                <div className="mt-2 p-2 bg-rose-100 border border-rose-300 rounded-lg text-[13px] text-rose-700 font-bold">
-                  ⚠️ Client a refusé la pose — dossier marqué ANNULÉ. Tu peux toujours revenir en arrière en cliquant un autre bouton.
-                </div>
-              )}
-              </>)}
             </div>
 
             {/* Étapes « Consuel et Raccordement Enedis » retirées du CRM Finances. */}
@@ -24902,355 +24836,22 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
 
             {/* Étape « Contrôle qualité » retirée du CRM Finances. */}
             {/* Étapes « Mairie et Financement » retirées du CRM Finances. */}
-            {/* ============ ÉTAPE 2 : POSE ============ */}
-            <div ref={refPose} className={`border-2 rounded-xl p-2 mb-2 ${d.statutPose === 'client_refuse' ? 'bg-rose-50 border-rose-300' : 'bg-amber-50 border-amber-200'}`}>
-              <button onClick={() => toggleStep('pose')} className={`w-full text-[12px] font-bold text-amber-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.pose ? '' : 'mb-1.5'} hover:opacity-80`}>
-                <span className="flex items-center gap-1.5">
-                  <span className="text-amber-600 text-[11px]">{foldedSteps.pose ? '▶' : '▼'}</span>
-                  <span>🔧 Pose</span>
-                  {foldedSteps.pose && d.dateInsta && d.statutPose === 'visite_ok' && (
-                    <span className="text-amber-500 font-normal normal-case ml-1">— {new Date(d.dateInsta).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
-                  )}
-                </span>
-                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
-                  d.statutPose === 'visite_ok' ? 'bg-emerald-100 text-emerald-700' :
-                  d.statutPose === 'client_refuse' ? 'bg-rose-100 text-rose-700' :
-                  d.statutPose === 'envoyé' ? 'bg-blue-100 text-blue-700' :
-                  'bg-amber-100 text-amber-700'
-                }`}>
-                  {d.statutPose === 'visite_ok' ? '✓ Posé' : d.statutPose === 'client_refuse' ? '✗ Refus' : d.statutPose === 'envoyé' ? '📅 Planifié' : '⏳ Pas planifié'}
-                </span>
-              </button>
-
-              {!foldedSteps.pose && (<>
-              <div className="grid grid-cols-3 gap-1.5">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">📅 Date pose</label>
-                  <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiPose || ''} onChange={(e) => onUpdate({ dateEnvoiPose: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[12px]" />
-                    <button onClick={() => onUpdate({ dateEnvoiPose: new Date().toISOString().split('T')[0], statutPose: d.statutPose || 'envoyé' })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[11px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">📞 Visite</label>
-                  <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateVisitePose || ''} onChange={(e) => onUpdate({ dateVisitePose: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[12px]" />
-                    <button onClick={() => onUpdate({ dateVisitePose: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[11px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">✅ Posé le</label>
-                  <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.statutPose === 'visite_ok' ? (d.dateInsta || '') : ''} onChange={(e) => onUpdate({ dateInsta: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[12px]" />
-                    <button onClick={() => onUpdate({ dateInsta: new Date().toISOString().split('T')[0], statutPose: 'visite_ok' })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[11px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
-                </div>
+            {/* 💶 CRM Finances : étape Pose réduite à la seule date de pose (jour où on a posé). */}
+            <div ref={refPose} className="bg-amber-50 border-2 border-amber-200 rounded-xl p-2 mb-2">
+              <div className="text-[12px] font-bold text-amber-700 uppercase mb-1.5 flex items-center justify-between">
+                <span>🔧 Date de pose</span>
+                {d.statutPose === 'visite_ok' && d.dateInsta && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 normal-case">✓ Posé</span>}
               </div>
-
-              {/* 3 boutons toggleables — toujours visibles.
-                  Si le dossier était passé en ANNULER via un clic ✗ Refuse,
-                  on remet statut=A_EN_COURS quand on clique Attente ou Posé
-                  pour que l'auto-statut puisse recalculer correctement. */}
-              <div className="mt-1.5 grid grid-cols-3 gap-1">
-                <button onClick={() => {
-                  const reset = (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') ? { statut: 'A_EN_COURS' } : {};
-                  onUpdate({ statutPose: 'envoyé', ...reset });
-                }} className={`px-1 py-1.5 rounded text-[12px] font-bold border-2 transition-all ${!d.statutPose || d.statutPose === 'envoyé' ? 'bg-amber-500 text-white border-amber-600 shadow-md' : 'bg-white text-amber-600 border-amber-200 hover:bg-amber-50'}`}>⏳ Attente</button>
+              <div className="flex gap-1">
+                <input type="date" min="2000-01-01" max="2100-12-31" value={d.statutPose === 'visite_ok' ? (d.dateInsta || '') : ''} onChange={(e) => {
+                  const v = e.target.value;
+                  onUpdate(v ? { dateInsta: v, dateEnvoiPose: v, statutPose: 'visite_ok' } : { dateInsta: '', dateEnvoiPose: '', statutPose: '' });
+                }} className="flex-1 px-2 py-1 border border-amber-200 rounded-lg text-[12px] bg-white" />
                 <button onClick={() => {
                   const today = new Date().toISOString().split('T')[0];
-                  const reset = (d.statut === 'W2_ANNULER' || d.statut === 'ANNULER') ? { statut: 'A_EN_COURS' } : {};
-                  onUpdate({ statutPose: 'visite_ok', dateEnvoiPose: d.dateEnvoiPose || today, dateInsta: d.dateInsta || today, ...reset });
-                }} className={`px-1 py-1.5 rounded text-[12px] font-bold border-2 transition-all ${d.statutPose === 'visite_ok' ? 'bg-emerald-500 text-white border-emerald-600 shadow-md' : 'bg-white text-emerald-600 border-emerald-200 hover:bg-emerald-50'}`}>✓ Posé</button>
-                <button onClick={() => setPoseRateeForm({ ...poseRateeForm, visible: !poseRateeForm.visible })} className={`px-1 py-1.5 rounded text-[12px] font-bold border-2 transition-all ${poseRateeForm.visible ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>✗ Refusé</button>
+                  onUpdate({ dateInsta: today, dateEnvoiPose: today, statutPose: 'visite_ok' });
+                }} className="flex-shrink-0 px-2 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded-lg text-[12px] font-bold whitespace-nowrap">Auj.</button>
               </div>
-
-              {/* 📞 Prévenir / relancer la régie pour programmer la pose.
-                  Anciennement disponible UNIQUEMENT dans la section FINANCEMENT
-                  (et le CTA disparaissait dès le 1er clic via regiesNotifiedAccord).
-                  Ici on n'auto-cache pas → l'utilisateur peut relancer autant de
-                  fois qu'il veut. Chaque clic logue dans l'historique
-                  (action: 'relance_whatsapp', motif: 'relance_pose'). Reste
-                  visible tant que la pose n'est pas posée + dossier non annulé. */}
-              {!d.dateInsta && d.statutPose !== 'visite_ok' && d.statut !== 'W2_ANNULER' && (() => {
-                const regiesDuDossier = (d.regies || []).filter(r => r.nom);
-                if (regiesDuDossier.length === 0) return null;
-                const adresseLignes = [d.adresse, [d.codePostal, d.ville].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-                const message = [
-                  `🌞 Bonjour, on a besoin de programmer la pose pour ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''}${d.financement ? ` (${d.financement})` : ''}.`,
-                  '',
-                  d.id ? `Dossier n° ${d.id}` : null,
-                  adresseLignes ? `📍 ${adresseLignes}` : null,
-                  d.telephone ? `📞 ${d.telephone}` : null,
-                  d.puissance ? `☀️ ${d.puissance} Wc` : null,
-                  d.dateEnvoiPose ? `📅 Date prévue : ${new Date(d.dateEnvoiPose).toLocaleDateString('fr-FR')}` : null,
-                  '',
-                  'Peux-tu confirmer la programmation ? Merci !',
-                ].filter(v => v != null).join('\n');
-                const mailSubject = `Pose à programmer — ${(d.nom || '').toUpperCase()}${d.prenom ? ' ' + d.prenom : ''}`;
-                const defaultFromEmail = emailConfig?.smtpUser || gmailOAuth?.email || '';
-                const gmailCompose = (to) => {
-                  const params = new URLSearchParams({ view: 'cm', fs: '1', to, su: mailSubject, body: message });
-                  if (defaultFromEmail) params.set('authuser', defaultFromEmail);
-                  return `https://mail.google.com/mail/?${params.toString()}`;
-                };
-                const logRelance = (regieNom, channel) => {
-                  const now = new Date().toISOString();
-                  const histEntry = {
-                    date: now,
-                    action: 'relance_whatsapp', // type uniforme avec les autres relances
-                    cible_kind: 'regie',
-                    cible_nom: regieNom,
-                    channel, // 'whatsapp' | 'email_oauth' | 'email_smtp' | 'gmail_compose'
-                    motif: 'relance_pose',
-                  };
-                  onUpdate({ historique: [...(d.historique || []), histEntry] });
-                };
-                return (
-                  <div className="mt-2 p-2 bg-blue-50 border-2 border-blue-300 rounded-lg">
-                    <div className="text-[12px] font-bold text-blue-700 mb-1.5">📞 Prévenir / relancer la régie pour programmer la pose</div>
-                    <div className="space-y-1.5">
-                      {regiesDuDossier.map((r, idx) => {
-                        const contact = (regiesContacts || {})[r.nom];
-                        const tel = contact && (typeof contact === 'string' ? contact : contact.tel);
-                        const email = contact && typeof contact === 'object' ? contact.email : '';
-                        const hasContact = tel || email;
-                        return (
-                          <div key={idx} className="bg-white border border-blue-200 rounded p-1.5">
-                            <div className="text-[12px] font-bold text-slate-700 mb-1">🤝 {r.nom}</div>
-                            {hasContact ? (
-                              <div className="grid grid-cols-2 gap-1">
-                                {tel ? (
-                                  <a
-                                    href={buildWhatsAppLink(tel, message)}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    onClick={() => logRelance(r.nom, 'whatsapp')}
-                                    className="flex items-center justify-center gap-1 px-2 py-1.5 bg-[#25D366] hover:bg-[#1ebe5a] text-white rounded text-[12px] font-bold"
-                                    title={`WhatsApp ${r.nom} (${tel})`}
-                                  >
-                                    📲 WhatsApp
-                                  </a>
-                                ) : (
-                                  <span className="text-[11px] text-slate-400 italic px-1 py-1.5">📲 Pas de tél.</span>
-                                )}
-                                {email ? (
-                                  gmailOAuth?.connected ? (
-                                    <button
-                                      onClick={async () => {
-                                        try {
-                                          const { data: { session } } = await supabase.auth.getSession();
-                                          const headers = { 'Content-Type': 'application/json' };
-                                          if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                                          const res = await fetch('/api/send-email', {
-                                            method: 'POST',
-                                            headers,
-                                            body: JSON.stringify({
-                                              provider: 'gmail-oauth',
-                                              to: email,
-                                              subject: mailSubject,
-                                              text: message,
-                                              fromName: emailConfig?.fromName || 'CRM Solaire',
-                                            }),
-                                          });
-                                          const payload = await res.json().catch(() => ({}));
-                                          if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
-                                          logRelance(r.nom, 'email_oauth');
-                                          alert(`✅ Email envoyé à ${r.nom} (${email}) depuis ${gmailOAuth.email}`);
-                                        } catch (e) {
-                                          alert(`❌ Envoi email : ${e.message}`);
-                                        }
-                                      }}
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[12px] font-bold"
-                                      title={`Envoie l'email automatiquement à ${r.nom} (${email}) depuis ${gmailOAuth.email}`}
-                                    >
-                                      📧 Envoyer
-                                    </button>
-                                  ) : emailConfig?.smtpUser && emailConfig?.smtpPass ? (
-                                    <button
-                                      onClick={async () => {
-                                        try {
-                                          const { data: { session } } = await supabase.auth.getSession();
-                                          const headers = { 'Content-Type': 'application/json' };
-                                          if (session?.access_token) headers['Authorization'] = `Bearer ${session.access_token}`;
-                                          const res = await fetch('/api/send-email', {
-                                            method: 'POST',
-                                            headers,
-                                            body: JSON.stringify({
-                                              to: email,
-                                              subject: mailSubject,
-                                              text: message,
-                                              smtpUser: emailConfig.smtpUser,
-                                              smtpPass: emailConfig.smtpPass,
-                                              fromName: emailConfig.fromName || 'CRM Solaire',
-                                            }),
-                                          });
-                                          const payload = await res.json().catch(() => ({}));
-                                          if (!res.ok) throw new Error(payload.error || `Erreur ${res.status}`);
-                                          logRelance(r.nom, 'email_smtp');
-                                          alert(`✅ Email envoyé à ${r.nom} (${email})`);
-                                        } catch (e) {
-                                          alert(`❌ Envoi email : ${e.message}`);
-                                        }
-                                      }}
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[12px] font-bold"
-                                      title={`Envoie l'email via SMTP app password depuis ${emailConfig.smtpUser}`}
-                                    >
-                                      📧 Envoyer
-                                    </button>
-                                  ) : (
-                                    <a
-                                      href={gmailCompose(email)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      onClick={() => logRelance(r.nom, 'gmail_compose')}
-                                      className="flex items-center justify-center gap-1 px-2 py-1.5 bg-blue-500 hover:bg-blue-600 text-white rounded text-[12px] font-bold"
-                                      title={`Ouvre Gmail (configure Réglages → Email d'envoi pour un envoi auto)`}
-                                    >
-                                      📧 Gmail
-                                    </a>
-                                  )
-                                ) : (
-                                  <span className="text-[11px] text-slate-400 italic px-1 py-1.5">📧 Pas d'email</span>
-                                )}
-                              </div>
-                            ) : (
-                              <div className="text-[11px] text-amber-600 italic">⚠️ Ajoute le tél/email du compte rattaché à {r.nom} dans Réglages → Utilisateurs pour pouvoir prévenir en 1 clic</div>
-                            )}
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {poseRateeForm.visible && (
-                <div className="mt-2 p-2 bg-rose-50 border-2 border-rose-300 rounded-lg space-y-2">
-                  <div className="text-[12px] font-bold text-rose-700 uppercase">Pose ratée — pénalité régie</div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-rose-600 mb-1">Motif</label>
-                    <select value={poseRateeForm.motif} onChange={(e) => setPoseRateeForm({ ...poseRateeForm, motif: e.target.value })} className="w-full px-2 py-1 bg-white border border-rose-300 rounded text-[13px] font-bold text-rose-700">
-                      <option value="client_absent">Client absent</option>
-                      <option value="client_refuse">Client refuse</option>
-                      <option value="autre">Autre</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-[11px] font-semibold text-rose-600 mb-1">Pénalité régie (selon distance)</label>
-                    <div className="grid grid-cols-3 gap-1">
-                      {[500, 750, 1000].map(p => (
-                        <button key={p} onClick={() => setPoseRateeForm({ ...poseRateeForm, penalite: p })} className={`px-1 py-1 rounded text-[12px] font-bold border-2 ${poseRateeForm.penalite === p ? 'bg-rose-500 text-white border-rose-600 shadow-md' : 'bg-white text-rose-600 border-rose-200 hover:bg-rose-50'}`}>{p} €</button>
-                      ))}
-                    </div>
-                  </div>
-                  <label className="flex items-center gap-1.5 text-[12px] font-semibold text-rose-700 cursor-pointer">
-                    <input type="checkbox" checked={poseRateeForm.definitif} onChange={(e) => setPoseRateeForm({ ...poseRateeForm, definitif: e.target.checked })} className="w-3.5 h-3.5 accent-rose-600" />
-                    📛 Annulation définitive (le client ne veut plus rien)
-                  </label>
-                  <div className="flex gap-1">
-                    <button onClick={() => setPoseRateeForm({ visible: false, motif: 'client_absent', penalite: 500, definitif: false })} className="flex-1 px-2 py-1.5 bg-white border border-slate-300 text-slate-600 rounded text-[12px] font-bold hover:bg-slate-50">Annuler</button>
-                    <button onClick={() => {
-                      const regieNom = (d.regies && d.regies[0]?.nom) || d.regie || '';
-                      const tentative = {
-                        date: d.dateEnvoiPose || new Date().toISOString().split('T')[0],
-                        motif: poseRateeForm.motif,
-                        penalite: poseRateeForm.penalite,
-                        regie: regieNom,
-                        definitif: poseRateeForm.definitif,
-                        regleAt: null,
-                      };
-                      if (poseRateeForm.definitif) {
-                        // Annulation définitive : statut → ANNULER, on garde la date
-                        // pour traçabilité et on marque statutPose='client_refuse'.
-                        onUpdate({
-                          tentativesPose: [...(d.tentativesPose || []), tentative],
-                          statutPose: 'client_refuse',
-                          statut: 'W2_ANNULER',
-                        });
-                      } else {
-                        // Pose ratée : on vide les dates pour permettre la reprogrammation
-                        onUpdate({
-                          tentativesPose: [...(d.tentativesPose || []), tentative],
-                          dateEnvoiPose: '',
-                          dateVisitePose: '',
-                          statutPose: '',
-                        });
-                      }
-                      setPoseRateeForm({ visible: false, motif: 'client_absent', penalite: 500, definitif: false });
-                    }} className={`flex-1 px-2 py-1.5 rounded text-[12px] font-bold text-white ${poseRateeForm.definitif ? 'bg-red-700 hover:bg-red-800' : 'bg-rose-500 hover:bg-rose-600'}`}>{poseRateeForm.definitif ? '📛 Annuler le dossier' : '📌 Enregistrer & repartir'}</button>
-                  </div>
-                </div>
-              )}
-
-              {/* Historique des tentatives ratées */}
-              {(d.tentativesPose || []).length > 0 && (
-                <div className="mt-2 p-2 bg-white border border-rose-200 rounded-lg">
-                  <div className="text-[11px] font-bold text-rose-700 uppercase mb-1">📜 Tentatives ratées ({(d.tentativesPose || []).length})</div>
-                  <div className="space-y-1">
-                    {(d.tentativesPose || []).map((t, i) => {
-                      const fmtD = (iso) => iso ? new Date(iso).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' }) : '?';
-                      const motifLabel = t.motif === 'client_absent' ? 'Client absent' : t.motif === 'client_refuse' ? 'Client refuse' : 'Autre';
-                      return (
-                        <div key={i} className="text-[12px] flex items-center gap-1 flex-wrap bg-rose-50 rounded px-1.5 py-1">
-                          <span className="font-bold text-slate-700">{i + 1}.</span>
-                          <span className="text-slate-600">{fmtD(t.date)}</span>
-                          <span className="text-rose-700 font-semibold">· {motifLabel}</span>
-                          {t.regie && <span className="text-slate-500">· {t.regie}</span>}
-                          {t.definitif && <span className="text-[11px] font-bold px-1 py-0.5 rounded bg-red-700 text-white">DÉFINITIF</span>}
-                          <span className="ml-auto font-bold text-rose-700">{t.penalite} €</span>
-                          <button
-                            onClick={() => {
-                              if (!window.confirm(`Supprimer la pénalité du ${fmtD(t.date)} (${t.penalite} €) ?`)) return;
-                              const next = (d.tentativesPose || []).filter((_, idx) => idx !== i);
-                              // Si le dossier était annulé à cause d'une tentative DÉFINITIVE
-                              // et qu'il ne reste plus de tentative définitive après suppression,
-                              // on sort de l'annulation et l'auto-statut reprend la main.
-                              const wasAnnule = d.statut === 'W2_ANNULER' || d.statut === 'ANNULER';
-                              const hasDefinitifLeft = next.some(tt => tt.definitif);
-                              const updates = { tentativesPose: next };
-                              if (wasAnnule && !hasDefinitifLeft) {
-                                updates.statut = 'A_EN_COURS';
-                                updates.statutPose = '';
-                              }
-                              onUpdate(updates);
-                            }}
-                            title="Supprimer cette pénalité (erreur ou cadeau à la régie)"
-                            className="p-0.5 text-rose-400 hover:text-rose-700 hover:bg-rose-100 rounded transition-colors flex-shrink-0"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {d.statutPose === 'visite_ok' && d.dateInsta && (
-                <div className="mt-1.5 px-2 py-1 bg-emerald-100 border border-emerald-300 rounded text-[12px] text-emerald-800 font-bold">✅ Posé le {new Date(d.dateInsta).toLocaleDateString('fr-FR')} — passe au Consuel ↓</div>
-              )}
-
-              {/* ✍️ PV de réception signé par le client via le lien poseur */}
-              {d.poseSignature && d.poseSignature.path && (
-                <div className="mt-1.5 px-2 py-1.5 bg-violet-50 border border-violet-200 rounded text-[12px] text-violet-800 flex items-center justify-between gap-2">
-                  <span>
-                    ✍️ <strong>PV signé</strong>{d.poseSignature.signerName ? ` par ${d.poseSignature.signerName}` : ''}
-                    {d.poseSignature.signedAt ? ` le ${new Date(d.poseSignature.signedAt).toLocaleDateString('fr-FR')}` : ''}
-                  </span>
-                  <button
-                    onClick={async () => {
-                      try {
-                        const { url } = await getSignedUrl(d.poseSignature.path, 3600);
-                        if (url) window.open(url, '_blank');
-                      } catch (e) {}
-                    }}
-                    className="flex-shrink-0 px-2 py-0.5 bg-violet-100 hover:bg-violet-200 text-violet-700 rounded font-bold whitespace-nowrap"
-                  >
-                    👁️ Voir
-                  </button>
-                </div>
-              )}
-              </>)}
             </div>
 
             {/* Étapes « Consuel et Raccordement Enedis » retirées du CRM Finances. */}
