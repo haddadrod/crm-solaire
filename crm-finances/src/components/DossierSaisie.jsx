@@ -12707,11 +12707,11 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
           <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
             <TrendingUp className="w-5 h-5 text-violet-500" />Détail par prestataire
           </h2>
-          <p className="text-xs text-slate-500 mt-1">💡 Vous payez seulement quand le financeur a payé</p>
+          <p className="text-xs text-slate-500 mt-1">💡 « À payer maintenant » = le financeur vous a payé. « Bloqué » = vous devez cette somme, mais le financeur ne vous a pas encore payé.</p>
           <div className="mt-2 flex items-center gap-2 flex-wrap">
             <label className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-slate-600 cursor-pointer select-none bg-white border border-slate-200 px-2 py-1 rounded-lg hover:bg-slate-50">
               <input type="checkbox" checked={showOnlyAPayer} onChange={(e) => setShowOnlyAPayer(e.target.checked)} className="w-3.5 h-3.5 accent-violet-600" />
-              🔥 Afficher uniquement les dossiers à payer
+              🔥 Afficher uniquement ce que je dois encore (non payé)
             </label>
           </div>
         </div>
@@ -12768,8 +12768,11 @@ function PaiementsView({ rapportPaiements, societes = [], dossiers = [], projexi
                              isInternal ? 'bg-fuchsia-100 text-fuchsia-700' :
                              'bg-blue-100 text-blue-700';
               // Filtre les lignes selon le toggle « uniquement à payer »
+              // 💶 CRM Finances : « ce que je dois encore » = TOUT ce qui n'est pas payé,
+              // y compris les dossiers où le financeur n'a pas encore payé (« bloqué »).
+              // Avant, ces lignes étaient cachées → on ne voyait plus ce qu'on devait.
               const lignesFiltrees = showOnlyAPayer
-                ? p.lignes.filter(l => !l.paye && (l.isInterne || l.financeurPaye))
+                ? p.lignes.filter(l => !l.paye)
                 : p.lignes;
               // Si le filtre est actif et qu'il ne reste rien, on cache le prestataire entier.
               if (showOnlyAPayer && lignesFiltrees.length === 0) return null;
