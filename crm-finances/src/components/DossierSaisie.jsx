@@ -1823,6 +1823,13 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
     const avoirsHt = (Array.isArray(d[role.key + 'Avoirs']) ? d[role.key + 'Avoirs'] : []).reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
     return s + (ht - avoirsHt);
   }, 0);
+  // 💶 CRM Finances — détail par personne (pour la liste et la carte dépliée).
+  const internesDetail = ROLES_INTERNES.filter(role => d[role.key]).map(role => {
+    const m = d[role.key + 'Montant'];
+    const ht = (m !== '' && m !== undefined && m !== null) ? (parseFloat(m) || 0) : (tarifsInternes[role.key] ?? role.defaultTarif ?? 0);
+    const avoirsHt = (Array.isArray(d[role.key + 'Avoirs']) ? d[role.key + 'Avoirs'] : []).reduce((sa, a) => sa + (parseFloat(a.montantHt) || 0), 0);
+    return { role: role.label, emoji: role.emoji, personne: d[role.key], nom: `${d[role.key]} (${role.label})`, ht: ht - avoirsHt, paye: !!d[role.key + 'Paye'], datePaye: d[role.key + 'DatePaye'] || '' };
+  });
   const interneTtc = ROLES_INTERNES.reduce((s, role) => {
     if (!d[role.key]) return s;
     const m = d[role.key + 'Montant'];
@@ -1852,7 +1859,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
     fournisseursDetail, fournisseurHt, fournisseurTtc,
     regiesDetail, regieAutoHt, regieHt, regieTtc,
     poseursDetail, poseurHt, poseurTtc,
-    interneHt, interneTtc,
+    interneHt, interneTtc, internesDetail,
     autresFraisDetail, autresFraisHt, autresFraisTtc,
     margeTtc, margeHt,
     puissance: d.puissance || totalPuissance,
@@ -7870,7 +7877,7 @@ function DossierListHeader({ isAdmin, readOnly, withCheckbox = false }) {
         {!readOnly && <span>Prix TTC</span>}
         {!readOnly && <span>Paiement</span>}
         {isAdmin && <span>🔧 Poseur</span>}
-        {isAdmin && <span>🤝 Régie</span>}
+        {isAdmin && <span>🤝 Régie / 👥 Équipe</span>}
         {isAdmin && <span>📦 Fournisseur</span>}
         {isAdmin && <span>⚡ Consuel / 🏛️ Mairie</span>}
         {isAdmin && <span>Marge HT</span>}
@@ -7954,7 +7961,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
   const delaiPaiement = datePoseRow ? joursEntre(datePoseRow, datePayeRow || new Date().toISOString().split('T')[0]) : null;
   const recuTotal = totalPaiementsRecus(paiementsRecusDe(d));
   const resteARecevoir = Math.max(0, (parseFloat(d.montantTotal) || 0) - recuTotal);
-  const Intervenant = ({ list, total, color }) => {
+  const Intervenant = ({ list, total, color, prefix = '' }) => {
     // Lignes vides (ni nom ni montant) ignorées : elles n'apportent rien à la lecture.
     const utiles = (list || []).filter(x => (x.nom && String(x.nom).trim()) || (x.ht || 0) !== 0);
     if (utiles.length === 0) return <span className="text-slate-300">—</span>;
@@ -7962,7 +7969,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
     const toutPaye = utiles.every(x => x.paye);
     return (
       <span className={`truncate ${color}`} title={utiles.map(x => `${x.nom || '(sans nom)'} : ${formatEuro(x.ht)} HT${x.paye ? ' — payé' : ''}`).join('\n')}>
-        <span className="font-semibold">{noms.join(', ') || '(sans nom)'}</span>
+        {prefix}<span className="font-semibold">{noms.length > 2 ? `${noms.length} personnes` : (noms.join(', ') || '(sans nom)')}</span>
         <span className="text-slate-400"> · </span>{formatEuro(total)}{toutPaye && <span className="text-emerald-600 font-bold"> ✓</span>}
       </span>
     );
@@ -7984,7 +7991,9 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           ? <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold" title={`Reçu ${formatEuro(recuTotal)}` + (delaiPaiement !== null ? ` — posé depuis ${delaiPaiement} jour(s)` : '')}>Reste {formatEuro(resteARecevoir)}{delaiPaiement !== null ? ` · ${delaiPaiement} j` : ''}</span>
           : <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold" title={delaiPaiement !== null ? `Posé depuis ${delaiPaiement} jour(s), pas encore payé` : 'Pas encore payé'}>Non payé{delaiPaiement !== null ? ` · ${delaiPaiement} j` : ''}</span>}</div>}
       {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.poseursDetail} total={d.poseurHt} color="text-amber-700" /></div>}
-      {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.regiesDetail} total={d.regieHt} color="text-purple-700" /></div>}
+      {isAdmin && <div className="min-w-0 flex">{(d.internesDetail || []).length > 0
+        ? <Intervenant list={[...(d.typeRegie === 'interne' ? [] : (d.regiesDetail || [])), ...d.internesDetail]} total={(d.typeRegie === 'interne' ? 0 : (d.regieHt || 0)) + (d.interneHt || 0)} color="text-fuchsia-700" prefix="👥 " />
+        : <Intervenant list={d.regiesDetail} total={d.regieHt} color="text-purple-700" />}</div>}
       {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.fournisseursDetail} total={d.fournisseurHt} color="text-orange-700" /></div>}
       {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.autresFraisDetail} total={d.autresFraisHt} color="text-cyan-700" /></div>}
       {isAdmin && <div className={`font-bold truncate ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} title="Marge HT">{formatEuro(d.margeHt)}</div>}
@@ -8239,7 +8248,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           </div>
         )}
         {/* INTERVENANTS — bloc unifié : poseurs + régies + fournisseurs côte à côte */}
-        {isAdmin && ((d.poseursDetail?.length || 0) + (d.regiesDetail?.length || 0) + (d.fournisseursDetail?.length || 0) + (d.autresFraisDetail?.length || 0) > 0) && (
+        {isAdmin && ((d.poseursDetail?.length || 0) + (d.regiesDetail?.length || 0) + (d.fournisseursDetail?.length || 0) + (d.autresFraisDetail?.length || 0) + (d.internesDetail?.length || 0) > 0) && (
           <div className="mt-1.5 grid grid-cols-1 md:grid-cols-4 gap-1.5">
             {/* Poseurs */}
             {(d.poseursDetail?.length || 0) > 0 && (
@@ -8317,6 +8326,27 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                       {f.factureExternalUrl && (
                         <a href={f.factureExternalUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-600 rounded font-bold" title="Ouvrir le PDF Drive (lien externe)">🔗</a>
                       )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* 💶 CRM Finances : Équipe interne (commissions) */}
+            {(d.internesDetail?.length || 0) > 0 && (
+              <div className="bg-fuchsia-50 border border-fuchsia-200 rounded-lg p-1.5">
+                <div className="flex items-center justify-between text-[12px] font-bold text-fuchsia-700 uppercase mb-1">
+                  <span>👥 Équipe interne ({d.internesDetail.length})</span>
+                  <span className="font-bold text-fuchsia-800">{formatEuro(d.interneHt)} HT</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {d.internesDetail.map((x, i) => (
+                    <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-semibold border ${x.paye ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-fuchsia-700 border-fuchsia-200'}`}>
+                      {x.paye && <span className="text-emerald-600 font-bold">✓</span>}
+                      <span>{x.emoji} {x.role} :</span>
+                      <span className="font-bold">{x.personne}</span>
+                      <span className="text-fuchsia-400">·</span>
+                      <span>{formatEuro(x.ht)}</span>
+                      {x.paye && <span className="text-emerald-700 font-bold">· payé{x.datePaye ? ` le ${formatDateForSheet(x.datePaye)}` : ''}</span>}
                     </span>
                   ))}
                 </div>
