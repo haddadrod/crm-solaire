@@ -637,6 +637,103 @@ function fmtFieldVal(v) {
 const PROJEXIO_CAP_MENSUEL_PAR_SOCIETE = {};
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
+// ===================== 💶 CRM Finances — PAIEMENTS REÇUS =====================
+// Un dossier peut être payé en plusieurs fois et par plusieurs payeurs (une
+// partie par le financeur, une partie par le client). Chaque ligne =
+// { id, date, montant, payeur }. Stocké dans d.paiementsRecus.
+// Compat : un ancien dossier qui n'a que datePaiementBanque / montantPaiementRecu
+// est affiché comme une première ligne.
+const PAYEUR_CLIENT = 'CLIENT';
+function paiementsRecusDe(d) {
+  if (Array.isArray(d && d.paiementsRecus)) return d.paiementsRecus;
+  if (d && (d.datePaiementBanque || (d.montantPaiementRecu !== undefined && d.montantPaiementRecu !== ''))) {
+    return [{ id: 'p0', date: d.datePaiementBanque || '', montant: d.montantPaiementRecu ?? '', payeur: d.financement && d.financement !== 'COMPTANT' ? d.financement : (d.financement === 'COMPTANT' ? PAYEUR_CLIENT : '') }];
+  }
+  return [];
+}
+function totalPaiementsRecus(list) {
+  return (list || []).reduce((sum, p) => sum + (parseFloat(p.montant) || 0), 0);
+}
+// Renvoie les champs du dossier à mettre à jour pour une nouvelle liste de
+// paiements. Le dossier passe PAYÉ uniquement quand il est soldé :
+//   • prix TTC connu + montants saisis → total reçu ≥ prix TTC ;
+//   • sinon (pas de prix, ou dates sans montant) → dès qu'une date est saisie.
+function patchPaiementsRecus(d, list) {
+  const total = totalPaiementsRecus(list);
+  const ttc = parseFloat(d.montantTotal) || 0;
+  const dates = list.map(p => p.date).filter(Boolean).sort();
+  const montantsSaisis = list.some(p => p.montant !== '' && p.montant !== undefined && p.montant !== null);
+  const solde = dates.length > 0 && ((ttc > 0 && montantsSaisis) ? total >= ttc - 0.005 : true);
+  const patch = { paiementsRecus: list, montantPaiementRecu: montantsSaisis ? total : '' };
+  if (solde) {
+    const last = dates[dates.length - 1];
+    Object.assign(patch, { datePaiementBanque: last, payeClient: true, payeClientDate: last, statut: 'W_DOSSIER_PAYER' });
+    if (!d.payeClient) patch.payeClientStampAt = stampApres(d.payeClientStampAt);
+  } else if (d.payeClient || d.datePaiementBanque) {
+    Object.assign(patch, { datePaiementBanque: '', payeClient: false, payeClientDate: '', payeClientStampAt: stampApres(d.payeClientStampAt) });
+  }
+  return patch;
+}
+function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false }) {
+  const list = paiementsRecusDe(d);
+  const total = totalPaiementsRecus(list);
+  const ttc = parseFloat(d.montantTotal) || 0;
+  const reste = ttc > 0 ? Math.max(0, ttc - total) : 0;
+  const payeurs = [PAYEUR_CLIENT, ...FINANCEMENTS.filter(f => f !== 'COMPTANT')];
+  const apply = (next) => onPatch(patchPaiementsRecus(d, next));
+  const setLine = (i, patch) => apply(list.map((p, k) => k === i ? { ...p, ...patch } : p));
+  const addLine = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const defaut = list.length === 0 ? (d.financement && d.financement !== 'COMPTANT' ? d.financement : (d.financement === 'COMPTANT' ? PAYEUR_CLIENT : '')) : '';
+    apply([...list, { id: 'p' + Date.now().toString(36), date: today, montant: '', payeur: defaut }]);
+  };
+  const inp = compact
+    ? 'w-full px-2 py-1 border border-emerald-200 rounded-lg text-[12px] bg-white'
+    : 'w-full px-3 py-2 border border-emerald-200 rounded-xl text-sm bg-white';
+  return (
+    <div className={`bg-emerald-50 border-2 border-emerald-200 rounded-xl ${compact ? 'p-2' : 'p-3'}`}>
+      <div className={`font-bold text-emerald-700 uppercase flex items-center justify-between flex-wrap gap-1 ${compact ? 'text-[12px] mb-1.5' : 'text-[13px] mb-2'}`}>
+        <span>💰 Paiements reçus</span>
+        {d.payeClient && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 normal-case">✓ Soldé</span>}
+      </div>
+      {list.length === 0 && (
+        <div className="text-[12px] text-slate-500 mb-2">Aucun paiement reçu pour l'instant.</div>
+      )}
+      {list.map((p, i) => (
+        <div key={p.id || i} className="grid grid-cols-12 gap-1.5 mb-1.5 items-end">
+          <div className="col-span-4">
+            {i === 0 && <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Reçu le</label>}
+            <input type="date" min="2000-01-01" max="2100-12-31" value={p.date || ''} onChange={(e) => setLine(i, { date: e.target.value })} className={inp} />
+          </div>
+          <div className="col-span-3">
+            {i === 0 && <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Montant (€)</label>}
+            <input type="number" step="0.01" value={p.montant ?? ''} placeholder="0,00" onChange={(e) => setLine(i, { montant: e.target.value })} className={inp} />
+          </div>
+          <div className="col-span-4">
+            {i === 0 && <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Payé par</label>}
+            <select value={p.payeur || ''} onChange={(e) => setLine(i, { payeur: e.target.value })} className={inp}>
+              <option value="">— Choisir —</option>
+              {payeurs.map(f => <option key={f} value={f}>{f === PAYEUR_CLIENT ? '👤 Client' : f}</option>)}
+            </select>
+          </div>
+          <div className="col-span-1">
+            <button type="button" title="Supprimer ce paiement" onClick={() => apply(list.filter((_, k) => k !== i))} className="w-full py-1 text-rose-500 hover:bg-rose-50 rounded-lg text-sm font-bold">✕</button>
+          </div>
+        </div>
+      ))}
+      <div className="flex items-center justify-between flex-wrap gap-2 mt-1">
+        <button type="button" onClick={addLine} className="px-3 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-[12px] font-bold">+ Ajouter un paiement</button>
+        {list.length > 0 && (
+          <span className="text-[12px] font-semibold text-slate-600">
+            Reçu : <span className="text-emerald-700 font-bold">{formatEuro(total)}</span>
+            {ttc > 0 && <> sur {formatEuro(ttc)} — {reste > 0.005 ? <span className="text-amber-700 font-bold">reste {formatEuro(reste)}</span> : <span className="text-emerald-700 font-bold">soldé</span>}</>}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // Prérequis avant de pouvoir saisir le contrôle de livraison (= étape qui
 // débloque le dossier auprès de la banque).
 //   • Originaux reçus banque → obligatoire (sauf dossiers sans originaux
@@ -21322,25 +21419,10 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <Field label="Taux TVA réel appliqué">
                 <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-sm font-semibold text-blue-700">{calculs.tauxTva > 0 ? `${calculs.tauxTva.toFixed(2)} %` : '—'}</div>
               </Field>
-              {/* 💶 CRM Finances : date à laquelle le paiement a été reçu. Saisir une date
-                  marque le dossier PAYÉ ; l'effacer annule le paiement. */}
-              <Field label="💰 Paiement reçu le">
-                <div className="flex gap-1">
-                  <input type="date" min="2000-01-01" max="2100-12-31" value={formData.datePaiementBanque || ''} onChange={(e) => {
-                    const v = e.target.value;
-                    setFormData(v
-                      ? { ...formData, datePaiementBanque: v, payeClient: true, payeClientDate: v, payeClientStampAt: stampApres(formData.payeClientStampAt), statut: 'W_DOSSIER_PAYER' }
-                      : { ...formData, datePaiementBanque: '', payeClient: false, payeClientDate: '', payeClientStampAt: stampApres(formData.payeClientStampAt) });
-                  }} className={inputCls} />
-                  <button type="button" onClick={() => {
-                    const today = new Date().toISOString().split('T')[0];
-                    setFormData({ ...formData, datePaiementBanque: today, payeClient: true, payeClientDate: today, payeClientStampAt: stampApres(formData.payeClientStampAt), statut: 'W_DOSSIER_PAYER' });
-                  }} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[12px] font-bold whitespace-nowrap">Auj.</button>
-                </div>
-              </Field>
-              <Field label="💰 Montant reçu (€)">
-                <input type="number" step="0.01" value={formData.montantPaiementRecu ?? ''} placeholder={formData.montantTotal ? String(formData.montantTotal) : '0,00'} onChange={(e) => setFormData({ ...formData, montantPaiementRecu: e.target.value })} className={inputCls} />
-              </Field>
+            </div>
+            {/* 💶 CRM Finances : paiements reçus (plusieurs lignes : financeur et/ou client). */}
+            <div className="mt-3">
+              <PaiementsRecusEditor d={formData} FINANCEMENTS={FINANCEMENTS} onPatch={(patch) => setFormData({ ...formData, ...patch })} />
             </div>
             {/* 💶 CRM Finances : case masquée à la CRÉATION du dossier (personne ne
                 doit la cocher à ce moment-là) — visible seulement en modification, admin. */}
@@ -24858,37 +24940,9 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
 
             {/* Étapes « Consuel et Raccordement Enedis » retirées du CRM Finances. */}
-            {/* 💶 CRM Finances : étape « Contrôle & paiement » remplacée par la seule date de paiement reçu. */}
-            <div ref={refPaiement} className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-2">
-              <div className="text-[12px] font-bold text-emerald-700 uppercase mb-1.5 flex items-center justify-between">
-                <span>💰 Paiement reçu le</span>
-                {(d.payeClient || d.datePaiementBanque) && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 normal-case">✓ Payé</span>}
-              </div>
-              <div className="flex gap-1">
-                <input type="date" min="2000-01-01" max="2100-12-31" value={d.datePaiementBanque || ''} onChange={(e) => {
-                  const v = e.target.value;
-                  onUpdate(v
-                    ? { datePaiementBanque: v, payeClient: true, payeClientDate: v, payeClientStampAt: stampApres(d.payeClientStampAt), statut: 'W_DOSSIER_PAYER' }
-                    : { datePaiementBanque: '', payeClient: false, payeClientDate: '', payeClientStampAt: stampApres(d.payeClientStampAt) });
-                }} className="flex-1 px-2 py-1 border border-emerald-200 rounded-lg text-[12px] bg-white" />
-                <button onClick={() => {
-                  const today = new Date().toISOString().split('T')[0];
-                  onUpdate({ datePaiementBanque: today, payeClient: true, payeClientDate: today, payeClientStampAt: stampApres(d.payeClientStampAt), statut: 'W_DOSSIER_PAYER' });
-                }} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-[12px] font-bold whitespace-nowrap">Auj.</button>
-              </div>
-              <div className="grid grid-cols-2 gap-2 mt-2">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Montant reçu (€)</label>
-                  <input type="number" step="0.01" value={d.montantPaiementRecu ?? ''} placeholder={d.montantTotal ? String(d.montantTotal) : '0,00'} onChange={(e) => onUpdate({ montantPaiementRecu: e.target.value })} className="w-full px-2 py-1 border border-emerald-200 rounded-lg text-[12px] bg-white" />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Payé par (financeur)</label>
-                  <select value={d.financement || ''} onChange={(e) => onUpdate({ financement: e.target.value })} className="w-full px-2 py-1 border border-emerald-200 rounded-lg text-[12px] bg-white">
-                    <option value="">— Choisir —</option>
-                    {(FINANCEMENTS || []).map(f => <option key={f} value={f}>{f}</option>)}
-                  </select>
-                </div>
-              </div>
+            {/* 💶 CRM Finances : paiements reçus (plusieurs lignes : financeur et/ou client). */}
+            <div ref={refPaiement}>
+              <PaiementsRecusEditor d={d} FINANCEMENTS={FINANCEMENTS || []} onPatch={onUpdate} compact />
             </div>
 
             {/* ============ ⚖️ LITIGE — étape annexe, visible si hasLitige ============ */}
