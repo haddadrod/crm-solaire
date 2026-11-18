@@ -639,22 +639,14 @@ const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreil
 
 // Prérequis avant de pouvoir saisir le contrôle de livraison (= étape qui
 // débloque le dossier auprès de la banque).
-//   • Consuel visé        → toujours obligatoire.
 //   • Originaux reçus banque → obligatoire (sauf dossiers sans originaux
-//     requis) : on ne peut pas contrôler la livraison tant que la banque
-//     n'a pas reçu les documents originaux.
-//   • Récépissé mairie    → obligatoire uniquement pour les dossiers financés
-//     via SOFINCO (seul organisme qui le réclame avant déblocage).
+//     requis).
+//   💶 CRM Finances : plus de prérequis Consuel ni récépissé mairie (étapes
+//   retirées du CRM).
 // Renvoie { bloque, manquants } — `manquants` listé en clair pour l'UI.
 function controleLivraisonBlocage(d) {
   const manquants = [];
-  if (d.statutConsuel !== 'accepté') manquants.push('Consuel visé');
   if (!d.dateRecusOriginauxBanque && !d.pasOriginauxRequis) manquants.push('Originaux reçus par la banque');
-  if (d.financement === 'SOFINCO') {
-    const recepisseMairie = !!(d.dateRecepisseMairie || d.recepisseMairieFileId
-      || (d.envoisMairie || []).some(e => e && (e.dateRecepisse || e.recepisseFileId)));
-    if (!recepisseMairie) manquants.push('Récépissé mairie (exigé par SOFINCO)');
-  }
   return { bloque: manquants.length > 0, manquants };
 }
 
