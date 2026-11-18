@@ -24967,14 +24967,15 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             <button onClick={onEdit} className="flex-1 min-w-[80px] bg-white text-slate-800 px-2 py-1.5 rounded-lg font-bold text-[12px] flex items-center justify-center gap-1">
               <Edit3 className="w-3 h-3" />Tout éditer
             </button>
-            {(messageTemplates || []).length > 0 && (
+            {/* 💶 CRM Finances : bouton « Modèles » (messages à copier) retiré de la fiche. */}
+            {false && (messageTemplates || []).length > 0 && (
               <button onClick={() => setShowMsgPicker(v => !v)} className="flex-1 min-w-[80px] bg-white/20 hover:bg-white/30 text-white px-2 py-1.5 rounded-lg font-semibold text-[12px] flex items-center justify-center gap-1 backdrop-blur" title="Copier un message pré-rempli pour ce client">
                 💬 Modèles
               </button>
             )}
           </div>
           {/* 💬 Picker de modèles — copie le message rempli dans le presse-papier */}
-          {showMsgPicker && (messageTemplates || []).length > 0 && (
+          {false && showMsgPicker && (messageTemplates || []).length > 0 && (
             <div className="mt-2 p-2 bg-white/15 border border-white/30 rounded-lg backdrop-blur space-y-1">
               <div className="text-[11px] font-bold text-white/80 uppercase mb-1">💬 Copier un message pour {d.nom} {d.prenom || ''}</div>
               {(messageTemplates || []).map(tpl => (
