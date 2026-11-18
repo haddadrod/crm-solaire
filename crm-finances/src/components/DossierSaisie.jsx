@@ -771,6 +771,22 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, 
     const defaut = list.length === 0 ? (d.financement && d.financement !== 'COMPTANT' ? d.financement : (d.financement === 'COMPTANT' ? PAYEUR_CLIENT : '')) : '';
     apply([...list, { id: 'p' + Date.now().toString(36), date: today, montant: '', payeur: defaut }]);
   };
+  // Bouton « Payé » : en un clic, enregistre le solde restant à la date du jour
+  // (payé par le financeur du dossier). Tout reste modifiable à la main ensuite.
+  const payeurDefaut = d.financement && d.financement !== 'COMPTANT' ? d.financement : (d.financement === 'COMPTANT' ? PAYEUR_CLIENT : '');
+  const montantVide = (p) => p.montant === '' || p.montant === undefined || p.montant === null;
+  const marquerPaye = () => {
+    const today = new Date().toISOString().split('T')[0];
+    const solde = ttc > 0 ? Math.round(Math.max(0, ttc - total) * 100) / 100 : '';
+    const iVide = list.findIndex(montantVide);
+    if (iVide >= 0) {
+      // Une ligne attend déjà son montant → on la complète au lieu d'en créer une autre.
+      apply(list.map((p, k) => k === iVide ? { ...p, date: p.date || today, montant: solde, payeur: p.payeur || payeurDefaut } : p));
+    } else {
+      apply([...list, { id: 'p' + Date.now().toString(36), date: today, montant: solde, payeur: payeurDefaut }]);
+    }
+  };
+  const resteAPayer = ttc > 0 ? (list.some(montantVide) ? true : reste > 0.005) : !d.payeClient;
   const inp = compact
     ? 'w-full px-2 py-1 border border-emerald-200 rounded-lg text-[12px] bg-white'
     : 'w-full px-3 py-2 border border-emerald-200 rounded-xl text-sm bg-white';
@@ -806,7 +822,12 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, 
         </div>
       ))}
       <div className="flex items-center justify-between flex-wrap gap-2 mt-1">
-        <button type="button" onClick={addLine} className="px-3 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-[12px] font-bold">+ Ajouter un paiement</button>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {resteAPayer && (
+            <button type="button" onClick={marquerPaye} title="Enregistre le solde restant comme payé aujourd'hui (modifiable ensuite)" className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[12px] font-bold shadow-sm">✓ Payé{ttc > 0 && reste > 0.005 ? ` (${formatEuro(reste)})` : ''}</button>
+          )}
+          <button type="button" onClick={addLine} className="px-3 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-[12px] font-bold">+ Ajouter un paiement</button>
+        </div>
         {list.length > 0 && (
           <span className="text-[12px] font-semibold text-slate-600">
             Reçu : <span className="text-emerald-700 font-bold">{formatEuro(total)}</span>
