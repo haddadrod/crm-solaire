@@ -725,23 +725,30 @@ const PAYEUR_CLIENT = 'CLIENT';
 function paiementsRecusDe(d) {
   if (Array.isArray(d && d.paiementsRecus)) return d.paiementsRecus;
   if (d && (d.datePaiementBanque || (d.montantPaiementRecu !== undefined && d.montantPaiementRecu !== ''))) {
-    return [{ id: 'p0', date: d.datePaiementBanque || '', montant: d.montantPaiementRecu ?? '', payeur: d.financement && d.financement !== 'COMPTANT' ? d.financement : (d.financement === 'COMPTANT' ? PAYEUR_CLIENT : '') }];
+    return [{ id: 'p0', paye: true, date: d.datePaiementBanque || '', montant: d.montantPaiementRecu ?? '', payeur: d.financement && d.financement !== 'COMPTANT' ? d.financement : (d.financement === 'COMPTANT' ? PAYEUR_CLIENT : '') }];
   }
   return [];
 }
+// Une ligne est « payée » si elle est cochée payée (ou, pour les anciennes
+// lignes sans cette info, si elle a une date).
+function paiementEstPaye(p) {
+  return p.paye === undefined ? !!p.date : !!p.paye;
+}
+// Total réellement REÇU = somme des lignes payées uniquement.
 function totalPaiementsRecus(list) {
-  return (list || []).reduce((sum, p) => sum + (parseFloat(p.montant) || 0), 0);
+  return (list || []).filter(paiementEstPaye).reduce((sum, p) => sum + (parseFloat(p.montant) || 0), 0);
 }
 // Renvoie les champs du dossier à mettre à jour pour une nouvelle liste de
 // paiements. Le dossier passe PAYÉ uniquement quand il est soldé :
-//   • prix TTC connu + montants saisis → total reçu ≥ prix TTC ;
-//   • sinon (pas de prix, ou dates sans montant) → dès qu'une date est saisie.
+//   • prix TTC connu + montants saisis → total des lignes payées ≥ prix TTC ;
+//   • sinon (pas de prix, ou payé sans montant) → dès qu'une ligne est payée.
 function patchPaiementsRecus(d, list) {
+  const payes = list.filter(paiementEstPaye);
   const total = totalPaiementsRecus(list);
   const ttc = parseFloat(d.montantTotal) || 0;
-  const dates = list.map(p => p.date).filter(Boolean).sort();
-  const montantsSaisis = list.some(p => p.montant !== '' && p.montant !== undefined && p.montant !== null);
-  const solde = dates.length > 0 && ((ttc > 0 && montantsSaisis) ? total >= ttc - 0.005 : true);
+  const dates = payes.map(p => p.date).filter(Boolean).sort();
+  const montantsSaisis = payes.some(p => p.montant !== '' && p.montant !== undefined && p.montant !== null);
+  const solde = payes.length > 0 && ((ttc > 0 && montantsSaisis) ? total >= ttc - 0.005 : true);
   const patch = { paiementsRecus: list, montantPaiementRecu: montantsSaisis ? total : '' };
   // Financeur du dossier pas encore choisi → on reprend le 1er financeur des paiements.
   if (!d.financement) {
@@ -750,7 +757,7 @@ function patchPaiementsRecus(d, list) {
     else if (list.some(p => p.payeur === PAYEUR_CLIENT)) patch.financement = 'COMPTANT';
   }
   if (solde) {
-    const last = dates[dates.length - 1];
+    const last = dates[dates.length - 1] || new Date().toISOString().split('T')[0];
     Object.assign(patch, { datePaiementBanque: last, payeClient: true, payeClientDate: last, statut: 'W_DOSSIER_PAYER' });
     if (!d.payeClient) patch.payeClientStampAt = stampApres(d.payeClientStampAt);
   } else if (d.payeClient || d.datePaiementBanque) {
@@ -758,113 +765,96 @@ function patchPaiementsRecus(d, list) {
   }
   return patch;
 }
+// Bloc paiements : on indique QUI DOIT PAYER (le financeur), puis une ligne par
+// paiement attendu. Par défaut c'est le financeur qui paie tout ; si le client
+// paie une partie, on ajoute une ligne « Client ». Chaque ligne a son bouton
+// payé / non payé (comme les régies et les poseurs) : cliquer « payé » met la
+// date du jour, modifiable ensuite.
 function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, embedded = false, hideFinanceur = false }) {
-  const list = paiementsRecusDe(d);
+  const list = paiementsRecusDe(d).map(p => ({ ...p, paye: paiementEstPaye(p) }));
   const total = totalPaiementsRecus(list);
   const ttc = parseFloat(d.montantTotal) || 0;
   const reste = ttc > 0 ? Math.max(0, ttc - total) : 0;
+  const prevu = list.reduce((sum, p) => sum + (parseFloat(p.montant) || 0), 0);
   const payeurs = [PAYEUR_CLIENT, ...FINANCEMENTS.filter(f => f !== 'COMPTANT')];
+  const financeurPayeur = d.financement && d.financement !== 'COMPTANT' ? d.financement : (d.financement === 'COMPTANT' ? PAYEUR_CLIENT : '');
+  const today = () => new Date().toISOString().split('T')[0];
+  const arrondi = (n) => Math.round(n * 100) / 100;
   const apply = (next) => onPatch(patchPaiementsRecus(d, next));
   const setLine = (i, patch) => apply(list.map((p, k) => k === i ? { ...p, ...patch } : p));
+  // Nouvelle ligne : le financeur d'abord ; s'il a déjà sa ligne, c'est le client.
   const addLine = () => {
-    const today = new Date().toISOString().split('T')[0];
-    const defaut = list.length === 0 ? (d.financement && d.financement !== 'COMPTANT' ? d.financement : (d.financement === 'COMPTANT' ? PAYEUR_CLIENT : '')) : '';
-    apply([...list, { id: 'p' + Date.now().toString(36), date: today, montant: '', payeur: defaut }]);
+    const dejaFinanceur = financeurPayeur && list.some(p => p.payeur === financeurPayeur);
+    const payeur = !dejaFinanceur ? financeurPayeur : PAYEUR_CLIENT;
+    const montant = ttc > 0 ? arrondi(Math.max(0, ttc - prevu)) : '';
+    apply([...list, { id: 'p' + Date.now().toString(36), payeur, montant: montant === 0 ? '' : montant, paye: false, date: '' }]);
   };
-  // 💶 Qui DOIT payer (à savoir avant d'être payé) : le financeur du dossier,
-  // et éventuellement une part payée par le client lui-même (apport).
-  //   • financeur = COMPTANT → le client paie tout ;
-  //   • sinon → le financeur paie (prix TTC − apport client), le client paie l'apport.
-  // Pour chaque payeur attendu, un bouton « Payé » enregistre en un clic ce
-  // qu'il lui reste à verser, à la date du jour (modifiable ensuite à la main).
-  const apport = Math.max(0, parseFloat(d.apportClient) || 0);
-  const attendus = !d.financement ? []
-    : d.financement === 'COMPTANT' ? [{ payeur: PAYEUR_CLIENT, montant: ttc }]
-    : [{ payeur: d.financement, montant: Math.max(0, ttc - apport) }, ...(apport > 0 ? [{ payeur: PAYEUR_CLIENT, montant: apport }] : [])];
-  const recuDe = (payeur) => list.filter(p => p.payeur === payeur).reduce((sum, p) => sum + (parseFloat(p.montant) || 0), 0);
-  const aPayer = attendus.map(a => {
-    const resteGlobal = ttc > 0 ? Math.max(0, ttc - total) : 0;
-    const restePayeur = ttc > 0 ? Math.min(Math.max(0, a.montant - recuDe(a.payeur)), resteGlobal) : 0;
-    return { ...a, reste: Math.round(restePayeur * 100) / 100 };
-  }).filter(a => ttc > 0 ? a.reste > 0.005 : !d.payeClient);
-  const marquerPaye = (a) => {
-    const today = new Date().toISOString().split('T')[0];
-    apply([...list, { id: 'p' + Date.now().toString(36), date: today, montant: ttc > 0 ? a.reste : '', payeur: a.payeur }]);
-  };
-  const nomPayeur = (x) => x === PAYEUR_CLIENT ? 'le client' : x;
-  const inp = compact
+  // Raccourci quand rien n'est encore saisi : le financeur a payé la totalité aujourd'hui.
+  const toutPayeParFinanceur = () => apply([{ id: 'p' + Date.now().toString(36), payeur: financeurPayeur, montant: ttc > 0 ? ttc : '', paye: true, date: today() }]);
+  const nom = (x) => x === PAYEUR_CLIENT ? 'le client' : x;
+  const H = compact ? ' h-8' : ' h-10';
+  const inp = (compact
     ? 'w-full px-2 py-1 border border-emerald-200 rounded-lg text-[12px] bg-white'
-    : 'w-full px-3 py-2 border border-emerald-200 rounded-xl text-sm bg-white';
+    : 'w-full px-3 py-2 border border-emerald-200 rounded-xl text-sm bg-white') + H;
+  const lab = 'block text-[11px] font-semibold text-slate-600 mb-0.5 whitespace-nowrap truncate';
   return (
     <div className={embedded ? '' : `bg-emerald-50 border-2 border-emerald-200 rounded-xl ${compact ? 'p-2' : 'p-3'}`}>
       <div className={`font-bold text-emerald-700 uppercase flex items-center justify-between flex-wrap gap-1 ${compact ? 'text-[12px] mb-1.5' : 'text-[13px] mb-2'}`}>
-        <span>{embedded ? 'Paiements reçus' : '💰 Paiements reçus'}</span>
+        <span>{embedded ? 'Paiements' : '💰 Paiements'}</span>
         {d.payeClient && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 normal-case">✓ Soldé</span>}
       </div>
-      <div className={`grid gap-2 items-start mb-2 pb-2 border-b border-emerald-100 ${hideFinanceur ? 'grid-cols-1' : 'grid-cols-2'}`}>
-        {!hideFinanceur && (
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5 whitespace-nowrap truncate">Qui doit payer</label>
-            <select value={d.financement || ''} onChange={(e) => onPatch({ financement: e.target.value })} className={inp + (compact ? ' h-8' : ' h-10')}>
-              <option value="">— Choisir —</option>
-              {FINANCEMENTS.map(f => <option key={f} value={f}>{f === 'COMPTANT' ? 'COMPTANT (le client paie tout)' : f}</option>)}
-            </select>
-          </div>
-        )}
-        {d.financement !== 'COMPTANT' && (
-          <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5 whitespace-nowrap truncate" title="Montant payé par le client lui-même (le reste est payé par le financeur)">Part du client (€)</label>
-            <input type="number" step="0.01" value={d.apportClient ?? ''} placeholder="0,00" onChange={(e) => onPatch({ apportClient: e.target.value })} className={inp + (compact ? ' h-8' : ' h-10')} />
-          </div>
-        )}
-      </div>
-      {!d.financement && (
-        <div className="text-[12px] text-amber-700 font-semibold mb-2">Choisis d'abord qui doit payer : le bouton « Payé » apparaîtra ensuite.</div>
+      {!hideFinanceur && (
+        <div className="mb-2">
+          <label className={lab}>Qui doit payer</label>
+          <select value={d.financement || ''} onChange={(e) => onPatch({ financement: e.target.value })} className={inp}>
+            <option value="">— Choisir le financeur —</option>
+            {FINANCEMENTS.map(f => <option key={f} value={f}>{f === 'COMPTANT' ? 'COMPTANT (le client paie tout)' : f}</option>)}
+          </select>
+        </div>
       )}
-      {d.financement && attendus.length > 0 && ttc > 0 && (
-        <div className="text-[12px] text-slate-600 mb-2">À recevoir : {attendus.map(a => `${formatEuro(a.montant)} ${a.payeur === PAYEUR_CLIENT ? 'du client' : 'de ' + a.payeur}`).join(' + ')}</div>
-      )}
-      {list.length === 0 && (
-        <div className="text-[12px] text-slate-500 mb-2">Aucun paiement reçu pour l'instant.</div>
+      {!d.financement && list.length === 0 && (
+        <div className="text-[12px] text-amber-700 font-semibold mb-2">Choisis d'abord qui doit payer{hideFinanceur ? ' (champ « Financeur » ci-dessus)' : ''}.</div>
       )}
       {list.map((p, i) => (
-        <div key={p.id || i} className="grid grid-cols-12 gap-1.5 mb-1.5 items-end [&_label]:whitespace-nowrap">
-          <div className="col-span-4">
-            {i === 0 && <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Reçu le</label>}
-            <input type="date" min="2000-01-01" max="2100-12-31" value={p.date || ''} onChange={(e) => setLine(i, { date: e.target.value })} className={inp + (compact ? ' h-8' : ' h-10')} />
+        <div key={p.id || i} className={`mb-1.5 p-1.5 rounded-xl border ${p.paye ? 'bg-emerald-50 border-emerald-300' : 'bg-white border-emerald-200'}`}>
+          <div className="grid grid-cols-12 gap-1.5 items-end">
+            <div className="col-span-6">
+              <label className={lab}>Payé par</label>
+              <select value={p.payeur || ''} onChange={(e) => setLine(i, { payeur: e.target.value })} className={inp}>
+                <option value="">— Choisir —</option>
+                {payeurs.map(f => <option key={f} value={f}>{f === PAYEUR_CLIENT ? '👤 Client' : f}</option>)}
+              </select>
+            </div>
+            <div className="col-span-5">
+              <label className={lab}>Montant (€)</label>
+              <input type="number" step="0.01" value={p.montant ?? ''} placeholder="0,00" onChange={(e) => setLine(i, { montant: e.target.value })} className={inp} />
+            </div>
+            <div className="col-span-1">
+              <button type="button" title="Supprimer cette ligne" onClick={() => apply(list.filter((_, k) => k !== i))} className={'w-full text-rose-500 hover:bg-rose-50 rounded-lg text-sm font-bold' + H}>✕</button>
+            </div>
           </div>
-          <div className="col-span-3">
-            {i === 0 && <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Montant (€)</label>}
-            <input type="number" step="0.01" value={p.montant ?? ''} placeholder="0,00" onChange={(e) => setLine(i, { montant: e.target.value })} className={inp + (compact ? ' h-8' : ' h-10')} />
-          </div>
-          <div className="col-span-4">
-            {i === 0 && <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Payé par</label>}
-            <select value={p.payeur || ''} onChange={(e) => setLine(i, { payeur: e.target.value })} className={inp + (compact ? ' h-8' : ' h-10')}>
-              <option value="">— Choisir —</option>
-              {payeurs.map(f => <option key={f} value={f}>{f === PAYEUR_CLIENT ? '👤 Client' : f}</option>)}
-            </select>
-          </div>
-          <div className="col-span-1">
-            <button type="button" title="Supprimer ce paiement" onClick={() => apply(list.filter((_, k) => k !== i))} className="w-full py-1 text-rose-500 hover:bg-rose-50 rounded-lg text-sm font-bold">✕</button>
+          <div className="flex items-center gap-1.5 mt-1.5">
+            {p.paye ? (<>
+              <button type="button" title="Cliquer pour remettre en « non payé »" onClick={() => setLine(i, { paye: false, date: '' })} className={'flex-shrink-0 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[12px] font-bold whitespace-nowrap' + H}>✓ Payé le</button>
+              <input type="date" min="2000-01-01" max="2100-12-31" value={p.date || ''} onChange={(e) => setLine(i, { date: e.target.value })} className={inp} />
+            </>) : (
+              <button type="button" title="Marque ce paiement comme reçu aujourd'hui (date modifiable ensuite)" onClick={() => setLine(i, { paye: true, date: today() })} className={'w-full px-2 bg-amber-50 hover:bg-emerald-100 border border-amber-300 hover:border-emerald-400 text-amber-800 hover:text-emerald-800 rounded-lg text-[12px] font-bold' + H}>⏳ Non payé — cliquer quand c'est payé</button>
+            )}
           </div>
         </div>
       ))}
-      <div className="flex items-center justify-between flex-wrap gap-2 mt-1">
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {aPayer.map(a => (
-            <button key={a.payeur} type="button" onClick={() => marquerPaye(a)} title={`Enregistre le paiement de ${nomPayeur(a.payeur)} à la date d'aujourd'hui (modifiable ensuite)`} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[12px] font-bold shadow-sm">✓ Payé par {nomPayeur(a.payeur)}{ttc > 0 ? ` (${formatEuro(a.reste)})` : ''}</button>
-          ))}
-          <button type="button" onClick={addLine} className="px-3 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-[12px] font-bold">+ Ajouter un paiement</button>
-        </div>
-        {list.length > 0 && (
-          <span className="text-[12px] font-semibold text-slate-600">
-            Reçu : <span className="text-emerald-700 font-bold">{formatEuro(total)}</span>
-            {ttc > 0 && <> sur {formatEuro(ttc)} — {list.every(p => p.montant === '' || p.montant === undefined || p.montant === null)
-              ? <span className="text-slate-500 font-semibold">montant non saisi</span>
-              : reste > 0.005 ? <span className="text-amber-700 font-bold">reste {formatEuro(reste)}</span> : <span className="text-emerald-700 font-bold">soldé</span>}</>}
-          </span>
+      <div className="flex items-center gap-1.5 flex-wrap mt-1">
+        {list.length === 0 && financeurPayeur && (
+          <button type="button" onClick={toutPayeParFinanceur} title={`Enregistre que ${nom(financeurPayeur)} a tout payé aujourd'hui (modifiable ensuite)`} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[12px] font-bold shadow-sm">✓ Payé par {nom(financeurPayeur)}{ttc > 0 ? ` (${formatEuro(ttc)})` : ''}</button>
         )}
+        <button type="button" onClick={addLine} className="px-3 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-[12px] font-bold">+ Ajouter un paiement</button>
       </div>
+      {(list.length > 0 || ttc > 0) && (
+        <div className="text-[12px] font-semibold text-slate-600 mt-1.5">
+          Reçu : <span className="text-emerald-700 font-bold">{formatEuro(total)}</span>
+          {ttc > 0 && <> sur {formatEuro(ttc)} — {d.payeClient ? <span className="text-emerald-700 font-bold">soldé</span> : <span className="text-amber-700 font-bold">reste {formatEuro(reste)}</span>}</>}
+        </div>
+      )}
     </div>
   );
 }
