@@ -8067,7 +8067,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
   // ===== VUE DÉTAILLÉE (dossier déplié) =====
   return (
     <div className="bg-white rounded-xl shadow-md border-l-4" style={{ borderLeftColor: '#a855f7' }}>
-      <div className="border-b border-slate-100 bg-slate-50 rounded-tr-xl">{financeRow}</div>
+      <button onClick={(e) => { e.stopPropagation(); setOpen(false); }} title="Replier le dossier" className="w-full text-left px-2 py-1 border-b border-slate-100 bg-slate-50 hover:bg-violet-50 rounded-tr-xl text-[11px] font-semibold text-slate-500 hover:text-violet-600">▼ Replier</button>
       <div className="p-3">
         <div className="flex items-start justify-between gap-2 flex-wrap">
           <div className="flex-1 min-w-[200px]">
@@ -8239,8 +8239,8 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           </div>
         )}
         {/* INTERVENANTS — bloc unifié : poseurs + régies + fournisseurs côte à côte */}
-        {isAdmin && ((d.poseursDetail?.length || 0) + (d.regiesDetail?.length || 0) + (d.fournisseursDetail?.length || 0) > 0) && (
-          <div className="mt-1.5 grid grid-cols-1 md:grid-cols-3 gap-1.5">
+        {isAdmin && ((d.poseursDetail?.length || 0) + (d.regiesDetail?.length || 0) + (d.fournisseursDetail?.length || 0) + (d.autresFraisDetail?.length || 0) > 0) && (
+          <div className="mt-1.5 grid grid-cols-1 md:grid-cols-4 gap-1.5">
             {/* Poseurs */}
             {(d.poseursDetail?.length || 0) > 0 && (
               <div className="bg-amber-50 rounded-lg p-1.5 border border-amber-200">
@@ -8255,6 +8255,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                       <span className="font-bold">{p.nom}</span>
                       <span className={p.paye ? 'text-emerald-500' : 'text-amber-500'}>·</span>
                       <span title={"TTC : " + formatEuro(p.ttc)}>{formatEuro(p.ht)}</span>
+                      {p.paye && <span className="text-emerald-700 font-bold">· payé{p.datePaye ? ` le ${formatDateForSheet(p.datePaye)}` : ''}</span>}
                       {p.factureNo && <><span className={p.paye ? 'text-emerald-400' : 'text-amber-400'}>·</span><span className={p.paye ? 'text-emerald-600' : 'text-amber-600'}>🧾 {p.factureNo}</span></>}
                       {p.facturePdfUrl && (
                         <a href={p.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
@@ -8281,6 +8282,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                       <span className="font-bold">{r.nom}</span>
                       <span className={r.paye ? 'text-emerald-500' : 'text-purple-500'}>·</span>
                       <span title={"TTC : " + formatEuro(r.ttc)}>{formatEuro(r.ht)}</span>
+                      {r.paye && <span className="text-emerald-700 font-bold">· payé{r.datePaye ? ` le ${formatDateForSheet(r.datePaye)}` : ''}</span>}
                       {r.factureNo && <><span className={r.paye ? 'text-emerald-400' : 'text-purple-400'}>·</span><span className={r.paye ? 'text-emerald-600' : 'text-purple-600'}>🧾 {r.factureNo}</span></>}
                       {r.facturePdfUrl && (
                         <a href={r.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
@@ -8307,6 +8309,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                       <span className="font-bold">{f.nom}</span>
                       <span className={f.paye ? 'text-emerald-500' : 'text-orange-500'}>·</span>
                       <span title={"TTC : " + formatEuro(f.ttc)}>{formatEuro(f.ht)}</span>
+                      {f.paye && <span className="text-emerald-700 font-bold">· payé{f.datePaye ? ` le ${formatDateForSheet(f.datePaye)}` : ''}</span>}
                       {f.factureNo && <><span className={f.paye ? 'text-emerald-400' : 'text-orange-400'}>·</span><span className={f.paye ? 'text-emerald-600' : 'text-orange-600'}>🧾 {f.factureNo}</span></>}
                       {f.facturePdfUrl && (
                         <a href={f.facturePdfUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-rose-100 hover:bg-rose-200 text-rose-600 rounded font-bold" title="Ouvrir la facture PDF">📄</a>
@@ -8314,6 +8317,26 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
                       {f.factureExternalUrl && (
                         <a href={f.factureExternalUrl} target="_blank" rel="noopener noreferrer" onClick={(e) => e.stopPropagation()} className="ml-0.5 px-1 py-0.5 bg-sky-100 hover:bg-sky-200 text-sky-600 rounded font-bold" title="Ouvrir le PDF Drive (lien externe)">🔗</a>
                       )}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* 💶 CRM Finances : Consuel / Mairie */}
+            {(d.autresFraisDetail?.length || 0) > 0 && (
+              <div className="bg-cyan-50 border border-cyan-200 rounded-lg p-1.5">
+                <div className="flex items-center justify-between text-[12px] font-bold text-cyan-700 uppercase mb-1">
+                  <span>⚡ Consuel / 🏛️ Mairie ({d.autresFraisDetail.length})</span>
+                  <span className="font-bold text-cyan-800">{formatEuro(d.autresFraisHt)} HT</span>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  {d.autresFraisDetail.map((x, i) => (
+                    <span key={i} className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[12px] font-semibold border ${x.paye ? 'bg-emerald-50 text-emerald-700 border-emerald-300' : 'bg-white text-cyan-700 border-cyan-200'}`}>
+                      {x.paye && <span className="text-emerald-600 font-bold">✓</span>}
+                      <span className="font-bold">{x.nom}</span>
+                      <span className="text-cyan-500">·</span>
+                      <span>{formatEuro(x.ht)}</span>
+                      {x.paye && <span className="text-emerald-700 font-bold">· payé{x.datePaye ? ` le ${formatDateForSheet(x.datePaye)}` : ''}</span>}
                     </span>
                   ))}
                 </div>
