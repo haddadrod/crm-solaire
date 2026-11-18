@@ -5440,7 +5440,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels Contrôle livraison — Consuel accepté + originaux reçus banque mais contrôle pas encore fait
     const rappelsControleLivraison = [];
-    dossiersDash.forEach(d => {
+    [].forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       // Consuel accepté ?
       const consuelAccepte = d.statutConsuel === 'accepté' || (d.dateConsuel && d.statutConsuel !== 'visite');
@@ -5644,7 +5644,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // Rappels Originaux — pose terminée mais originaux pas reçus banque
     const rappelsOriginaux = [];
-    dossiersDash.forEach(d => {
+    [].forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (d.pasOriginauxRequis) return; // pas concerné
       // Pose terminée ?
@@ -5670,7 +5670,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
 
     // 💰 Récupération TVA — délai 6 mois (180 jours) à partir du paiement banque
     const rappelsRecupTva = [];
-    dossiersDash.forEach(d => {
+    [].forEach(d => {
       if (d.createdBy === 'import_sheet') return; // 📥 importés du sheet : pas d'alerte
       if (isAnnule(d)) return; // 🚫 dossier annulé → aucune alerte
       // Seulement si client payé et démarche pas encore terminée
@@ -21322,6 +21322,22 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <Field label="Taux TVA réel appliqué">
                 <div className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl text-sm font-semibold text-blue-700">{calculs.tauxTva > 0 ? `${calculs.tauxTva.toFixed(2)} %` : '—'}</div>
               </Field>
+              {/* 💶 CRM Finances : date à laquelle le paiement a été reçu. Saisir une date
+                  marque le dossier PAYÉ ; l'effacer annule le paiement. */}
+              <Field label="💰 Paiement reçu le">
+                <div className="flex gap-1">
+                  <input type="date" min="2000-01-01" max="2100-12-31" value={formData.datePaiementBanque || ''} onChange={(e) => {
+                    const v = e.target.value;
+                    setFormData(v
+                      ? { ...formData, datePaiementBanque: v, payeClient: true, payeClientDate: v, payeClientStampAt: stampApres(formData.payeClientStampAt), statut: 'W_DOSSIER_PAYER' }
+                      : { ...formData, datePaiementBanque: '', payeClient: false, payeClientDate: '', payeClientStampAt: stampApres(formData.payeClientStampAt) });
+                  }} className={inputCls} />
+                  <button type="button" onClick={() => {
+                    const today = new Date().toISOString().split('T')[0];
+                    setFormData({ ...formData, datePaiementBanque: today, payeClient: true, payeClientDate: today, payeClientStampAt: stampApres(formData.payeClientStampAt), statut: 'W_DOSSIER_PAYER' });
+                  }} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[12px] font-bold whitespace-nowrap">Auj.</button>
+                </div>
+              </Field>
             </div>
             {/* 💶 CRM Finances : case masquée à la CRÉATION du dossier (personne ne
                 doit la cocher à ce moment-là) — visible seulement en modification, admin. */}
@@ -22112,7 +22128,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
               <button type="button" onClick={() => toggleStep('pose')} className={`w-full text-[13px] font-bold text-amber-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.pose ? '' : 'mb-2'}`}>
                 <span className="flex items-center gap-1.5">
                   <span className="text-amber-600 text-[11px]">{foldedSteps.pose ? '▶' : '▼'}</span>
-                  <span>1️⃣ 🔧 Pose chez le client</span>
+                  <span>🔧 Pose chez le client</span>
                 </span>
                 {formData.statutPose && (
                   <span className={`text-[12px] font-bold px-2 py-1 rounded-full ${
@@ -22180,65 +22196,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             </div>
 
             {/* Étapes « Consuel et Raccordement Enedis » retirées du CRM Finances. */}
-            {/* ============ ÉTAPE 4 : SUIVI PAIEMENT ============ */}
-            <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3">
-              <button type="button" onClick={() => toggleStep('paiement')} className={`w-full text-[13px] font-bold text-emerald-700 uppercase flex items-center justify-between flex-wrap gap-2 hover:opacity-80 ${foldedSteps.paiement ? '' : 'mb-2'}`}>
-                <span className="flex items-center gap-1.5">
-                  <span className="text-emerald-600 text-[11px]">{foldedSteps.paiement ? '▶' : '▼'}</span>
-                  <span>2️⃣ 💰 Contrôle &amp; paiement</span>
-                </span>
-                {formData.payeClient && (
-                  <span className="text-[12px] font-bold px-2 py-1 rounded-full bg-emerald-100 text-emerald-700">✓ Payé</span>
-                )}
-              </button>
-
-              {!foldedSteps.paiement && (<>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[12px] font-semibold text-slate-600 mb-1">📞 Contrôle livraison (toi → client)</label>
-                  {(() => {
-                    const { bloque, manquants } = controleLivraisonBlocage(formData);
-                    const verrou = bloque && !formData.dateControleLivraison;
-                    return (<>
-                      <div className="flex gap-1">
-                        <input type="date" min="2000-01-01" max="2100-12-31" disabled={verrou} value={formData.dateControleLivraison || ''} onChange={(e) => setFormData({ ...formData, dateControleLivraison: e.target.value })} className={`${inputCls}${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
-                        <button type="button" disabled={verrou} onClick={() => setFormData({ ...formData, dateControleLivraison: new Date().toISOString().split('T')[0] })} className={`flex-shrink-0 px-2 py-1 rounded-xl text-[12px] font-bold whitespace-nowrap ${verrou ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'}`}>Auj.</button>
-                      </div>
-                      {verrou && (
-                        <div className="mt-1 px-2 py-1.5 bg-rose-50 border border-rose-300 rounded-lg text-[12px] text-rose-800 leading-snug">
-                          🔒 <span className="font-bold">Contrôle livraison bloqué</span> — il manque : {manquants.join(' · ')}.
-                        </div>
-                      )}
-                    </>);
-                  })()}
-                </div>
-                <div>
-                  <label className="block text-[12px] font-semibold text-slate-600 mb-1">📞 Appel banque (banque → client)</label>
-                  <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.dateAppelBanque || ''} onChange={(e) => setFormData({ ...formData, dateAppelBanque: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => setFormData({ ...formData, dateAppelBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[12px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[12px] font-semibold text-slate-600 mb-1">💰 Paiement reçu</label>
-                  <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={formData.datePaiementBanque || ''} onChange={(e) => setFormData({ ...formData, datePaiementBanque: e.target.value })} className={inputCls} />
-                    <button type="button" onClick={() => {
-                      const today = new Date().toISOString().split('T')[0];
-                      setFormData({
-                        ...formData,
-                        datePaiementBanque: today,
-                        payeClient: true,
-                        payeClientDate: formData.payeClientDate || today,
-                        payeClientStampAt: stampApres(formData.payeClientStampAt),
-                        statut: 'W_DOSSIER_PAYER',
-                      });
-                    }} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-xl text-[12px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
-                </div>
-              </div>
-              </>)}
-            </div>
+            {/* 💶 CRM Finances : étape « Contrôle & paiement » retirée — la date de paiement reçu est dans « Prix de vente & Financement ». */}
           </Section>
 
           <Section
@@ -24949,7 +24907,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               <button onClick={() => toggleStep('pose')} className={`w-full text-[12px] font-bold text-amber-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.pose ? '' : 'mb-1.5'} hover:opacity-80`}>
                 <span className="flex items-center gap-1.5">
                   <span className="text-amber-600 text-[11px]">{foldedSteps.pose ? '▶' : '▼'}</span>
-                  <span>1️⃣ 🔧 Pose</span>
+                  <span>🔧 Pose</span>
                   {foldedSteps.pose && d.dateInsta && d.statutPose === 'visite_ok' && (
                     <span className="text-amber-500 font-normal normal-case ml-1">— {new Date(d.dateInsta).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
                   )}
@@ -25296,231 +25254,24 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
 
             {/* Étapes « Consuel et Raccordement Enedis » retirées du CRM Finances. */}
-            {/* ============ ÉTAPE 4 : SUIVI PAIEMENT ============ */}
+            {/* 💶 CRM Finances : étape « Contrôle & paiement » remplacée par la seule date de paiement reçu. */}
             <div ref={refPaiement} className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-2">
-              <button onClick={() => toggleStep('paiement')} className={`w-full text-[12px] font-bold text-emerald-700 uppercase flex items-center justify-between flex-wrap gap-1 ${foldedSteps.paiement ? '' : 'mb-1.5'} hover:opacity-80`}>
-                <span className="flex items-center gap-1.5">
-                  <span className="text-emerald-600 text-[11px]">{foldedSteps.paiement ? '▶' : '▼'}</span>
-                  <span>2️⃣ 💰 Contrôle &amp; paiement</span>
-                  {foldedSteps.paiement && d.datePaiementBanque && (
-                    <span className="text-emerald-500 font-normal normal-case ml-1">— payé {new Date(d.datePaiementBanque).toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit' })}</span>
-                  )}
-                </span>
-                <span className={`text-[8px] font-bold px-1.5 py-0.5 rounded-full ${
-                  d.payeClient ? 'bg-emerald-100 text-emerald-700' :
-                  d.dateControleLivraison ? 'bg-blue-100 text-blue-700' :
-                  'bg-amber-100 text-amber-700'
-                }`}>
-                  {d.payeClient ? '✓ Payé' : d.dateControleLivraison ? '🔍 Contrôle OK' : '⏳ Pas payé'}
-                </span>
-              </button>
-
-              {!foldedSteps.paiement && (<>
-
-              {/* ===== Originaux signés (pré-requis pour contrôle livraison) ===== */}
-              {!d.pasOriginauxRequis && (
-                <div className="mb-2 p-2 bg-white border border-amber-200 rounded-lg">
-                  <div className="text-[12px] font-bold text-amber-700 uppercase mb-1.5 flex items-center justify-between gap-1">
-                    <span>📑 Originaux signés (pré-requis)</span>
-                    {d.dateRecusOriginauxBanque && <span className="text-[8px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700">✓ Reçus banque</span>}
-                  </div>
-                  <div className="grid grid-cols-3 gap-1.5">
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">📥 Du poseur</label>
-                      <div className="flex gap-1">
-                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecusOriginauxPoseur || ''} onChange={(e) => onUpdate({ dateRecusOriginauxPoseur: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[12px]" />
-                        <button onClick={() => onUpdate({ dateRecusOriginauxPoseur: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[11px] font-bold whitespace-nowrap">Auj.</button>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">📤 → Banque</label>
-                      <div className="flex gap-1">
-                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateEnvoiOriginauxBanque || ''} onChange={(e) => onUpdate({ dateEnvoiOriginauxBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[12px]" />
-                        <button onClick={() => onUpdate({ dateEnvoiOriginauxBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-amber-100 hover:bg-amber-200 text-amber-700 rounded text-[11px] font-bold whitespace-nowrap">Auj.</button>
-                      </div>
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">✅ Reçus banque</label>
-                      <div className="flex gap-1">
-                        <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateRecusOriginauxBanque || ''} onChange={(e) => onUpdate({ dateRecusOriginauxBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-amber-200 rounded text-[12px]" />
-                        <button onClick={() => onUpdate({ dateRecusOriginauxBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[11px] font-bold whitespace-nowrap">Auj.</button>
-                      </div>
-                    </div>
-                  </div>
-
-                  {!d.dateRecusOriginauxBanque && (
-                    <div className="mt-1.5 px-2 py-1 bg-amber-50 border border-amber-200 rounded text-[12px] text-amber-700">⏳ Attente réception banque avant contrôle livraison</div>
-                  )}
-
-                  <button onClick={() => onUpdate({ pasOriginauxRequis: true })} className="mt-1.5 w-full text-[11px] font-semibold text-slate-500 hover:text-slate-700 hover:bg-slate-50 px-2 py-1 rounded">🚫 Pas d'originaux requis pour ce dossier</button>
-                </div>
-              )}
-
-              {d.pasOriginauxRequis && (
-                <div className="mb-2 p-2 bg-slate-50 border border-slate-200 rounded-lg flex items-center justify-between gap-2">
-                  <span className="text-[12px] text-slate-600">🚫 Pas d'originaux requis</span>
-                  <button onClick={() => onUpdate({ pasOriginauxRequis: false })} className="text-[11px] font-semibold text-violet-600 hover:bg-violet-50 px-2 py-1 rounded">↩️ Réactiver</button>
-                </div>
-              )}
-
-              {(() => {
-              const { bloque, manquants } = controleLivraisonBlocage(d);
-              const verrou = bloque && !d.dateControleLivraison;
-              return (<>
-              <div className="grid grid-cols-3 gap-1.5">
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5" title="Toi qui appelles le client">📞 Ctrl liv.</label>
-                  <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" disabled={verrou} value={d.dateControleLivraison || ''} onChange={(e) => onUpdate({ dateControleLivraison: e.target.value })} className={`flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[12px]${verrou ? ' opacity-50 cursor-not-allowed bg-slate-100' : ''}`} />
-                    <button disabled={verrou} onClick={() => onUpdate({ dateControleLivraison: new Date().toISOString().split('T')[0] })} className={`flex-shrink-0 px-1.5 py-1 rounded text-[11px] font-bold whitespace-nowrap ${verrou ? 'bg-slate-100 text-slate-300 cursor-not-allowed' : 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'}`}>Auj.</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5" title="Banque appelle le client">📞 Banque</label>
-                  <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.dateAppelBanque || ''} onChange={(e) => onUpdate({ dateAppelBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[12px]" />
-                    <button onClick={() => onUpdate({ dateAppelBanque: new Date().toISOString().split('T')[0] })} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[11px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">💰 Payé</label>
-                  <div className="flex gap-1">
-                    <input type="date" min="2000-01-01" max="2100-12-31" value={d.datePaiementBanque || ''} onChange={(e) => onUpdate({ datePaiementBanque: e.target.value })} className="flex-1 min-w-0 px-1.5 py-1 bg-white border border-emerald-200 rounded text-[12px]" />
-                    <button onClick={() => {
-                      const today = new Date().toISOString().split('T')[0];
-                      onUpdate({ datePaiementBanque: today, payeClient: true, payeClientDate: d.payeClientDate || today, payeClientStampAt: stampApres(d.payeClientStampAt) });
-                    }} className="flex-shrink-0 px-1.5 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded text-[11px] font-bold whitespace-nowrap">Auj.</button>
-                  </div>
-                </div>
+              <div className="text-[12px] font-bold text-emerald-700 uppercase mb-1.5 flex items-center justify-between">
+                <span>💰 Paiement reçu le</span>
+                {(d.payeClient || d.datePaiementBanque) && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 normal-case">✓ Payé</span>}
               </div>
-              {verrou && (
-                <div className="mt-1.5 px-2 py-1.5 bg-rose-50 border border-rose-300 rounded text-[12px] text-rose-800 leading-snug">
-                  🔒 <span className="font-bold">Contrôle livraison bloqué</span> — il manque : {manquants.join(' · ')}.
-                </div>
-              )}
-              </>);
-              })()}
-
-              {/* 📞 Tentatives d'appel contrôle livraison — client ne répond pas (sous la grille) */}
-              {!d.dateControleLivraison && (
-                <div className="mt-2 p-1.5 bg-white border border-emerald-200 rounded">
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-[11px] font-bold text-emerald-700 uppercase">📞 Essais d'appel ({(d.tentativesControleLivraison || []).length})</span>
-                      <button
-                        onClick={() => onUpdate({ tentativesControleLivraison: [...(d.tentativesControleLivraison || []), { datetime: new Date().toISOString() }] })}
-                        className="text-[11px] font-bold text-white bg-emerald-500 hover:bg-emerald-600 px-2 py-0.5 rounded"
-                        title="Logger un appel sans réponse — le client ne décroche pas"
-                      >
-                        + Pas répondu
-                      </button>
-                    </div>
-                    {(d.tentativesControleLivraison || []).length > 0 && (
-                      <div className="space-y-0.5">
-                        {(d.tentativesControleLivraison || []).map((t, i) => {
-                          const dt = new Date(t.datetime);
-                          const fmt = dt.toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' });
-                          return (
-                            <div key={i} className="flex items-center gap-1 text-[12px] text-slate-600 px-1 py-0.5 bg-emerald-50 rounded">
-                              <span className="flex-1">📞 {fmt}</span>
-                              <button
-                                onClick={() => onUpdate({ tentativesControleLivraison: (d.tentativesControleLivraison || []).filter((_, j) => j !== i) })}
-                                className="text-rose-400 hover:text-rose-600 text-[11px] px-1"
-                                title="Supprimer cet essai"
-                              >✕</button>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-              {/* Alerte paiement — > 2 jours après contrôle livraison */}
-              {d.dateControleLivraison && !d.datePaiementBanque && !d.payeClient && (() => {
-                const jours = Math.floor((new Date() - new Date(d.dateControleLivraison)) / 86400000);
-                if (jours < 2) return <div className="mt-1.5 px-2 py-1 bg-emerald-50 border border-emerald-200 rounded text-[12px] text-emerald-700">⏳ Contrôle fait il y a {jours}j — délai normal (sous 48h)</div>;
-                if (jours < 5) return <div className="mt-1.5 px-2 py-1 bg-amber-50 border border-amber-300 rounded text-[12px] text-amber-700 font-bold">⚠️ {jours}j sans paiement — relance la banque</div>;
-                return <div className="mt-1.5 px-2 py-1 bg-rose-50 border border-rose-300 rounded text-[12px] text-rose-700 font-bold">🔴 {jours}j sans paiement — urgent !</div>;
-              })()}
-
-              {/* Bouton principal "Client a payé" — gros, bien visible */}
-              <button onClick={() => {
-                const today = new Date().toISOString().split('T')[0];
-                if (!d.payeClient) {
-                  onUpdate({
-                    payeClient: true,
-                    payeClientDate: d.payeClientDate || today,
-                    payeClientStampAt: stampApres(d.payeClientStampAt),
-                    datePaiementBanque: d.datePaiementBanque || today,
-                    statut: 'W_DOSSIER_PAYER',
-                  });
-                } else {
-                  onUpdate({ payeClient: false, payeClientDate: '', payeClientStampAt: stampApres(d.payeClientStampAt) });
-                }
-              }} className={`mt-2 w-full px-3 py-2 rounded-xl text-xs font-bold ${d.payeClient ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-md' : 'bg-orange-100 hover:bg-orange-200 text-orange-700 border-2 border-orange-300'}`}>
-                {d.payeClient ? '✓ Client a payé — cliquer pour annuler' : '⏳ Client à recevoir — cliquer pour marquer payé'}
-              </button>
-
-              {/* 🧾 FACTURATION CLIENT — VosFactures (même logiciel que le CRM pose).
-                  Crée la facture de vente au client dans VosFactures, mémorise
-                  n° + lien, et range le PDF dans les documents du dossier. */}
-              {isAdmin && (
-                <div className="mt-2 p-2.5 bg-indigo-50 border border-indigo-200 rounded-xl">
-                  <div className="text-[11px] font-bold text-indigo-700 uppercase mb-1.5">🧾 Facturation client (VosFactures)</div>
-                  {d.vfClientNo ? (
-                    <div className="flex items-center gap-2 flex-wrap text-[12px]">
-                      <span className="font-mono font-bold text-indigo-800">{d.vfClientNo}</span>
-                      {d.vfClientUrl && <a href={d.vfClientUrl} target="_blank" rel="noreferrer" className="px-2 py-0.5 bg-indigo-600 text-white rounded-lg font-semibold">👁 Voir</a>}
-                      {d.vfClientFileId && <button onClick={() => voirPdfFichier(d.vfClientFileId)} className="px-2 py-0.5 bg-white border border-indigo-300 text-indigo-700 rounded-lg font-semibold">📄 PDF</button>}
-                      <span className="text-slate-400">créée{d.vfClientDate ? ` le ${new Date(d.vfClientDate).toLocaleDateString('fr-FR')}` : ''}</span>
-                    </div>
-                  ) : (
-                    <button onClick={facturerClientVosFactures} disabled={vfEnCours} className="w-full px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold disabled:opacity-50">
-                      {vfEnCours ? '⏳ Création en cours…' : `🧾 Créer la facture client — ${formatEuro(d.montantTotal || 0)} TTC`}
-                    </button>
-                  )}
-                </div>
-              )}
-
-              {/* 💰 RÉCUP TVA — visible seulement si client payé */}
-              {d.payeClient && (() => {
-                const refDate = d.datePaiementBanque || d.payeClientDate;
-                if (!refDate) return null;
-                const debut = new Date(refDate);
-                const limite = new Date(debut);
-                limite.setMonth(limite.getMonth() + 6);
-                const joursRestants = Math.floor((limite - new Date()) / 86400000);
-                const limiteStr = limite.toLocaleDateString('fr-FR');
-                let urgenceClass = 'bg-emerald-50 border-emerald-200 text-emerald-700';
-                let urgenceLabel = `${joursRestants}j restants`;
-                if (d.tvaStatus === 'recuperee') { urgenceClass = 'bg-emerald-100 border-emerald-300 text-emerald-800'; urgenceLabel = '✅ TVA récupérée'; }
-                else if (d.tvaStatus === 'non_concerne') { urgenceClass = 'bg-slate-100 border-slate-300 text-slate-700'; urgenceLabel = 'Non concerné'; }
-                else if (d.tvaStatus === 'envoyee') { urgenceClass = 'bg-blue-50 border-blue-200 text-blue-700'; urgenceLabel = `📤 Démarche envoyée — ${joursRestants}j`; }
-                else if (joursRestants < 0) { urgenceClass = 'bg-rose-100 border-rose-400 text-rose-800'; urgenceLabel = `🔴 DÉPASSÉ depuis ${Math.abs(joursRestants)}j`; }
-                else if (joursRestants <= 7) { urgenceClass = 'bg-rose-50 border-rose-300 text-rose-700'; urgenceLabel = `🔥 Plus que ${joursRestants}j`; }
-                else if (joursRestants <= 30) { urgenceClass = 'bg-orange-50 border-orange-300 text-orange-700'; urgenceLabel = `⚠️ Plus que ${joursRestants}j`; }
-                return (
-                  <div className={`mt-2 p-2 rounded-xl border-2 ${urgenceClass}`}>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <span className="text-[12px] font-bold uppercase">💰 Récup. TVA client</span>
-                      <span className="text-[12px] font-bold">{urgenceLabel}</span>
-                    </div>
-                    <div className="text-[11px] mb-2 opacity-80">Limite légale : {limiteStr} (6 mois après paiement banque)</div>
-                    <div className="grid grid-cols-2 gap-1 mb-1">
-                      <button onClick={() => onUpdate({ tvaStatus: d.tvaStatus === 'envoyee' ? '' : 'envoyee', tvaDateDemarche: d.tvaStatus === 'envoyee' ? '' : (d.tvaDateDemarche || new Date().toISOString().split('T')[0]) })} className={`px-2 py-1 rounded text-[12px] font-bold ${d.tvaStatus === 'envoyee' ? 'bg-blue-500 text-white' : 'bg-white text-blue-600 border border-blue-200 hover:bg-blue-50'}`}>
-                        📤 Envoyée
-                      </button>
-                      <button onClick={() => onUpdate({ tvaStatus: d.tvaStatus === 'recuperee' ? '' : 'recuperee', tvaDateRecuperee: d.tvaStatus === 'recuperee' ? '' : (d.tvaDateRecuperee || new Date().toISOString().split('T')[0]) })} className={`px-2 py-1 rounded text-[12px] font-bold ${d.tvaStatus === 'recuperee' ? 'bg-emerald-500 text-white' : 'bg-white text-emerald-600 border border-emerald-200 hover:bg-emerald-50'}`}>
-                        ✅ Récupérée
-                      </button>
-                    </div>
-                    <button onClick={() => onUpdate({ tvaStatus: d.tvaStatus === 'non_concerne' ? '' : 'non_concerne' })} className={`w-full px-2 py-1 rounded text-[12px] font-bold ${d.tvaStatus === 'non_concerne' ? 'bg-slate-500 text-white' : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-50'}`}>
-                      ❌ Client non concerné
-                    </button>
-                  </div>
-                );
-              })()}
-              </>)}
+              <div className="flex gap-1">
+                <input type="date" min="2000-01-01" max="2100-12-31" value={d.datePaiementBanque || ''} onChange={(e) => {
+                  const v = e.target.value;
+                  onUpdate(v
+                    ? { datePaiementBanque: v, payeClient: true, payeClientDate: v, payeClientStampAt: stampApres(d.payeClientStampAt), statut: 'W_DOSSIER_PAYER' }
+                    : { datePaiementBanque: '', payeClient: false, payeClientDate: '', payeClientStampAt: stampApres(d.payeClientStampAt) });
+                }} className="flex-1 px-2 py-1 border border-emerald-200 rounded-lg text-[12px] bg-white" />
+                <button onClick={() => {
+                  const today = new Date().toISOString().split('T')[0];
+                  onUpdate({ datePaiementBanque: today, payeClient: true, payeClientDate: today, payeClientStampAt: stampApres(d.payeClientStampAt), statut: 'W_DOSSIER_PAYER' });
+                }} className="flex-shrink-0 px-2 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-[12px] font-bold whitespace-nowrap">Auj.</button>
+              </div>
             </div>
 
             {/* ============ ⚖️ LITIGE — étape annexe, visible si hasLitige ============ */}
