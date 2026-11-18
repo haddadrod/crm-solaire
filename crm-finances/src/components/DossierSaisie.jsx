@@ -758,7 +758,7 @@ function patchPaiementsRecus(d, list) {
   }
   return patch;
 }
-function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false }) {
+function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, embedded = false }) {
   const list = paiementsRecusDe(d);
   const total = totalPaiementsRecus(list);
   const ttc = parseFloat(d.montantTotal) || 0;
@@ -775,9 +775,9 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false }
     ? 'w-full px-2 py-1 border border-emerald-200 rounded-lg text-[12px] bg-white'
     : 'w-full px-3 py-2 border border-emerald-200 rounded-xl text-sm bg-white';
   return (
-    <div className={`bg-emerald-50 border-2 border-emerald-200 rounded-xl ${compact ? 'p-2' : 'p-3'}`}>
+    <div className={embedded ? '' : `bg-emerald-50 border-2 border-emerald-200 rounded-xl ${compact ? 'p-2' : 'p-3'}`}>
       <div className={`font-bold text-emerald-700 uppercase flex items-center justify-between flex-wrap gap-1 ${compact ? 'text-[12px] mb-1.5' : 'text-[13px] mb-2'}`}>
-        <span>💰 Paiements reçus</span>
+        <span>{embedded ? 'Paiements reçus' : '💰 Paiements reçus'}</span>
         {d.payeClient && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 normal-case">✓ Soldé</span>}
       </div>
       {list.length === 0 && (
@@ -25483,30 +25483,50 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             )}
           </div>
 
-          {/* MONTANTS (admin only) */}
-          {isAdmin && (
-            <div>
-              <h3 className="text-[12px] font-bold text-slate-500 uppercase mb-1.5">💰 Montants</h3>
-              <div className="bg-gradient-to-br from-violet-50 to-pink-50 border border-violet-200 rounded-xl p-2.5 space-y-1.5">
-                <div className="flex items-center gap-2">
-                  <span className="text-[12px] font-semibold text-slate-600 uppercase w-12 flex-shrink-0">TTC</span>
-                  <DebouncedInput type="number" step="0.01" value={d.montantTotal || ''} onCommit={(v) => onUpdate({ montantTotal: parseFloat(v) || 0 })} placeholder="0,00" className={inputCls + ' font-bold text-violet-700'} />
-                  <span className="text-xs text-slate-500">€</span>
-                </div>
-                {d.margeHt !== undefined && (((d.fournisseurTtc || 0) + (d.regieTtc || 0) + (d.poseurTtc || 0)) > 0) && (
-                  <div className="flex items-center justify-between text-[13px] pt-1.5 border-t border-violet-200">
-                    <span className="text-slate-600 font-semibold">Marge HT</span>
-                    <span className={`font-bold ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatEuro(d.margeHt)}</span>
+          {/* 💶 CRM Finances — MONTANTS : une seule carte pliable (comme Régies / Poseurs)
+              qui regroupe le prix de vente, la marge ET les paiements reçus. */}
+          {isAdmin ? (
+            <div ref={refPaiement} className="border-2 border-emerald-200 bg-emerald-50 rounded-xl p-2 mb-2">
+              <button onClick={() => toggleStep('paiement')} className={`w-full text-left flex items-center gap-1.5 hover:opacity-80 min-w-0 ${foldedSteps.paiement ? '' : 'mb-1.5'}`}>
+                <span className="text-emerald-600 text-[11px]">{foldedSteps.paiement ? '▶' : '▼'}</span>
+                <h3 className="text-[12px] font-bold text-emerald-700 uppercase">💰 Montants</h3>
+                <span className="text-[12px] text-slate-600 truncate">
+                  — {formatEuro(d.montantTotal)} TTC
+                  {foldedSteps.paiement && (() => {
+                    const recu = totalPaiementsRecus(paiementsRecusDe(d));
+                    const reste = Math.max(0, (parseFloat(d.montantTotal) || 0) - recu);
+                    if (d.payeClient) return <span className="text-emerald-700 font-bold"> · ✓ payé</span>;
+                    if (recu > 0) return <span className="text-amber-700 font-bold"> · reste {formatEuro(reste)}</span>;
+                    return <span className="text-slate-400"> · non payé</span>;
+                  })()}
+                </span>
+              </button>
+              {!foldedSteps.paiement && (
+                <div className="space-y-2">
+                  <div className="bg-white border border-emerald-200 rounded-xl p-2 space-y-1.5">
+                    <div className="flex items-center gap-2">
+                      <span className="text-[12px] font-semibold text-slate-600 uppercase flex-shrink-0">Prix TTC</span>
+                      <DebouncedInput type="number" step="0.01" value={d.montantTotal || ''} onCommit={(v) => onUpdate({ montantTotal: parseFloat(v) || 0 })} placeholder="0,00" className={inputCls + ' font-bold text-violet-700'} />
+                      <span className="text-xs text-slate-500">€</span>
+                    </div>
+                    {d.margeHt !== undefined && (
+                      <div className="flex items-center justify-between text-[13px] pt-1.5 border-t border-emerald-100">
+                        <span className="text-slate-600 font-semibold">Marge HT</span>
+                        <span className={`font-bold ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>{formatEuro(d.margeHt)}</span>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                  <div className="bg-white border border-emerald-200 rounded-xl p-2">
+                    <PaiementsRecusEditor d={d} FINANCEMENTS={FINANCEMENTS || []} onPatch={onUpdate} compact embedded />
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div ref={refPaiement} className="mt-2 mb-2">
+              <PaiementsRecusEditor d={d} FINANCEMENTS={FINANCEMENTS || []} onPatch={onUpdate} compact />
             </div>
           )}
-
-          {/* 💶 CRM Finances : paiements reçus, collés sous les montants (prix de vente → ce qui a été reçu). */}
-          <div ref={refPaiement} className="mt-2 mb-2">
-            <PaiementsRecusEditor d={d} FINANCEMENTS={FINANCEMENTS || []} onPatch={onUpdate} compact />
-          </div>
 
           {/* Les sections LITIGE et SAV ont été DÉPLACÉES dans le panneau
               « Process du dossier » au-dessus (sous forme d'étapes annexes
