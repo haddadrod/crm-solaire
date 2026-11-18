@@ -669,6 +669,29 @@ function patchTvaAuto(d, produits) {
 function estDeplacement(d) {
   return !!(d && (d.deplacementSansPose || d.statut === 'Z_DEPLACEMENT'));
 }
+// Matériel : si le poseur a pris du matériel (BL) et ne l'a pas encore rendu,
+// le fournisseur reste dû. Il repasse à zéro quand le matériel est rendu
+// (retour / avoir du fournisseur). Sans BL, rien n'a été pris → zéro.
+function fournisseurAZeroDeplacement(d) {
+  return !d.blMaterielPoseur || !!d.materielRendu;
+}
+// Montant automatique d'un déplacement : le dernier montant facturé par CE
+// poseur, sinon le dernier montant saisi tous poseurs confondus, sinon 500 €
+// (valeur par défaut historique du CRM pour une pose ratée).
+const DEPLACEMENT_DEFAUT = 500;
+function montantDeplacementAuto(dossiers, poseurNom, exceptLocalId) {
+  let pourPoseur = null, pourPoseurAt = '', tous = null, tousAt = '';
+  (dossiers || []).forEach(o => {
+    if (!o || o.localId === exceptLocalId || !estDeplacement(o)) return;
+    const m = parseFloat(montantDeplacement(o));
+    if (!m) return;
+    const at = String(o.savedAt || o.createdAt || '');
+    if (!tous || at >= tousAt) { tous = m; tousAt = at; }
+    const nom = (o.poseurs || [])[0]?.nom || '';
+    if (poseurNom && nom === poseurNom && (!pourPoseur || at >= pourPoseurAt)) { pourPoseur = m; pourPoseurAt = at; }
+  });
+  return pourPoseur || tous || DEPLACEMENT_DEFAUT;
+}
 function montantDeplacement(d) {
   const dep = d && d.poseurs && d.poseurs[0] && (d.poseurs[0].deplacements || [])[0];
   if (dep && dep.montant !== undefined && dep.montant !== '') return dep.montant;
@@ -705,7 +728,7 @@ function patchDeplacement(d, { actif, montant, date }) {
     tentativesPose: m === '' ? [] : [{ ...ancienne, date: dt, motif: ancienne.motif || 'client_refuse', penalite: mNum, regie: regieNom, definitif: true }],
   };
 }
-function DeplacementEditor({ d, onPatch, compact = false }) {
+function DeplacementEditor({ d, dossiers = [], onPatch, compact = false }) {
   const actif = estDeplacement(d);
   const montant = montantDeplacement(d);
   const date = dateDeplacement(d);
@@ -718,7 +741,7 @@ function DeplacementEditor({ d, onPatch, compact = false }) {
   const mNum = parseFloat(montant) || 0;
   return (
     <div className={`border-2 rounded-xl ${actif ? 'bg-purple-50 border-purple-300' : 'bg-white border-slate-200'} ${compact ? 'p-2 mb-2' : 'p-3'}`}>
-      <button type="button" onClick={() => onPatch(patchDeplacement(d, actif ? { actif: false } : { actif: true, montant, date: date || new Date().toISOString().split('T')[0] }))} className={`w-full flex items-center justify-between gap-2 px-2 rounded-lg font-bold border-2 transition-all ${compact ? 'py-1.5 text-[12px]' : 'py-2 text-sm'} ${actif ? 'bg-purple-600 text-white border-purple-700 shadow-md' : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'}`}>
+      <button type="button" onClick={() => onPatch(patchDeplacement(d, actif ? { actif: false } : { actif: true, montant: (montant === '' || montant === undefined || montant === null) ? montantDeplacementAuto(dossiers, poseurNom, d.localId) : montant, date: date || new Date().toISOString().split('T')[0] }))} className={`w-full flex items-center justify-between gap-2 px-2 rounded-lg font-bold border-2 transition-all ${compact ? 'py-1.5 text-[12px]' : 'py-2 text-sm'} ${actif ? 'bg-purple-600 text-white border-purple-700 shadow-md' : 'bg-white text-purple-700 border-purple-200 hover:bg-purple-50'}`}>
         <span>🚗 Déplacement sans pose</span>
         <span className="text-[11px] font-semibold opacity-90">{actif ? 'OUI — cliquer pour annuler' : 'cliquer si rien n\'a été installé'}</span>
       </button>
@@ -736,7 +759,28 @@ function DeplacementEditor({ d, onPatch, compact = false }) {
         <div className="mt-2 text-[12px] text-slate-700 space-y-0.5">
           <div>🔧 Tu dois <span className="font-bold text-amber-700">{formatEuro(mNum)}</span> au poseur {poseurNom ? <span className="font-bold">{poseurNom}</span> : <span className="font-bold text-rose-600">(aucun poseur sur le dossier — ajoute-le dans « Poseurs »)</span>}.</div>
           <div>🤝 La régie {regieNom ? <span className="font-bold">{regieNom}</span> : <span className="font-bold text-rose-600">(aucune régie sur le dossier)</span>} te doit <span className="font-bold text-emerald-700">{formatEuro(mNum)}</span> de pénalité.</div>
-          <div className="text-slate-500">Rien n'est dû au fournisseur ni à la régie, et le prix de la pose n'est pas compté.</div>
+          <div className="text-slate-500">Rien n'est dû à la régie, et le prix de la pose n'est pas compté.</div>
+        </div>
+        {/* 📦 Matériel : pris par le poseur ? rendu ? → décide si le fournisseur reste dû */}
+        <div className={`mt-2 p-2 rounded-lg border ${!d.blMaterielPoseur ? 'bg-white border-slate-200' : d.materielRendu ? 'bg-emerald-50 border-emerald-300' : 'bg-rose-50 border-rose-300'}`}>
+          <label className="flex items-center gap-1.5 text-[12px] font-bold text-slate-700 cursor-pointer">
+            <input type="checkbox" checked={!!d.blMaterielPoseur} onChange={(e) => onPatch({ blMaterielPoseur: e.target.checked, blMaterielDate: e.target.checked ? (d.blMaterielDate || date || new Date().toISOString().split('T')[0]) : '', ...(e.target.checked ? {} : { materielRendu: false, materielRenduDate: '' }) })} className="w-4 h-4 accent-orange-600" />
+            📦 Le poseur a récupéré du matériel (BL)
+          </label>
+          {d.blMaterielPoseur && (
+            <div className="mt-1.5 flex items-center gap-2 flex-wrap">
+              <label className="flex items-center gap-1.5 text-[12px] font-bold cursor-pointer">
+                <input type="checkbox" checked={!!d.materielRendu} onChange={(e) => onPatch({ materielRendu: e.target.checked, materielRenduDate: e.target.checked ? (d.materielRenduDate || new Date().toISOString().split('T')[0]) : '' })} className={`w-4 h-4 ${d.materielRendu ? 'accent-emerald-600' : 'accent-rose-600'}`} />
+                <span className={d.materielRendu ? 'text-emerald-700' : 'text-rose-700'}>{d.materielRendu ? '✅ Matériel rendu (retour / avoir reçu) le' : '⚠️ Matériel pas encore rendu'}</span>
+              </label>
+              {d.materielRendu && <input type="date" min="2000-01-01" max="2100-12-31" value={d.materielRenduDate || ''} onChange={(e) => onPatch({ materielRenduDate: e.target.value })} className={inp + ' !w-auto'} />}
+            </div>
+          )}
+          <div className="mt-1 text-[12px] text-slate-600">
+            {!d.blMaterielPoseur ? '📦 Aucun matériel sorti : rien n\'est dû au fournisseur.'
+              : d.materielRendu ? '📦 Matériel rendu : le fournisseur est à zéro.'
+              : '📦 Tant que le matériel n\'est pas rendu, le fournisseur reste dû sur ce dossier.'}
+          </div>
         </div>
       </>)}
     </div>
@@ -2008,12 +2052,14 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
     const pD = poseursDetail.map(x => { const ht = (x.deplacementsHt || 0) - (x.avoirsHt || 0); return { ...x, ht, ttc: ht, baseHt: 0, surplus: 0 }; });
     const pHt = pD.reduce((sum, x) => sum + x.ht, 0);
     const penaliteRegie = (d.tentativesPose || []).reduce((sum, t) => sum + (parseFloat(t.penalite) || 0), 0);
-    const marge = penaliteRegie - pHt - autresFraisHt;
+    const marge = penaliteRegie - pHt - autresFraisHt - (fournisseurAZeroDeplacement(d) ? 0 : fournisseurHt);
     return {
       ...d,
       estDeplacement: true, penaliteRegie,
       montantHt: 0, tvaVente: 0, tauxTva: 0, tva: 0,
-      fournisseursDetail: fournisseursDetail.map(aZero), fournisseurHt: 0, fournisseurTtc: 0,
+      ...(fournisseurAZeroDeplacement(d)
+        ? { fournisseursDetail: fournisseursDetail.map(aZero), fournisseurHt: 0, fournisseurTtc: 0 }
+        : { fournisseursDetail, fournisseurHt, fournisseurTtc }), // matériel pas encore rendu → toujours dû
       regiesDetail: regiesDetail.map(aZero), regieAutoHt: 0, regieHt: 0, regieTtc: 0,
       poseursDetail: pD, poseurHt: pHt, poseurTtc: pHt,
       interneHt: 0, interneTtc: 0, internesDetail: [],
@@ -4096,9 +4142,10 @@ export default function DossierSaisie({ authUser, onLogout }) {
       const pD = __res.poseursDetail.map(x => { const ht = (x.deplacementsHt || 0) - (x.avoirsHt || 0); return { ...x, ht, ttc: ht, baseHt: 0, surplus: 0 }; });
       const pHt = pD.reduce((sum, x) => sum + x.ht, 0);
       const penaliteRegie = (formData.tentativesPose || []).reduce((sum, t) => sum + (parseFloat(t.penalite) || 0), 0);
-      const marge = penaliteRegie - pHt - autresFraisHt;
+      const fZero = fournisseurAZeroDeplacement(formData);
+      const marge = penaliteRegie - pHt - autresFraisHt - (fZero ? 0 : __res.fournisseurHt);
       return { ...__res, montantHt: 0, tvaVente: 0, tauxTva: 0, tva: 0,
-        fournisseursDetail: __res.fournisseursDetail.map(aZero), fournisseurHt: 0, fournisseurTtc: 0,
+        ...(fZero ? { fournisseursDetail: __res.fournisseursDetail.map(aZero), fournisseurHt: 0, fournisseurTtc: 0 } : {}),
         regiesDetail: __res.regiesDetail.map(aZero), regieHt: 0, regieAutoHt: 0, regieTtc: 0,
         poseursDetail: pD, poseurHt: pHt, poseurTtc: pHt, interneHt: 0, interneTtc: 0, margeTtc: marge, margeHt: marge };
     }
@@ -7394,7 +7441,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                         setDossiers(prev => prev.map(x => {
                           if (!ids.has(x.localId) || estDeplacement(x)) return x;
                           const p0 = (x.poseurs || [])[0];
-                          const montant = p0 && p0.htCustom !== '' && p0.htCustom !== undefined && p0.htCustom !== null ? p0.htCustom : '';
+                          const montant = p0 && p0.htCustom !== '' && p0.htCustom !== undefined && p0.htCustom !== null && parseFloat(p0.htCustom) > 0 ? p0.htCustom : montantDeplacementAuto(prev, p0?.nom || '', x.localId);
                           const now = new Date().toISOString();
                           return { ...x, ...patchDeplacement(x, { actif: true, montant, date: x.dateInsta || '' }), savedAt: now, modifiedAt: now, modifiedBy: currentUser || '' };
                         }));
@@ -22710,7 +22757,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
           )}
 
           {/* 💶 CRM Finances : déplacement sans pose (rien installé) */}
-          <DeplacementEditor d={formData} onPatch={(patch) => setFormData({ ...formData, ...patch })} />
+          <DeplacementEditor d={formData} dossiers={dossiers} onPatch={(patch) => setFormData({ ...formData, ...patch })} />
 
           {/* 💶 CRM Finances : autres frais du dossier (Consuel, prestataire mairie). */}
           <AutresFraisEditor d={formData} dossiers={dossiers} onPatch={(patch) => setFormData({ ...formData, ...patch })} />
@@ -25867,7 +25914,7 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
           </div>
 
           {/* 💶 CRM Finances : déplacement sans pose (rien installé) */}
-          {isAdmin && <DeplacementEditor d={d} onPatch={onUpdate} compact />}
+          {isAdmin && <DeplacementEditor d={d} dossiers={dossiers} onPatch={onUpdate} compact />}
 
           {/* 💶 CRM Finances — MONTANTS : une seule carte pliable (comme Régies / Poseurs)
               qui regroupe le prix de vente, la marge ET les paiements reçus. */}
