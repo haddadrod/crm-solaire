@@ -637,6 +637,26 @@ function fmtFieldVal(v) {
 const PROJEXIO_CAP_MENSUEL_PAR_SOCIETE = {};
 const PROVENANCES_LEAD = ['Site web', 'Facebook', 'Google Ads', 'Bouche à oreille', 'Salon / Foire', 'Téléprospection', 'Recommandation client', 'Référenceur', 'Autre'];
 
+// 💶 CRM Finances — TVA de la vente. Règle : au-dessus de 3 kWc de panneaux
+// solaires, la TVA est automatiquement à 20 %. En dessous, on choisit
+// (5,5 / 10 / 20). `tauxTvaForce` = l'utilisateur a volontairement choisi un
+// autre taux malgré la règle → on ne le corrige plus tout seul.
+const SEUIL_TVA_20_WC = 3000;
+function puissanceSolaireWc(d, produits) {
+  const liste = (d && d.produits && d.produits.length > 0) ? d.produits : [{ type: (d && d.produit) || 'PANNEAU_SOLAIRE', puissance: (d && d.puissance) || 0 }];
+  return liste.reduce((sum, p) => sum + (findProduit(produits, p.type).autoTarif ? (parseInt(p.puissance) || 0) : 0), 0);
+}
+function tvaAutoA20(d, produits) {
+  return puissanceSolaireWc(d, produits) > SEUIL_TVA_20_WC;
+}
+// Renvoie { tauxTvaVente: 20, … } si le dossier doit repasser à 20 % tout seul, sinon null.
+function patchTvaAuto(d, produits) {
+  if (!d || d.tauxTvaForce) return null;
+  if (!tvaAutoA20(d, produits)) return null;
+  if ((parseFloat(d.tauxTvaVente) || 20) === 20) return null;
+  return { tauxTvaVente: 20, montantHtCustom: '' };
+}
+
 // ===================== 💶 CRM Finances — AUTRES FRAIS (Consuel, Mairie) =====================
 // Coûts liés au dossier en plus des poseurs / régies / fournisseurs :
 //   • consuel : frais de dossier Consuel (toujours la même somme → le montant
@@ -3852,6 +3872,12 @@ export default function DossierSaisie({ authUser, onLogout }) {
   const STATUTS_ORDERED = useMemo(() => statutsOrder.map(id => STATUTS.find(s => s.id === id)).filter(Boolean), [statutsOrder]);
 
   // Calculs auto
+  // 💶 TVA automatique : plus de 3 kWc → 20 % (sauf choix manuel contraire).
+  useEffect(() => {
+    const patch = patchTvaAuto(formData, produits);
+    if (patch) setFormData(prev => ({ ...prev, ...patch }));
+  }, [formData.produits, formData.tauxTvaVente, formData.tauxTvaForce, produits]);
+
   const calculs = useMemo(() => {
     // Calcule la puissance totale (somme des puissances des produits solaires)
     const produitsList = formData.produits || [];
@@ -21676,13 +21702,13 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
                   );
                 })()}
               </Field>
-              <Field label="🧮 Taux de TVA">
+              <Field label={tvaAutoA20(formData, produits) ? (formData.tauxTvaForce ? '🧮 Taux de TVA — ⚠️ plus de 3 kWc : normalement 20 %' : '🧮 Taux de TVA — auto 20 % (plus de 3 kWc)') : '🧮 Taux de TVA'}>
                 <div className="grid grid-cols-3 gap-1">
                   {[20, 10, 5.5].map(t => (
                     <button
                       key={t}
                       type="button"
-                      onClick={() => setFormData({ ...formData, tauxTvaVente: t, montantHtCustom: '' })}
+                      onClick={() => setFormData({ ...formData, tauxTvaVente: t, montantHtCustom: '', tauxTvaForce: t !== 20 && tvaAutoA20(formData, produits) })}
                       className={`px-2 py-2 rounded-xl text-sm font-bold border-2 transition-all ${parseFloat(formData.tauxTvaVente) === t ? 'bg-blue-500 text-white border-blue-600 shadow-md' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}
                     >
                       {t}%
@@ -24737,6 +24763,12 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
   // travaillait sur le `d` d'AVANT le 1er onChange et écrasait factureFile.
   const dRef = useRef(dossier);
   useEffect(() => { dRef.current = dossier; }, [dossier]);
+  // 💶 TVA automatique : plus de 3 kWc → 20 % (sauf choix manuel contraire).
+  useEffect(() => {
+    if (!isAdmin) return;
+    const patch = patchTvaAuto(dossier, produits);
+    if (patch) onUpdate(patch);
+  }, [dossier?.localId, dossier?.produits, dossier?.tauxTvaVente, dossier?.tauxTvaForce, produits, isAdmin]);
 
   // 🛠️ Patch fonctionnel : on lit la liste depuis le dossier ACTUEL (passé par
   // onUpdate via prev), pas via la closure de dRef. Indispensable quand 2
@@ -25594,6 +25626,27 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
                       <span className="text-[12px] font-semibold text-slate-600 uppercase flex-shrink-0">Prix TTC</span>
                       <DebouncedInput type="number" step="0.01" value={d.montantTotal || ''} onCommit={(v) => onUpdate({ montantTotal: parseFloat(v) || 0 })} placeholder="0,00" className={inputCls + ' font-bold text-violet-700'} />
                       <span className="text-xs text-slate-500">€</span>
+                    </div>
+                    <div className="flex items-center gap-2 pt-1.5 border-t border-emerald-100">
+                      <span className="text-[12px] font-semibold text-slate-600 uppercase flex-shrink-0">TVA</span>
+                      <div className="grid grid-cols-3 gap-1 flex-1">
+                        {[20, 10, 5.5].map(t => (
+                          <button key={t} onClick={() => onUpdate({ tauxTvaVente: t, montantHtCustom: '', tauxTvaForce: t !== 20 && tvaAutoA20(d, produits) })} className={`px-1 py-1 rounded-lg text-[12px] font-bold border-2 transition-all ${(parseFloat(d.tauxTvaVente) || 20) === t ? 'bg-blue-500 text-white border-blue-600' : 'bg-white text-blue-600 border-blue-200 hover:bg-blue-50'}`}>{String(t).replace('.', ',')} %</button>
+                        ))}
+                      </div>
+                    </div>
+                    {tvaAutoA20(d, produits) && (
+                      <div className={`text-[11px] font-semibold ${d.tauxTvaForce ? 'text-amber-700' : 'text-slate-500'}`}>
+                        {d.tauxTvaForce ? '⚠️ Plus de 3 kWc : la TVA est normalement à 20 %.' : 'Automatique : plus de 3 kWc → TVA 20 %.'}
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between text-[13px]">
+                      <span className="text-slate-600 font-semibold">Prix HT</span>
+                      <span className="font-bold text-cyan-700">{formatEuro(d.montantHt)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-[13px]">
+                      <span className="text-slate-600 font-semibold">Dont TVA</span>
+                      <span className="font-bold text-slate-600">{formatEuro((parseFloat(d.montantTotal) || 0) - (d.montantHt || 0))}</span>
                     </div>
                     {d.margeHt !== undefined && (
                       <div className="flex items-center justify-between text-[13px] pt-1.5 border-t border-emerald-100">
