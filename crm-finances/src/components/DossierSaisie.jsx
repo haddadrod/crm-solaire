@@ -7824,8 +7824,60 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
     );
   };
 
-  // ===== VUE COMPACTE =====
-  if (viewMode === 'compact') {
+  // ===== 💶 CRM Finances — LIGNE FINANCES =====
+  // Par défaut chaque dossier tient sur UNE ligne : client, financeur, poseur,
+  // régie, fournisseur, prix, marge, état du paiement. La flèche à gauche
+  // déplie la carte détaillée (téléphone, mail, adresse, factures…).
+  const [open, setOpen] = useState(false);
+  const recuTotal = totalPaiementsRecus(paiementsRecusDe(d));
+  const resteARecevoir = Math.max(0, (parseFloat(d.montantTotal) || 0) - recuTotal);
+  const Intervenant = ({ emoji, list, total, color }) => {
+    const noms = (list || []).map(x => x.nom).filter(Boolean);
+    if ((list || []).length === 0) return <span className="text-slate-300">{emoji} —</span>;
+    const toutPaye = (list || []).every(x => x.paye);
+    return (
+      <span className={`truncate ${color}`} title={(list || []).map(x => `${x.nom || '(sans nom)'} : ${formatEuro(x.ht)} HT${x.paye ? ' — payé' : ''}`).join('\n')}>
+        {emoji} <span className="font-semibold">{noms.join(', ') || '(sans nom)'}</span>
+        <span className="text-slate-400"> · </span>{formatEuro(total)}{toutPaye && <span className="text-emerald-600 font-bold"> ✓</span>}
+      </span>
+    );
+  };
+  const financeRow = (
+    <div className="px-2 py-1.5 flex items-center gap-2 text-[12px] leading-tight">
+      <button onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }} title={open ? 'Replier' : 'Voir plus de détails (téléphone, mail, adresse…)'} aria-label={open ? 'Replier le dossier' : 'Déplier le dossier'} className="flex-shrink-0 w-5 h-5 rounded text-slate-400 hover:text-violet-600 hover:bg-violet-50 text-[10px]">{open ? '▼' : '▶'}</button>
+      <div className="w-[16%] min-w-0 truncate">
+        {readOnly
+          ? <span className="font-bold text-slate-800">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</span>
+          : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 hover:text-violet-600 hover:underline text-left truncate max-w-full" title="Ouvrir la fiche du dossier">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>}
+      </div>
+      {!readOnly && <div className="w-[10%] min-w-0 truncate text-violet-700" title="Financeur">💳 {d.financement || '—'}</div>}
+      {isAdmin && (<>
+        <div className="w-[17%] min-w-0 flex"><Intervenant emoji="🔧" list={d.poseursDetail} total={d.poseurHt} color="text-amber-700" /></div>
+        <div className="w-[17%] min-w-0 flex"><Intervenant emoji="🤝" list={d.regiesDetail} total={d.regieHt} color="text-purple-700" /></div>
+        <div className="w-[17%] min-w-0 flex"><Intervenant emoji="📦" list={d.fournisseursDetail} total={d.fournisseurHt} color="text-orange-700" /></div>
+      </>)}
+      <div className="ml-auto flex items-center gap-2 flex-shrink-0">
+        {!readOnly && <span className="font-bold text-blue-600" title="Prix de vente TTC">{formatEuro(d.montantTotal)}</span>}
+        {isAdmin && <span className={`font-bold ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} title="Marge HT">Marge {formatEuro(d.margeHt)}</span>}
+        {!readOnly && (d.payeClient
+          ? <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold" title={d.payeClientDate ? `Payé le ${formatDateForSheet(d.payeClientDate)}` : 'Payé'}>✓ Payé</span>
+          : recuTotal > 0
+            ? <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold" title={`Reçu ${formatEuro(recuTotal)}`}>Reste {formatEuro(resteARecevoir)}</span>
+            : <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold">Non payé</span>)}
+        {!readOnly && <button onClick={() => onEdit(d)} aria-label="Modifier le dossier" title="Modifier le dossier" className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded"><Edit3 className="w-3.5 h-3.5" /></button>}
+      </div>
+    </div>
+  );
+  if (!open) {
+    return (
+      <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border-l-4" style={{ borderLeftColor: d.payeClient ? '#10b981' : '#a855f7' }}>
+        {financeRow}
+      </div>
+    );
+  }
+
+  // ===== VUE COMPACTE (désactivée : remplacée par la ligne finances) =====
+  if (false && viewMode === 'compact') {
     return (
       <div className="bg-white rounded-lg shadow-sm hover:shadow-md transition-shadow border-l-4 px-3 py-2 flex items-center gap-2 flex-wrap" style={{ borderLeftColor: '#a855f7' }}>
         {d.id && <span className="text-[12px] font-mono bg-slate-100 text-slate-600 px-1.5 py-0.5 rounded flex-shrink-0">#{d.id}</span>}
@@ -7889,9 +7941,10 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
     );
   }
 
-  // ===== VUE DÉTAILLÉE =====
+  // ===== VUE DÉTAILLÉE (dossier déplié) =====
   return (
-    <div className="bg-white rounded-xl shadow-sm hover:shadow-md transition-shadow border-l-4" style={{ borderLeftColor: '#a855f7' }}>
+    <div className="bg-white rounded-xl shadow-md border-l-4" style={{ borderLeftColor: '#a855f7' }}>
+      <div className="border-b border-slate-100 bg-slate-50 rounded-tr-xl">{financeRow}</div>
       <div className="p-3">
         <div className="flex items-start justify-between gap-2 flex-wrap">
           <div className="flex-1 min-w-[200px]">
