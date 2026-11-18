@@ -758,7 +758,7 @@ function patchPaiementsRecus(d, list) {
   }
   return patch;
 }
-function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, embedded = false }) {
+function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, embedded = false, hideFinanceur = false }) {
   const list = paiementsRecusDe(d);
   const total = totalPaiementsRecus(list);
   const ttc = parseFloat(d.montantTotal) || 0;
@@ -771,22 +771,27 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, 
     const defaut = list.length === 0 ? (d.financement && d.financement !== 'COMPTANT' ? d.financement : (d.financement === 'COMPTANT' ? PAYEUR_CLIENT : '')) : '';
     apply([...list, { id: 'p' + Date.now().toString(36), date: today, montant: '', payeur: defaut }]);
   };
-  // Bouton « Payé » : en un clic, enregistre le solde restant à la date du jour
-  // (payé par le financeur du dossier). Tout reste modifiable à la main ensuite.
-  const payeurDefaut = d.financement && d.financement !== 'COMPTANT' ? d.financement : (d.financement === 'COMPTANT' ? PAYEUR_CLIENT : '');
-  const montantVide = (p) => p.montant === '' || p.montant === undefined || p.montant === null;
-  const marquerPaye = () => {
+  // 💶 Qui DOIT payer (à savoir avant d'être payé) : le financeur du dossier,
+  // et éventuellement une part payée par le client lui-même (apport).
+  //   • financeur = COMPTANT → le client paie tout ;
+  //   • sinon → le financeur paie (prix TTC − apport client), le client paie l'apport.
+  // Pour chaque payeur attendu, un bouton « Payé » enregistre en un clic ce
+  // qu'il lui reste à verser, à la date du jour (modifiable ensuite à la main).
+  const apport = Math.max(0, parseFloat(d.apportClient) || 0);
+  const attendus = !d.financement ? []
+    : d.financement === 'COMPTANT' ? [{ payeur: PAYEUR_CLIENT, montant: ttc }]
+    : [{ payeur: d.financement, montant: Math.max(0, ttc - apport) }, ...(apport > 0 ? [{ payeur: PAYEUR_CLIENT, montant: apport }] : [])];
+  const recuDe = (payeur) => list.filter(p => p.payeur === payeur).reduce((sum, p) => sum + (parseFloat(p.montant) || 0), 0);
+  const aPayer = attendus.map(a => {
+    const resteGlobal = ttc > 0 ? Math.max(0, ttc - total) : 0;
+    const restePayeur = ttc > 0 ? Math.min(Math.max(0, a.montant - recuDe(a.payeur)), resteGlobal) : 0;
+    return { ...a, reste: Math.round(restePayeur * 100) / 100 };
+  }).filter(a => ttc > 0 ? a.reste > 0.005 : !d.payeClient);
+  const marquerPaye = (a) => {
     const today = new Date().toISOString().split('T')[0];
-    const solde = ttc > 0 ? Math.round(Math.max(0, ttc - total) * 100) / 100 : '';
-    const iVide = list.findIndex(montantVide);
-    if (iVide >= 0) {
-      // Une ligne attend déjà son montant → on la complète au lieu d'en créer une autre.
-      apply(list.map((p, k) => k === iVide ? { ...p, date: p.date || today, montant: solde, payeur: p.payeur || payeurDefaut } : p));
-    } else {
-      apply([...list, { id: 'p' + Date.now().toString(36), date: today, montant: solde, payeur: payeurDefaut }]);
-    }
+    apply([...list, { id: 'p' + Date.now().toString(36), date: today, montant: ttc > 0 ? a.reste : '', payeur: a.payeur }]);
   };
-  const resteAPayer = ttc > 0 ? (list.some(montantVide) ? true : reste > 0.005) : !d.payeClient;
+  const nomPayeur = (x) => x === PAYEUR_CLIENT ? 'le client' : x;
   const inp = compact
     ? 'w-full px-2 py-1 border border-emerald-200 rounded-lg text-[12px] bg-white'
     : 'w-full px-3 py-2 border border-emerald-200 rounded-xl text-sm bg-white';
@@ -796,6 +801,29 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, 
         <span>{embedded ? 'Paiements reçus' : '💰 Paiements reçus'}</span>
         {d.payeClient && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 normal-case">✓ Soldé</span>}
       </div>
+      <div className={`grid gap-1.5 mb-2 pb-2 border-b border-emerald-100 ${hideFinanceur ? 'grid-cols-1' : 'grid-cols-2'}`}>
+        {!hideFinanceur && (
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Qui doit payer (financeur)</label>
+            <select value={d.financement || ''} onChange={(e) => onPatch({ financement: e.target.value })} className={inp}>
+              <option value="">— Choisir —</option>
+              {FINANCEMENTS.map(f => <option key={f} value={f}>{f === 'COMPTANT' ? 'COMPTANT (le client paie tout)' : f}</option>)}
+            </select>
+          </div>
+        )}
+        {d.financement !== 'COMPTANT' && (
+          <div>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Dont part payée par le client (€)</label>
+            <input type="number" step="0.01" value={d.apportClient ?? ''} placeholder="0,00" onChange={(e) => onPatch({ apportClient: e.target.value })} className={inp} />
+          </div>
+        )}
+      </div>
+      {!d.financement && (
+        <div className="text-[12px] text-amber-700 font-semibold mb-2">Choisis d'abord qui doit payer : le bouton « Payé » apparaîtra ensuite.</div>
+      )}
+      {d.financement && attendus.length > 0 && ttc > 0 && (
+        <div className="text-[12px] text-slate-600 mb-2">À recevoir : {attendus.map(a => `${formatEuro(a.montant)} de ${nomPayeur(a.payeur)}`).join(' + ')}</div>
+      )}
       {list.length === 0 && (
         <div className="text-[12px] text-slate-500 mb-2">Aucun paiement reçu pour l'instant.</div>
       )}
@@ -823,9 +851,9 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, 
       ))}
       <div className="flex items-center justify-between flex-wrap gap-2 mt-1">
         <div className="flex items-center gap-1.5 flex-wrap">
-          {resteAPayer && (
-            <button type="button" onClick={marquerPaye} title="Enregistre le solde restant comme payé aujourd'hui (modifiable ensuite)" className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[12px] font-bold shadow-sm">✓ Payé{ttc > 0 && reste > 0.005 ? ` (${formatEuro(reste)})` : ''}</button>
-          )}
+          {aPayer.map(a => (
+            <button key={a.payeur} type="button" onClick={() => marquerPaye(a)} title={`Enregistre le paiement de ${nomPayeur(a.payeur)} à la date d'aujourd'hui (modifiable ensuite)`} className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[12px] font-bold shadow-sm">✓ Payé par {nomPayeur(a.payeur)}{ttc > 0 ? ` (${formatEuro(a.reste)})` : ''}</button>
+          ))}
           <button type="button" onClick={addLine} className="px-3 py-1 bg-emerald-100 hover:bg-emerald-200 text-emerald-700 rounded-lg text-[12px] font-bold">+ Ajouter un paiement</button>
         </div>
         {list.length > 0 && (
@@ -21695,7 +21723,7 @@ function FormulaireDossier({ formData, setFormData, editingId, calculs, STATUTS_
             </div>
             {/* 💶 CRM Finances : paiements reçus (plusieurs lignes : financeur et/ou client). */}
             <div className="mt-3">
-              <PaiementsRecusEditor d={formData} FINANCEMENTS={FINANCEMENTS} onPatch={(patch) => setFormData({ ...formData, ...patch })} />
+              <PaiementsRecusEditor d={formData} FINANCEMENTS={FINANCEMENTS} onPatch={(patch) => setFormData({ ...formData, ...patch })} hideFinanceur />
             </div>
             {/* 💶 CRM Finances : case « Payé par le financeur » retirée — le paiement se saisit uniquement dans « Paiements reçus ». */}
 
