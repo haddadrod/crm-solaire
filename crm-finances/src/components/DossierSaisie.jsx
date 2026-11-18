@@ -743,6 +743,12 @@ function patchPaiementsRecus(d, list) {
   const montantsSaisis = list.some(p => p.montant !== '' && p.montant !== undefined && p.montant !== null);
   const solde = dates.length > 0 && ((ttc > 0 && montantsSaisis) ? total >= ttc - 0.005 : true);
   const patch = { paiementsRecus: list, montantPaiementRecu: montantsSaisis ? total : '' };
+  // Financeur du dossier pas encore choisi → on reprend le 1er financeur des paiements.
+  if (!d.financement) {
+    const fin = list.map(p => p.payeur).find(x => x && x !== PAYEUR_CLIENT);
+    if (fin) patch.financement = fin;
+    else if (list.some(p => p.payeur === PAYEUR_CLIENT)) patch.financement = 'COMPTANT';
+  }
   if (solde) {
     const last = dates[dates.length - 1];
     Object.assign(patch, { datePaiementBanque: last, payeClient: true, payeClientDate: last, statut: 'W_DOSSIER_PAYER' });
@@ -7956,7 +7962,7 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
           ? <span className="font-bold text-slate-800">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</span>
           : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 hover:text-violet-600 hover:underline text-left truncate max-w-full" title="Ouvrir la fiche du dossier">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>}
       </div>
-      {!readOnly && <div className="min-w-0 truncate text-violet-700 font-semibold" title="Financeur">{d.financement || <span className="text-slate-300 font-normal">—</span>}</div>}
+      {!readOnly && <div className="min-w-0 truncate text-violet-700 font-semibold" title="Financeur">{d.financement || [...new Set(paiementsRecusDe(d).map(x => x.payeur).filter(Boolean))].map(x => x === PAYEUR_CLIENT ? 'Client' : x).join(' + ') || <span className="text-slate-300 font-normal">—</span>}</div>}
       {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.poseursDetail} total={d.poseurHt} color="text-amber-700" /></div>}
       {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.regiesDetail} total={d.regieHt} color="text-purple-700" /></div>}
       {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.fournisseursDetail} total={d.fournisseurHt} color="text-orange-700" /></div>}
@@ -25119,11 +25125,6 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
             </div>
 
             {/* Étapes « Consuel et Raccordement Enedis » retirées du CRM Finances. */}
-            {/* 💶 CRM Finances : paiements reçus (plusieurs lignes : financeur et/ou client). */}
-            <div ref={refPaiement}>
-              <PaiementsRecusEditor d={d} FINANCEMENTS={FINANCEMENTS || []} onPatch={onUpdate} compact />
-            </div>
-
             {/* ============ ⚖️ LITIGE — étape annexe, visible si hasLitige ============ */}
             {d.hasLitige && (() => {
               const refDate = d.litigeDateCourrierRecommande || d.createdAt;
@@ -25501,6 +25502,11 @@ function QuickViewPanel({ dossier, scrollTo, onClose, onEdit, onShowDocs, onShow
               </div>
             </div>
           )}
+
+          {/* 💶 CRM Finances : paiements reçus, collés sous les montants (prix de vente → ce qui a été reçu). */}
+          <div ref={refPaiement} className="mt-2 mb-2">
+            <PaiementsRecusEditor d={d} FINANCEMENTS={FINANCEMENTS || []} onPatch={onUpdate} compact />
+          </div>
 
           {/* Les sections LITIGE et SAV ont été DÉPLACÉES dans le panneau
               « Process du dossier » au-dessus (sous forme d'étapes annexes
