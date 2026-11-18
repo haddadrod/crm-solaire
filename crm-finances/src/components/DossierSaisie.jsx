@@ -10940,7 +10940,11 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin, canSeeBLFactures 
 
   // Catégories disponibles dans le modal
   const categories = useMemo(() => {
-    const cats = [
+    // 💶 CRM Finances : la modale Documents ne sert plus qu'aux FACTURES reçues
+    // (poseurs, régie, fournisseurs). L'onglet « Client » (bon de commande,
+    // mandat, pièce d'identité…) n'est gardé que pour les rôles qui n'ont pas
+    // accès aux factures, pour ne pas ouvrir une fenêtre vide.
+    const cats = showPrestaCategories ? [] : [
       { id: 'client', key: 'client', subCategory: null, label: 'Client', sublabel: `${dossier.nom}${dossier.prenom ? ' ' + dossier.prenom : ''}`, emoji: '👤', color: 'from-blue-500 to-cyan-500', bg: 'bg-blue-50', border: 'border-blue-200', accent: 'text-blue-700', desc: 'Bons de commande, contrat, mandat...' },
     ];
     // Catégories sensibles : admin + tout rôle avec voirBLFactures (compta).
@@ -11350,10 +11354,7 @@ function DocumentsModal({ dossier, onClose, onUpdate, isAdmin, canSeeBLFactures 
                 );
               })}
             </div>
-            {/* Générateurs de documents PDF — pré-remplis depuis le dossier. */}
-            <div className="px-3">
-              <PdfGeneratorPanel dossier={dossier} />
-            </div>
+            {/* 💶 CRM Finances : « Documents à générer » retiré. */}
             <div className="p-3 mx-3 mb-3 bg-blue-50 border border-blue-200 rounded-xl text-[13px] text-blue-700 leading-relaxed">
               💡 Max <strong>50 Mo / fichier</strong> grâce au stockage Supabase. Les PDF lourds passent sans problème.
             </div>
