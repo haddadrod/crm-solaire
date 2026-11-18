@@ -6333,11 +6333,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   📊 Export comptable
                 </button>
               )}
-              {isAdmin && (
-                <button onClick={() => setShowImport(true)} className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-2xl font-semibold shadow-md hover:shadow-lg transition-all flex items-center gap-2 border border-slate-200 whitespace-nowrap flex-shrink-0">
-                  <Upload className="w-4 h-4" />Importer
-                </button>
-              )}
+              {/* 📥 Bouton « Importer » déplacé dans Réglages → 🛠 Outils experts. */}
               {/* 📊 Vue Sheet — accès direct depuis la barre du haut, pas besoin de
                   passer par Réglages → Outils experts. */}
               {isAdmin && (
@@ -7086,7 +7082,7 @@ export default function DossierSaisie({ authUser, onLogout }) {
           <ReglagesView
             statutsOrder={statutsOrder} setStatutsOrder={setStatutsOrder} STATUTS_ORDERED={STATUTS_ORDERED} STATUTS={STATUTS} dossiers={dossiers} dossiersEnriched={dossiersEnriched}
             POSEURS={POSEURS} REGIES={REGIES} FOURNISSEURS={FOURNISSEURS}
-            setDossiers={setDossiers} setShowImportJson={setShowImportJson} setShowQuickViewId={setShowQuickViewId}
+            setDossiers={setDossiers} setShowImport={setShowImport} setShowImportJson={setShowImportJson} setShowQuickViewId={setShowQuickViewId}
             tarifsPoseurs={tarifsPoseurs} setTarifsPoseurs={setTarifsPoseurs}
             tarifsRegies={tarifsRegies} setTarifsRegies={setTarifsRegies}
             tarifsInternes={tarifsInternes} setTarifsInternes={setTarifsInternes}
@@ -14489,7 +14485,7 @@ function BanquePerfList({ data, dossiers = [], societes = [], onShowQuick }) {
   );
 }
 
-function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS = [], dossiers, dossiersEnriched = null, POSEURS = [], REGIES = [], FOURNISSEURS = [], setDossiers, setShowImportJson, setShowQuickViewId = null, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, internesContacts = {}, setInternesContacts = () => {}, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
+function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS = [], dossiers, dossiersEnriched = null, POSEURS = [], REGIES = [], FOURNISSEURS = [], setDossiers, setShowImport, setShowImportJson, setShowQuickViewId = null, tarifsPoseurs, setTarifsPoseurs, tarifsRegies, setTarifsRegies, tarifsInternes, setTarifsInternes, nomsInternes, setNomsInternes, listeFournisseurs, setListeFournisseurs, tarifsFournisseurs, setTarifsFournisseurs, produits, setProduits, messageTemplates, setMessageTemplates, users, setUsers, poseursContacts, setPoseursContacts, regiesContacts, setRegiesContacts, internesContacts = {}, setInternesContacts = () => {}, emailConfig, setEmailConfig, gmailOAuth, setGmailOAuth, societes = [], setSocietes }) {
   // Init depuis le hash URL pour qu'un refresh garde la sous-section.
   // Format : #reglages/utilisateurs → section = 'utilisateurs'
   const sectionFromHash = (typeof window !== 'undefined' && window.location.hash)
@@ -14660,6 +14656,7 @@ function ReglagesView({ statutsOrder, setStatutsOrder, STATUTS_ORDERED, STATUTS 
           dossiers={dossiers}
           dossiersEnriched={dossiersEnriched}
           setDossiers={setDossiers}
+          setShowImport={setShowImport}
           setShowImportJson={setShowImportJson}
           STATUTS={STATUTS}
           societes={societes}
@@ -16321,7 +16318,7 @@ function GmailDrivePanel({ dossiers = [], setDossiers = () => {}, setShowQuickVi
 // suppression d'import sheet, validation CQ massive, sync paiement client).
 // Volontairement regroupés ici (hors barre principale) pour éviter qu'un
 // utilisateur ne déclenche par erreur une action irréversible.
-function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setShowImportJson, STATUTS = [], societes = [], POSEURS = [], REGIES = [], FOURNISSEURS = [], onShowQuick }) {
+function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setShowImport, setShowImportJson, STATUTS = [], societes = [], POSEURS = [], REGIES = [], FOURNISSEURS = [], onShowQuick }) {
   const [showSheet, setShowSheet] = useState(false);
   const handleBackup = () => {
     try {
@@ -16401,6 +16398,14 @@ function ExpertToolsPanel({ dossiers, dossiersEnriched = null, setDossiers, setS
           >
             <div className="flex items-center gap-2 font-bold">💾 Sauvegarde JSON</div>
             <div className="text-[13px] text-slate-500 mt-0.5">Backup local de tous les dossiers (à faire avant toute opération expert).</div>
+          </button>
+          <button
+            onClick={() => setShowImport && setShowImport(true)}
+            className="bg-white hover:bg-slate-50 text-slate-700 px-4 py-3 rounded-xl font-semibold border border-slate-200 text-left"
+            title="Importer des dossiers en collant des lignes depuis Google Sheet ou Excel."
+          >
+            <div className="flex items-center gap-2 font-bold">📥 Importer des dossiers</div>
+            <div className="text-[13px] text-slate-500 mt-0.5">Colle des lignes depuis Google Sheet ou Excel pour créer des dossiers en masse.</div>
           </button>
           <button
             onClick={() => setShowImportJson(true)}
