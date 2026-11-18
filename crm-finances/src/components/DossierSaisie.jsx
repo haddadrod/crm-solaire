@@ -801,10 +801,10 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, 
         <span>{embedded ? 'Paiements reçus' : '💰 Paiements reçus'}</span>
         {d.payeClient && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 normal-case">✓ Soldé</span>}
       </div>
-      <div className={`grid gap-1.5 mb-2 pb-2 border-b border-emerald-100 ${hideFinanceur ? 'grid-cols-1' : 'grid-cols-2'}`}>
+      <div className={`grid gap-2 items-end mb-2 pb-2 border-b border-emerald-100 ${hideFinanceur ? 'grid-cols-1' : 'grid-cols-2'}`}>
         {!hideFinanceur && (
           <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Qui doit payer (financeur)</label>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5 whitespace-nowrap truncate">Qui doit payer</label>
             <select value={d.financement || ''} onChange={(e) => onPatch({ financement: e.target.value })} className={inp}>
               <option value="">— Choisir —</option>
               {FINANCEMENTS.map(f => <option key={f} value={f}>{f === 'COMPTANT' ? 'COMPTANT (le client paie tout)' : f}</option>)}
@@ -813,7 +813,7 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, 
         )}
         {d.financement !== 'COMPTANT' && (
           <div>
-            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5">Dont part payée par le client (€)</label>
+            <label className="block text-[11px] font-semibold text-slate-600 mb-0.5 whitespace-nowrap truncate" title="Montant payé par le client lui-même (le reste est payé par le financeur)">Part du client (€)</label>
             <input type="number" step="0.01" value={d.apportClient ?? ''} placeholder="0,00" onChange={(e) => onPatch({ apportClient: e.target.value })} className={inp} />
           </div>
         )}
@@ -822,7 +822,7 @@ function PaiementsRecusEditor({ d, FINANCEMENTS = [], onPatch, compact = false, 
         <div className="text-[12px] text-amber-700 font-semibold mb-2">Choisis d'abord qui doit payer : le bouton « Payé » apparaîtra ensuite.</div>
       )}
       {d.financement && attendus.length > 0 && ttc > 0 && (
-        <div className="text-[12px] text-slate-600 mb-2">À recevoir : {attendus.map(a => `${formatEuro(a.montant)} de ${nomPayeur(a.payeur)}`).join(' + ')}</div>
+        <div className="text-[12px] text-slate-600 mb-2">À recevoir : {attendus.map(a => `${formatEuro(a.montant)} ${a.payeur === PAYEUR_CLIENT ? 'du client' : 'de ' + a.payeur}`).join(' + ')}</div>
       )}
       {list.length === 0 && (
         <div className="text-[12px] text-slate-500 mb-2">Aucun paiement reçu pour l'instant.</div>
