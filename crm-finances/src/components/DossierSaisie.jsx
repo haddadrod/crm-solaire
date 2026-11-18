@@ -7056,8 +7056,9 @@ export default function DossierSaisie({ authUser, onLogout }) {
                   <h3 className="text-lg font-bold text-slate-800 mb-1">{dossiers.length === 0 ? 'Aucun dossier' : 'Aucun résultat'}</h3>
                   <p className="text-slate-500 text-sm">{dossiers.length === 0 ? 'Cliquez sur "Nouveau dossier" pour commencer' : 'Modifiez vos filtres'}</p>
                 </div>
-              ) : (
-                filteredDossiers.map(d => {
+              ) : (<>
+                <DossierListHeader isAdmin={isAdmin} readOnly={isPoseur || isRegie} withCheckbox={activeTab === 'archives'} />
+                {filteredDossiers.map(d => {
                   const dArch = isArchived(d);
                   // 🏷️ Badge « provenance » quand on est en recherche globale
                   // (mélange actifs + archivés). Évite l'ambiguïté visuelle.
@@ -7102,8 +7103,8 @@ export default function DossierSaisie({ authUser, onLogout }) {
                     </div>
                   </div>
                   );
-                })
-              )}
+                })}
+              </>)}
             </div>
 
             <div className="mt-8 text-center text-sm text-slate-400">
@@ -7766,6 +7767,31 @@ function SocieteBadge({ societe, variant = 'inline', active = false, onClick = n
   );
 }
 
+// 💶 CRM Finances — colonnes de la ligne finances (partagées entre l'en-tête
+// de la liste et chaque ligne dossier, pour que les intitulés tombent pile
+// au-dessus des valeurs).
+function financeRowCols(isAdmin, readOnly) {
+  return ['20px', '1.5fr', !readOnly && '0.9fr', isAdmin && '1.5fr', isAdmin && '1.5fr', isAdmin && '1.5fr', !readOnly && '0.9fr', isAdmin && '1.1fr', !readOnly && '0.9fr', !readOnly && '24px'].filter(Boolean).join(' ');
+}
+function DossierListHeader({ isAdmin, readOnly, withCheckbox = false }) {
+  return (
+    <div className={`hidden md:block ${withCheckbox ? 'pl-6' : ''}`}>
+      <div className="grid gap-2 items-center px-2 py-1 border-l-4 border-transparent text-[11px] font-bold uppercase tracking-wide text-slate-500" style={{ gridTemplateColumns: financeRowCols(isAdmin, readOnly) }}>
+        <span></span>
+        <span>👤 Client</span>
+        {!readOnly && <span>💳 Financeur</span>}
+        {isAdmin && <span>🔧 Poseur</span>}
+        {isAdmin && <span>🤝 Régie</span>}
+        {isAdmin && <span>📦 Fournisseur</span>}
+        {!readOnly && <span className="text-right">Prix TTC</span>}
+        {isAdmin && <span className="text-right">Marge HT</span>}
+        {!readOnly && <span className="text-center">Paiement</span>}
+        {!readOnly && <span></span>}
+      </div>
+    </div>
+  );
+}
+
 function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs, onShowHist, onShowQuick, viewMode, isAdmin, produits, readOnly, societes = [], doublonInfo = null }) {
   // 🔍 Doublon : libellé compact des raisons + nombre d'autres dossiers similaires.
   const doublonBadge = (() => {
@@ -7831,41 +7857,39 @@ function DossierCard({ d, statut, isCopied, onCopy, onEdit, onDelete, onShowDocs
   const [open, setOpen] = useState(false);
   const recuTotal = totalPaiementsRecus(paiementsRecusDe(d));
   const resteARecevoir = Math.max(0, (parseFloat(d.montantTotal) || 0) - recuTotal);
-  const Intervenant = ({ emoji, list, total, color }) => {
-    const noms = (list || []).map(x => x.nom).filter(Boolean);
-    if ((list || []).length === 0) return <span className="text-slate-300">{emoji} —</span>;
-    const toutPaye = (list || []).every(x => x.paye);
+  const Intervenant = ({ list, total, color }) => {
+    // Lignes vides (ni nom ni montant) ignorées : elles n'apportent rien à la lecture.
+    const utiles = (list || []).filter(x => (x.nom && String(x.nom).trim()) || (x.ht || 0) !== 0);
+    if (utiles.length === 0) return <span className="text-slate-300">—</span>;
+    const noms = utiles.map(x => x.nom).filter(Boolean);
+    const toutPaye = utiles.every(x => x.paye);
     return (
-      <span className={`truncate ${color}`} title={(list || []).map(x => `${x.nom || '(sans nom)'} : ${formatEuro(x.ht)} HT${x.paye ? ' — payé' : ''}`).join('\n')}>
-        {emoji} <span className="font-semibold">{noms.join(', ') || '(sans nom)'}</span>
+      <span className={`truncate ${color}`} title={utiles.map(x => `${x.nom || '(sans nom)'} : ${formatEuro(x.ht)} HT${x.paye ? ' — payé' : ''}`).join('\n')}>
+        <span className="font-semibold">{noms.join(', ') || '(sans nom)'}</span>
         <span className="text-slate-400"> · </span>{formatEuro(total)}{toutPaye && <span className="text-emerald-600 font-bold"> ✓</span>}
       </span>
     );
   };
   const financeRow = (
-    <div className="px-2 py-1.5 flex items-center gap-2 text-[12px] leading-tight">
-      <button onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }} title={open ? 'Replier' : 'Voir plus de détails (téléphone, mail, adresse…)'} aria-label={open ? 'Replier le dossier' : 'Déplier le dossier'} className="flex-shrink-0 w-5 h-5 rounded text-slate-400 hover:text-violet-600 hover:bg-violet-50 text-[10px]">{open ? '▼' : '▶'}</button>
-      <div className="w-[16%] min-w-0 truncate">
+    <div className="px-2 py-1.5 grid gap-2 items-center text-[12px] leading-tight" style={{ gridTemplateColumns: financeRowCols(isAdmin, readOnly) }}>
+      <button onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }} title={open ? 'Replier' : 'Voir plus de détails (téléphone, mail, adresse…)'} aria-label={open ? 'Replier le dossier' : 'Déplier le dossier'} className="w-5 h-5 rounded text-slate-400 hover:text-violet-600 hover:bg-violet-50 text-[10px]">{open ? '▼' : '▶'}</button>
+      <div className="min-w-0 truncate">
         {readOnly
           ? <span className="font-bold text-slate-800">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</span>
           : <button onClick={(e) => { e.stopPropagation(); onShowQuick(d.localId); }} className="font-bold text-slate-800 hover:text-violet-600 hover:underline text-left truncate max-w-full" title="Ouvrir la fiche du dossier">{d.nom}{d.prenom ? ` ${d.prenom}` : ''}</button>}
       </div>
-      {!readOnly && <div className="w-[10%] min-w-0 truncate text-violet-700" title="Financeur">💳 {d.financement || '—'}</div>}
-      {isAdmin && (<>
-        <div className="w-[17%] min-w-0 flex"><Intervenant emoji="🔧" list={d.poseursDetail} total={d.poseurHt} color="text-amber-700" /></div>
-        <div className="w-[17%] min-w-0 flex"><Intervenant emoji="🤝" list={d.regiesDetail} total={d.regieHt} color="text-purple-700" /></div>
-        <div className="w-[17%] min-w-0 flex"><Intervenant emoji="📦" list={d.fournisseursDetail} total={d.fournisseurHt} color="text-orange-700" /></div>
-      </>)}
-      <div className="ml-auto flex items-center gap-2 flex-shrink-0">
-        {!readOnly && <span className="font-bold text-blue-600" title="Prix de vente TTC">{formatEuro(d.montantTotal)}</span>}
-        {isAdmin && <span className={`font-bold ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} title="Marge HT">Marge {formatEuro(d.margeHt)}</span>}
-        {!readOnly && (d.payeClient
-          ? <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold" title={d.payeClientDate ? `Payé le ${formatDateForSheet(d.payeClientDate)}` : 'Payé'}>✓ Payé</span>
-          : recuTotal > 0
-            ? <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold" title={`Reçu ${formatEuro(recuTotal)}`}>Reste {formatEuro(resteARecevoir)}</span>
-            : <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold">Non payé</span>)}
-        {!readOnly && <button onClick={() => onEdit(d)} aria-label="Modifier le dossier" title="Modifier le dossier" className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded"><Edit3 className="w-3.5 h-3.5" /></button>}
-      </div>
+      {!readOnly && <div className="min-w-0 truncate text-violet-700 font-semibold" title="Financeur">{d.financement || <span className="text-slate-300 font-normal">—</span>}</div>}
+      {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.poseursDetail} total={d.poseurHt} color="text-amber-700" /></div>}
+      {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.regiesDetail} total={d.regieHt} color="text-purple-700" /></div>}
+      {isAdmin && <div className="min-w-0 flex"><Intervenant list={d.fournisseursDetail} total={d.fournisseurHt} color="text-orange-700" /></div>}
+      {!readOnly && <div className="text-right font-bold text-blue-600 truncate" title="Prix de vente TTC">{formatEuro(d.montantTotal)}</div>}
+      {isAdmin && <div className={`text-right font-bold truncate ${d.margeHt >= 0 ? 'text-emerald-600' : 'text-rose-600'}`} title="Marge HT">{formatEuro(d.margeHt)}</div>}
+      {!readOnly && <div className="text-center truncate">{d.payeClient
+        ? <span className="px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 font-bold" title={d.payeClientDate ? `Payé le ${formatDateForSheet(d.payeClientDate)}` : 'Payé'}>✓ Payé</span>
+        : recuTotal > 0
+          ? <span className="px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 font-bold" title={`Reçu ${formatEuro(recuTotal)}`}>Reste {formatEuro(resteARecevoir)}</span>
+          : <span className="px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 font-semibold">Non payé</span>}</div>}
+      {!readOnly && <button onClick={() => onEdit(d)} aria-label="Modifier le dossier" title="Modifier le dossier" className="p-1 text-slate-400 hover:text-violet-600 hover:bg-violet-50 rounded"><Edit3 className="w-3.5 h-3.5" /></button>}
     </div>
   );
   if (!open) {
