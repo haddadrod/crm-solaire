@@ -1835,7 +1835,7 @@ const enrichDossier = (d, tarifsPoseurs, tarifsRegies, produits, tarifsFournisse
   // des coûts en plus des poseurs / régies / fournisseurs, déduits de la marge.
   const autresFraisDetail = (d.autresFrais || []).map(x => {
     const ht = parseFloat(x.ht) || 0;
-    return { type: x.type, nom: x.nom || (x.type === 'consuel' ? 'Consuel' : ''), ht, ttc: ht * 1.2, paye: !!x.paye, datePaye: x.datePaye || '' };
+    return { type: x.type, nom: x.type === 'consuel' ? 'Consuel' : (x.nom ? `Mairie (${x.nom})` : 'Mairie'), ht, ttc: ht * 1.2, paye: !!x.paye, datePaye: x.datePaye || '' };
   });
   const autresFraisHt = autresFraisDetail.reduce((sum, x) => sum + x.ht, 0);
   const autresFraisTtc = autresFraisDetail.reduce((sum, x) => sum + x.ttc, 0);
